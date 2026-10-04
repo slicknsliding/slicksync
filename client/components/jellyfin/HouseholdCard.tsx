@@ -15,7 +15,7 @@ import {
   QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon,
 } from '@heroicons/react/24/outline';
 import { api, type HouseholdProfile } from '@/lib/api';
-import { Button, Card, ConfirmModal, Modal } from '@/components/ui';
+import { Badge, Button, Card, ConfirmModal, Modal } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { MENU_ITEM, POPOVER_WIDTH, placeUnder, type Placement } from '@/components/user/ProfilesCard';
 
@@ -55,13 +55,17 @@ function Mark({ profile, size }: { profile: HouseholdProfile; size: number }) {
   );
 }
 
-export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged }: {
+export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, embedded = false, onProfilesChanged }: {
   /** The person whose sign-in the household was found on. */
   userId: string;
   personName: string;
   /** AIOStreams or AIOMetadata. */
   kindLabel: string;
   onPeopleChanged?: () => void;
+  /** Inside HouseholdsCard: no card or collapse of its own, just this person's section. */
+  embedded?: boolean;
+  /** Told whenever this household's profiles change, so HouseholdsCard's summary keeps up. */
+  onProfilesChanged?: (profiles: HouseholdProfile[]) => void;
 }) {
   // What this browser last saw, so the card is there with the page instead of
   // popping in after it; the load below refreshes it in place.
@@ -86,6 +90,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged }
       setProfiles(null);
     }
   }, [userId]);
+  useEffect(() => { if (profiles) onProfilesChanged?.(profiles); }, [profiles, onProfilesChanged]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -174,9 +179,17 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged }
 
   const sel = profiles.find((p) => p.id === selected) || null;
   const tracked = profiles.filter((p) => p.status === 'tracked').length;
+  const isOpen = embedded || open;
 
-  return (
-    <Card padding="lg">
+  const body = (
+    <>
+      {embedded ? (
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <h4 className="text-sm font-semibold text-default truncate">{personName}</h4>
+          <Badge variant={kindLabel === 'AIOMetadata' ? 'aiometadata' : 'aiostreams'} size="sm">{kindLabel}</Badge>
+          <span className="text-xs text-muted">{profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'} · {tracked} tracked with {personName}</span>
+        </div>
+      ) : (
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => { setOpen((o) => !o); closeMenu(); }} aria-expanded={open} className="flex-1 min-w-0 flex items-center justify-between gap-4 text-left">
           <div className="min-w-0">
@@ -204,9 +217,10 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged }
           </Link>
         )}
       </div>
+      )}
 
-      {open && (
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+      {isOpen && (
+        <div className={`${embedded ? 'mt-3' : 'mt-5'} grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2`}>
           {profiles.map((p) => {
             const isSelected = p.id === selected;
             const caption = p.status === 'own' ? (p.person?.username || 'Its own person')
@@ -334,6 +348,83 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged }
           </div>
         </form>
       </Modal>
+    </>
+  );
+
+  return embedded ? <div>{body}</div> : <Card padding="lg">{body}</Card>;
+}
+
+/**
+ * Everyone's AIOStreams and AIOMetadata household profiles in one card, the
+ * way "Nuvio profiles" is one card: collapsed by default, each person's
+ * household its own section inside. Shows only when someone has a household.
+ */
+export function HouseholdsCard({ owners, onPeopleChanged }: {
+  owners: { id: string; name: string; kindLabel: string }[];
+  onPeopleChanged?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [byOwner, setByOwner] = useState<Record<string, HouseholdProfile[]>>(() => Object.fromEntries(
+    owners.map((o) => [o.id, api.peekGet<{ profiles: HouseholdProfile[] }>(`/jellyfin/users/${encodeURIComponent(o.id)}/household`)?.profiles ?? []])
+  ));
+  const ownerKey = owners.map((o) => o.id).join(',');
+  useEffect(() => {
+    let live = true;
+    Promise.all(owners.map((o) => api.getHousehold(o.id).then((h) => [o.id, h.profiles || []] as const).catch(() => [o.id, [] as HouseholdProfile[]] as const)))
+      .then((rows) => { if (live) setByOwner(Object.fromEntries(rows)); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerKey]);
+  const update = useCallback((id: string, profiles: HouseholdProfile[]) => {
+    setByOwner((prev) => (prev[id] === profiles ? prev : { ...prev, [id]: profiles }));
+  }, []);
+
+  const withHousehold = owners.filter((o) => (byOwner[o.id] || []).length > 0);
+  if (withHousehold.length === 0) return null;
+  const all = withHousehold.flatMap((o) => byOwner[o.id]);
+
+  return (
+    <Card padding="lg">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex-1 min-w-0 flex items-center justify-between gap-4 text-left">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-default">AIOStreams &amp; AIOMetadata profiles</h3>
+            <p className="text-xs text-muted mt-0.5 truncate">
+              {open
+                ? 'Everyone else on an AIOStreams or AIOMetadata sign-in counts as that person until you separate them'
+                : `${all.length} ${all.length === 1 ? 'profile' : 'profiles'} · ${withHousehold.length === 1 ? withHousehold[0].name : `${withHousehold.length} people`}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {!open && (
+              <span className="flex items-center gap-1.5">
+                {all.slice(0, 6).map((p) => <Mark key={p.id} profile={p} size={26} />)}
+              </span>
+            )}
+            <ChevronDownIcon className="w-5 h-5 text-muted transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
+          </div>
+        </button>
+        {open && (
+          <Link href="/guides/add-jellyfin-account" className="text-muted hover:text-default transition-colors shrink-0" title="How households work" aria-label="How households work">
+            <QuestionMarkCircleIcon className="w-5 h-5" />
+          </Link>
+        )}
+      </div>
+      {open && (
+        <div className="mt-5 space-y-6">
+          {withHousehold.map((o) => (
+            <HouseholdCard
+              key={o.id}
+              embedded
+              userId={o.id}
+              personName={o.name}
+              kindLabel={o.kindLabel}
+              onPeopleChanged={onPeopleChanged}
+              onProfilesChanged={(p) => update(o.id, p)}
+            />
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

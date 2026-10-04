@@ -22,6 +22,7 @@ const CATEGORY_LABELS = {
   sync: '🔄 Syncs',
   vault: '🔐 Vault',
   addon_health: '🧩 Addon Health',
+  connection: '📡 Connections',
 }
 
 const MAX_LINES_PER_CATEGORY = 10

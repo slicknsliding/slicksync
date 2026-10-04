@@ -3782,6 +3782,7 @@ export interface SyncSettings {
   notifyOnNewDevice?: boolean;
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
+  notifyOnConnectionHealth?: boolean;
   notifyOnUpdateAvailable?: boolean;
   /** Opt-in nudge when the Disaster Recovery Kit is stale/missing while the
    * Vault holds credentials. Nothing is ever uploaded - see

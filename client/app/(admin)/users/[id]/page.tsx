@@ -1362,6 +1362,74 @@ export default function UserDetailPage() {
               </Card>
             </PageSection>
 
+            {/* Sync Debug Section */}
+            {showSyncDebug && (
+              <PageSection className="mb-6">
+                <div className="p-4 rounded-xl bg-surface border border-yellow-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-yellow-400">Sync Debug Info</h3>
+                    {syncPlan && (
+                      <Badge variant={syncPlan.alreadySynced ? 'success' : 'error'} size="sm">
+                        {syncPlan.alreadySynced ? 'Synced' : 'Unsynced'}
+                      </Badge>
+                    )}
+                  </div>
+                  {syncPlanLoading && <div className="text-sm text-muted">Loading...</div>}
+                  {syncPlanError && <div className="text-sm text-red-400">Error: {syncPlanError}</div>}
+                  {syncPlan && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="text-sm font-medium text-muted mb-2">Current Addons ({syncPlan.currentCount})</h4>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {syncPlan.current.map((addon, idx) => (
+                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
+                                <span className="text-primary">{addon.name}</span>
+                                <div className="text-muted truncate">{addon.transportUrl}</div>
+                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
+                                  FP: {addon.fingerprint.substring(0, 50)}...
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-medium text-muted mb-2">Desired Addons ({syncPlan.desiredCount})</h4>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {syncPlan.desired.map((addon, idx) => (
+                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
+                                <span className="text-green-400">{addon.name}</span>
+                                <div className="text-muted truncate">{addon.transportUrl}</div>
+                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
+                                  FP: {addon.fingerprint.substring(0, 50)}...
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={refreshSyncPlan}
+                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
+                          copyToClipboard(text);
+                          toast.success('Copied to clipboard');
+                        }}
+                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </>
+                  )}
+                </div>
+              </PageSection>
+            )}
+
             {/* Manual merge - shown when this account hasn't already
                 absorbed a second provider's account. */}
             {!mergeInfo && (
@@ -1692,74 +1760,6 @@ export default function UserDetailPage() {
                 </div>)}
               </Card>
             </PageSection>
-
-            {/* Sync Debug Section */}
-            {showSyncDebug && (
-              <PageSection className="mb-6">
-                <div className="p-4 rounded-xl bg-surface border border-yellow-500/30">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-yellow-400">Sync Debug Info</h3>
-                    {syncPlan && (
-                      <Badge variant={syncPlan.alreadySynced ? 'success' : 'error'} size="sm">
-                        {syncPlan.alreadySynced ? 'Synced' : 'Unsynced'}
-                      </Badge>
-                    )}
-                  </div>
-                  {syncPlanLoading && <div className="text-sm text-muted">Loading...</div>}
-                  {syncPlanError && <div className="text-sm text-red-400">Error: {syncPlanError}</div>}
-                  {syncPlan && (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-muted mb-2">Current Addons ({syncPlan.currentCount})</h4>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {syncPlan.current.map((addon, idx) => (
-                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
-                                <span className="text-primary">{addon.name}</span>
-                                <div className="text-muted truncate">{addon.transportUrl}</div>
-                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
-                                  FP: {addon.fingerprint.substring(0, 50)}...
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-muted mb-2">Desired Addons ({syncPlan.desiredCount})</h4>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {syncPlan.desired.map((addon, idx) => (
-                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
-                                <span className="text-green-400">{addon.name}</span>
-                                <div className="text-muted truncate">{addon.transportUrl}</div>
-                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
-                                  FP: {addon.fingerprint.substring(0, 50)}...
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={refreshSyncPlan}
-                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => {
-                          const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
-                          copyToClipboard(text);
-                          toast.success('Copied to clipboard');
-                        }}
-                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
-                      >
-                        Copy
-                      </button>
-                    </>
-                  )}
-                </div>
-              </PageSection>
-            )}
 
             {/* Tab Navigation */}
             <PageSection className="mb-6 md:mb-8">

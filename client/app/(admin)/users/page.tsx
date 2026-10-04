@@ -9,7 +9,7 @@ import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, Sy
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { ProfilesCard } from '@/components/user/ProfilesCard';
-import { HouseholdCard } from '@/components/jellyfin/HouseholdCard';
+import { HouseholdsCard } from '@/components/jellyfin/HouseholdCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
@@ -855,16 +855,15 @@ export default function UsersPage() {
           its household users count as that person's profiles until separated.
           A card only shows when there is a household - see HouseholdCard. */}
       {!isLoading && extrasReady && householdOwners.length > 0 && (
-        <div className="mt-4 flex flex-col gap-4">
-          {householdOwners.map((owner) => (
-            <HouseholdCard
-              key={owner.id}
-              userId={owner.id}
-              personName={(owner as { username?: string }).username || owner.name || 'This person'}
-              kindLabel={owner.jellyfinServerLabel || 'AIOStreams'}
-              onPeopleChanged={refreshUsersQuietly}
-            />
-          ))}
+        <div className="mt-4">
+          <HouseholdsCard
+            owners={householdOwners.map((owner) => ({
+              id: owner.id,
+              name: (owner as { username?: string }).username || owner.name || 'This person',
+              kindLabel: owner.jellyfinServerLabel || (owner.jellyfinServerKind === 'aiometadata' ? 'AIOMetadata' : 'AIOStreams'),
+            }))}
+            onPeopleChanged={refreshUsersQuietly}
+          />
         </div>
       )}
       </div>

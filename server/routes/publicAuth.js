@@ -1615,7 +1615,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             decryptedUser.protectedAddons = JSON.stringify([])
           }
         } catch { }
-        // Omit internal fields
+        // Omit internal fields. `ref` is the person's id, kept so an import
+        // back into this instance can give them the same id again - their
+        // watch history, sessions and stats are all filed under it.
+        decryptedUser.ref = user.id
         delete decryptedUser.id
         delete decryptedUser.accountId
         // Omit stremioAddons from export (not needed in exported config)
@@ -1967,6 +1970,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       const { users, groups, addons, sync: importedSync } = configData;
       const accountId = req.appAccountId || 'default';
 
+      // Who is here right now, by name - so a file exported before people
+      // carried a `ref` can still hand each one back their own id below.
+      const idByUsernameBeforeImport = new Map(
+        (await prisma.user.findMany({ where: { accountId }, select: { id: true, username: true } }).catch(() => []))
+          .filter((u) => u.username).map((u) => [u.username, u.id])
+      );
+
       // Reset existing data for this account using shared function
       await resetAccountData(accountId);
 
@@ -2253,10 +2263,31 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
       }
 
-      // 3. Import users (always new IDs) and build export->new map
+      // 3. Import users and build export->new map.
+      //
+      // Watch history, sessions, stats and the rest are filed under a
+      // person's id with no link back to the person row, so a reset + new
+      // ids left every one of them orphaned: Activity went empty and
+      // everyone showed 0m. A person now gets their original id back
+      // whenever it is free - from the export's `ref`, or, for an older
+      // file, from whoever had that username here before the import - and
+      // everything filed under it reattaches as is. Never an id whose
+      // history belongs to another account.
+      const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+      const reusableUserId = async (candidate) => {
+        if (typeof candidate !== 'string' || !SAFE_ID.test(candidate)) return null;
+        const taken = await prisma.user.findUnique({ where: { id: candidate }, select: { id: true } }).catch(() => true);
+        if (taken) return null;
+        for (const model of ['watchActivity', 'movieWatchHistory', 'episodeWatchHistory', 'watchSession']) {
+          const elsewhere = await prisma[model]?.findFirst({ where: { userId: candidate, NOT: { accountId } }, select: { userId: true } }).catch(() => null);
+          if (elsewhere) return null;
+        }
+        return candidate;
+      };
       const importedUsers = [];
       const importedHouseholds = [];
       const exportUserIdToNewId = new Map();
+      let keptIds = 0;
       if (users && Array.isArray(users)) {
         // Build addon lookup maps for normalization
         const nameToAddonId = new Map();
@@ -2267,7 +2298,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
 
         for (const userData of users) {
-          const { id: _exportUserId, stremioAuthKey, nuvioRefreshToken, jellyfinToken, aioConfigPassword, simklAccessToken, jellyfinHousehold, protectedAddons, excludedAddons, ...userFields } = userData;
+          const { id: _exportUserId, ref: exportRef, stremioAuthKey, nuvioRefreshToken, jellyfinToken, aioConfigPassword, simklAccessToken, jellyfinHousehold, protectedAddons, excludedAddons, ...userFields } = userData;
 
           // Parse protectedAddons and excludedAddons if they're JSON strings
           const parsedProtectedAddons = (() => {
@@ -2326,9 +2357,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             if (resolvedId) normalizedExcludedIds.push(resolvedId)
           }
 
+          const keepId = await reusableUserId(exportRef || jellyfinHousehold?.ref || _exportUserId)
+            || await reusableUserId(userFields.username ? idByUsernameBeforeImport.get(userFields.username) : null);
+          if (keepId) keptIds++;
           const user = await prisma.user.create({
             data: {
               ...userFields,
+              ...(keepId ? { id: keepId } : {}),
               accountId,
               stremioAuthKey: stremioAuthKey ? encrypt(stremioAuthKey, req) : null,
               nuvioRefreshToken: nuvioRefreshToken ? encrypt(nuvioRefreshToken, req) : null,
@@ -2341,6 +2376,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           });
           importedUsers.push(user);
           if (_exportUserId) exportUserIdToNewId.set(_exportUserId, user.id)
+          if (exportRef) exportUserIdToNewId.set(exportRef, user.id)
           if (jellyfinHousehold && jellyfinHousehold.ref) {
             exportUserIdToNewId.set(jellyfinHousehold.ref, user.id)
             importedHouseholds.push({ owner: user, household: jellyfinHousehold })
@@ -2358,8 +2394,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           for (const p of Array.isArray(household.profiles) ? household.profiles : []) {
             if (!p || !p.jellyfinUserId || !p.name) continue
             try {
+              // Its id is in the profile's SlickTrax link and its AIOStreams
+              // variant, so it keeps that too when free.
+              const keepProfileId = typeof p.ref === 'string' && SAFE_ID.test(p.ref)
+                && !(await prisma.jellyfinProfile.findUnique({ where: { id: p.ref }, select: { id: true } }).catch(() => true))
               const row = await prisma.jellyfinProfile.create({
                 data: {
+                  ...(keepProfileId ? { id: p.ref } : {}),
                   accountId,
                   ownerUserId: owner.id,
                   jellyfinUserId: String(p.jellyfinUserId),
@@ -2488,7 +2529,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         },
         // Backward-compatible aliases expected by older clients
         addons: { created: importedAddons.length, reused: 0 },
-        users: { created: importedUsers.length },
+        users: { created: importedUsers.length, keptHistory: keptIds },
         groups: { created: importedGroups.length }
       });
     } catch (error) {

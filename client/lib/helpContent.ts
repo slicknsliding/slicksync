@@ -588,10 +588,11 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Open Settings → Notifications.',
       'For phone/desktop push: install SlickSync to your home screen first (it is a PWA), then hit Enable phone notifications and accept the browser prompt.',
       'Optionally paste a Discord webhook URL and hit Test to confirm it posts.',
-      'Turn on the specific event types you care about - activity, sync, invites, Vault, addon health, new device, backups, proxy connectivity, update available.',
+      'Turn on the specific event types you care about - activity, sync, invites, Vault, addon health, connection problems, new device, backups, proxy connectivity, update available.',
       'Optionally turn on Digest mode to batch all of the above into one daily or weekly summary.',
     ],
     details: [
+      'Connection problems is on from the start: you hear when someone\'s Stremio, Nuvio or Jellyfin sign-in stops working (straight away if it needs reconnecting, after 15 minutes if their server is just unreachable) and again when it is back. One alert per outage, not one every few minutes.',
       'Push and the in-app bell are the primary channels and always work with zero Discord setup. A webhook only adds Discord delivery on top - nothing requires it.',
       'VAPID keys for push self-generate on first boot, so there is no key setup to do.',
       'Individual users can opt out of their own notifications or set a personal Discord webhook that overrides the account-wide one.',
@@ -1229,6 +1230,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Health & maintenance',
     keywords: ['export config', 'import config', 'reset config', 'configuration backup'],
     answer: 'Tasks → Configuration. Export Config downloads a full settings snapshot; Import Config restores from one. Reset Config wipes account settings back to defaults - confirmation-gated since it\'s not reversible.',
+    details: [
+      'Importing replaces the people, groups and addons on this account with the ones in the file. Watch history is not in the file, but importing back into the same SlickSync keeps everyone\'s history, stats and Activity attached to them.',
+      'Older export files are matched to people by username, so they keep history too as long as the names have not changed.',
+    ],
     href: '/tasks',
     linkLabel: 'Open Tasks',
   },
@@ -1257,6 +1262,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     ],
     tips: [
       'A watch that happened on an account not added to SlickSync will never appear. The account-mismatch notification exists to flag exactly that case.',
+      'A "needs to reconnect" notification, or a warning badge on the person in Users, means SlickSync can no longer sign in to read their history. Reconnect them and tracking picks up again.',
     ],
     related: ['now-playing-empty', 'sync-mode-basics', 'account-merge-mismatch'],
     href: '/metrics',

@@ -955,6 +955,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnAddonHealth === true : false,
           notifyOnBackup: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnBackup === true : false,
           notifyOnProxyHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnProxyHealth === true : false,
+          notifyOnConnectionHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnConnectionHealth !== false : true,
           notifyOnUpdateAvailable: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnUpdateAvailable === true : false,
           notifyOnRecoveryKitStale: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnRecoveryKitStale === true : false,
           lastRecoveryKitExportAt: (syncCfg && typeof syncCfg === 'object') ? (syncCfg.lastRecoveryKitExportAt || null) : null,
@@ -1053,6 +1054,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: syncCfg.notifyOnAddonHealth === true,
           notifyOnBackup: syncCfg.notifyOnBackup === true,
           notifyOnProxyHealth: syncCfg.notifyOnProxyHealth === true,
+          notifyOnConnectionHealth: syncCfg.notifyOnConnectionHealth !== false,
           notifyOnUpdateAvailable: syncCfg.notifyOnUpdateAvailable === true,
           notifyOnRecoveryKitStale: syncCfg.notifyOnRecoveryKitStale === true,
           lastRecoveryKitExportAt: syncCfg.lastRecoveryKitExportAt || null,
@@ -1102,7 +1104,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableWatchTogether: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnConnectionHealth: true, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableWatchTogether: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -1110,7 +1112,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, publicBaseUrl, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnConnectionHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, publicBaseUrl, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -1170,6 +1172,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: notifyOnAddonHealth !== undefined ? !!notifyOnAddonHealth : ((baseCfg.notifyOnAddonHealth !== undefined) ? baseCfg.notifyOnAddonHealth : false),
           notifyOnBackup: notifyOnBackup !== undefined ? !!notifyOnBackup : ((baseCfg.notifyOnBackup !== undefined) ? baseCfg.notifyOnBackup : false),
           notifyOnProxyHealth: notifyOnProxyHealth !== undefined ? !!notifyOnProxyHealth : ((baseCfg.notifyOnProxyHealth !== undefined) ? baseCfg.notifyOnProxyHealth : false),
+          notifyOnConnectionHealth: notifyOnConnectionHealth !== undefined ? !!notifyOnConnectionHealth : baseCfg.notifyOnConnectionHealth !== false,
           notifyOnUpdateAvailable: notifyOnUpdateAvailable !== undefined ? !!notifyOnUpdateAvailable : ((baseCfg.notifyOnUpdateAvailable !== undefined) ? baseCfg.notifyOnUpdateAvailable : false),
           notifyOnRecoveryKitStale: notifyOnRecoveryKitStale !== undefined ? !!notifyOnRecoveryKitStale : ((baseCfg.notifyOnRecoveryKitStale !== undefined) ? baseCfg.notifyOnRecoveryKitStale : false),
           notifyOnMosaic: notifyOnMosaic !== undefined ? !!notifyOnMosaic : ((baseCfg.notifyOnMosaic !== undefined) ? baseCfg.notifyOnMosaic : false),
@@ -1304,6 +1307,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnAddonHealth !== undefined) partial.notifyOnAddonHealth = !!notifyOnAddonHealth
       if (notifyOnBackup !== undefined) partial.notifyOnBackup = !!notifyOnBackup
       if (notifyOnProxyHealth !== undefined) partial.notifyOnProxyHealth = !!notifyOnProxyHealth
+      if (notifyOnConnectionHealth !== undefined) partial.notifyOnConnectionHealth = !!notifyOnConnectionHealth
       if (notifyOnUpdateAvailable !== undefined) partial.notifyOnUpdateAvailable = !!notifyOnUpdateAvailable
       if (notifyOnRecoveryKitStale !== undefined) partial.notifyOnRecoveryKitStale = !!notifyOnRecoveryKitStale
       if (notifyOnMosaic !== undefined) partial.notifyOnMosaic = !!notifyOnMosaic

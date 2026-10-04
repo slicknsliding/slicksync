@@ -134,7 +134,8 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         discordWebhookUrl: true,
         // Needed so getLibraryForUser can clear the flag on a successful fetch
         // (the self-healing half of the "Reconnect needed" warning).
-        providerConnectionError: true
+        providerConnectionError: true,
+        providerConnectionErrorAt: true
       }
     })
 
@@ -161,14 +162,21 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       function isAuthFailure(message) {
         const m = (message || '').toLowerCase()
         return m.includes('session does not exist') || m.includes('unauthorized') || m.includes('invalid auth') || m.includes(' 401')
+          || m.includes('authentication expired') // Nuvio's refresh token was rejected
       }
-      async function recordConnectionError(userId, message) {
+      // providerConnectionErrorAt is when the outage STARTED: kept while it
+      // keeps failing, so connectionAlerts can tell a blip from an outage
+      // and announce each outage once. Returns that start, or null if the
+      // write failed.
+      async function recordConnectionError(user, message) {
+        const since = (user.providerConnectionError && user.providerConnectionErrorAt) ? new Date(user.providerConnectionErrorAt) : new Date()
         try {
           await prisma.user.update({
-            where: { id: userId },
-            data: { providerConnectionError: message.slice(0, 500), providerConnectionErrorAt: new Date() },
+            where: { id: user.id },
+            data: { providerConnectionError: message.slice(0, 500), providerConnectionErrorAt: since },
           })
-        } catch {}
+          return since
+        } catch { return null }
       }
       async function clearConnectionError(userId) {
         try {
@@ -226,13 +234,17 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             itemCount: Array.isArray(library) ? library.length : 0
           })
 
-          if (user.providerConnectionError) await clearConnectionError(user.id)
+          if (user.providerConnectionError) {
+            await clearConnectionError(user.id)
+            await require('./connectionAlerts').onConnectionRecovered(prisma, accountId, user)
+          }
           return library || []
         } catch (error) {
           heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
           const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
-          await recordConnectionError(user.id, prefix + error.message)
+          const since = await recordConnectionError(user, prefix + error.message)
+          if (since) await require('./connectionAlerts').onConnectionFailed(prisma, accountId, user, prefix + error.message, since)
           // Fallback to cache if API call fails
           const cachedLibrary = getCachedLibrary(accountId, user, { allowLegacyEmailFile: canUseLegacyCache(user) })
           return cachedLibrary || []
