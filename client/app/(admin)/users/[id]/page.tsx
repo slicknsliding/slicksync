@@ -16,6 +16,7 @@ import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { providerLabel, providerBadgeVariant, hasAddonList } from '@/lib/providers';
+import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -1246,6 +1247,9 @@ export default function UserDetailPage() {
                             {user.jellyfinUserName ? `${user.jellyfinUserName} on ` : ''}{user.jellyfinServer}
                             {user.aioConfigWatched ? ' · watched for changes' : ''}
                           </span>
+                        )}
+                        {user.providerType === 'jellyfin' && (
+                          <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
                         {/* Only worth saying when it is not the primary - a
                             Nuvio user that manages profile 1 is the ordinary

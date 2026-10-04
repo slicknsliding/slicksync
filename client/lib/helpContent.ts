@@ -703,6 +703,24 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Users',
   },
   {
+    id: 'sign-in-tv',
+    title: 'Signing a TV in to Jellyfin or AIOStreams with a code',
+    category: 'Users & Groups',
+    keywords: ['quick connect', 'sign in tv', 'tv code', 'log in tv', 'jellyfin tv', 'aiostreams tv', 'infuse sign in', 'swiftfin sign in', 'device code'],
+    answer: 'Open the person on the Users page and press Sign in a TV. On the TV, pick Quick Connect in the Jellyfin app - it shows a code - type it in SlickSync, choose who the TV is for (the person or one of their household profiles), and the TV signs in. No password typed with a remote.',
+    steps: [
+      'On the TV, open the Jellyfin app (or Infuse, Swiftfin...) and choose Quick Connect - it shows a short code.',
+      'In SlickSync, open the person on the Users page and press Sign in a TV.',
+      'Pick who the TV is for, type the code and press Sign in.',
+    ],
+    details: [
+      'The TV signs in as whoever you picked - on AIOStreams that includes a household profile like a kid’s, PIN and all.',
+      'A profile has to be signed in on SlickSync first (Users page -> household) before it can sign a TV in.',
+      'Codes change every few minutes - if one doesn’t work, check the TV for the current one. A server with Quick Connect turned off won’t take codes.',
+    ],
+    related: ['add-jellyfin-account', 'aiostreams-collections'],
+  },
+  {
     id: 'aiostreams-collections',
     title: 'Catalogs as collections in AIOStreams’ apps',
     category: 'Catalogs & Collections',

@@ -14,7 +14,7 @@
 // them, keeps everything else exactly as read, and re-reads the configuration
 // afterwards so the change warning (utils/aiostreamsConfig.js) stays quiet.
 
-const { readConfig, writeConfig, rebaseline } = require('./aiostreamsConfig')
+const { readConfig, writeConfig, rebaseline, noteOutsideChanges } = require('./aiostreamsConfig')
 
 const VARIANT_PREFIX = 'slicksync-'
 
@@ -94,6 +94,13 @@ async function setProfileVariant(prisma, decrypt, owner, profile, on) {
     if (!persona.variants.length) delete persona.variants
   }
 
+  // Anything changed outside SlickSync since the last look is reported now -
+  // the baseline this write leaves behind must only absorb SlickSync's edit.
+  try {
+    await noteOutsideChanges(prisma, owner, await readConfig(access))
+  } catch (e) {
+    console.warn('[AioProfileVariants] could not compare with the last look:', e?.message)
+  }
   await writeConfig(access, config)
   try {
     await rebaseline(prisma, owner, await readConfig(access))
@@ -102,4 +109,37 @@ async function setProfileVariant(prisma, decrypt, owner, profile, on) {
   }
 }
 
-module.exports = { setProfileVariant, variantIdFor, slickTraxPreset, profileManifestUrl, VARIANT_PREFIX }
+/**
+ * Every profile with collections of its own keeps its variant pointed at the
+ * SlickTrax link that is in AIOStreams now. Rotating a SlickTrax link gives it
+ * a new address; once the new one is in AIOStreams, the old address in a
+ * profile's variant would leave that profile without its collections and its
+ * watch history. Checked with the change warning, every 30 minutes - a
+ * variant that is already right costs one read and no write.
+ */
+async function healProfileVariants(prisma, decrypt) {
+  const accounts = await prisma.appAccount.findMany({ select: { id: true, sync: true } })
+  for (const acc of accounts) {
+    let cfg = acc.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    const byProfile = cfg?.aioCollections?.byProfile
+    const ids = byProfile && typeof byProfile === 'object' ? Object.keys(byProfile).filter((id) => byProfile[id]) : []
+    if (!ids.length) continue
+    const profiles = await prisma.jellyfinProfile.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, ownerUserId: true } })
+    for (const profile of profiles) {
+      const owner = await prisma.user.findFirst({
+        where: { id: profile.ownerUserId, accountId: acc.id, providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' },
+        select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true, watchStateEnabled: true, traxToken: true },
+      })
+      if (!owner) continue
+      try {
+        await setProfileVariant(prisma, decrypt, owner, profile, true)
+      } catch (e) {
+        // Most often: the new link isn't in AIOStreams yet. Next time, then.
+        console.warn(`[AioProfileVariants] ${profile.name}'s variant not brought up to date:`, e?.message)
+      }
+    }
+  }
+}
+
+module.exports = { setProfileVariant, healProfileVariants, variantIdFor, slickTraxPreset, profileManifestUrl, VARIANT_PREFIX }

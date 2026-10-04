@@ -76,3 +76,21 @@ test('refuses clearly when it cannot be done', async () => {
   fakeAioStreams(noLink)
   await assert.rejects(setProfileVariant(prisma, decrypt, owner, kid, true), /watch history link isn't in/)
 })
+
+test('after a link is rotated, the profile variant follows the new link', async () => {
+  const aio = fakeAioStreams(baseConfig())
+  await setProfileVariant(prisma, decrypt, owner, kid, true)
+  // Rotated in SlickSync, and the new link put into AIOStreams.
+  const NEW = 'tok_fedcba9876543210'
+  aio.config.presets.find((p) => p.instanceId === 'slk').options.manifestUrl = `https://ss.example.com/trax/${NEW}/aio/manifest.json`
+  await setProfileVariant(prisma, decrypt, { ...owner, traxToken: NEW }, kid, true)
+  const script = aio.config.variants.find((v) => v.id === 'slicksync-kid').script
+  assert.match(script, new RegExp(`/trax/${NEW}/aio/p/prof_kid/manifest\.json`))
+  assert.equal(aio.config.variants.filter((v) => v.id === 'slicksync-kid').length, 1)
+  assert.equal(aio.puts, 2)
+
+  // New link not in AIOStreams yet: nothing written, a clear reason.
+  aio.config.presets.find((p) => p.instanceId === 'slk').options.manifestUrl = `https://ss.example.com/trax/${NEW}/aio/manifest.json`
+  await assert.rejects(setProfileVariant(prisma, decrypt, { ...owner, traxToken: 'tok_newer_not_in_aio_yet' }, kid, true), /watch history link isn't in/)
+  assert.equal(aio.puts, 2)
+})

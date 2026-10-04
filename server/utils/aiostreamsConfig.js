@@ -279,25 +279,45 @@ async function checkConfigs(prisma, decrypt) {
       }
       continue
     }
-    const after = { ...summarize(config), checkedAt: new Date().toISOString() }
-    if (before.hash && before.hash !== after.hash) {
-      const changes = describeChanges(before, after)
-      const shown = changes.slice(0, 4).join(', ') + (changes.length > 4 ? `, and ${changes.length - 4} more` : '')
-      await alert(prisma, accountId, {
-        title: `${person.username}'s AIOStreams configuration was changed outside SlickSync`,
-        body: `Someone ${shown}.`,
-        url: `/users/${person.id}`,
-        dedupeKey: `aioconfig:${person.id}:${after.hash}`,
-      })
-    }
-    await prisma.user.update({ where: { id: person.id }, data: { aioConfigStateJson: JSON.stringify(after) } })
+    await noteOutsideChanges(prisma, person, config, before)
   }
+}
+
+/**
+ * Compare a configuration as just read with the last look; tell the
+ * household what changed, and remember this look. Also run right before
+ * SlickSync's own write, so an outside change made since the last look is
+ * reported rather than folded into the baseline that write leaves behind.
+ */
+async function noteOutsideChanges(prisma, person, config, before) {
+  if (!before) {
+    const row = await prisma.user.findUnique({ where: { id: person.id }, select: { aioConfigStateJson: true } })
+    try { before = JSON.parse(row?.aioConfigStateJson || '{}') || {} } catch { before = {} }
+  }
+  const accountId = person.accountId || 'default'
+  const after = { ...summarize(config), checkedAt: new Date().toISOString() }
+  if (before.hash && before.hash !== after.hash) {
+    const changes = describeChanges(before, after)
+    const shown = changes.slice(0, 4).join(', ') + (changes.length > 4 ? `, and ${changes.length - 4} more` : '')
+    await alert(prisma, accountId, {
+      title: `${person.username}'s AIOStreams configuration was changed outside SlickSync`,
+      body: `Someone ${shown}.`,
+      url: `/users/${person.id}`,
+      dedupeKey: `aioconfig:${person.id}:${after.hash}`,
+    })
+  }
+  await prisma.user.update({ where: { id: person.id }, data: { aioConfigStateJson: JSON.stringify(after) } })
 }
 
 let timer = null
 function scheduleConfigGuard(prisma, decrypt) {
   if (timer) clearInterval(timer)
-  const run = () => checkConfigs(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] check failed:', e?.message))
+  const run = async () => {
+    // Profile variants first: a write here re-baselines, so the look that
+    // follows doesn't report SlickSync's own fix as an outside change.
+    await require('./aioProfileVariants').healProfileVariants(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] profile variants check failed:', e?.message))
+    await checkConfigs(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] check failed:', e?.message))
+  }
   setTimeout(run, 2 * 60 * 1000)
   timer = setInterval(run, CHECK_INTERVAL_MS)
 }
@@ -308,6 +328,7 @@ module.exports = {
   readConfig,
   writeConfig,
   rebaseline,
+  noteOutsideChanges,
   summarize,
   describeChanges,
   rememberConfigAccess,

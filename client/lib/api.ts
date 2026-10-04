@@ -2332,6 +2332,14 @@ class ApiClient {
 
   // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
 
+  /** Sign a TV in with the Quick Connect code it shows, as this person or one of their household profiles. */
+  async authorizeQuickConnect(userId: string, code: string, profileId?: string | null) {
+    return this.fetch<{ success: boolean; who: string }>(`/jellyfin/users/${encodeURIComponent(userId)}/quick-connect`, {
+      method: 'POST',
+      body: JSON.stringify({ code, profileId: profileId || undefined }),
+    });
+  }
+
   async getHousehold(userId: string) {
     return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null }>(
       `/jellyfin/users/${encodeURIComponent(userId)}/household`

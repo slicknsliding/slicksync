@@ -332,6 +332,61 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // Sign a TV (or any Jellyfin app) in with the Quick Connect code it shows,
+  // as this person or one of their household profiles: SlickSync approves the
+  // code with that sign-in, and the server signs the device in as them.
+  // AIOStreams and Jellyfin both sign the device in as whoever approved it.
+  router.post('/users/:id/quick-connect', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const person = await prisma.user.findFirst({
+        where: { id: String(req.params.id), accountId, providerType: 'jellyfin' },
+        select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, jellyfinUserId: true, jellyfinToken: true },
+      });
+      if (!person || !person.jellyfinServerUrl) return res.status(404).json({ error: 'Person not found' });
+      const code = String(req.body?.code || '').replace(/\D/g, '');
+      if (code.length < 4 || code.length > 10) return res.status(400).json({ error: 'Type the code the TV shows' });
+
+      let token = person.jellyfinToken;
+      let who = person.username;
+      if (req.body?.profileId) {
+        const profile = await prisma.jellyfinProfile.findFirst({ where: { id: String(req.body.profileId), ownerUserId: person.id }, select: { name: true, token: true, needsPin: true } });
+        if (!profile) return res.status(404).json({ error: 'That profile is not in this household' });
+        if (!profile.token) {
+          return res.status(409).json({ error: `Sign ${profile.name} in on SlickSync first${profile.needsPin ? ' with their PIN' : ''} (Users page -> household)` });
+        }
+        token = profile.token;
+        who = profile.name;
+      }
+      if (!token) return res.status(409).json({ error: `Reconnect ${person.username} first` });
+
+      const { jfRequest, deviceIdFor } = require('../providers/jellyfinAuth');
+      let approved;
+      try {
+        approved = await jfRequest(person.jellyfinServerUrl, `/QuickConnect/Authorize?code=${encodeURIComponent(code)}`, {
+          method: 'POST',
+          token: decrypt(token, { appAccountId: person.accountId || 'default' }),
+          deviceId: deviceIdFor(person.jellyfinServerUrl, person.jellyfinUserId),
+        });
+      } catch (e) {
+        if (e.status === 401 || e.status === 403) {
+          return res.status(400).json({ error: 'The server turned it down - Quick Connect may be off on it, or that code is for another server' });
+        }
+        // Jellyfin answers an unknown or expired code with a bare 404.
+        if (e.status === 404 || e.status === 400) {
+          return res.status(400).json({ error: "That code didn't work - codes change every few minutes, so check the TV and try again" });
+        }
+        throw e;
+      }
+      if (approved !== true) {
+        return res.status(400).json({ error: "That code didn't work - codes change every few minutes, so check the TV and try again" });
+      }
+      res.json({ success: true, who });
+    } catch (error) {
+      sendError(res, error, 'Could not sign the device in');
+    }
+  });
+
   // A person's household, and - for someone separated out of one - whose it is.
   router.get('/users/:id/household', async (req, res) => {
     try {
