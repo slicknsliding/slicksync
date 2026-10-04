@@ -270,6 +270,68 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // Jellyfin Collections page: SlickSync catalogs as real collections on the
+  // household's own Jellyfin servers (utils/jellyfinServerCollections.js).
+  const serverCollections = require('../utils/jellyfinServerCollections');
+
+  async function collectionsServer(accountId, key) {
+    const servers = await serverCollections.serversFor(prisma, accountId);
+    const server = servers.find((s) => s.key === String(key || ''));
+    if (!server) throw Object.assign(new Error('That Jellyfin server is not one anyone here signs in to'), { status: 404 });
+    return server;
+  }
+
+  router.get('/server-collections/servers', async (req, res) => {
+    try {
+      const servers = await serverCollections.serversFor(prisma, getAccountId(req));
+      const { jfRequest } = require('../providers/jellyfinAuth');
+      res.json({
+        servers: await Promise.all(servers.map(async (s) => {
+          let name = null;
+          try { name = (await jfRequest(s.url, '/System/Info/Public', { timeoutMs: 5000 }))?.ServerName || null; } catch {}
+          return { key: s.key, name: name || s.address, address: s.address, people: s.people.map((p) => ({ id: p.id, username: p.username })) };
+        })),
+      });
+    } catch (error) {
+      sendError(res, error, 'Could not read the Jellyfin servers');
+    }
+  });
+
+  router.get('/server-collections', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const server = await collectionsServer(accountId, req.query.server);
+      res.json(await serverCollections.describeServer(prisma, decrypt, accountId, server));
+    } catch (error) {
+      sendError(res, error, 'Could not read the Jellyfin collections');
+    }
+  });
+
+  router.put('/server-collections', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const server = await collectionsServer(accountId, req.body?.server);
+      const catalogId = String(req.body?.catalogId || '');
+      const list = await prisma.customList.findFirst({ where: { id: catalogId, accountId }, select: { id: true } });
+      if (!list) return res.status(404).json({ error: 'Catalog not found' });
+      await serverCollections.setCatalog(prisma, decrypt, accountId, server, list.id, req.body?.on === true);
+      res.json(await serverCollections.describeServer(prisma, decrypt, accountId, server));
+    } catch (error) {
+      sendError(res, error, 'Could not change the Jellyfin collection');
+    }
+  });
+
+  router.post('/server-collections/sync', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const server = await collectionsServer(accountId, req.body?.server);
+      await serverCollections.syncServer(prisma, decrypt, accountId, server);
+      res.json(await serverCollections.describeServer(prisma, decrypt, accountId, server));
+    } catch (error) {
+      sendError(res, error, 'Could not sync the Jellyfin collections');
+    }
+  });
+
   // A person's household, and - for someone separated out of one - whose it is.
   router.get('/users/:id/household', async (req, res) => {
     try {

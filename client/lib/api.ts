@@ -2307,6 +2307,29 @@ class ApiClient {
     return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, profileId: profileId || undefined, reset: true }) });
   }
 
+  // --- Jellyfin Collections: catalogs as collections on the household's own Jellyfin servers ---
+
+  async getJellyfinCollectionServers() {
+    return this.fetch<{ servers: JellyfinCollectionServer[] }>('/jellyfin/server-collections/servers');
+  }
+
+  jellyfinCollectionsPath(server: string) {
+    return `/jellyfin/server-collections?server=${encodeURIComponent(server)}`;
+  }
+
+  async getJellyfinCollections(server: string) {
+    return this.fetch<JellyfinCollectionsView>(this.jellyfinCollectionsPath(server));
+  }
+
+  /** Switch a catalog on or off for a server; the server is synced before this answers. */
+  async setJellyfinCollection(server: string, catalogId: string, on: boolean) {
+    return this.fetch<JellyfinCollectionsView>('/jellyfin/server-collections', { method: 'PUT', body: JSON.stringify({ server, catalogId, on }) });
+  }
+
+  async syncJellyfinCollections(server: string) {
+    return this.fetch<JellyfinCollectionsView>('/jellyfin/server-collections/sync', { method: 'POST', body: JSON.stringify({ server }) });
+  }
+
   // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
 
   async getHousehold(userId: string) {
@@ -3268,6 +3291,35 @@ export interface AioCollection {
   cover: string | null;
   /** Set when the cover is just this title's poster - shown the way poster cards show it. */
   coverTitleId?: string | null;
+}
+
+/** A Jellyfin server someone here signs in to (not AIOStreams / AIOMetadata). */
+export interface JellyfinCollectionServer {
+  key: string;
+  name: string;
+  address: string;
+  people: { id: string; username: string }[];
+}
+
+export interface JellyfinCollectionsView {
+  server: { key: string; name: string; address: string };
+  people: { id: string; username: string }[];
+  /** The sign-in changes are made through; null when nobody on the server may manage collections. */
+  actor: { id: string; username: string; admin: boolean } | null;
+  lastSyncAt: string | null;
+  /** 'no-permission', or what went wrong on the last sync. */
+  lastError: string | null;
+  catalogs: {
+    id: string;
+    name: string;
+    titles: number;
+    /** How many of its titles the server has; null when the library couldn't be read. */
+    onServer: number | null;
+    cover: string | null;
+    coverTitleId: string | null;
+    on: boolean;
+    inJellyfin: boolean;
+  }[];
 }
 
 /** An AIOStreams login whose collections can be arranged, and the profiles that share them. */

@@ -898,12 +898,20 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize Sync Guardian:', err)
     }
 
-    // Watch AIOStreams configurations for outside changes (read-only) - see
+    // Watch AIOStreams configurations for outside changes - see
     // utils/aiostreamsConfig.js.
     try {
       require('./utils/aiostreamsConfig').scheduleConfigGuard(prisma, decrypt)
     } catch (err) {
       console.error('⚠️ Failed to initialize the AIOStreams configuration guard:', err)
+    }
+
+    // Keep catalogs switched on for a Jellyfin server in step with its
+    // collections - see utils/jellyfinServerCollections.js.
+    try {
+      require('./utils/jellyfinServerCollections').scheduleServerCollections(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Jellyfin collections sync:', err)
     }
 
     // Schedule DB size sampling for the Tasks page's storage chart

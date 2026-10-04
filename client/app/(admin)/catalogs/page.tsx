@@ -17,7 +17,7 @@ import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
-  ShieldExclamationIcon,
+  ShieldExclamationIcon, ServerStackIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/solid';
 
@@ -298,13 +298,39 @@ export default function ListsPage() {
     </button>
   );
 
-  // Both pills share one width so they read as a pair: side by side when
-  // the header's left column has room, stacked and left-aligned when it
-  // doesn't (half-width windows, phones), shrinking on the narrowest phones.
+  // Jellyfin Collections: catalogs as collections on the household's own
+  // Jellyfin server. Jellyfin's teal, as on its badge.
+  const jellyfinCollectionsButton = (
+    <button
+      type="button"
+      onClick={() => router.push('/catalogs/jellyfin-collections')}
+      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
+      style={{
+        background: 'linear-gradient(180deg, rgba(4,16,18,0.92), rgba(6,26,28,0.92))',
+        border: '1.5px solid rgba(45, 212, 191, 0.55)',
+        boxShadow: '0 0 20px -4px rgba(45, 212, 191, 0.45)',
+      }}
+    >
+      <span
+        className="flex items-center justify-center rounded-2xl shrink-0"
+        style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #14B8A6 0%, #22D3EE 100%)' }}
+      >
+        <ServerStackIcon className="w-5 h-5 text-white" />
+      </span>
+      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(153, 246, 228)' }}>
+        Jellyfin Collections
+      </span>
+    </button>
+  );
+
+  // The pills share one width so they read as a set: side by side when the
+  // header's left column has room, wrapping and left-aligned when it doesn't
+  // (half-width windows, phones), shrinking on the narrowest phones.
   const collectionsButtons = (
     <div className="w-full flex flex-wrap items-center gap-3">
       {nuvioCollectionsButton}
       {aiostreamsCollectionsButton}
+      {jellyfinCollectionsButton}
     </div>
   );
 
