@@ -600,38 +600,33 @@ export function CreateUserModal({
                         </p>
                       </div>
 
+                      {/* The selected tab's colour is a class, never an inline style:
+                          a page-recolouring browser extension (Dark Reader and the
+                          like) freezes inline backgrounds it has already rewritten,
+                          which left every tab clicked lit up at once in Firefox. */}
                       {!isReconnect && (
                         <div className="flex gap-2 mb-5 p-1 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
                           <button
                             type="button"
                             onClick={() => setProvider('stremio')}
-                            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
-                            style={{
-                              background: provider === 'stremio' ? 'var(--color-primary)' : 'transparent',
-                              color: provider === 'stremio' ? 'white' : 'var(--color-text-muted)'
-                            }}
+                            aria-pressed={provider === 'stremio'}
+                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'stremio' ? 'bg-primary text-white' : 'bg-transparent text-muted hover:text-default'}`}
                           >
                             Stremio
                           </button>
                           <button
                             type="button"
                             onClick={() => setProvider('nuvio')}
-                            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
-                            style={{
-                              background: provider === 'nuvio' ? 'var(--color-primary)' : 'transparent',
-                              color: provider === 'nuvio' ? 'white' : 'var(--color-text-muted)'
-                            }}
+                            aria-pressed={provider === 'nuvio'}
+                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'nuvio' ? 'bg-primary text-white' : 'bg-transparent text-muted hover:text-default'}`}
                           >
                             Nuvio
                           </button>
                           <button
                             type="button"
                             onClick={() => setProvider('jellyfin')}
-                            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
-                            style={{
-                              background: provider === 'jellyfin' ? 'var(--color-primary)' : 'transparent',
-                              color: provider === 'jellyfin' ? 'white' : 'var(--color-text-muted)'
-                            }}
+                            aria-pressed={provider === 'jellyfin'}
+                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'jellyfin' ? 'bg-primary text-white' : 'bg-transparent text-muted hover:text-default'}`}
                           >
                             Jellyfin | AIOStreams
                           </button>

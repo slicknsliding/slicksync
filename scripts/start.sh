@@ -26,7 +26,10 @@ esac
 
 export PRISMA_SCHEMA_PATH="$SCHEMA"
 echo "Using Prisma schema: $PRISMA_SCHEMA_PATH"
-echo "INSTANCE_TYPE=${INSTANCE_TYPE} DATABASE_URL=${DATABASE_URL}"
+# Never print the database password: this line lands in `docker logs` and in
+# any log viewer. user:password@ becomes user:***@; file: URLs are unchanged.
+SAFE_DATABASE_URL=$(printf '%s' "$DATABASE_URL" | sed -E 's#(://[^:/@]*:)[^@]*@#\1***@#')
+echo "INSTANCE_TYPE=${INSTANCE_TYPE} DATABASE_URL=${SAFE_DATABASE_URL}"
 
 # Ensure SQLite dir exists and is writable if using file: URL
 if echo "$DATABASE_URL" | grep -q '^file:'; then
