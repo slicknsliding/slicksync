@@ -301,12 +301,16 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
             rotation = await propagateSecretRotation(prisma, req, { encrypt, decrypt, getDecryptedManifestUrl, manifestUrlHmac }, {
               accountId, oldSecret, newSecret: secret,
             });
-            if (rotation.addonsUpdated.length > 0) {
+            const aioUpdated = rotation.aioConfigsUpdated || [];
+            if (rotation.addonsUpdated.length > 0 || aioUpdated.length > 0) {
               const { createNotification } = require('../utils/notificationStore');
+              const parts = [];
+              if (rotation.addonsUpdated.length > 0) parts.push(`Updated ${rotation.addonsUpdated.length} addon(s) (${rotation.addonsUpdated.map(a => a.name).join(', ')}) and re-synced ${rotation.usersSynced} user(s)${rotation.userFailures.length ? `; ${rotation.userFailures.length} sync failure(s)` : ''}`);
+              if (aioUpdated.length > 0) parts.push(`updated the key in ${aioUpdated.length} AIOStreams setup(s) (${aioUpdated.map(a => a.username).join(', ')})`);
               await createNotification(prisma, accountId, {
                 type: 'task',
                 title: `Key rotation: "${existing.name}" propagated`,
-                body: `Updated ${rotation.addonsUpdated.length} addon(s) (${rotation.addonsUpdated.map(a => a.name).join(', ')}) and re-synced ${rotation.usersSynced} user(s)${rotation.userFailures.length ? `; ${rotation.userFailures.length} sync failure(s)` : ''}.`,
+                body: `${(() => { const t = parts.join('; '); return t.charAt(0).toUpperCase() + t.slice(1); })()}${(rotation.aioConfigFailures || []).length ? `; ${rotation.aioConfigFailures.length} AIOStreams setup(s) couldn't be reached` : ''}.`,
               }).catch(() => {});
             }
           }

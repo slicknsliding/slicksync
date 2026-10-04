@@ -136,3 +136,4 @@ server/test*
 client/test*
 client/scripts
 client/next-env.d.ts
+client/.build-stamp

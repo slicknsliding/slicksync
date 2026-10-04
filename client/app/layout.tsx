@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { LayoutModeProvider } from "@/lib/layout-mode";
 import { UserCacheProvider } from "@/components/providers/UserCacheProvider";
 import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
+import { BuildWatcher } from "@/components/pwa/BuildWatcher";
 
 export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
@@ -149,6 +150,7 @@ export default function RootLayout({
             <UserCacheProvider>
               <ToastProvider>
                 <ServiceWorkerRegistrar />
+                <BuildWatcher />
                 {children}
               </ToastProvider>
             </UserCacheProvider>

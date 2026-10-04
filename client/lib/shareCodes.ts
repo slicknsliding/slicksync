@@ -14,6 +14,9 @@
 //   SSA1:  an addon template (name + addon list with manifest URLs -
 //          NOTE: those URLs can embed API keys; every share UI for this
 //          kind must warn before generating, see ShareCodeDialog usage)
+//   SSJ1:  AIOStreams collections with the catalogs they hold, titles
+//          included (server/utils/aioCollections.js exportCollections;
+//          the server re-validates everything on import)
 
 export interface CatalogSharePayload {
   name: string;
@@ -34,15 +37,25 @@ export interface AddonTemplateSharePayload {
   addons: Array<{ name: string; manifestUrl: string | null; stremioAddonId?: string | null; version?: string | null }>;
 }
 
+export interface AioCollectionsSharePayload {
+  v: 1;
+  // Loose on purpose, like the Nuvio one: the server owns the real shape
+  // and checks every field when the code is imported.
+  collections: Array<{ name: string; catalogs: string[] } & Record<string, unknown>>;
+  catalogs: Array<{ ref: string; name: string; items: unknown[] } & Record<string, unknown>>;
+}
+
 export type DecodedShareCode =
   | { kind: 'catalog'; payload: CatalogSharePayload }
   | { kind: 'nuvioCollections'; payload: NuvioCollectionsSharePayload }
-  | { kind: 'addonTemplate'; payload: AddonTemplateSharePayload };
+  | { kind: 'addonTemplate'; payload: AddonTemplateSharePayload }
+  | { kind: 'aioCollections'; payload: AioCollectionsSharePayload };
 
 const PREFIX: Record<DecodedShareCode['kind'], string> = {
   catalog: 'SSC1:',
   nuvioCollections: 'SSN1:',
   addonTemplate: 'SSA1:',
+  aioCollections: 'SSJ1:',
 };
 
 function encode(prefix: string, payload: unknown): string {
@@ -57,6 +70,9 @@ export function encodeNuvioCollectionsShareCode(payload: NuvioCollectionsSharePa
 }
 export function encodeAddonTemplateShareCode(payload: AddonTemplateSharePayload): string {
   return encode(PREFIX.addonTemplate, payload);
+}
+export function encodeAioCollectionsShareCode(payload: AioCollectionsSharePayload): string {
+  return encode(PREFIX.aioCollections, payload);
 }
 
 /** True when a pasted string LOOKS like any share code - cheap check for
@@ -99,6 +115,22 @@ export function decodeShareCode(code: string): DecodedShareCode | null {
     });
     if (collections.length === 0) return null;
     return { kind, payload: { collections } };
+  }
+
+  if (kind === 'aioCollections') {
+    if (p.v !== 1 || !Array.isArray(p.collections) || !Array.isArray(p.catalogs)) return null;
+    const collections = (p.collections as unknown[]).filter((c): c is AioCollectionsSharePayload['collections'][number] => {
+      if (!c || typeof c !== 'object') return false;
+      const o = c as Record<string, unknown>;
+      return typeof o.name === 'string' && Array.isArray(o.catalogs);
+    });
+    const catalogs = (p.catalogs as unknown[]).filter((c): c is AioCollectionsSharePayload['catalogs'][number] => {
+      if (!c || typeof c !== 'object') return false;
+      const o = c as Record<string, unknown>;
+      return typeof o.ref === 'string' && typeof o.name === 'string' && Array.isArray(o.items);
+    });
+    if (collections.length === 0 || catalogs.length === 0) return null;
+    return { kind, payload: { v: 1, collections, catalogs } };
   }
 
   // addonTemplate

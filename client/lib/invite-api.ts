@@ -12,6 +12,8 @@ export interface InvitationCheck {
   currentUses: number;
   expiresAt: string | null;
   groupName?: string;
+  /** Set when this invitation makes an account on a Jellyfin server. */
+  jellyfinNewAccount?: { server: string } | null;
 }
 
 export interface InviteRequestStatus {
@@ -152,6 +154,18 @@ export const inviteApi = {
     return request(`/${inviteCode}/request`, {
       method: 'POST',
       body: JSON.stringify({ username, jellyfin }),
+    });
+  },
+
+  /** An invitation that makes Jellyfin accounts: the account is named after the username, with this password. */
+  async submitNewJellyfinAccountRequest(
+    inviteCode: string,
+    username: string,
+    password: string,
+  ): Promise<{ message?: string; email?: string;[key: string]: any }> {
+    return request(`/${inviteCode}/request`, {
+      method: 'POST',
+      body: JSON.stringify({ username, jellyfinNew: { password } }),
     });
   },
 

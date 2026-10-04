@@ -53,11 +53,16 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
 ENV INSTANCE=$INSTANCE
 
-# Build Next.js frontend with derived NEXT_PUBLIC_AUTH_ENABLED
+# Build Next.js frontend with derived NEXT_PUBLIC_AUTH_ENABLED. The build
+# stamp is written first (next.config.ts inlines it into every page) and
+# copied into .next afterwards, where the server reads it for
+# /api/health/build - open tabs compare the two to notice an update.
 RUN cd client && \
+    date +%s > .build-stamp && \
     NEXT_PUBLIC_AUTH_ENABLED=$( [ "$INSTANCE" = "public" ] && echo true || echo false ) \
     NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-} \
-    npm run build
+    npm run build && \
+    cp .build-stamp .next/build-stamp
 
 # Production stage
 FROM base AS production

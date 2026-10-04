@@ -1295,6 +1295,7 @@ class ApiClient {
       // Backend expects membershipDurationDays, not membershipDuration
       membershipDurationDays: data.membershipDuration ?? null,
       syncOnJoin: data.syncOnJoin ?? false,
+      jellyfinServerKey: data.jellyfinServerKey || null,
     };
     const result = await this.fetch<any>('/invitations', {
       method: 'POST',
@@ -1314,6 +1315,7 @@ class ApiClient {
     if (data.expiresAt !== undefined) payload.expiresAt = data.expiresAt || null;
     if (data.membershipDuration !== undefined) payload.membershipDurationDays = data.membershipDuration ?? null;
     if (data.syncOnJoin !== undefined) payload.syncOnJoin = data.syncOnJoin;
+    if (data.jellyfinServerKey !== undefined) payload.jellyfinServerKey = data.jellyfinServerKey || null;
 
     return this.fetch<Invitation>(`/invitations/${id}`, {
       method: 'PATCH',
@@ -2307,6 +2309,20 @@ class ApiClient {
     return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, profileId: profileId || undefined, reset: true }) });
   }
 
+  // The collections with the catalogs they hold, titles included - what an
+  // export file and a share code carry.
+  async exportAioCollections(userId: string, profileId?: string | null) {
+    const q = new URLSearchParams({ userId, ...(profileId ? { profileId } : {}) });
+    return this.fetch<AioCollectionsExport>(`/jellyfin/collections/export?${q}`);
+  }
+
+  async importAioCollections(userId: string, payload: AioCollectionsExport, profileId?: string | null, mode: 'add' | 'replace' = 'add') {
+    return this.fetch<{ added: number; catalogsCreated: number; catalogsReused: number }>('/jellyfin/collections/import', {
+      method: 'POST',
+      body: JSON.stringify({ userId, profileId: profileId || undefined, payload, mode }),
+    });
+  }
+
   // --- Jellyfin Collections: catalogs as collections on the household's own Jellyfin servers ---
 
   async getJellyfinCollectionServers() {
@@ -2333,6 +2349,47 @@ class ApiClient {
   // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
 
   /** Sign a TV in with the Quick Connect code it shows, as this person or one of their household profiles. */
+  // Whether what someone finishes elsewhere is marked played on their real Jellyfin server.
+  async getJellyfinMarkPlayed(userId: string) {
+    return this.fetch<{ available: boolean; enabled: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`);
+  }
+
+  async setJellyfinMarkPlayed(userId: string, enabled: boolean) {
+    return this.fetch<{ available: boolean; enabled: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+  }
+
+  // Opt-in: Vault key changes also update this AIOStreams person's debrid keys.
+  async getAioRotateKeys(userId: string) {
+    return this.fetch<{ available: boolean; canWrite?: boolean; enabled?: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-rotate-keys`);
+  }
+
+  async setAioRotateKeys(userId: string, enabled: boolean) {
+    return this.fetch<{ available: boolean; canWrite?: boolean; enabled?: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-rotate-keys`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+  }
+
+  // A real Jellyfin person's age limit on their server.
+  async getJellyfinAgeLimit(userId: string) {
+    return this.fetch<JellyfinAgeLimit>(`/jellyfin/users/${encodeURIComponent(userId)}/age-limit`);
+  }
+
+  async setJellyfinAgeLimit(userId: string, value: number | null, blockUnrated?: boolean) {
+    return this.fetch<JellyfinAgeLimit>(`/jellyfin/users/${encodeURIComponent(userId)}/age-limit`, { method: 'PUT', body: JSON.stringify({ value, ...(blockUnrated === undefined ? {} : { blockUnrated }) }) });
+  }
+
+  // Real Jellyfin servers an invitation can make accounts on.
+  async getJellyfinInviteServers() {
+    return this.fetch<{ servers: { key: string; name: string; canCreate: boolean }[] }>('/jellyfin/invite-servers');
+  }
+
+  // What is signed in as someone on a real Jellyfin server, and signing one out.
+  async getJellyfinDevices(userId: string) {
+    return this.fetch<{ needsAdmin: boolean; devices: JellyfinDevice[] }>(`/jellyfin/users/${encodeURIComponent(userId)}/devices`);
+  }
+
+  async signOutJellyfinDevice(userId: string, deviceId: string) {
+    return this.fetch<{ ok: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+  }
+
   async authorizeQuickConnect(userId: string, code: string, profileId?: string | null) {
     return this.fetch<{ success: boolean; who: string }>(`/jellyfin/users/${encodeURIComponent(userId)}/quick-connect`, {
       method: 'POST',
@@ -2494,7 +2551,7 @@ class ApiClient {
     });
   }
 
-  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }): Promise<{ success: boolean; rotation?: { addonsUpdated: { id: string; name: string }[]; usersSynced: number; userFailures: { username: string; error: string }[] } | null }> {
+  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }): Promise<{ success: boolean; rotation?: { addonsUpdated: { id: string; name: string }[]; usersSynced: number; userFailures: { username: string; error: string }[]; aioConfigsUpdated?: { username: string; services: string[] }[]; aioConfigFailures?: { username: string; error: string }[] } | null }> {
     return this.fetch(`/vault/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -3330,6 +3387,38 @@ export interface JellyfinCollectionsView {
   }[];
 }
 
+/** A Jellyfin person's age limit (server/utils/jellyfinParental.js). */
+export interface JellyfinAgeLimit {
+  available: boolean;
+  needsAdmin?: boolean;
+  levels?: { value: number; label: string }[];
+  current?: number | null;
+  blockUnrated?: boolean;
+}
+
+/** A device signed in as someone on a Jellyfin server (server/utils/jellyfinDevices.js). */
+export interface JellyfinDevice {
+  id: string;
+  name: string;
+  app: string | null;
+  lastActive: string | null;
+  /** SlickSync's own sign-in - shown, never signed out. */
+  slicksync: boolean;
+}
+
+/** AIOStreams collections as an export file or share code carries them (server/utils/aioCollections.js). */
+export interface AioCollectionsExport {
+  v: 1;
+  collections: { name: string; coverUrl: string | null; hidden: boolean; catalogs: string[]; order?: string[] }[];
+  catalogs: {
+    ref: string;
+    name: string;
+    description: string | null;
+    coverUrl: string | null;
+    items: { id: string; type: 'movie' | 'series'; name: string; poster: string | null; year: number | string | null }[];
+  }[];
+}
+
 /** An AIOStreams login whose collections can be arranged, and the profiles that share them. */
 export interface AioCollectionAccount {
   id: string;
@@ -3691,6 +3780,8 @@ export interface CreateInvitationData {
   expiresAt?: string;
   membershipDuration?: number;
   syncOnJoin?: boolean;
+  /** A real Jellyfin server whose account this invitation makes; null for none. */
+  jellyfinServerKey?: string | null;
 }
 
 export interface InviteRequest {
@@ -4653,6 +4744,9 @@ export interface MetricsData {
     // instead of computing `now - watchedAtTimestamp` for proxy entries.
     elapsedSeconds?: number;
     elapsedFrozen?: boolean;
+    // The device and app it's playing on, when the server reports them
+    // (a Jellyfin server's sessions do).
+    device?: { name: string | null; client: string | null } | null;
   }>;
   startedPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number };

@@ -914,6 +914,22 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize Jellyfin collections sync:', err)
     }
 
+    // What people finish elsewhere, marked played on their real Jellyfin
+    // server - see utils/jellyfinMarkPlayed.js.
+    try {
+      require('./utils/jellyfinMarkPlayed').scheduleMarkPlayed(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Jellyfin played marks:', err)
+    }
+
+    // Jellyfin accounts made by invites follow their person's access - see
+    // utils/jellyfinInviteAccounts.js.
+    try {
+      require('./utils/jellyfinInviteAccounts').scheduleInviteAccounts(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize invite-made Jellyfin accounts:', err)
+    }
+
     // Schedule DB size sampling for the Tasks page's storage chart
     // (private/SQLite-mode only - no-ops itself if DATABASE_URL isn't file:)
     try {

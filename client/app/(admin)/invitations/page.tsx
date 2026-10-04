@@ -17,6 +17,7 @@ import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { api, Invitation, Group } from '@/lib/api';
+import { InviteJellyfinAccountPicker } from '@/components/jellyfin/InviteJellyfinAccountPicker';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import {
@@ -53,6 +54,7 @@ interface InvitationDisplay {
   membershipDuration?: number;
   createdAt: string;
   isActive?: boolean;
+  jellyfinServerKey?: string | null;
 }
 
 // Request display type
@@ -211,6 +213,7 @@ export default function InvitationsPage() {
         membershipDuration,
         createdAt: inv.createdAt || new Date().toISOString(),
         isActive: inv.isActive !== false,
+        jellyfinServerKey: (inv as { jellyfinServerKey?: string | null }).jellyfinServerKey || null,
       };
     });
   }, [invitations, groups, requests]);
@@ -974,6 +977,7 @@ function InvitationCard({
           <div className="px-6 py-4 flex items-center justify-between border-t border-default">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
               {invitation.syncOnJoin && <span>Auto-sync</span>}
+              {invitation.jellyfinServerKey && <><span>•</span><span>Makes a Jellyfin account</span></>}
               <span>•</span>
               <span>
                 {invitation.expiresAt
@@ -1381,6 +1385,7 @@ function CreateInvitationModal({
     membershipDuration: '',
     syncOnJoin: true,
   });
+  const [jellyfinServerKey, setJellyfinServerKey] = useState<string | null>(null);
   const [useCustomExpiration, setUseCustomExpiration] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -1397,6 +1402,7 @@ function CreateInvitationModal({
           membershipDuration: '',
           syncOnJoin: true,
         });
+        setJellyfinServerKey(null);
         setUseCustomExpiration(false);
         setSelectedPreset(null);
         setShowSuccess(false);
@@ -1428,6 +1434,7 @@ function CreateInvitationModal({
         expiresAt: formData.expiresAt || undefined,
         membershipDuration: formData.membershipDuration ? parseInt(formData.membershipDuration) : undefined,
         syncOnJoin: formData.syncOnJoin,
+        jellyfinServerKey,
       });
       setShowSuccess(true);
       setTimeout(() => {
@@ -1683,6 +1690,8 @@ function CreateInvitationModal({
                               </p>
                             </div>
                           </motion.button>
+
+                          <InviteJellyfinAccountPicker value={jellyfinServerKey} onChange={setJellyfinServerKey} />
                         </div>
 
                         {/* Actions */}
@@ -1764,6 +1773,7 @@ function EditInvitationForm({
     membershipDuration: invitation.membershipDuration?.toString() || '',
     syncOnJoin: invitation.syncOnJoin,
   });
+  const [jellyfinServerKey, setJellyfinServerKey] = useState<string | null>(invitation.jellyfinServerKey || null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1772,6 +1782,7 @@ function EditInvitationForm({
     try {
       const selectedGroup = groups.find(g => g.id === formData.groupId);
       await api.updateInvitation(invitation.id, {
+        jellyfinServerKey,
         name: formData.name || undefined,
         groupId: formData.groupId || undefined,
         groupName: selectedGroup?.name || undefined,
@@ -1855,6 +1866,8 @@ function EditInvitationForm({
           <p className="text-sm text-muted">Automatically sync addons when user joins</p>
         </div>
       </label>
+
+      <InviteJellyfinAccountPicker value={jellyfinServerKey} onChange={setJellyfinServerKey} />
 
       <div className="flex gap-3 justify-end pt-4">
         <Button type="button" variant="secondary" onClick={onClose}>

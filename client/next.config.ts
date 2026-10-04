@@ -43,6 +43,17 @@ try {
   }
 } catch {}
 
+// The build stamp the Dockerfile writes just before `next build`, so every
+// page knows which build it came from (components/pwa/BuildWatcher.tsx). Read
+// from a file rather than made here: this config can be evaluated more than
+// once per build, and two different stamps would make every tab think it is
+// out of date. No file (local dev) means no checking.
+let BUILD_STAMP = 'dev';
+try {
+  const raw = fs.readFileSync(path.join(__dirname, '.build-stamp'), 'utf8').trim();
+  if (raw) BUILD_STAMP = raw;
+} catch {}
+
 const nextConfig: NextConfig = {
   // Requests to the backend go through Next's rewrite proxy, whose default
   // patience is 30 seconds. Describe-it search waits up to 45 seconds for a
@@ -56,6 +67,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_INSTANCE_TYPE: process.env.INSTANCE || 'private',
     NEXT_PUBLIC_APP_VERSION: APP_VERSION,
+    NEXT_PUBLIC_BUILD_STAMP: BUILD_STAMP,
   },
   async rewrites() {
     return [

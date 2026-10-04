@@ -7,6 +7,7 @@ import { StatusCards } from '@/components/invite/StatusCard';
 import { StremioOAuthCard } from '@/components/invite/StremioOAuthCard';
 import { NuvioOAuthCard } from '@/components/invite/NuvioOAuthCard';
 import JellyfinSignIn, { type JellyfinCredentials } from '@/components/jellyfin/JellyfinSignIn';
+import { NewJellyfinAccountForm } from '@/components/jellyfin/NewJellyfinAccountForm';
 import { inviteApi, InviteApiError } from '@/lib/invite-api';
 import { motion } from 'framer-motion';
 import { UserIcon } from '@heroicons/react/24/outline';
@@ -43,6 +44,9 @@ export default function InviteRequestPage() {
   // create Stremio users before, so that stays the default.
   const [joinProvider, setJoinProvider] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
   const [groupName, setGroupName] = useState<string | undefined>();
+  // An invitation that makes Jellyfin accounts, and whether this person wants one.
+  const [jellyfinOffer, setJellyfinOffer] = useState<{ server: string } | null>(null);
+  const [jellyfinMode, setJellyfinMode] = useState<'new' | 'existing'>('new');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Track if Stremio OAuth is ready (username entered)
@@ -123,6 +127,7 @@ export default function InviteRequestPage() {
         if (data.groupName) {
           setGroupName(data.groupName);
         }
+        if (data.jellyfinNewAccount) setJellyfinOffer(data.jellyfinNewAccount);
 
         // If we have saved username+email, check their status FIRST
         const saved = localStorage.getItem(storageKey);
@@ -244,6 +249,28 @@ export default function InviteRequestPage() {
   // Joining with a Jellyfin-compatible server. Errors are thrown back so the
   // sign-in form can show them where the person typed (a wrong password, a
   // missing PIN).
+  // A new account the invitation makes: the same request, with a password instead of a sign-in.
+  const handleNewJellyfinAccount = async (password: string) => {
+    if (!username.trim()) {
+      setUsernameError('Username is required');
+      throw new Error('Pick a username first');
+    }
+    setSubmitError(null);
+    try {
+      const result = await inviteApi.submitNewJellyfinAccountRequest(inviteCode, username.trim(), password);
+      const requestEmail = result?.email || '';
+      saveToStorage({ username: username.trim(), email: requestEmail });
+      setEmail(requestEmail);
+      setState('pending');
+    } catch (error) {
+      if (error instanceof InviteApiError && error.code === 'USERNAME_EXISTS') {
+        setUsernameError('This username is already taken');
+        setUsernameConfirmed(false);
+      }
+      throw error;
+    }
+  };
+
   const handleJellyfinCredentials = async (credentials: JellyfinCredentials) => {
     if (!username.trim()) {
       setUsernameError('Username is required');
@@ -548,15 +575,36 @@ export default function InviteRequestPage() {
 
                   {joinProvider === 'jellyfin' ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                        Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
-                      </p>
-                      <JellyfinSignIn
-                        api={inviteApi.jellyfinSignIn(inviteCode)}
-                        onSubmit={handleJellyfinCredentials}
-                        submitLabel="Request access"
-                        compact
-                      />
+                      {jellyfinOffer && (
+                        <div className="flex gap-2 justify-center">
+                          {([['new', 'Make me an account'], ['existing', 'I already have one']] as const).map(([mode, label]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setJellyfinMode(mode)}
+                              aria-pressed={jellyfinMode === mode}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${jellyfinMode === mode ? 'bg-primary/20 text-primary' : 'bg-white/[0.03] text-muted hover:bg-white/[0.06]'}`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {jellyfinOffer && jellyfinMode === 'new' ? (
+                        <NewJellyfinAccountForm server={jellyfinOffer.server} username={username.trim()} onSubmit={handleNewJellyfinAccount} />
+                      ) : (
+                        <>
+                          <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                            Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
+                          </p>
+                          <JellyfinSignIn
+                            api={inviteApi.jellyfinSignIn(inviteCode)}
+                            onSubmit={handleJellyfinCredentials}
+                            submitLabel="Request access"
+                            compact
+                          />
+                        </>
+                      )}
                     </div>
                   ) : joinProvider === 'stremio' ? (
                     <StremioOAuthCard

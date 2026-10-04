@@ -165,6 +165,117 @@ async function saveCollections(prisma, accountId, userId, collections, profileId
   await write({ collections: clean, updatedAt: new Date().toISOString() })
 }
 
+// --- Export / import / share codes ------------------------------------------
+// A login's (or profile's) collections as something that travels: each
+// collection with the catalogs it holds, titles included, because the
+// household it lands in has catalogs of its own with different ids.
+
+const SHARE_VERSION = 1
+const MAX_SHARED_CATALOGS = 200
+
+function portableItems(list) {
+  return itemsOf(list).slice(0, MAX_ITEMS).map((i) => ({
+    id: String(i.id),
+    type: i.type === 'series' ? 'series' : 'movie',
+    name: cleanText(i.name, 200) || String(i.id),
+    poster: typeof i.poster === 'string' && /^https?:\/\//i.test(i.poster) ? i.poster : null,
+    year: i.year ?? null,
+  }))
+}
+
+async function exportCollections(prisma, accountId, userId, profileId = null) {
+  const { collections, lists } = await loadCollections(prisma, accountId, userId, profileId)
+  const byId = new Map(lists.map((l) => [l.id, l]))
+  const used = [...new Set(collections.flatMap((c) => c.catalogIds))].filter((id) => byId.has(id))
+  return {
+    v: SHARE_VERSION,
+    collections: collections.map((c) => ({
+      name: c.name,
+      coverUrl: c.coverUrl || null,
+      hidden: c.hidden === true,
+      catalogs: c.catalogIds,
+      ...(Array.isArray(c.order) && c.order.length ? { order: c.order } : {}),
+    })),
+    catalogs: used.map((id) => {
+      const l = byId.get(id)
+      return { ref: id, name: l.name, description: l.description || null, coverUrl: l.coverImageUrl || null, items: portableItems(l) }
+    }),
+  }
+}
+
+/**
+ * Collections from an export or share code, as new collections for this
+ * account. Each catalog they use is found here or made: the same catalog
+ * (same id - a file going back where it came from - or same name and the
+ * same titles) is reused; anything else becomes a new catalog. Returns the
+ * collections, ready to add to an arrangement, and what happened to the
+ * catalogs.
+ */
+async function importCollections(prisma, accountId, payload) {
+  const bad = (msg) => Object.assign(new Error(msg), { status: 400 })
+  if (!payload || typeof payload !== 'object' || payload.v !== SHARE_VERSION) throw bad('That isn’t an AIOStreams collections export or code')
+  const inCollections = Array.isArray(payload.collections) ? payload.collections.slice(0, MAX_COLLECTIONS) : []
+  const inCatalogs = Array.isArray(payload.catalogs) ? payload.catalogs.slice(0, MAX_SHARED_CATALOGS) : []
+  if (!inCollections.length) throw bad('There are no collections in it')
+
+  const lists = await loadLists(prisma, accountId)
+  const byId = new Map(lists.map((l) => [l.id, l]))
+  const sameTitles = (list, items) => {
+    const a = new Set(itemsOf(list).map((i) => String(i.id)))
+    return a.size === items.length && items.every((i) => a.has(i.id))
+  }
+  const refToId = new Map()
+  let created = 0
+  let reused = 0
+  for (const c of inCatalogs) {
+    if (!c || typeof c !== 'object') continue
+    const ref = String(c.ref || '')
+    const name = cleanText(c.name, 80) || 'Catalog'
+    const items = (Array.isArray(c.items) ? c.items : [])
+      .filter((i) => i && /^tt\d+$/.test(String(i.id || '')) && (i.type === 'movie' || i.type === 'series'))
+      .slice(0, MAX_ITEMS)
+      .map((i) => ({
+        id: String(i.id),
+        type: i.type,
+        name: cleanText(i.name, 200) || String(i.id),
+        poster: typeof i.poster === 'string' && /^https?:\/\//i.test(i.poster) ? i.poster : null,
+        year: i.year ?? null,
+      }))
+    if (ref && byId.has(ref)) { refToId.set(ref, ref); reused++; continue }
+    const match = lists.find((l) => l.name.trim().toLowerCase() === name.toLowerCase() && sameTitles(l, items))
+    if (match) { refToId.set(ref, match.id); reused++; continue }
+    const nameTaken = lists.some((l) => l.name.trim().toLowerCase() === name.toLowerCase())
+    const cover = cleanText(c.coverUrl, 2000)
+    const list = await prisma.customList.create({
+      data: {
+        accountId,
+        name: nameTaken ? `${name} (imported)` : name,
+        description: cleanText(c.description, 500) || null,
+        itemsJson: JSON.stringify(items),
+        coverImageUrl: /^https?:\/\//i.test(cover) ? cover : null,
+      },
+    })
+    lists.push(list)
+    byId.set(list.id, list)
+    refToId.set(ref, list.id)
+    created++
+  }
+
+  const collections = inCollections.map((c) => {
+    const coverUrl = cleanText(c?.coverUrl, 2000)
+    return {
+      id: `c-${crypto.randomBytes(5).toString('hex')}`,
+      name: cleanText(c?.name, 80) || 'Collection',
+      coverUrl: /^https?:\/\//i.test(coverUrl) ? coverUrl : null,
+      catalogIds: [...new Set((Array.isArray(c?.catalogs) ? c.catalogs : []).map((r) => refToId.get(String(r))).filter(Boolean))],
+      hidden: c?.hidden === true,
+      ...(Array.isArray(c?.order) && c.order.length ? { order: c.order.map(String).filter((id) => /^tt\d+$/.test(id)).slice(0, MAX_ITEMS) } : {}),
+    }
+  }).filter((c) => c.catalogIds.length > 0)
+  if (!collections.length) throw bad('None of its collections had any titles')
+  return { collections, catalogsCreated: created, catalogsReused: reused }
+}
+
 /** The profiles that have an arrangement of their own. */
 async function ownProfileIds(prisma, accountId) {
   const cfg = await readSync(prisma, accountId)
@@ -172,4 +283,4 @@ async function ownProfileIds(prisma, accountId) {
   return new Set(byProfile && typeof byProfile === 'object' ? Object.keys(byProfile).filter((id) => byProfile[id]) : [])
 }
 
-module.exports = { loadCollections, membersOf, coverOf, saveCollections, ownProfileIds }
+module.exports = { loadCollections, membersOf, coverOf, saveCollections, ownProfileIds, exportCollections, importCollections }

@@ -60,6 +60,7 @@ function liveViewings(userIds = null) {
         positionMs: v.paused ? v.positionMs : Math.min(v.positionMs + (now - entry.at), v.durationMs || Infinity),
         durationMs: v.durationMs,
         paused: v.paused === true,
+        device: v.device ? { name: v.device.name || null, client: v.device.client || null } : null,
       })
     }
   }
@@ -100,9 +101,61 @@ async function announceStarts(prisma, accountId, users) {
   }
 }
 
+// --- New devices -------------------------------------------------------------
+// The devices each person has been seen playing on, kept with the account's
+// settings (sync.jellyfinDevices[userId]). A device not seen before raises the
+// same "new device" notification the AIOStreams proxy does - the first time a
+// person is seen at all, what they're on is just remembered, so turning this
+// on doesn't announce every device anyone already uses.
+const MAX_DEVICES = 50
+
+async function noteDevices(prisma, accountId, users) {
+  const now = Date.now()
+  const seenNow = []
+  for (const u of users) {
+    const entry = byUser.get(u.id)
+    if (!entry || now - entry.at > STALE_MS) continue
+    for (const v of entry.viewings) {
+      if (v.device && (v.device.id || v.device.name)) seenNow.push({ user: u, device: v.device })
+    }
+  }
+  if (!seenNow.length) return
+  const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+  let cfg = acc?.sync
+  const asString = typeof cfg === 'string'
+  if (asString) { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+  if (!cfg || typeof cfg !== 'object') cfg = {}
+  const all = cfg.jellyfinDevices && typeof cfg.jellyfinDevices === 'object' ? cfg.jellyfinDevices : {}
+  const announce = []
+  let changed = false
+  for (const { user, device } of seenNow) {
+    const key = String(device.id || device.name)
+    const list = Array.isArray(all[user.id]) ? all[user.id] : null
+    if (list && list.some((d) => d.key === key)) continue
+    const first = !list
+    all[user.id] = [...(list || []), { key, name: device.name || null, client: device.client || null, firstSeen: new Date(now).toISOString() }].slice(-MAX_DEVICES)
+    changed = true
+    if (!first) announce.push({ user, device })
+  }
+  if (!changed) return
+  const next = { ...cfg, jellyfinDevices: all }
+  await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(next) : next } })
+  for (const { user, device } of announce) {
+    try {
+      const what = [device.name, device.client].filter(Boolean).join(' · ') || 'a device'
+      await require('./pushNotifications').notifyPushForType(prisma, accountId, 'notifyOnNewDevice', {
+        title: '📱 New device',
+        body: `${user.username || 'Someone'} started watching on ${what}, which they haven't used before - worth checking if that's expected.`,
+        icon: '/android-chrome-192x192.png',
+        url: `/users/${user.id}`,
+      })
+    } catch {}
+  }
+}
+
 function forgetUser(userId) {
   byUser.delete(userId)
   for (const key of startedAt.keys()) if (key.startsWith(`${userId}|`)) startedAt.delete(key)
 }
 
-module.exports = { recordLive, liveViewings, drainStarts, announceStarts, forgetUser, STALE_MS }
+module.exports = { recordLive, liveViewings, drainStarts, announceStarts, noteDevices, forgetUser, STALE_MS }

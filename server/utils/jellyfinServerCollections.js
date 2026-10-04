@@ -416,4 +416,4 @@ function scheduleServerCollections(prisma, decrypt) {
   timer = setInterval(run, SYNC_INTERVAL_MS)
 }
 
-module.exports = { serverDisplayName, serversFor, describeServer, setCatalog, syncServer, scheduleServerCollections, serverKeyOf, syncOne }
+module.exports = { serverDisplayName, serversFor, describeServer, setCatalog, syncServer, scheduleServerCollections, serverKeyOf, syncOne, findActor, sessionFor, call }

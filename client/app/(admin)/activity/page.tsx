@@ -1359,6 +1359,9 @@ function NowPlayingItemBody({
             </span>
           )}
         </p>
+        {np.device && (np.device.name || np.device.client) && (
+          <p className="text-xs text-subtle truncate">on {[np.device.name, np.device.client].filter(Boolean).join(' · ')}</p>
+        )}
         {/* Live duration for now playing: now - session start.
             Only shown when we have a proper WatchSession (so it doesn't reset on each sync). */}
         {(() => {

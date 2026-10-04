@@ -718,9 +718,13 @@ function VaultPageContent() {
         // Rotation propagation ran (opt-in) and touched something - say
         // exactly what, since addon configs and user accounts just changed
         // as a side effect of saving a key.
+        const aio = result?.rotation?.aioConfigsUpdated?.length || 0;
+        const aioNote = aio ? `${aio} AIOStreams setup${aio === 1 ? '' : 's'}` : '';
         if (result?.rotation && result.rotation.addonsUpdated.length > 0) {
           const r = result.rotation;
-          toast.success(`Key rotated - updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'} and re-synced ${r.usersSynced} user${r.usersSynced === 1 ? '' : 's'}${r.userFailures.length ? ` (${r.userFailures.length} sync failure${r.userFailures.length === 1 ? '' : 's'} - see notifications)` : ''}`);
+          toast.success(`Key rotated - updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'}${aioNote ? `, ${aioNote}` : ''} and re-synced ${r.usersSynced} user${r.usersSynced === 1 ? '' : 's'}${r.userFailures.length ? ` (${r.userFailures.length} sync failure${r.userFailures.length === 1 ? '' : 's'} - see notifications)` : ''}`);
+        } else if (aioNote) {
+          toast.success(`Key rotated - updated ${aioNote}`);
         } else {
           toast.success('Vault entry updated');
         }
