@@ -7,21 +7,20 @@
 **One dashboard for a private streaming group — built around Nuvio.**
 
 Collections, home rows, addons, shared credentials, watch history and live playback,
-kept in sync across every profile — on **Nuvio** and **Stremio** alike.
+kept in sync across every profile — on **Nuvio**, **Stremio**, **Jellyfin**, **AIOStreams** and **AIOMetadata** alike.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)](./LICENSE)
 [![Docker Pulls](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/slicknsliding/slicksync/badges/docker-pulls.json&logo=docker&logoColor=white&style=flat-square)](https://hub.docker.com/r/slicknsliding/slicksync)
 [![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org)
-[![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet?style=flat-square)](https://github.com/iamneur0/syncio)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org) [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet?style=flat-square)](https://github.com/iamneur0/syncio)
 
-[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-whats-new-since-syncio) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
+[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-whats-new-since-syncio) &nbsp;·&nbsp; [**Jellyfin | AIOStreams**](#-jellyfin-aiostreams-and-aiometadata) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
 
 </div>
 
 ---
 
-Nuvio gives you the apps. SlickSync gives you the control panel behind them: what each profile's home screen looks like, which addons everyone has, who is watching what right now, and a full watch history that outlives any one device — from one page, for the whole household. Stremio, where this started, keeps everything Syncio did and gains the additions below; one household can mix both.
+Nuvio gives you the apps. SlickSync gives you the control panel behind them: what each profile's home screen looks like, which addons everyone has, who is watching what right now, and a full watch history that outlives any one device — from one page, for the whole household. Stremio, where this started, keeps everything Syncio did and gains the additions below. Jellyfin, AIOStreams and AIOMetadata servers are the third kind of account: sign in to one and its viewing, households and collections are managed from the same place. One household can mix all of them.
 
 > **Private, single-instance fork.** Built and run for one household's streaming group, not a general-purpose multi-tenant product.
 >
@@ -75,6 +74,8 @@ Nuvio's collection sync is last-write-wins: another logged-in app pushing a stal
 ### Every profile, not just the first
 
 - **Every Nuvio profile syncs** — library, progress and addons, merged with a per-profile label.
+- **A profile can be its own person** — every profile counts toward its account's person to begin with; **Separate** one into its own person with its own history, **Merge it back** later, or **Stop tracking** it (handy for a Kids or Guest profile).
+- **Profiles with their own addon list** can be managed as users of their own; syncing one never touches another.
 - Connect by **OAuth device-code/QR** or email + password; refresh tokens are encrypted at rest and refresh themselves.
 - One person can hold both a Nuvio and a Stremio identity — **merge them into one user**, with a preview first and a full undo that restores both.
 - **Self-hosted Nuvio backends** — point an account at your own Nuvio server; SlickSync reads that server's own discovery document to configure itself.
@@ -113,20 +114,53 @@ Everything under *Everything else* applies to Stremio accounts as much as to Nuv
 
 ---
 
+# 🍿 Jellyfin, AIOStreams and AIOMetadata
+
+A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, **AIOStreams** or **AIOMetadata** server — with a password, a PIN or a **Quick Connect** code — from Add User, the login page or an invite. SlickSync works out on its own which kind of server it is.
+
+### Watching
+
+- Watch history comes in, and what's playing shows in **Now Playing** with real watch time, straight from the server's sessions.
+- Watched marks, favourites and resume points are **written back** to the server.
+- **AIOStreams watch history** — turn it on per person and viewing in AIOStreams' own apps (Odin, Infuse, Swiftfin, the desktop app) becomes history and Now Playing; watched marks, the watchlist, drops and ratings flow back the other way. One link serves the whole household.
+
+### Households
+
+- AIOStreams and AIOMetadata **household users become profiles** of the person who signed in, all on one card on the Users page.
+- **Separate** a profile into its own person, **Merge it back**, or **Stop tracking** it. PIN users sign in with their PIN.
+- **Sign in a new device with its code** — pick who it's for, type the Quick Connect code the device shows, and the server signs it in as them.
+
+### Collections
+
+**Catalogs → Jellyfin | AIOStreams** — one page for both.
+
+- **AIOStreams Collections** — each collection opens as its own page with its titles: search to add, add from Discover, drag to reorder; everything saves as you go.
+- **Per profile**, like Nuvio Collections — give a household profile collections of its own and SlickSync sets that profile up in AIOStreams so its apps load them.
+- **Catalogs as Jellyfin collections** — switch a catalog on and it becomes a real collection on your own Jellyfin server, holding the titles the server has. Kept in step every 30 minutes, named after its catalog and given its cover.
+
+### Guarded
+
+- A change made to an AIOStreams configuration outside SlickSync raises a bell and push notification. The only thing SlickSync ever writes there is a profile's own collections setup.
+- Exports and Disaster Recovery Kits carry households, their sign-ins and their collections.
+
+---
+
 # 📚 Everything else
 
 <details>
 <summary><strong>🎬 Activity &amp; Now Playing</strong> — who's watching what, right now and historically</summary>
 
-- Live **Now Playing** panel fed by a 30s poll of AIOStreams' proxy — real-time presence, gone the instant playback stops.
+- Live **Now Playing** for every provider — Jellyfin and AIOStreams sessions, AIOStreams' proxy and each library's own progress — gone the moment playback stops.
 - **History &amp; Watch Time** come from each provider's own library state, including sources the proxy can't see.
-- **Real completion tracking** — finished vs. started-and-dropped, plus **rewatch counts**, and per-day entries for a series rewatched across several days.
+- **Real completion tracking** — finished vs. started-and-dropped, plus **rewatch counts**, and per-day entries for a series rewatched across several days. You choose when something counts as finished (75–98%).
+- **Activity filters** — person, the app it was watched on, profile, movies or shows, finished or not, and any date range; **Copy link** shares the exact view.
 - **Airing Calendar** — a date-grouped agenda of upcoming episodes for everything anyone's actively watching.
 - Correct-or-nothing posters, with optional **RPDB** rating-embedded art.
 - Explicit per-account timezone so "today" means the same thing to every background job.
 - **The Graveyard** — bury a title to keep it out of Continue Watching, dig it up any time, or wipe it (optionally reaching the device's own library too).
 - **Watching Together** — an alert the moment someone starts an episode past the shared frontier.
 - **Device claims** — on a shared login, claim a device and its activity is attributed to the right person.
+- **Leave someone out of household numbers** — a test or guest person keeps their own page but stops counting toward totals, charts, Top Viewers and the year in review.
 </details>
 
 <details>
@@ -162,6 +196,7 @@ Everything under *Everything else* applies to Stremio accounts as much as to Nuv
 - **Trakt-compatible scrobble-in API** — point Infuse or Kodi's Trakt plugin at it with a per-user key.
 - **Watch-history import/export** — Letterboxd, IMDb, Trakt, Netflix, TV Time, Plex, Tautulli and Movary exports in; Letterboxd-compatible CSV out.
 - **Watchlist ranking** — drag it into the order you actually want, and the device row follows.
+- **Rows per person** — each person can hide any SlickTrax row or change their order.
 </details>
 
 <details>
@@ -180,7 +215,8 @@ Everything under *Everything else* applies to Stremio accounts as much as to Nuv
 
 Every type works with zero Discord setup; a webhook only adds Discord delivery on top.
 
-- Per-type toggles: activity, sync, invites, Vault, addon health, backups, proxy connectivity, updates and monthly recap.
+- Per-type toggles: activity, sync, invites, Vault, addon health, connection problems, backups, proxy connectivity, updates and monthly recap.
+- **Connection problems** — told the moment someone's sign-in needs reconnecting (after 15 minutes if their server is just unreachable), and again when it's back. One alert per outage, on by default.
 - Instant "started watching" ping, **unconfirmed-device alerts**, new-episode alerts and a Coming Up calendar.
 - **Monthly poster-mosaic recap**, **Recovery Kit reminders**, and **digest mode** to batch everything into one summary.
 - Per-user opt-out and personal webhook override.
@@ -241,6 +277,7 @@ Every type works with zero Discord setup; a webhook only adds Discord delivery o
 - **Off-site targets**: S3 (AWS, B2, Wasabi, R2, MinIO) or WebDAV, with a Test button and optional encryption passphrase.
 - **Time Machine** restores to any point with a diff preview, or scoped to a **single user**.
 - **Trash with 30-day undo** for every destructive action, and **one-code instance migration** to a brand-new box.
+- **Config import keeps watch history** — re-importing into the same SlickSync leaves everyone's history, stats and Activity attached.
 - **Database upkeep** runs quietly: read-only integrity checks by default, opt-in compaction and log trimming, never touching history, users, catalogs or the Vault.
 </details>
 
@@ -373,6 +410,8 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 - **Decryption errors after an update** (`Unsupported state or unable to authenticate data`): the running code is deriving a different key than what encrypted your data — check `data/server_secret.key` wasn't lost, and don't modify the key-derivation constants on a fork.
 - **"credentials may be invalid" on Sync, but library/history still updates fine**: a decrypt-key rotation split your data across key generations. Every read path falls back to the previous key automatically, but some secrets stay encrypted under the old one. Fix it permanently: `docker exec -it -e DATABASE_URL="file:///app/data/sqlite.db" <container> node scripts/consolidate-encryption-keys.js` (dry-run; add `--apply --sync-keyfile` to re-encrypt everything onto the current key).
 - **SlickTrax is enabled but never appears on the device**: set Settings → Sync → Public address (or `PUBLIC_APP_URL`). A sync has no browser request to learn the hostname from.
+- **A Jellyfin or AIOStreams server on your home network won't sign in on a shared instance**: a public-mode SlickSync (like slicksync.vip) never connects to private-network addresses. Use the server's public address, or run your own instance.
+- **Jellyfin collections aren't renamed or don't get a cover**: Jellyfin only lets administrators do that. Without an administrator's sign-in, a renamed catalog's collection is made again under the new name instead.
 - **"Detected additional lockfiles" during build**: delete any stray `package-lock.json` — this project runs on `bun`.
 - **First-boot database errors**: confirm `/app/data` is writable by the container's user (`1001:1001`).
 </details>
