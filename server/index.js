@@ -389,7 +389,7 @@ app.use('/api/users', usersRouter({ prisma, getAccountId, scopedWhere, INSTANCE_
 app.use('/api/scrobble', require('./routes/scrobble')({ prisma }));
 app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }));
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
-app.use('/api/jellyfin', jellyfinRouter({ prisma, getAccountId, encrypt, assignUserToGroup }));
+app.use('/api/jellyfin', jellyfinRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
 app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));

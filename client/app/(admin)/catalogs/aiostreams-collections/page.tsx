@@ -3,12 +3,13 @@
 // AIOStreams Collections - which of SlickSync's catalogs show up as
 // collections in an AIOStreams login's apps (and every Jellyfin app signed in
 // to it), in what order, under what name and cover. The counterpart of Nuvio
-// Collections, and laid out like it: pick the account first. Every profile on
-// a login shares its collections - AIOStreams doesn't say which profile is
-// asking when it fetches them. Out of the box every catalog with titles is
-// one collection; once arranged here, the arrangement is used. Served through
-// the AIOStreams link - see server/utils/aioCollections.js and
-// routes/traxAddon.js. A tile opens its own page ([collectionId]/page.tsx).
+// Collections, and laid out like it: pick the account, then the profile. A
+// profile sees its account's collections until it's given its own - the
+// first change on a profile sets that up in AIOStreams with a variant on that
+// profile (server/utils/aioProfileVariants.js). Out of the box every catalog
+// with titles is one collection; once arranged here, the arrangement is
+// used. Served through the AIOStreams link - see server/utils/aioCollections.js
+// and routes/traxAddon.js. A tile opens its own page ([collectionId]/page.tsx).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -89,16 +90,18 @@ export default function AiostreamsCollectionsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams.get('user') || '';
+  const profileParam = searchParams.get('profile') || '';
   const { layoutMode } = useLayoutMode();
   const [accounts, setAccounts] = useState<AioCollectionAccount[] | null>(
     () => api.peekGet<{ accounts: AioCollectionAccount[] }>('/jellyfin/collections/accounts')?.accounts ?? null,
   );
 
-  useEffect(() => {
+  const loadAccounts = useCallback(() => {
     api.getAioCollectionAccounts()
       .then((r) => setAccounts(r.accounts))
-      .catch((e: any) => { toast.error(e?.message || 'Could not load the AIOStreams accounts'); setAccounts([]); });
+      .catch((e: any) => { toast.error(e?.message || 'Could not load the AIOStreams accounts'); setAccounts((a) => a ?? []); });
   }, []);
+  useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
   // Only one AIOStreams account: nothing to pick.
   useEffect(() => {
@@ -106,7 +109,10 @@ export default function AiostreamsCollectionsPage() {
   }, [accounts, userId, router]);
 
   const selected = accounts?.find((a) => a.id === userId) || null;
+  const profile = selected?.profiles.find((p) => p.id === profileParam) || null;
   const pick = (id: string) => router.push(id ? `${LIST}?user=${encodeURIComponent(id)}` : LIST);
+  const pickProfile = (id: string | null) =>
+    router.replace(`${LIST}?user=${encodeURIComponent(userId)}${id ? `&profile=${encodeURIComponent(id)}` : ''}`);
 
   const backButton = (
     <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
@@ -141,8 +147,8 @@ export default function AiostreamsCollectionsPage() {
                   </div>
                 ) : accounts.length === 0 ? (
                   <p className="text-xs text-subtle">
-                    No AIOStreams accounts yet. Add someone with Jellyfin | AIOStreams on the Users page, or turn on their AIOStreams watch history link.{' '}
-                    <Link href="/guides/aiostreams-watch-history" className="text-primary hover:underline">How</Link>
+                    No AIOStreams accounts yet. Add someone who signs in with AIOStreams - Users &rarr; Add &rarr; Jellyfin | AIOStreams.{' '}
+                    <Link href="/guides/add-jellyfin-account" className="text-primary hover:underline">How</Link>
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -156,7 +162,7 @@ export default function AiostreamsCollectionsPage() {
                         <Avatar name={a.name} email={a.email || undefined} src={a.avatarUrl || undefined} colorIndex={a.colorIndex ?? undefined} size="md" />
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-default truncate">{a.name}</p>
-                          {a.profiles.length > 0 && <p className="text-xs text-subtle truncate">{a.profiles.join(', ')}</p>}
+                          {a.profiles.length > 0 && <p className="text-xs text-subtle truncate">{a.profiles.map((p) => p.name).join(', ')}</p>}
                           <Badge variant="aiostreams" size="sm" className="mt-1">AIOStreams</Badge>
                         </div>
                       </button>
@@ -185,14 +191,28 @@ export default function AiostreamsCollectionsPage() {
 
                   {selected.profiles.length > 0 && (
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1.5">Profiles - all see these collections</label>
+                      <label className="block text-xs font-medium text-muted mb-1.5">Profile</label>
+                      {/* Same profile pills as Nuvio Collections. A profile still on its
+                          account's collections says so; one with its own is marked. */}
                       <div className="flex flex-wrap gap-2">
-                        {[selected.name, ...selected.profiles].map((name) => (
-                          <span key={name} className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-lg border border-default bg-subtle text-sm text-subtle">
-                            <Avatar name={name} size="xs" />
-                            <span className="truncate" style={{ maxWidth: '120px' }}>{name}</span>
-                          </span>
-                        ))}
+                        {[{ id: null as string | null, name: selected.name, own: true }, ...selected.profiles].map((p) => {
+                          const on = (p.id || null) === (profile?.id || null);
+                          return (
+                            <button
+                              key={p.id || 'main'}
+                              type="button"
+                              onClick={() => pickProfile(p.id)}
+                              aria-pressed={on}
+                              className={`flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                                on ? 'border-primary bg-primary/10 text-default' : 'border-default bg-subtle hover:bg-surface-hover text-subtle hover:text-default'
+                              }`}
+                            >
+                              <Avatar name={p.name} size="xs" />
+                              <span className="truncate" style={{ maxWidth: '120px' }}>{p.name}</span>
+                              {p.id && !p.own && <span className="text-[10px] text-muted whitespace-nowrap">shared</span>}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -201,7 +221,14 @@ export default function AiostreamsCollectionsPage() {
               </Card>
             )}
 
-            {selected && <AccountCollections key={selected.id} userId={selected.id} />}
+            {selected && (
+              <AccountCollections
+                key={`${selected.id}:${profile?.id || ''}`}
+                account={selected}
+                profile={profile}
+                onProfileChanged={loadAccounts}
+              />
+            )}
           </PageSection>
         </div>
       </div>
@@ -209,11 +236,17 @@ export default function AiostreamsCollectionsPage() {
   );
 }
 
-/** One AIOStreams account's collections: reorder, hide, remove, open. */
-function AccountCollections({ userId }: { userId: string }) {
+/** One AIOStreams account's (or profile's) collections: reorder, hide, remove, open. */
+function AccountCollections({ account, profile, onProfileChanged }: {
+  account: AioCollectionAccount;
+  profile: AioCollectionAccount['profiles'][number] | null;
+  onProfileChanged: () => void;
+}) {
   const router = useRouter();
   const sensors = useSortableSensors();
-  const path = api.aioCollectionsPath(userId);
+  const userId = account.id;
+  const profileId = profile?.id || null;
+  const path = api.aioCollectionsPath(userId, profileId);
   const [view, setView] = useState<AioCollectionsView | null>(() => api.peekGet<AioCollectionsView>(path) ?? null);
   const [collections, setCollections] = useState<AioCollection[]>(() => api.peekGet<AioCollectionsView>(path)?.collections ?? []);
   const [saving, setSaving] = useState(false);
@@ -226,15 +259,19 @@ function AccountCollections({ userId }: { userId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const next = await api.getAioCollections(userId);
+      const next = await api.getAioCollections(userId, profileId);
       setView(next);
       setCollections(next.collections);
       saved.current = next.collections;
     } catch (e: any) {
       toast.error(e?.message || 'Could not load the collections');
     }
-  }, [userId]);
+  }, [userId, profileId]);
   useEffect(() => { load(); }, [load]);
+
+  // A profile still on its account's collections: the first change gives it
+  // its own (the server sets that up in AIOStreams first).
+  const shared = !!profile && view?.profile?.own === false;
 
   // Every change on this page - hide, remove, reorder - saves straight away,
   // like a collection's own page does. There is no separate Save step to
@@ -243,9 +280,14 @@ function AccountCollections({ userId }: { userId: string }) {
     setCollections(next);
     queue.current = queue.current.then(async () => {
       try {
-        await api.saveAioCollections(userId, next.map(({ id, name, coverUrl, catalogIds, hidden, order }) => ({ id, name, coverUrl, catalogIds, hidden, order })));
+        await api.saveAioCollections(userId, next.map(({ id, name, coverUrl, catalogIds, hidden, order }) => ({ id, name, coverUrl, catalogIds, hidden, order })), profileId);
         saved.current = next;
-        setView((v) => (v ? { ...v, configured: true } : v));
+        const becameOwn = !!profile && view?.profile?.own === false;
+        setView((v) => (v ? { ...v, configured: true, profile: v.profile ? { ...v.profile, own: true } : v.profile } : v));
+        if (becameOwn) {
+          toast.success(`${profile.name} has their own collections now`);
+          onProfileChanged();
+        }
       } catch (e: any) {
         toast.error(e?.message || 'Could not save that change');
         setCollections(saved.current);
@@ -267,16 +309,17 @@ function AccountCollections({ userId }: { userId: string }) {
   const open = async (id: string) => {
     if (Date.now() - draggedAt.current < 300) return;
     await queue.current;
-    router.push(`${LIST}/${encodeURIComponent(id)}?user=${encodeURIComponent(userId)}`);
+    router.push(`${LIST}/${encodeURIComponent(id)}?user=${encodeURIComponent(userId)}${profileId ? `&profile=${encodeURIComponent(profileId)}` : ''}`);
   };
 
   const reset = async () => {
     await queue.current;
     setSaving(true);
     try {
-      await api.resetAioCollections(userId);
-      toast.success('Back to one collection per catalog');
+      await api.resetAioCollections(userId, profileId);
+      toast.success(profile ? `${profile.name} sees ${account.name}'s collections again` : 'Back to one collection per catalog');
       await load();
+      if (profile) onProfileChanged();
     } catch (e: any) {
       toast.error(e?.message || 'Could not reset');
     } finally {
@@ -296,6 +339,17 @@ function AccountCollections({ userId }: { userId: string }) {
               </Card>
             )}
 
+            {profile && view?.profile && (
+              <Card padding="md" className="mb-4">
+                <p className="text-sm text-default">
+                  {shared
+                    ? <>{profile.name} sees {account.name}&rsquo;s collections. Change anything below and {profile.name} gets their own &ndash; SlickSync sets that up for {profile.name} in AIOStreams.</>
+                    : <>{profile.name} has their own collections. {account.name} and the other profiles don&rsquo;t see these.</>}
+                  {shared && !account.canSplit && <> To do that, SlickSync needs {account.name}&rsquo;s AIOStreams configuration password &ndash; sign {account.name} in again with it.</>}
+                </p>
+              </Card>
+            )}
+
             <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
               <p className="text-sm text-muted">
                 {view?.configured
@@ -303,7 +357,13 @@ function AccountCollections({ userId }: { userId: string }) {
                   : 'Right now every catalog is its own collection. Tap one to change it, or drag to reorder.'}
               </p>
               <div className="flex items-center gap-2">
-                {view?.configured && (
+                {profile ? (
+                  !shared && view?.profile && (
+                    <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => setConfirmReset(true)}>
+                      Use {account.name}&rsquo;s
+                    </Button>
+                  )
+                ) : view?.configured && (
                   <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => setConfirmReset(true)}>
                     One per catalog
                   </Button>
@@ -360,9 +420,11 @@ function AccountCollections({ userId }: { userId: string }) {
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
         onConfirm={reset}
-        title="Go back to one collection per catalog?"
-        description="Your arrangement - names, covers, order and which catalogs are grouped - is cleared, and every catalog with titles shows as its own collection again."
-        confirmText="Reset"
+        title={profile ? `Give ${profile.name} ${account.name}'s collections again?` : 'Go back to one collection per catalog?'}
+        description={profile
+          ? `${profile.name}'s own arrangement is cleared and ${profile.name} sees ${account.name}'s collections again. SlickSync takes its setup back out of AIOStreams.`
+          : 'Your arrangement - names, covers, order and which catalogs are grouped - is cleared, and every catalog with titles shows as its own collection again.'}
+        confirmText={profile ? 'Use theirs' : 'Reset'}
         isLoading={saving}
       />
     </>

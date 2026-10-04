@@ -271,13 +271,24 @@ module.exports = ({ prisma }) => {
     return prisma.user.findFirst({ where: { traxToken: token, watchStateEnabled: true } })
   }
 
+  // A household profile's own link (/p/<profile id>/) - set on that profile in
+  // AIOStreams by a variant - serves that profile's collections. Watch
+  // history on it works as on the plain link: AIOStreams still names the
+  // viewer on every watch-state request. Someone else's profile, or one that
+  // is gone, falls back to the login's collections rather than failing.
+  async function collectionsProfile(owner, profile) {
+    if (!profile) return null
+    const row = await prisma.jellyfinProfile.findFirst({ where: { id: String(profile), ownerUserId: owner.id }, select: { id: true } })
+    return row ? row.id : null
+  }
+
   // Never cached: these answers change with every viewing, and a shared cache
   // in front would hand one household's history to whoever asked next.
   function noStore(res) {
     res.setHeader('Cache-Control', 'no-store')
   }
 
-  router.get('/:token/aio/manifest.json', async (req, res) => {
+  router.get(['/:token/aio/manifest.json', '/:token/aio/p/:profile/manifest.json'], async (req, res) => {
     noStore(res)
     try {
       const owner = await resolveWatchStateOwner(req.params.token)
@@ -310,7 +321,7 @@ module.exports = ({ prisma }) => {
     }
   })
 
-  router.post('/:token/aio/watch_state/push/:type/:id.json', async (req, res) => {
+  router.post(['/:token/aio/watch_state/push/:type/:id.json', '/:token/aio/p/:profile/watch_state/push/:type/:id.json'], async (req, res) => {
     noStore(res)
     try {
       const owner = await resolveWatchStateOwner(req.params.token)
@@ -331,7 +342,7 @@ module.exports = ({ prisma }) => {
     }
   })
 
-  router.get('/:token/aio/watch_state/pull.json', async (req, res) => {
+  router.get(['/:token/aio/watch_state/pull.json', '/:token/aio/p/:profile/watch_state/pull.json'], async (req, res) => {
     noStore(res)
     try {
       const owner = await resolveWatchStateOwner(req.params.token)
@@ -367,7 +378,7 @@ module.exports = ({ prisma }) => {
     }
   }
 
-  router.get('/:token/aio/catalog/:type/:id.json', async (req, res) => {
+  router.get(['/:token/aio/catalog/:type/:id.json', '/:token/aio/p/:profile/catalog/:type/:id.json'], async (req, res) => {
     noStore(res)
     try {
       const owner = await resolveWatchStateOwner(req.params.token)
@@ -375,7 +386,8 @@ module.exports = ({ prisma }) => {
       if (req.params.id !== COLLECTIONS_CATALOG) return res.json({ metas: [] })
       const base = requestBase(req)
       const { loadCollections, membersOf, coverOf } = require('../utils/aioCollections')
-      const { collections, lists } = await loadCollections(prisma, owner.accountId, owner.id)
+      const profileId = await collectionsProfile(owner, req.params.profile)
+      const { collections, lists } = await loadCollections(prisma, owner.accountId, owner.id, profileId)
       const metas = []
       for (const c of collections) {
         if (c.hidden) continue
@@ -389,7 +401,7 @@ module.exports = ({ prisma }) => {
     }
   })
 
-  router.get('/:token/aio/meta/:type/:id.json', async (req, res) => {
+  router.get(['/:token/aio/meta/:type/:id.json', '/:token/aio/p/:profile/meta/:type/:id.json'], async (req, res) => {
     noStore(res)
     try {
       const owner = await resolveWatchStateOwner(req.params.token)
@@ -397,7 +409,8 @@ module.exports = ({ prisma }) => {
       const id = String(req.params.id || '')
       if (!id.startsWith(COLLECTION_PREFIX)) return res.status(404).json({ error: 'Not found' })
       const { loadCollections, membersOf, coverOf } = require('../utils/aioCollections')
-      const { collections, lists } = await loadCollections(prisma, owner.accountId, owner.id)
+      const profileId = await collectionsProfile(owner, req.params.profile)
+      const { collections, lists } = await loadCollections(prisma, owner.accountId, owner.id, profileId)
       const collection = collections.find((c) => c.id === id.slice(COLLECTION_PREFIX.length))
       if (!collection) return res.status(404).json({ error: 'Not found' })
       const base = requestBase(req)

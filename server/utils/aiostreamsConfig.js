@@ -8,7 +8,10 @@
 // household hears about it: which addons came or went, which debrid services,
 // which household users, or that some other setting moved.
 //
-// SlickSync never writes to the configuration.
+// The one thing SlickSync ever writes to a configuration is its own profile
+// variants, when the household gives a profile collections of its own
+// (utils/aioProfileVariants.js) - and it re-reads the configuration straight
+// after, so that write is never reported as an outside change.
 
 const crypto = require('crypto')
 
@@ -76,6 +79,49 @@ async function readConfig({ serverUrl, account, password }) {
     throw Object.assign(new Error(body?.error?.message || `AIOStreams answered ${res.status}`), { status: res.status })
   }
   return body.data.userData
+}
+
+/**
+ * Save a configuration read with readConfig. AIOStreams replaces the whole
+ * configuration on save, so callers change only their own parts of what they
+ * just read and send all of it back.
+ */
+async function writeConfig({ serverUrl, account, password }, config) {
+  const base = instanceBase(serverUrl)
+  if (!base || !account) throw Object.assign(new Error('Not an AIOStreams configuration'), { status: 400 })
+  if (restrictsPrivateAddresses()) {
+    const { assertSafeUrl } = require('./safeUrl')
+    await assertSafeUrl(base)
+  }
+  const auth = Buffer.from(`${account}:${password}`).toString('base64')
+  let res
+  try {
+    res = await fetch(`${base}/api/v1/user`, {
+      method: 'PUT',
+      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch (e) {
+    throw Object.assign(new Error(`Could not reach AIOStreams: ${e?.cause?.code || e?.message || 'network error'}`), { status: 502 })
+  }
+  const body = await res.json().catch(() => null)
+  if (!res.ok || !body?.success) {
+    throw Object.assign(new Error(body?.error?.message || `AIOStreams answered ${res.status}`), { status: res.status >= 500 ? 502 : 400 })
+  }
+}
+
+/**
+ * After SlickSync's own write: take the configuration as it is now as the
+ * baseline for everyone it is watched through, so the next look finds no
+ * outside change.
+ */
+async function rebaseline(prisma, person, config) {
+  const state = JSON.stringify({ ...summarize(config), checkedAt: new Date().toISOString() })
+  await prisma.user.updateMany({
+    where: { accountId: person.accountId, aioConfigId: person.aioConfigId, jellyfinServerUrl: person.jellyfinServerUrl },
+    data: { aioConfigStateJson: state },
+  })
 }
 
 /**
@@ -260,6 +306,8 @@ module.exports = {
   instanceBase,
   configAccountFrom,
   readConfig,
+  writeConfig,
+  rebaseline,
   summarize,
   describeChanges,
   rememberConfigAccess,

@@ -92,14 +92,18 @@ function TitleTile({ t, onOpen, onRemove, menuOpen, onMenuOpenChange }: {
 export default function AiostreamsCollectionPage() {
   const router = useRouter();
   const params = useParams();
-  const userId = useSearchParams().get('user') || '';
-  const listPath = `${LIST}?user=${encodeURIComponent(userId)}`;
+  const searchParams = useSearchParams();
+  const userId = searchParams.get('user') || '';
+  // The profile whose collections these are, when it isn't the account's.
+  const profileId = searchParams.get('profile') || null;
+  const scope = `user=${encodeURIComponent(userId)}${profileId ? `&profile=${encodeURIComponent(profileId)}` : ''}`;
+  const listPath = `${LIST}?${scope}`;
   const collectionId = String(params.collectionId || 'new');
   const isNew = collectionId === 'new';
   const { layoutMode } = useLayoutMode();
 
   const [initial] = useState(() => {
-    const cached = userId ? api.peekGet<AioCollectionsView>(api.aioCollectionsPath(userId)) ?? null : null;
+    const cached = userId ? api.peekGet<AioCollectionsView>(api.aioCollectionsPath(userId, profileId)) ?? null : null;
     return { view: cached, form: formFrom(cached, collectionId) };
   });
   const [view, setView] = useState<AioCollectionsView | null>(initial.view);
@@ -130,7 +134,7 @@ export default function AiostreamsCollectionPage() {
 
   useEffect(() => {
     if (!userId) { router.replace(LIST); return; }
-    api.getAioCollections(userId)
+    api.getAioCollections(userId, profileId)
       .then((next) => {
         setView(next);
         latest.current = next.collections;
@@ -150,7 +154,7 @@ export default function AiostreamsCollectionPage() {
     api.getLists()
       .then((r) => setLists(Array.isArray(r) ? r.filter((l) => l.isOwner) : []))
       .catch(() => setLists([]));
-  }, [collectionId, router, userId, listPath]);
+  }, [collectionId, router, userId, profileId, listPath]);
 
   useEffect(() => () => { if (typingTimer.current) clearTimeout(typingTimer.current); }, []);
 
@@ -195,7 +199,7 @@ export default function AiostreamsCollectionPage() {
       const entry = { ...mine, name: next.name.trim() || mine.name, coverUrl: next.coverUrl.trim() || null, catalogIds: next.catalogIds, order: next.order };
       const list = latest.current.map((c) => (c.id === collectionId ? entry : c));
       try {
-        await api.saveAioCollections(userId, stored(list));
+        await api.saveAioCollections(userId, stored(list), profileId);
         latest.current = list;
         // A collection with its own same-named catalog keeps the two names
         // together, so Discover's Add to Catalogs shows the new name too.
@@ -208,7 +212,7 @@ export default function AiostreamsCollectionPage() {
         toast.error(e?.message || 'Could not save that change');
       }
     });
-  }, [collectionId, userId]);
+  }, [collectionId, userId, profileId]);
 
   // Typing saves a moment after the last key; picking catalogs saves at once.
   const editText = (patch: Partial<Form>) => {
@@ -323,13 +327,13 @@ export default function AiostreamsCollectionPage() {
     setCreating(true);
     try {
       const list = await api.createList(name);
-      const current = await api.getAioCollections(userId);
+      const current = await api.getAioCollections(userId, profileId);
       const id = newId();
       await api.saveAioCollections(userId, stored([
         ...current.collections,
         { id, name, coverUrl: form.coverUrl.trim() || null, catalogIds: [list.id], hidden: false },
-      ]));
-      router.replace(`${LIST}/${id}?user=${encodeURIComponent(userId)}`);
+      ]), profileId);
+      router.replace(`${LIST}/${id}?${scope}`);
     } catch (e: any) {
       toast.error(e?.message || 'Could not make the collection');
       setCreating(false);
@@ -339,7 +343,7 @@ export default function AiostreamsCollectionPage() {
   const remove = async () => {
     await queue.current;
     try {
-      await api.saveAioCollections(userId, stored(latest.current.filter((c) => c.id !== collectionId)));
+      await api.saveAioCollections(userId, stored(latest.current.filter((c) => c.id !== collectionId)), profileId);
       toast.success('Collection removed');
       router.push(listPath);
     } catch (e: any) {

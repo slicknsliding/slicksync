@@ -6,7 +6,7 @@ const household = require('../utils/jellyfinProfiles');
 // Admin side of Jellyfin-compatible servers: Add User and reconnecting a
 // person whose sign-in stopped working. See utils/jellyfinConnect.js for the
 // sign-in itself, shared with the public sign-in pages and invitations.
-module.exports = ({ prisma, getAccountId, encrypt, assignUserToGroup }) => {
+module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup }) => {
   const router = express.Router();
 
   // POST /probe, /quick-connect, /quick-connect-status
@@ -155,27 +155,39 @@ module.exports = ({ prisma, getAccountId, encrypt, assignUserToGroup }) => {
   // The AIOStreams Collections page: SlickSync's catalogs as collections in
   // AIOStreams' apps, per AIOStreams account (utils/aioCollections.js).
 
-  // A person whose collections can be arranged: signed in with AIOStreams, or
-  // with the AIOStreams watch history link turned on.
+  // A person whose collections can be arranged: someone who signs in with
+  // AIOStreams. Stremio and Nuvio people are managed elsewhere (Nuvio
+  // Collections), even with the AIOStreams watch history link on.
   async function collectionsPerson(accountId, userId) {
     if (!userId) return null;
     return prisma.user.findFirst({
-      where: { id: String(userId), accountId, OR: [{ jellyfinServerKind: 'aiostreams' }, { watchStateEnabled: true, traxToken: { not: null } }] },
-      select: { id: true, watchStateEnabled: true, traxToken: true },
+      where: { id: String(userId), accountId, providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' },
+      select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true, watchStateEnabled: true, traxToken: true },
     });
+  }
+
+  // One of that person's household profiles, when the page is on a profile.
+  // A profile can have collections of its own; until it does, it sees its
+  // login's (utils/aioProfileVariants.js sets that up in AIOStreams).
+  async function collectionsProfile(person, profileId) {
+    if (!profileId) return null;
+    const profile = await prisma.jellyfinProfile.findFirst({ where: { id: String(profileId), ownerUserId: person.id }, select: { id: true, name: true } });
+    if (!profile) throw Object.assign(new Error('That profile is not on this AIOStreams account'), { status: 404 });
+    return profile;
   }
 
   router.get('/collections/accounts', async (req, res) => {
     try {
       const accountId = getAccountId(req);
       const people = await prisma.user.findMany({
-        where: { accountId, isActive: true, OR: [{ jellyfinServerKind: 'aiostreams' }, { watchStateEnabled: true, traxToken: { not: null } }] },
-        select: { id: true, username: true, email: true, avatarUrl: true, colorIndex: true, jellyfinServerKind: true, watchStateEnabled: true, traxToken: true },
+        where: { accountId, isActive: true, providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' },
+        select: { id: true, username: true, email: true, avatarUrl: true, colorIndex: true, watchStateEnabled: true, traxToken: true, aioConfigPassword: true },
         orderBy: { username: 'asc' },
       });
       const profiles = people.length
-        ? await prisma.jellyfinProfile.findMany({ where: { ownerUserId: { in: people.map((p) => p.id) } }, select: { ownerUserId: true, name: true }, orderBy: { name: 'asc' } })
+        ? await prisma.jellyfinProfile.findMany({ where: { ownerUserId: { in: people.map((p) => p.id) } }, select: { id: true, ownerUserId: true, name: true }, orderBy: { name: 'asc' } })
         : [];
+      const own = await require('../utils/aioCollections').ownProfileIds(prisma, accountId);
       res.json({
         accounts: people.map((p) => ({
           id: p.id,
@@ -184,8 +196,10 @@ module.exports = ({ prisma, getAccountId, encrypt, assignUserToGroup }) => {
           avatarUrl: p.avatarUrl || null,
           colorIndex: p.colorIndex ?? null,
           linked: !!(p.watchStateEnabled && p.traxToken),
-          // Everyone on this login sees its collections.
-          profiles: profiles.filter((x) => x.ownerUserId === p.id).map((x) => x.name),
+          // Giving a profile its own collections means a change in AIOStreams,
+          // which needs the configuration password SlickSync kept.
+          canSplit: !!p.aioConfigPassword,
+          profiles: profiles.filter((x) => x.ownerUserId === p.id).map((x) => ({ id: x.id, name: x.name, own: own.has(x.id) })),
         })),
       });
     } catch (error) {
@@ -198,10 +212,12 @@ module.exports = ({ prisma, getAccountId, encrypt, assignUserToGroup }) => {
       const accountId = getAccountId(req);
       const person = await collectionsPerson(accountId, req.query.userId);
       if (!person) return res.status(404).json({ error: 'Pick an AIOStreams account' });
-      const { loadCollections, membersOf, coverOf } = require('../utils/aioCollections');
-      const { configured, collections, lists } = await loadCollections(prisma, accountId, person.id);
+      const profile = await collectionsProfile(person, req.query.profileId);
+      const { loadCollections, membersOf, coverOf, ownProfileIds } = require('../utils/aioCollections');
+      const { configured, collections, lists } = await loadCollections(prisma, accountId, person.id, profile?.id || null);
       res.json({
         configured,
+        profile: profile ? { id: profile.id, name: profile.name, own: (await ownProfileIds(prisma, accountId)).has(profile.id) } : null,
         linked: !!(person.watchStateEnabled && person.traxToken),
         collections: collections.map((c) => {
           const members = membersOf(c, lists);
@@ -229,8 +245,25 @@ module.exports = ({ prisma, getAccountId, encrypt, assignUserToGroup }) => {
       const accountId = getAccountId(req);
       const person = await collectionsPerson(accountId, req.body?.userId);
       if (!person) return res.status(404).json({ error: 'Pick an AIOStreams account' });
-      const { saveCollections } = require('../utils/aioCollections');
-      await saveCollections(prisma, accountId, person.id, req.body?.reset === true ? null : req.body?.collections);
+      const profile = await collectionsProfile(person, req.body?.profileId);
+      const { saveCollections, ownProfileIds } = require('../utils/aioCollections');
+      const { setProfileVariant } = require('../utils/aioProfileVariants');
+      const reset = req.body?.reset === true;
+      if (profile && reset) {
+        // Back to the login's collections. The variant goes too; if AIOStreams
+        // can't be reached, the profile's link already falls back to the login's.
+        await saveCollections(prisma, accountId, person.id, null, profile.id);
+        try { await setProfileVariant(prisma, decrypt, person, profile, false); }
+        catch (e) { console.warn('[Collections] could not remove the profile variant:', e?.message); }
+        return res.json({ success: true });
+      }
+      if (profile && !(await ownProfileIds(prisma, accountId)).has(profile.id)) {
+        // The first change makes it the profile's own - set that up in
+        // AIOStreams before keeping anything, so nothing is saved that the
+        // profile would never see.
+        await setProfileVariant(prisma, decrypt, person, profile, true);
+      }
+      await saveCollections(prisma, accountId, person.id, reset ? null : req.body?.collections, profile?.id || null);
       res.json({ success: true });
     } catch (error) {
       sendError(res, error, 'Could not save the collections');

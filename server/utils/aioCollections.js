@@ -15,6 +15,12 @@
 // [userId]. An older account-wide arrangement (aioCollections.collections)
 // is where a login that was never arranged on its own starts from; null for a
 // login means it was put back to one collection per catalog.
+//
+// A household profile can have its own arrangement too (byProfile
+// [JellyfinProfile id]). AIOStreams reaches it through a per-profile link -
+// /trax/<token>/aio/p/<profile id>/ - which a variant on that profile in
+// AIOStreams points SlickTrax at (utils/aioProfileVariants.js). A profile
+// without its own arrangement sees its login's.
 
 const crypto = require('crypto')
 
@@ -47,9 +53,14 @@ async function loadLists(prisma, accountId) {
   })
 }
 
-/** The arrangement a login uses: its own, else the account-wide one, else none. */
-function storedFor(cfg, userId) {
+/**
+ * The arrangement a login (or one of its profiles) uses: the profile's own,
+ * else the login's own, else the account-wide one, else none.
+ */
+function storedFor(cfg, userId, profileId) {
   const all = cfg.aioCollections && typeof cfg.aioCollections === 'object' ? cfg.aioCollections : {}
+  const byProfile = all.byProfile && typeof all.byProfile === 'object' ? all.byProfile : {}
+  if (profileId && Object.prototype.hasOwnProperty.call(byProfile, profileId) && byProfile[profileId]) return byProfile[profileId]
   const byUser = all.byUser && typeof all.byUser === 'object' ? all.byUser : {}
   if (userId && Object.prototype.hasOwnProperty.call(byUser, userId)) return byUser[userId]
   return Array.isArray(all.collections) ? all : null
@@ -60,10 +71,10 @@ function storedFor(cfg, userId) {
  * catalogs that still exist. `configured` says whether they were arranged;
  * when not, it is one collection per catalog that has titles.
  */
-async function loadCollections(prisma, accountId, userId) {
+async function loadCollections(prisma, accountId, userId, profileId = null) {
   const [cfg, lists] = await Promise.all([readSync(prisma, accountId), loadLists(prisma, accountId)])
   const byId = new Map(lists.map((l) => [l.id, l]))
-  const stored = storedFor(cfg, userId)
+  const stored = storedFor(cfg, userId, profileId)
   if (!stored || !Array.isArray(stored.collections)) {
     const collections = lists
       .filter((l) => itemsOf(l).length > 0)
@@ -115,13 +126,23 @@ function cleanText(value, max) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-/** Keep a login's arrangement, or put it back to one collection per catalog (null). */
-async function saveCollections(prisma, accountId, userId, collections) {
+/**
+ * Keep a login's arrangement, or put it back to one collection per catalog
+ * (null). With a profile id, the profile's own: null there means it goes back
+ * to seeing its login's.
+ */
+async function saveCollections(prisma, accountId, userId, collections, profileId = null) {
   if (!userId) throw new Error('Which AIOStreams account these collections are for is missing')
   const cfg = await readSync(prisma, accountId)
   const all = cfg.aioCollections && typeof cfg.aioCollections === 'object' ? cfg.aioCollections : {}
-  const byUser = all.byUser && typeof all.byUser === 'object' ? all.byUser : {}
-  const write = (value) => writeSync(prisma, accountId, { ...cfg, aioCollections: { ...all, byUser: { ...byUser, [userId]: value } } })
+  const map = profileId ? 'byProfile' : 'byUser'
+  const key = profileId || userId
+  const current = all[map] && typeof all[map] === 'object' ? all[map] : {}
+  const write = (value) => {
+    const next = { ...current, [key]: value }
+    if (profileId && value === null) delete next[key]
+    return writeSync(prisma, accountId, { ...cfg, aioCollections: { ...all, [map]: next } })
+  }
   if (collections === null) {
     await write(null)
     return
@@ -144,4 +165,11 @@ async function saveCollections(prisma, accountId, userId, collections) {
   await write({ collections: clean, updatedAt: new Date().toISOString() })
 }
 
-module.exports = { loadCollections, membersOf, coverOf, saveCollections }
+/** The profiles that have an arrangement of their own. */
+async function ownProfileIds(prisma, accountId) {
+  const cfg = await readSync(prisma, accountId)
+  const byProfile = cfg.aioCollections?.byProfile
+  return new Set(byProfile && typeof byProfile === 'object' ? Object.keys(byProfile).filter((id) => byProfile[id]) : [])
+}
+
+module.exports = { loadCollections, membersOf, coverOf, saveCollections, ownProfileIds }

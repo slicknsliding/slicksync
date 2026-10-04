@@ -2288,21 +2288,23 @@ class ApiClient {
     return this.fetch<{ accounts: AioCollectionAccount[] }>('/jellyfin/collections/accounts');
   }
 
-  /** The GET path for one account's collections - also the key api.peekGet reads. */
-  aioCollectionsPath(userId: string) {
-    return `/jellyfin/collections?userId=${encodeURIComponent(userId)}`;
+  /** The GET path for one account's (or profile's) collections - also the key api.peekGet reads. */
+  aioCollectionsPath(userId: string, profileId?: string | null) {
+    return `/jellyfin/collections?userId=${encodeURIComponent(userId)}${profileId ? `&profileId=${encodeURIComponent(profileId)}` : ''}`;
   }
 
-  async getAioCollections(userId: string) {
-    return this.fetch<AioCollectionsView>(this.aioCollectionsPath(userId));
+  async getAioCollections(userId: string, profileId?: string | null) {
+    return this.fetch<AioCollectionsView>(this.aioCollectionsPath(userId, profileId));
   }
 
-  async saveAioCollections(userId: string, collections: Pick<AioCollection, 'id' | 'name' | 'coverUrl' | 'catalogIds' | 'hidden' | 'order'>[]) {
-    return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, collections }) });
+  /** On a profile without collections of its own, the first save sets that up in AIOStreams. */
+  async saveAioCollections(userId: string, collections: Pick<AioCollection, 'id' | 'name' | 'coverUrl' | 'catalogIds' | 'hidden' | 'order'>[], profileId?: string | null) {
+    return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, profileId: profileId || undefined, collections }) });
   }
 
-  async resetAioCollections(userId: string) {
-    return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, reset: true }) });
+  /** An account: back to one per catalog. A profile: back to its account's collections. */
+  async resetAioCollections(userId: string, profileId?: string | null) {
+    return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, profileId: profileId || undefined, reset: true }) });
   }
 
   // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
@@ -3276,11 +3278,16 @@ export interface AioCollectionAccount {
   avatarUrl: string | null;
   colorIndex: number | null;
   linked: boolean;
-  profiles: string[];
+  /** Whether SlickSync can set up a profile's own collections in AIOStreams (it kept the configuration password). */
+  canSplit: boolean;
+  /** Household profiles; `own` once they have collections of their own. */
+  profiles: { id: string; name: string; own: boolean }[];
 }
 
 export interface AioCollectionsView {
   configured: boolean;
+  /** Set when looking at a profile; `own` false means it sees its account's collections. */
+  profile?: { id: string; name: string; own: boolean } | null;
   linked: boolean;
   collections: AioCollection[];
   catalogs: { id: string; name: string; titles: number; cover: string | null }[];

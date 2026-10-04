@@ -710,14 +710,14 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Catalogs -> AIOStreams Collections. SlickSync’s catalogs show up in AIOStreams’ apps, and in any Jellyfin app signed in to it, as a SlickSync catalogs library with one collection per catalog. Open a collection to see its titles, search to add more or take some out; drag collections into order, hide them, rename them and give them covers.',
     steps: [
       'Turn on AIOStreams watch history for someone (their page -> Watch-tracking integrations) and add its link to AIOStreams - the collections travel through that link.',
-      'Open Catalogs -> AIOStreams Collections and pick the AIOStreams account. Each account has its own collections.',
+      'Open Catalogs -> AIOStreams Collections, pick the AIOStreams account, then the profile. Each account - and any profile you give its own - has its own collections.',
       'Tap a collection to open it. Its titles are listed there - search to add a movie or show, drag them into order, or long-press (right-click) one and Remove from collection. The name and cover are at the top.',
       'Back on the list, drag to reorder, use the eye to hide one, or New collection to start an empty one.',
       'Everything saves as you go. AIOStreams picks it up within a minute; reopen the app if it still shows the old ones.',
     ],
     details: [
       'Until you change anything here, every catalog with titles in it is its own collection, in name order.',
-      'Every profile on one AIOStreams account sees that account’s collections - AIOStreams doesn’t say which profile is asking when it loads them, so they can’t differ by profile.',
+      'Pick a profile at the top to give it collections of its own. Until you change something on it, a profile sees its account’s collections; the first change sets it up in AIOStreams for that profile (SlickSync adds a variant to the profile, which needs the account to have been signed in with its configuration password). Use the account’s puts it back and takes that variant out again.',
       'A collection’s titles live in a SlickSync catalog with the same name, so Add to Catalogs in Discover puts titles into it too.',
       'Built from catalogs, inside a collection, lets one collection show the titles of several catalogs, each once.',
       'One per catalog puts it back the way it started.',
