@@ -12,6 +12,21 @@ const express = require('express');
 module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
   const router = express.Router();
 
+  // Which build of the pages this server is serving - the stamp the
+  // Dockerfile writes next to the build. Open tabs compare it with their own
+  // (components/pwa/BuildWatcher.tsx) to notice an update. Fixed for the
+  // container's lifetime, so it is read once.
+  let buildStamp = null;
+  router.get('/build', (req, res) => {
+    if (buildStamp === null) {
+      try {
+        buildStamp = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'client', '.next', 'build-stamp'), 'utf8').trim();
+      } catch { buildStamp = ''; }
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({ stamp: buildStamp || null });
+  });
+
   router.get('/', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';

@@ -2307,6 +2307,20 @@ class ApiClient {
     return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, profileId: profileId || undefined, reset: true }) });
   }
 
+  // The collections with the catalogs they hold, titles included - what an
+  // export file and a share code carry.
+  async exportAioCollections(userId: string, profileId?: string | null) {
+    const q = new URLSearchParams({ userId, ...(profileId ? { profileId } : {}) });
+    return this.fetch<AioCollectionsExport>(`/jellyfin/collections/export?${q}`);
+  }
+
+  async importAioCollections(userId: string, payload: AioCollectionsExport, profileId?: string | null, mode: 'add' | 'replace' = 'add') {
+    return this.fetch<{ added: number; catalogsCreated: number; catalogsReused: number }>('/jellyfin/collections/import', {
+      method: 'POST',
+      body: JSON.stringify({ userId, profileId: profileId || undefined, payload, mode }),
+    });
+  }
+
   // --- Jellyfin Collections: catalogs as collections on the household's own Jellyfin servers ---
 
   async getJellyfinCollectionServers() {
@@ -3327,6 +3341,19 @@ export interface JellyfinCollectionsView {
     coverTitleId: string | null;
     on: boolean;
     inJellyfin: boolean;
+  }[];
+}
+
+/** AIOStreams collections as an export file or share code carries them (server/utils/aioCollections.js). */
+export interface AioCollectionsExport {
+  v: 1;
+  collections: { name: string; coverUrl: string | null; hidden: boolean; catalogs: string[]; order?: string[] }[];
+  catalogs: {
+    ref: string;
+    name: string;
+    description: string | null;
+    coverUrl: string | null;
+    items: { id: string; type: 'movie' | 'series'; name: string; poster: string | null; year: number | string | null }[];
   }[];
 }
 

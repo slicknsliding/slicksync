@@ -727,7 +727,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'aiostreams-collections',
     title: 'Catalogs as collections in AIOStreams’ apps',
     category: 'Catalogs & Collections',
-    keywords: ['aiostreams collections', 'jellyfin collections', 'box sets', 'collections library', 'infuse collections', 'swiftfin collections', 'catalog to aiostreams'],
+    keywords: ['aiostreams collections', 'jellyfin collections', 'box sets', 'collections library', 'infuse collections', 'swiftfin collections', 'catalog to aiostreams', 'copy collections to profile', 'share collections code', 'export collections'],
     answer: 'Catalogs -> Jellyfin | AIOStreams. SlickSync’s catalogs show up in AIOStreams’ apps, and in any Jellyfin app signed in to it, as a SlickSync catalogs library with one collection per catalog. Open a collection to see its titles, search to add more or take some out; drag collections into order, hide them, rename them and give them covers.',
     steps: [
       'Turn on AIOStreams watch history for someone (their page -> Watch-tracking integrations) and add its link to AIOStreams - the collections travel through that link.',
@@ -742,6 +742,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'A collection’s titles live in a SlickSync catalog with the same name, so Add to Catalogs in Discover puts titles into it too.',
       'Built from catalogs, inside a collection, lets one collection show the titles of several catalogs, each once.',
       'One per catalog puts it back the way it started.',
+      'Transfer -> Copy to another profile gives another account or profile exactly these collections (theirs are replaced). Copying to a profile that doesn’t have its own yet sets it up in AIOStreams, the same as changing it by hand.',
+      'Transfer also exports the collections to a file or a share code, with the catalogs in them and their titles. Importing one adds its collections after the ones already there; a catalog you already have is reused, and any other is made as a new catalog - so a code works in someone else’s SlickSync too.',
     ],
     related: ['aiostreams-watch-history', 'nuvio-collections-manager', 'catalog-create'],
     href: '/catalogs/aiostreams-collections',

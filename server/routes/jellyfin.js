@@ -246,7 +246,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const person = await collectionsPerson(accountId, req.body?.userId);
       if (!person) return res.status(404).json({ error: 'Pick an AIOStreams account' });
       const profile = await collectionsProfile(person, req.body?.profileId);
-      const { saveCollections, ownProfileIds } = require('../utils/aioCollections');
+      const { saveCollections } = require('../utils/aioCollections');
       const { setProfileVariant } = require('../utils/aioProfileVariants');
       const reset = req.body?.reset === true;
       if (profile && reset) {
@@ -257,16 +257,57 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         catch (e) { console.warn('[Collections] could not remove the profile variant:', e?.message); }
         return res.json({ success: true });
       }
-      if (profile && !(await ownProfileIds(prisma, accountId)).has(profile.id)) {
-        // The first change makes it the profile's own - set that up in
-        // AIOStreams before keeping anything, so nothing is saved that the
-        // profile would never see.
-        await setProfileVariant(prisma, decrypt, person, profile, true);
-      }
-      await saveCollections(prisma, accountId, person.id, reset ? null : req.body?.collections, profile?.id || null);
+      await saveArrangement(accountId, person, profile, reset ? null : req.body?.collections);
       res.json({ success: true });
     } catch (error) {
       sendError(res, error, 'Could not save the collections');
+    }
+  });
+
+  // Keep an arrangement for an account or one of its profiles. A profile's
+  // first arrangement makes it the profile's own - that is set up in
+  // AIOStreams before anything is kept, so nothing is saved that the profile
+  // would never see.
+  async function saveArrangement(accountId, person, profile, collections) {
+    const { saveCollections, ownProfileIds } = require('../utils/aioCollections');
+    if (profile && collections !== null && !(await ownProfileIds(prisma, accountId)).has(profile.id)) {
+      await require('../utils/aioProfileVariants').setProfileVariant(prisma, decrypt, person, profile, true);
+    }
+    await saveCollections(prisma, accountId, person.id, collections, profile?.id || null);
+  }
+
+  // Export (and share codes, made from the same thing in the browser): the
+  // collections with the catalogs they hold, titles included.
+  router.get('/collections/export', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const person = await collectionsPerson(accountId, req.query.userId);
+      if (!person) return res.status(404).json({ error: 'Pick an AIOStreams account' });
+      const profile = await collectionsProfile(person, req.query.profileId);
+      res.json(await require('../utils/aioCollections').exportCollections(prisma, accountId, person.id, profile?.id || null));
+    } catch (error) {
+      sendError(res, error, 'Could not export the collections');
+    }
+  });
+
+  // Import a file or share code: its collections are added after the ones
+  // already here (or replace them with mode 'replace'); catalogs it needs
+  // are found here or made.
+  router.post('/collections/import', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const person = await collectionsPerson(accountId, req.body?.userId);
+      if (!person) return res.status(404).json({ error: 'Pick an AIOStreams account' });
+      const profile = await collectionsProfile(person, req.body?.profileId);
+      const aio = require('../utils/aioCollections');
+      const imported = await aio.importCollections(prisma, accountId, req.body?.payload);
+      const current = req.body?.mode === 'replace'
+        ? []
+        : (await aio.loadCollections(prisma, accountId, person.id, profile?.id || null)).collections;
+      await saveArrangement(accountId, person, profile, [...current, ...imported.collections]);
+      res.json({ added: imported.collections.length, catalogsCreated: imported.catalogsCreated, catalogsReused: imported.catalogsReused });
+    } catch (error) {
+      sendError(res, error, 'Could not import the collections');
     }
   });
 

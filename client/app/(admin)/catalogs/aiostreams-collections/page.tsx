@@ -21,6 +21,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeftIcon, PlusIcon, EyeSlashIcon, EyeIcon, TrashIcon, ArrowUturnLeftIcon, Squares2X2Icon,
+  ArrowUpTrayIcon, DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -32,13 +33,15 @@ import { Avatar } from '@/components/ui/Avatar';
 import { ServerStackIcon } from '@heroicons/react/24/outline';
 import { ServerCollections } from '@/components/jellyfin/ServerCollections';
 import {
-  Card, Button, ConfirmModal, Badge,
+  Card, Button, ConfirmModal, Badge, Modal,
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
 } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
+import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
+import { encodeAioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
-import { api, type AioCollection, type AioCollectionAccount, type AioCollectionsView, type JellyfinCollectionServer } from '@/lib/api';
+import { api, type AioCollection, type AioCollectionAccount, type AioCollectionsView, type AioCollectionsExport, type JellyfinCollectionServer } from '@/lib/api';
 
 const LIST = '/catalogs/aiostreams-collections';
 
@@ -267,6 +270,7 @@ export default function AiostreamsCollectionsPage() {
                 key={`${selected.id}:${profile?.id || ''}`}
                 account={selected}
                 profile={profile}
+                accounts={accounts || []}
                 onProfileChanged={loadAccounts}
               />
             )}
@@ -277,10 +281,15 @@ export default function AiostreamsCollectionsPage() {
   );
 }
 
+/** Somewhere "Copy to" can send a set of collections: an account, or a profile on one. */
+type CopyTarget = { userId: string; profileId: string | null; name: string; detail: string; blocked: string | null };
+
 /** One AIOStreams account's (or profile's) collections: reorder, hide, remove, open. */
-function AccountCollections({ account, profile, onProfileChanged }: {
+function AccountCollections({ account, profile, accounts, onProfileChanged }: {
   account: AioCollectionAccount;
   profile: AioCollectionAccount['profiles'][number] | null;
+  /** Every AIOStreams account here - where "Copy to" can send these. */
+  accounts: AioCollectionAccount[];
   onProfileChanged: () => void;
 }) {
   const router = useRouter();
@@ -353,6 +362,108 @@ function AccountCollections({ account, profile, onProfileChanged }: {
     router.push(`${LIST}/${encodeURIComponent(id)}?user=${encodeURIComponent(userId)}${profileId ? `&profile=${encodeURIComponent(profileId)}` : ''}`);
   };
 
+  // --- Transfer: copy to another profile or account, a file, a share code ---
+  const [transferOpen, setTransferOpen] = useState(false);
+  // Lined up with the button's right edge, but always kept on screen: the
+  // toolbar wraps on a phone, which can put the button anywhere in the row.
+  const [transferLeft, setTransferLeft] = useState(0);
+  const toggleTransfer = () => {
+    const box = transferRef.current?.getBoundingClientRect();
+    if (box) {
+      const width = 240;
+      const wanted = Math.min(Math.max(box.right - width, 8), window.innerWidth - 8 - width);
+      setTransferLeft(wanted - box.left);
+    }
+    setTransferOpen((v) => !v);
+  };
+  const transferRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!transferOpen) return;
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (transferRef.current && !transferRef.current.contains(e.target as Node)) setTransferOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('touchstart', close);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('touchstart', close); };
+  }, [transferOpen]);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTo, setCopyTo] = useState<CopyTarget | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const here = profile ? profile.name : account.name;
+
+  // Everywhere these could go: each account, and each profile on it.
+  const targets: CopyTarget[] = accounts.flatMap((a) => [
+    { userId: a.id, profileId: null, name: a.name, detail: 'Account', blocked: null },
+    ...a.profiles.map((p) => ({
+      userId: a.id,
+      profileId: p.id,
+      name: p.name,
+      detail: `Profile on ${a.name}`,
+      // A profile's first collections of its own are set up in AIOStreams,
+      // which needs the configuration password SlickSync kept.
+      blocked: !p.own && !a.canSplit ? `Sign ${a.name} in again with the AIOStreams password first` : null,
+    })),
+  ]).filter((t) => !(t.userId === userId && (t.profileId || null) === profileId));
+
+  const doCopy = async () => {
+    if (!copyTo) return;
+    await queue.current;
+    setCopying(true);
+    try {
+      await api.saveAioCollections(copyTo.userId, collections.map(({ id, name, coverUrl, catalogIds, hidden, order }) => ({ id, name, coverUrl, catalogIds, hidden, order })), copyTo.profileId);
+      toast.success(`${copyTo.name} has ${here}'s collections now`);
+      if (copyTo.profileId) onProfileChanged();
+      setCopyTo(null);
+      setCopyOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not copy the collections');
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const exportPayload = async (): Promise<AioCollectionsExport> => {
+    await queue.current;
+    return api.exportAioCollections(userId, profileId);
+  };
+
+  const exportFile = async () => {
+    try {
+      const payload = await exportPayload();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `aiostreams-collections-${here.replace(/[^\w-]+/g, '-').toLowerCase()}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not export the collections');
+    }
+  };
+
+  // A file or a code: its collections go after the ones already here.
+  const importPayload = async (payload: AioCollectionsExport) => {
+    await queue.current;
+    const r = await api.importAioCollections(userId, payload, profileId);
+    const made = r.catalogsCreated ? ` and ${r.catalogsCreated} new catalog${r.catalogsCreated === 1 ? '' : 's'}` : '';
+    toast.success(`Added ${r.added} collection${r.added === 1 ? '' : 's'}${made}`);
+    await load();
+    if (profile) onProfileChanged();
+  };
+
+  const importFile = async (file: File) => {
+    try {
+      const payload = JSON.parse(await file.text());
+      await importPayload(payload);
+    } catch (e: any) {
+      toast.error(e instanceof SyntaxError ? 'That file isn’t an AIOStreams collections export' : (e?.message || 'Could not import that file'));
+    }
+  };
+
   const reset = async () => {
     await queue.current;
     setSaving(true);
@@ -409,6 +520,32 @@ function AccountCollections({ account, profile, onProfileChanged }: {
                     One per catalog
                   </Button>
                 )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }}
+                />
+                <div className="relative" ref={transferRef}>
+                  <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={toggleTransfer} aria-expanded={transferOpen}>
+                    Transfer
+                  </Button>
+                  {transferOpen && (
+                    <div className="absolute top-full mt-2 z-20 w-60 rounded-xl border border-default bg-surface shadow-xl p-1.5" style={{ left: transferLeft }}>
+                      <button type="button" disabled={collections.length === 0 || targets.length === 0} onClick={() => { setTransferOpen(false); setCopyOpen(true); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">
+                        <DocumentDuplicateIcon className="w-4 h-4" /> Copy to another profile…
+                      </button>
+                      <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted">As a file</p>
+                      <button type="button" onClick={() => { setTransferOpen(false); fileRef.current?.click(); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover">Import from a file…</button>
+                      <button type="button" disabled={collections.length === 0} onClick={() => { setTransferOpen(false); exportFile(); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">Export to a file</button>
+                      <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted">As a share code</p>
+                      <button type="button" onClick={() => { setTransferOpen(false); setPasteOpen(true); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover">Paste a code…</button>
+                      <button type="button" disabled={collections.length === 0} onClick={() => { setTransferOpen(false); setShareOpen(true); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">Create a code…</button>
+                    </div>
+                  )}
+                </div>
                 <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => open('new')}>
                   New collection
                 </Button>
@@ -455,6 +592,62 @@ function AccountCollections({ account, profile, onProfileChanged }: {
         title={`Remove ${removing?.name || 'this collection'}?`}
         description="It stops showing in AIOStreams' apps. The catalogs in it stay as they are."
         confirmText="Remove"
+      />
+
+      <Modal isOpen={copyOpen} onClose={() => { setCopyOpen(false); setCopyTo(null); }} title={`Copy ${here}'s collections to…`} size="md">
+        <div className="space-y-4">
+          {!copyTo ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {targets.map((t) => (
+                <button
+                  key={`${t.userId}:${t.profileId || ''}`}
+                  type="button"
+                  disabled={!!t.blocked}
+                  onClick={() => setCopyTo(t)}
+                  title={t.blocked || undefined}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-default bg-subtle hover:bg-surface-hover hover:border-primary/50 transition-colors text-left disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Avatar name={t.name} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-default truncate">{t.name}</p>
+                    <p className={`text-xs text-subtle ${t.blocked ? '' : 'truncate'}`}>{t.blocked || t.detail}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-default">
+                {copyTo.name}&rsquo;s collections are replaced with {here}&rsquo;s {collections.length}: the same names, covers, order and catalogs.
+                {copyTo.profileId && <> If {copyTo.name} doesn&rsquo;t have collections of their own yet, SlickSync sets that up in AIOStreams.</>}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setCopyTo(null)} disabled={copying}>Back</Button>
+                <Button variant="primary" size="sm" onClick={doCopy} isLoading={copying}>Copy to {copyTo.name}</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <ShareCodeDialog
+        isOpen={shareOpen}
+        onClose={() => setShareOpen(false)}
+        title="Share collections as a code"
+        summary={`${here}'s ${collections.length} collection${collections.length === 1 ? '' : 's'} and the catalogs in them, titles included - pasted into another SlickSync, any catalog it doesn't have is made`}
+        generate={async () => encodeAioCollectionsShareCode(await exportPayload())}
+      />
+
+      <PasteCodeDialog
+        isOpen={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        title={`Add collections to ${here} from a code`}
+        placeholder="Paste an SSJ1: collections code…"
+        onImport={async (text) => {
+          const decoded = decodeShareCode(text);
+          if (!decoded || decoded.kind !== 'aioCollections') throw new Error('That code isn’t an AIOStreams collections code');
+          await importPayload(decoded.payload as unknown as AioCollectionsExport);
+        }}
       />
 
       <ConfirmModal
