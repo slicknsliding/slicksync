@@ -1,27 +1,18 @@
 'use client';
 
-// Jellyfin Collections - SlickSync catalogs as real collections on the
-// household's own Jellyfin servers (AIOStreams and AIOMetadata have
-// AIOStreams Collections instead). Pick the server, tap catalogs to switch
-// them on: each becomes a Jellyfin collection of the titles that server has,
-// kept in step by server/utils/jellyfinServerCollections.js. A Jellyfin
-// collection is server-wide, so there is no profile to pick here.
+// A household's own Jellyfin server, as shown on Catalogs -> Jellyfin |
+// AIOStreams: tap catalogs to switch them on, each becoming a Jellyfin
+// collection of the titles that server has, kept in step by
+// server/utils/jellyfinServerCollections.js. A Jellyfin collection is
+// server-wide, so there is no profile to pick here.
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeftIcon, ArrowPathIcon, CheckIcon, ServerStackIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
-import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
-import { useLayoutMode } from '@/lib/layout-mode';
+import { ArrowPathIcon, CheckIcon, ServerStackIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import { Card, Button, Badge } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
 import { api, type JellyfinCollectionServer, type JellyfinCollectionsView } from '@/lib/api';
-
-const LIST = '/catalogs/jellyfin-collections';
 
 function ago(iso: string | null) {
   if (!iso) return null;
@@ -31,6 +22,7 @@ function ago(iso: string | null) {
   const hours = Math.round(mins / 60);
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
+
 
 type CatalogRow = JellyfinCollectionsView['catalogs'][number];
 
@@ -78,93 +70,8 @@ function CatalogTile({ c, busy, disabled, onToggle }: { c: CatalogRow; busy: boo
   );
 }
 
-export default function JellyfinCollectionsPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const serverKey = searchParams.get('server') || '';
-  const { layoutMode } = useLayoutMode();
-  const [servers, setServers] = useState<JellyfinCollectionServer[] | null>(
-    () => api.peekGet<{ servers: JellyfinCollectionServer[] }>('/jellyfin/server-collections/servers')?.servers ?? null,
-  );
 
-  useEffect(() => {
-    api.getJellyfinCollectionServers()
-      .then((r) => setServers(r.servers))
-      .catch((e: any) => { toast.error(e?.message || 'Could not load the Jellyfin servers'); setServers((s) => s ?? []); });
-  }, []);
-
-  // Only one server: nothing to pick.
-  useEffect(() => {
-    if (!serverKey && servers?.length === 1) router.replace(`${LIST}?server=${encodeURIComponent(servers[0].key)}`);
-  }, [servers, serverKey, router]);
-
-  const selected = servers?.find((s) => s.key === serverKey) || null;
-  const pick = (key: string) => router.push(key ? `${LIST}?server=${encodeURIComponent(key)}` : LIST);
-
-  const backButton = (
-    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
-      Back
-    </Button>
-  );
-  const subtitle = 'Catalogs as collections on your own Jellyfin server';
-
-  return (
-    <>
-      {layoutMode !== 'nebula' && (
-        <Header
-          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections' }]} className="text-xl font-semibold" />}
-          subtitle={subtitle}
-          actions={backButton}
-        />
-      )}
-      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-        <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-          {layoutMode === 'nebula' && <NebulaPageHeading title="Jellyfin Collections" subtitle={subtitle} leading={backButton} />}
-
-          <PageSection>
-            {!selected ? (
-              <Card padding="lg" className="mb-6">
-                <label className="block text-xs font-medium text-muted mb-3">Jellyfin server</label>
-                {servers === null || (!serverKey && servers.length === 1) ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-surface-hover animate-pulse" />)}
-                  </div>
-                ) : servers.length === 0 ? (
-                  <p className="text-xs text-subtle">
-                    Nobody here signs in to a Jellyfin server of their own yet. Add someone with Users &rarr; Add &rarr; Jellyfin | AIOStreams.{' '}
-                    <Link href="/guides/add-jellyfin-account" className="text-primary hover:underline">How</Link>
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {servers.map((s) => (
-                      <button
-                        key={s.key}
-                        type="button"
-                        onClick={() => pick(s.key)}
-                        className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
-                      >
-                        <span className="w-10 h-10 rounded-xl bg-surface-hover flex items-center justify-center shrink-0"><ServerStackIcon className="w-5 h-5 text-muted" /></span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-default truncate">{s.name}</p>
-                          <p className="text-xs text-subtle truncate">{s.people.map((p) => p.username).join(', ')}</p>
-                          <Badge variant="jellyfin" size="sm" className="mt-1">Jellyfin</Badge>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            ) : (
-              <ServerCollections key={selected.key} server={selected} canSwitch={(servers?.length || 0) > 1} onSwitch={() => pick('')} />
-            )}
-          </PageSection>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function ServerCollections({ server, canSwitch, onSwitch }: { server: JellyfinCollectionServer; canSwitch: boolean; onSwitch: () => void }) {
+export function ServerCollections({ server, canSwitch, onSwitch }: { server: JellyfinCollectionServer; canSwitch: boolean; onSwitch: () => void }) {
   const path = api.jellyfinCollectionsPath(server.key);
   const [view, setView] = useState<JellyfinCollectionsView | null>(() => api.peekGet<JellyfinCollectionsView>(path) ?? null);
   const [busy, setBusy] = useState<string | null>(null);

@@ -25,6 +25,12 @@ async function resetAccountData(prisma, accountId) {
   await prisma.user.deleteMany({
     where: { accountId }
   });
+
+  // Household profiles hang off people by id only (no relation to cascade),
+  // so they go explicitly - otherwise every reset or import left them behind.
+  await prisma.jellyfinProfile.deleteMany({
+    where: { accountId }
+  });
   
   console.log('Account data reset completed');
 }

@@ -383,7 +383,7 @@ export default function AiostreamsCollectionPage() {
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'AIOStreams Collections', href: listPath }, { label: title }]} className="text-xl font-semibold" />}
+          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin | AIOStreams Collections', href: listPath }, { label: title }]} className="text-xl font-semibold" />}
           subtitle={subtitle}
           actions={<div className="flex items-center gap-2">{backButton}{actions}</div>}
         />

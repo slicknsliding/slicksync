@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
+import { NotificationsDropdown, FLOATING_ICON_STYLE } from '@/components/ui/NotificationsDropdown';
 import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
 import { ResumeTourIcon } from '@/components/ui/icons/ResumeTourIcon';
 import { openCommandPalette } from '@/lib/commandPaletteBus';
@@ -208,27 +208,11 @@ export function TopbarActions({
   const buttons = (
     <div
       ref={buttonsRef}
-      className="flex items-center gap-0.5"
-      style={
-        pinned
-          ? {
-              position: 'fixed',
-              top: pinned.top,
-              right: pinned.right,
-              zIndex: 35,
-              // Only while pinned: inline it sits on the page background and
-              // needs nothing, but pinned it floats over scrolling content
-              // and would otherwise be unreadable against posters and cards.
-              background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-              backdropFilter: 'blur(18px)',
-              WebkitBackdropFilter: 'blur(18px)',
-              border: '1px solid var(--color-surface-border)',
-              boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
-              borderRadius: '0.75rem',
-              padding: '0.125rem',
-            }
-          : undefined
-      }
+      className={`flex items-center ${pinned ? 'gap-2' : 'gap-0.5'}`}
+      // Only while pinned does it float over scrolling content, where the
+      // icons would be unreadable against posters and cards - so each icon
+      // gets its own round backdrop then, not one rectangle around the pair.
+      style={pinned ? { position: 'fixed', top: pinned.top, right: pinned.right, zIndex: 35 } : undefined}
     >
       {/* Styled to match NotificationsDropdown's bell exactly - same
           padding, radius, muted colour and hover treatment - so the two
@@ -238,15 +222,16 @@ export function TopbarActions({
         onClick={openCommandPalette}
         title="Search, jump to a page, or ask how to do something (Ctrl+K)"
         aria-label="Open the command palette"
-        className="p-2 rounded-lg transition-colors"
-        style={{ color: 'var(--color-text-muted)' }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        className={`p-2 transition-colors ${pinned ? 'rounded-full' : 'rounded-lg'}`}
+        style={{ color: 'var(--color-text-muted)', ...(pinned ? FLOATING_ICON_STYLE : {}) }}
+        onMouseEnter={(e) => { if (!pinned) e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
+        onMouseLeave={(e) => { if (!pinned) e.currentTarget.style.background = 'transparent'; }}
       >
         <WizardBooksIcon className="w-5 h-5" />
       </button>
 
       <NotificationsDropdown
+        floating={!!pinned}
         activities={activities}
         inviteHistory={inviteHistory}
         taskHistory={taskHistory}

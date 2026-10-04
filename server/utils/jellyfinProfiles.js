@@ -80,9 +80,12 @@ async function signInHousehold({ probe, login, password, typedLogin }) {
   const out = []
   for (const user of users.filter((u) => u.id !== login.userId)) {
     const names = loginNamesFor(probe.kind, probe.serverUrl, account, user)
-    const entry = { jellyfinUserId: user.id, name: user.name, loginName: names[0] || null, token: null, needsPin: user.needsPin === true }
-    // A user with a PIN is not tried: wrong guesses count towards the
-    // server's lockout, and the household card asks for it instead.
+    // On AIOStreams, a user that can't sign in automatically is one with a PIN,
+    // and isn't tried: wrong guesses count towards its lockout, and the
+    // household card asks for the PIN instead. AIOMetadata marks every user
+    // that way, PIN or not, so there the sign-in itself is the test.
+    const pinHint = probe.kind === 'aiostreams' && user.needsPin === true
+    const entry = { jellyfinUserId: user.id, name: user.name, loginName: names[0] || null, token: null, needsPin: pinHint }
     if (names.length && password != null && !entry.needsPin) {
       const signed = await signInAs(probe.serverUrl, names, user.id, password)
       if (signed.token) { entry.token = signed.token; entry.loginName = signed.loginName }

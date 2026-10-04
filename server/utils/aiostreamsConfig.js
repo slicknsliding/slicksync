@@ -1,4 +1,5 @@
-// Watching AIOStreams configurations for outside changes - read-only.
+// Watching AIOStreams configurations for outside changes (reads only; the
+// one write, for profile variants, is writeConfig below - see its callers).
 //
 // Someone who watches in AIOStreams' own apps has no Stremio or Nuvio account
 // for Account Guard to watch; their AIOStreams configuration is their setup.

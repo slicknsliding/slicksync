@@ -1,5 +1,10 @@
 'use client';
 
+// Jellyfin | AIOStreams collections, one page. An AIOStreams account and a
+// household's own Jellyfin server are both picked here; a Jellyfin server
+// opens components/jellyfin/ServerCollections (catalogs as server-wide
+// Jellyfin collections). For an AIOStreams account, the rest of this note:
+//
 // AIOStreams Collections - which of SlickSync's catalogs show up as
 // collections in an AIOStreams login's apps (and every Jellyfin app signed in
 // to it), in what order, under what name and cover. The counterpart of Nuvio
@@ -24,6 +29,8 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Avatar } from '@/components/ui/Avatar';
+import { ServerStackIcon } from '@heroicons/react/24/outline';
+import { ServerCollections } from '@/components/jellyfin/ServerCollections';
 import {
   Card, Button, ConfirmModal, Badge,
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
@@ -31,7 +38,7 @@ import {
 import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
-import { api, type AioCollection, type AioCollectionAccount, type AioCollectionsView } from '@/lib/api';
+import { api, type AioCollection, type AioCollectionAccount, type AioCollectionsView, type JellyfinCollectionServer } from '@/lib/api';
 
 const LIST = '/catalogs/aiostreams-collections';
 
@@ -96,21 +103,38 @@ export default function AiostreamsCollectionsPage() {
     () => api.peekGet<{ accounts: AioCollectionAccount[] }>('/jellyfin/collections/accounts')?.accounts ?? null,
   );
 
+  const serverKey = searchParams.get('server') || '';
+  const [servers, setServers] = useState<JellyfinCollectionServer[] | null>(
+    () => api.peekGet<{ servers: JellyfinCollectionServer[] }>('/jellyfin/server-collections/servers')?.servers ?? null,
+  );
+
   const loadAccounts = useCallback(() => {
     api.getAioCollectionAccounts()
       .then((r) => setAccounts(r.accounts))
       .catch((e: any) => { toast.error(e?.message || 'Could not load the AIOStreams accounts'); setAccounts((a) => a ?? []); });
   }, []);
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
-
-  // Only one AIOStreams account: nothing to pick.
   useEffect(() => {
-    if (!userId && accounts?.length === 1) router.replace(`${LIST}?user=${encodeURIComponent(accounts[0].id)}`);
-  }, [accounts, userId, router]);
+    api.getJellyfinCollectionServers()
+      .then((r) => setServers(r.servers))
+      .catch(() => setServers((s) => s ?? []));
+  }, []);
+
+  const loading = accounts === null || servers === null;
+  const choices = (accounts?.length || 0) + (servers?.length || 0);
+
+  // Only one AIOStreams account or Jellyfin server: nothing to pick.
+  useEffect(() => {
+    if (userId || serverKey || loading || choices !== 1) return;
+    if (accounts?.length) router.replace(`${LIST}?user=${encodeURIComponent(accounts[0].id)}`);
+    else if (servers?.length) router.replace(`${LIST}?server=${encodeURIComponent(servers[0].key)}`);
+  }, [accounts, servers, userId, serverKey, loading, choices, router]);
 
   const selected = accounts?.find((a) => a.id === userId) || null;
+  const selectedServer = !selected ? servers?.find((s) => s.key === serverKey) || null : null;
   const profile = selected?.profiles.find((p) => p.id === profileParam) || null;
   const pick = (id: string) => router.push(id ? `${LIST}?user=${encodeURIComponent(id)}` : LIST);
+  const pickServer = (key: string) => router.push(`${LIST}?server=${encodeURIComponent(key)}`);
   const pickProfile = (id: string | null) =>
     router.replace(`${LIST}?user=${encodeURIComponent(userId)}${id ? `&profile=${encodeURIComponent(id)}` : ''}`);
 
@@ -119,13 +143,13 @@ export default function AiostreamsCollectionsPage() {
       Back
     </Button>
   );
-  const subtitle = 'Which catalogs show up as collections in an AIOStreams account’s apps';
+  const subtitle = 'Which catalogs show up as collections in AIOStreams’ apps and on your own Jellyfin server';
 
   return (
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'AIOStreams Collections' }]} className="text-xl font-semibold" />}
+          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin | AIOStreams Collections' }]} className="text-xl font-semibold" />}
           subtitle={subtitle}
           actions={backButton}
         />
@@ -133,26 +157,43 @@ export default function AiostreamsCollectionsPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
           {layoutMode === 'nebula' && (
-            <NebulaPageHeading title="AIOStreams Collections" subtitle={subtitle} leading={backButton} />
+            <NebulaPageHeading title="Jellyfin | AIOStreams Collections" subtitle={subtitle} leading={backButton} />
           )}
 
           <PageSection>
             {/* Same account grid -> compact strip as Nuvio Collections. */}
-            {!selected ? (
+            {selectedServer ? (
+              <ServerCollections key={selectedServer.key} server={selectedServer} canSwitch={choices > 1} onSwitch={() => pick('')} />
+            ) : !selected ? (
               <Card padding="lg" className="mb-6">
-                <label className="block text-xs font-medium text-muted mb-3">AIOStreams account</label>
-                {accounts === null || (!userId && accounts.length === 1) ? (
+                <label className="block text-xs font-medium text-muted mb-3">AIOStreams account or Jellyfin server</label>
+                {loading || (!userId && !serverKey && choices === 1) ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-surface-hover animate-pulse" />)}
                   </div>
-                ) : accounts.length === 0 ? (
+                ) : choices === 0 ? (
                   <p className="text-xs text-subtle">
-                    No AIOStreams accounts yet. Add someone who signs in with AIOStreams - Users &rarr; Add &rarr; Jellyfin | AIOStreams.{' '}
+                    Nobody here signs in with AIOStreams or to a Jellyfin server of their own yet. Add someone with Users &rarr; Add &rarr; Jellyfin | AIOStreams.{' '}
                     <Link href="/guides/add-jellyfin-account" className="text-primary hover:underline">How</Link>
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {accounts.map((a) => (
+                    {(servers || []).map((s) => (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => pickServer(s.key)}
+                        className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
+                      >
+                        <span className="w-10 h-10 rounded-xl bg-surface-hover flex items-center justify-center shrink-0"><ServerStackIcon className="w-5 h-5 text-muted" /></span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-default truncate">{s.name}</p>
+                          <p className="text-xs text-subtle truncate">{s.people.map((p) => p.username).join(', ')}</p>
+                          <Badge variant="jellyfin" size="sm" className="mt-1">Jellyfin</Badge>
+                        </div>
+                      </button>
+                    ))}
+                    {(accounts || []).map((a) => (
                       <button
                         key={a.id}
                         type="button"
@@ -175,9 +216,9 @@ export default function AiostreamsCollectionsPage() {
                 <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
                   <button
                     type="button"
-                    onClick={() => (accounts && accounts.length > 1 ? pick('') : undefined)}
+                    onClick={() => (choices > 1 ? pick('') : undefined)}
                     className="flex items-center gap-3 pr-3 rounded-xl hover:bg-surface-hover transition-colors text-left"
-                    title={accounts && accounts.length > 1 ? 'Switch account' : undefined}
+                    title={choices > 1 ? 'Switch account' : undefined}
                   >
                     <Avatar name={selected.name} email={selected.email || undefined} src={selected.avatarUrl || undefined} colorIndex={selected.colorIndex ?? undefined} size="md" />
                     <div className="min-w-0">
@@ -185,7 +226,7 @@ export default function AiostreamsCollectionsPage() {
                         <p className="text-sm font-medium text-default truncate">{selected.name}</p>
                         <Badge variant="aiostreams" size="sm" className="shrink-0">AIOStreams</Badge>
                       </div>
-                      {accounts && accounts.length > 1 && <p className="text-xs text-primary">Switch account</p>}
+                      {choices > 1 && <p className="text-xs text-primary">Switch account</p>}
                     </div>
                   </button>
 

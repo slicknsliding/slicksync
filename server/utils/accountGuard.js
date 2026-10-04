@@ -37,6 +37,14 @@ const crypto = require('crypto')
 
 const BETWEEN_USERS_MS = 250 // gentle on provider APIs when sweeping many users
 
+// Bumped whenever createManifestFingerprint changes what identifies an addon.
+// A baseline recorded under an older identity is re-keyed from the addresses
+// it stores (see upgradeState) - otherwise a change in how addons are told
+// apart would read, on every account at once, as the account having changed.
+// 2: a Stremio addon without a UUID is its whole address, no longer its last
+// path segment ("manifest.json" for nearly every addon).
+const FINGERPRINT_VERSION = 2
+
 function parseGuardState(raw) {
   if (!raw) return {}
   try {
@@ -64,6 +72,29 @@ function computeFingerprint(addons, providerType) {
   return { keys, hash }
 }
 
+function fingerprintOfDescribed(described, providerType) {
+  return computeFingerprint((Array.isArray(described) ? described : []).map((a) => ({ transportUrl: a?.url || '', manifest: { name: a?.name || '' } })), providerType)
+}
+
+/** Re-key baselines (and a standing alarm) recorded under an older identity. Returns whether anything changed. */
+function upgradeState(state) {
+  let changed = false
+  for (const [provider, b] of Object.entries(state.byProvider || {})) {
+    if (b && b.v !== FINGERPRINT_VERSION && Array.isArray(b.addons)) {
+      const { keys, hash } = fingerprintOfDescribed(b.addons, provider)
+      state.byProvider[provider] = { ...b, keys, hash, v: FINGERPRINT_VERSION }
+      changed = true
+    }
+  }
+  const ext = state.external
+  if (ext && ext.v !== FINGERPRINT_VERSION && Array.isArray(ext.currentAddons)) {
+    const { keys, hash } = fingerprintOfDescribed(ext.currentAddons, ext.provider)
+    state.external = { ...ext, currentKeys: keys, currentHash: hash, v: FINGERPRINT_VERSION }
+    changed = true
+  }
+  return changed
+}
+
 /**
  * Record what SlickSync just wrote to (or confirmed on) a provider account.
  * Called from every deliberate collection write. Clears any standing external
@@ -83,6 +114,7 @@ async function recordAssertedState(prisma, userId, providerType, addons) {
       hash,
       addons: (Array.isArray(addons) ? addons : []).map(describeAddon),
       assertedAt: new Date().toISOString(),
+      v: FINGERPRINT_VERSION,
     }
     if (state.external && state.external.provider === provider) delete state.external
     await prisma.user.update({ where: { id: userId }, data: { guardStateJson: JSON.stringify(state) } })
@@ -108,6 +140,7 @@ async function acceptExternalState(prisma, userId) {
     hash: ext.currentHash || '',
     addons: ext.currentAddons || [],
     assertedAt: new Date().toISOString(),
+    v: FINGERPRINT_VERSION,
   }
   delete state.external
   await prisma.user.update({ where: { id: userId }, data: { guardStateJson: JSON.stringify(state) } })
@@ -140,6 +173,9 @@ async function checkUser(prisma, user, req, deps, { prefetchedAddons = null } = 
   const { canonicalizeManifestUrl } = require('./validation')
   const provider = user.providerType || 'stremio'
   const state = parseGuardState(user.guardStateJson)
+  if (upgradeState(state)) {
+    await prisma.user.update({ where: { id: user.id }, data: { guardStateJson: JSON.stringify(state) } })
+  }
   const asserted = state.byProvider?.[provider]
 
   let live = prefetchedAddons
@@ -158,7 +194,7 @@ async function checkUser(prisma, user, req, deps, { prefetchedAddons = null } = 
   // First sight: adopt quietly as the baseline.
   if (!asserted) {
     state.byProvider = state.byProvider || {}
-    state.byProvider[provider] = { keys: currentKeys, hash: currentHash, addons: currentAddons, assertedAt: new Date().toISOString() }
+    state.byProvider[provider] = { keys: currentKeys, hash: currentHash, addons: currentAddons, assertedAt: new Date().toISOString(), v: FINGERPRINT_VERSION }
     await prisma.user.update({ where: { id: user.id }, data: { guardStateJson: JSON.stringify(state) } })
     return { verdict: 'adopted', liveAddons: live, external: null }
   }
@@ -202,6 +238,7 @@ async function checkUser(prisma, user, req, deps, { prefetchedAddons = null } = 
     currentHash,
     currentKeys,
     currentAddons,
+    v: FINGERPRINT_VERSION,
     added,
     removed,
   }
@@ -290,6 +327,8 @@ async function runGuardSweep(prisma, deps, { onlyAccountId = null } = {}) {
 // 5-minute loop (see syncGuardian.js), reusing its per-user provider fetch -
 // a second poller here would double both the API calls and the alerts.
 module.exports = {
+  FINGERPRINT_VERSION,
+  upgradeState,
   recordAssertedState,
   acceptExternalState,
   summarizeExternal,

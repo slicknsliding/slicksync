@@ -679,22 +679,20 @@ function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } 
     if (urlOnly) {
       return normalizeUrl(addon?.transportUrl || addon?.manifestUrl || addon?.url || '')
     }
-    // Extract just the addon ID from the URL path (e.g., /stremio/00000000-0000-4000-8000-000000000000/...)
-    // The URL may contain encrypted tokens that change on each request, so we can't use the full URL
+    // An address with an addon ID in its path (e.g. /stremio/00000000-0000-
+    // 4000-8000-000000000000/<encrypted>/manifest.json, AIOStreams-style) is
+    // identified by that ID: the encrypted part beside it can change while it
+    // is still the same addon. Every other address is identified by the whole
+    // address, canonicalized. (It used to be the last path segment - which is
+    // "manifest.json" for nearly every addon, so Cinemeta, Torrentio and
+    // OpenSubtitles all looked like the same addon and only the count was
+    // ever compared.)
     let url = addon?.transportUrl || addon?.manifestUrl || addon?.url || ''
     try {
       const urlObj = new URL(url)
-      const pathParts = urlObj.pathname.split('/').filter(Boolean) // split and remove empty
-      // Find the addon ID (UUID format: 8-4-4-4-12)
+      const pathParts = urlObj.pathname.split('/').filter(Boolean)
       const uuidMatch = pathParts.find(part => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(part))
-      if (uuidMatch) {
-        url = uuidMatch
-      } else if (pathParts.length > 0) {
-        // Use the last path segment as identifier
-        url = pathParts[pathParts.length - 1]
-      } else {
-        url = normalizeUrl(url)
-      }
+      url = uuidMatch || normalizeUrl(url)
     } catch {
       url = normalizeUrl(url)
     }

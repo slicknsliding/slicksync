@@ -289,7 +289,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         servers: await Promise.all(servers.map(async (s) => {
           let name = null;
           try { name = (await jfRequest(s.url, '/System/Info/Public', { timeoutMs: 5000 }))?.ServerName || null; } catch {}
-          return { key: s.key, name: name || s.address, address: s.address, people: s.people.map((p) => ({ id: p.id, username: p.username })) };
+          return { key: s.key, name: serverCollections.serverDisplayName(name, s.address), address: s.address, people: s.people.map((p) => ({ id: p.id, username: p.username })) };
         })),
       });
     } catch (error) {

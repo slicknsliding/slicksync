@@ -26,6 +26,9 @@ const { jfRequest, deviceIdFor, displayServer, authorizationHeader, restrictsPri
 const SYNC_INTERVAL_MS = 30 * 60 * 1000
 const INDEX_TTL_MS = 5 * 60 * 1000
 const PAGE = 500
+// Ids sent per request. Jellyfin takes them in the address, which it caps at
+// about 8 KB - roughly 240 ids - so a big catalog goes in batches.
+const IDS_PER_REQUEST = 100
 const MAX_COVER_BYTES = 10 * 1024 * 1024
 
 async function readSync(prisma, accountId) {
@@ -51,6 +54,18 @@ async function writeState(prisma, accountId, server, state) {
   const cfg = await readSync(prisma, accountId)
   const all = cfg.jellyfinCollections && typeof cfg.jellyfinCollections === 'object' ? cfg.jellyfinCollections : {}
   await writeSync(prisma, accountId, { ...cfg, jellyfinCollections: { ...all, [server]: state } })
+}
+
+/**
+ * The name to show for a server. Jellyfin names itself after its machine
+ * unless someone sets a name, and in Docker that is the container's random
+ * 12-character id ("67b9ee89e91a") - meaningless to anyone, so the address is
+ * shown instead.
+ */
+function serverDisplayName(name, address) {
+  const n = String(name || '').trim()
+  if (!n || /^[0-9a-f]{12}$/i.test(n) || /^[0-9a-f]{64}$/i.test(n)) return address
+  return n
 }
 
 /** Which server a person is on: its id, or its address when the id is unknown. */
@@ -208,10 +223,18 @@ async function renameInPlace(s, item, name) {
 
 const idsParam = (ids) => ids.map(encodeURIComponent).join(',')
 
+async function addToCollection(s, collectionId, ids) {
+  for (let i = 0; i < ids.length; i += IDS_PER_REQUEST) {
+    await call(s, `/Collections/${encodeURIComponent(collectionId)}/Items?ids=${idsParam(ids.slice(i, i + IDS_PER_REQUEST))}`, { method: 'POST' })
+  }
+}
+
 async function createCollection(s, name, want) {
-  const created = await call(s, `/Collections?name=${encodeURIComponent(name)}&ids=${idsParam(want)}&isLocked=false`, { method: 'POST' })
+  const created = await call(s, `/Collections?name=${encodeURIComponent(name)}&ids=${idsParam(want.slice(0, IDS_PER_REQUEST))}&isLocked=false`, { method: 'POST' })
   if (!created?.Id) throw new Error('The server did not make the collection')
-  return String(created.Id)
+  const id = String(created.Id)
+  await addToCollection(s, id, want.slice(IDS_PER_REQUEST))
+  return id
 }
 
 /**
@@ -269,11 +292,9 @@ async function syncOne(s, list, index, entry, { admin = false } = {}) {
   const have = await collectionChildren(s, collectionId)
   const add = want.filter((id) => !have.includes(id))
   const remove = have.filter((id) => !want.includes(id))
-  for (let i = 0; i < add.length; i += 100) {
-    await call(s, `/Collections/${encodeURIComponent(collectionId)}/Items?ids=${idsParam(add.slice(i, i + 100))}`, { method: 'POST' })
-  }
-  for (let i = 0; i < remove.length; i += 100) {
-    await call(s, `/Collections/${encodeURIComponent(collectionId)}/Items?ids=${idsParam(remove.slice(i, i + 100))}`, { method: 'DELETE' })
+  await addToCollection(s, collectionId, add)
+  for (let i = 0; i < remove.length; i += IDS_PER_REQUEST) {
+    await call(s, `/Collections/${encodeURIComponent(collectionId)}/Items?ids=${idsParam(remove.slice(i, i + IDS_PER_REQUEST))}`, { method: 'DELETE' })
   }
   return { collectionId, matched: want.length, ...(await syncCover(s, collectionId, list, entry, admin)) }
 }
@@ -286,7 +307,9 @@ async function removeCollection(s, collectionId) {
   } catch (e) {
     if (e.status !== 401 && e.status !== 403) throw e
     const have = await collectionChildren(s, collectionId)
-    if (have.length) await call(s, `/Collections/${encodeURIComponent(collectionId)}/Items?ids=${idsParam(have)}`, { method: 'DELETE' })
+    for (let i = 0; i < have.length; i += IDS_PER_REQUEST) {
+      await call(s, `/Collections/${encodeURIComponent(collectionId)}/Items?ids=${idsParam(have.slice(i, i + IDS_PER_REQUEST))}`, { method: 'DELETE' })
+    }
   }
 }
 
@@ -342,7 +365,7 @@ async function describeServer(prisma, decrypt, accountId, server) {
     try { index = await libraryIndex(reader, server) } catch (e) { console.warn('[JellyfinCollections] library read failed:', e?.message) }
   }
   return {
-    server: { key: server.key, name: actor.serverName || server.address, address: server.address },
+    server: { key: server.key, name: serverDisplayName(actor.serverName, server.address), address: server.address },
     people: server.people.map((p) => ({ id: p.id, username: p.username })),
     actor: actor.session ? { id: actor.session.person.id, username: actor.session.person.username, admin: !!actor.admin } : null,
     lastSyncAt: state.lastSyncAt || null,
@@ -393,4 +416,4 @@ function scheduleServerCollections(prisma, decrypt) {
   timer = setInterval(run, SYNC_INTERVAL_MS)
 }
 
-module.exports = { serversFor, describeServer, setCatalog, syncServer, scheduleServerCollections, serverKeyOf, syncOne }
+module.exports = { serverDisplayName, serversFor, describeServer, setCatalog, syncServer, scheduleServerCollections, serverKeyOf, syncOne }

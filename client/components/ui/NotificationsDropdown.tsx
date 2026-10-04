@@ -29,12 +29,24 @@ interface NotificationsDropdownProps {
   activities?: any[];
   inviteHistory?: any[];
   taskHistory?: any[];
+  /** While the topbar buttons float over the page: the bell gets its own round
+   *  backdrop so it stays readable over posters (see TopbarActions). */
+  floating?: boolean;
 }
+
+/** Each floating topbar icon's own round backdrop - shared with TopbarActions. */
+export const FLOATING_ICON_STYLE: React.CSSProperties = {
+  background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+  backdropFilter: 'blur(18px)',
+  WebkitBackdropFilter: 'blur(18px)',
+  border: '1px solid var(--color-surface-border)',
+  boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+};
 
 const DISMISSED_STORAGE_KEY = 'notifications-dismissed-ids';
 const READ_STORAGE_KEY = 'notifications-read-ids';
 
-export function NotificationsDropdown({ activities = [], inviteHistory = [], taskHistory = [] }: NotificationsDropdownProps) {
+export function NotificationsDropdown({ activities = [], inviteHistory = [], taskHistory = [], floating = false }: NotificationsDropdownProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -561,13 +573,13 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-lg transition-colors"
-        style={{ color: 'var(--color-text-muted)' }}
+        className={`relative p-2 transition-colors ${floating ? 'rounded-full' : 'rounded-lg'}`}
+        style={{ color: 'var(--color-text-muted)', ...(floating ? FLOATING_ICON_STYLE : {}) }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--color-surface-hover)';
+          if (!floating) e.currentTarget.style.background = 'var(--color-surface-hover)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
+          if (!floating) e.currentTarget.style.background = 'transparent';
         }}
         aria-label="Notifications"
       >

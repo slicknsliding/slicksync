@@ -114,3 +114,25 @@ test('catalog cover goes on the collection once, as an administrator only', asyn
   assert.equal(manager.cover, null)
   assert.equal(jf2.pictures.length, 0)
 })
+
+test('a big catalog goes in batches Jellyfin accepts (no address over its ~8 KB cap)', async () => {
+  const jf = fakeJellyfin()
+  const longest = { n: 0 }
+  const realFetch = global.fetch
+  global.fetch = async (url, opts) => { longest.n = Math.max(longest.n, String(url).length); return realFetch(url, opts) }
+  const big = new Map()
+  const ids = []
+  for (let i = 1; i <= 1000; i++) { const tt = `tt9${String(i).padStart(7, '0')}`; ids.push(tt); big.set(tt, `item${String(i).padStart(28, '0')}`) }
+  const r = await syncOne(s, list(ids), big, {})
+  assert.equal(r.matched, 1000)
+  assert.equal(jf.collections.get(r.collectionId).items.length, 1000)
+  assert.ok(longest.n < 8000, `longest address was ${longest.n} characters`)
+})
+
+test('a server named after its Docker container shows its address instead', () => {
+  const { serverDisplayName } = require('../server/utils/jellyfinServerCollections')
+  assert.equal(serverDisplayName('67b9ee89e91a', 'jellyfin:8096'), 'jellyfin:8096')
+  assert.equal(serverDisplayName('', 'jellyfin:8096'), 'jellyfin:8096')
+  assert.equal(serverDisplayName('Living Room Server', 'jellyfin:8096'), 'Living Room Server')
+  assert.equal(serverDisplayName('cafebabe', 'jellyfin:8096'), 'cafebabe')
+})
