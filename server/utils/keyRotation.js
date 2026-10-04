@@ -114,6 +114,18 @@ async function propagateSecretRotation(prisma, reqLike, deps, { accountId, oldSe
     changedIds.push(addon.id)
     summary.addonsUpdated.push({ id: addon.id, name: addon.name })
   }
+
+  // AIOStreams configurations keep their own copy of a debrid key - see
+  // utils/aioServiceKeys.js. Done whether or not any addon carried the key:
+  // a household watching only through AIOStreams may have no such addon.
+  try {
+    const aio = await require('./aioServiceKeys').rotateInAioConfigs(prisma, decrypt, { accountId, oldSecret, newSecret })
+    summary.aioConfigsUpdated = aio.updated
+    if (aio.failed.length) summary.aioConfigFailures = aio.failed
+  } catch (e) {
+    console.warn('[KeyRotation] AIOStreams configurations not updated:', e?.message)
+  }
+
   if (changedIds.length === 0) return summary
 
   // Users to re-sync: anyone whose group carries a changed addon. The sync

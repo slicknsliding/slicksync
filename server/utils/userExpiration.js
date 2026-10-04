@@ -213,6 +213,15 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
     }
 
     console.log(`✅ User expiration cleanup completed: ${expiredUsers.length} user(s) deleted`)
+
+    // Jellyfin accounts an invite made for them are switched off now rather
+    // than at the next ten-minute check (utils/jellyfinInviteAccounts.js).
+    if (decrypt) {
+      for (const accountId of usersByAccount.keys()) {
+        try { await require('./jellyfinInviteAccounts').reconcileAccount(prisma, decrypt, accountId) }
+        catch (e) { console.warn('⚠️  Could not switch off invite-made Jellyfin accounts:', e?.message) }
+      }
+    }
   } catch (error) {
     console.error('❌ Error during user expiration cleanup:', error)
   } finally {

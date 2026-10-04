@@ -373,6 +373,100 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // Opt-in: Vault key changes also update this AIOStreams person's debrid
+  // keys inside their configuration (utils/aioServiceKeys.js).
+  router.get('/users/:id/aio-rotate-keys', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioServiceKeys').statusFor(prisma, getAccountId(req), req.params.id));
+    } catch (error) {
+      sendError(res, error, 'Could not read that setting');
+    }
+  });
+
+  router.put('/users/:id/aio-rotate-keys', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const keys = require('../utils/aioServiceKeys');
+      const status = await keys.statusFor(prisma, accountId, req.params.id);
+      if (!status.available) return res.status(404).json({ error: 'Not an AIOStreams person' });
+      await keys.setEnabled(prisma, accountId, String(req.params.id), req.body?.enabled === true);
+      res.json(await keys.statusFor(prisma, accountId, req.params.id));
+    } catch (error) {
+      sendError(res, error, 'Could not change that setting');
+    }
+  });
+
+  // A Jellyfin person's age limit on their server (utils/jellyfinParental.js).
+  router.get('/users/:id/age-limit', async (req, res) => {
+    try {
+      res.json(await require('../utils/jellyfinParental').getAgeLimit(prisma, decrypt, getAccountId(req), req.params.id));
+    } catch (error) {
+      sendError(res, error, 'Could not read the age limit');
+    }
+  });
+
+  router.put('/users/:id/age-limit', async (req, res) => {
+    try {
+      res.json(await require('../utils/jellyfinParental').setAgeLimit(prisma, decrypt, getAccountId(req), req.params.id, {
+        value: req.body?.value ?? null,
+        blockUnrated: typeof req.body?.blockUnrated === 'boolean' ? req.body.blockUnrated : undefined,
+      }));
+    } catch (error) {
+      sendError(res, error, 'Could not set the age limit');
+    }
+  });
+
+  // Real Jellyfin servers an invitation can make accounts on: those where
+  // someone here signs in as an administrator (utils/jellyfinInviteAccounts.js).
+  router.get('/invite-servers', async (req, res) => {
+    try {
+      res.json({ servers: await require('../utils/jellyfinInviteAccounts').inviteServers(prisma, decrypt, getAccountId(req)) });
+    } catch (error) {
+      sendError(res, error, 'Could not read the Jellyfin servers');
+    }
+  });
+
+  // Whether what this person finishes elsewhere is marked played on their
+  // real Jellyfin server (utils/jellyfinMarkPlayed.js), and switching it.
+  router.get('/users/:id/mark-played', async (req, res) => {
+    try {
+      res.json(await require('../utils/jellyfinMarkPlayed').statusFor(prisma, getAccountId(req), String(req.params.id)));
+    } catch (error) {
+      sendError(res, error, 'Could not read that setting');
+    }
+  });
+
+  router.put('/users/:id/mark-played', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const person = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId }, select: { id: true } });
+      if (!person) return res.status(404).json({ error: 'Person not found' });
+      const mp = require('../utils/jellyfinMarkPlayed');
+      await mp.setEnabled(prisma, accountId, person.id, req.body?.enabled === true);
+      res.json(await mp.statusFor(prisma, accountId, person.id));
+    } catch (error) {
+      sendError(res, error, 'Could not change that setting');
+    }
+  });
+
+  // What is signed in as someone on a real Jellyfin server, and signing a
+  // device out (utils/jellyfinDevices.js).
+  router.get('/users/:id/devices', async (req, res) => {
+    try {
+      res.json(await require('../utils/jellyfinDevices').listDevices(prisma, decrypt, getAccountId(req), req.params.id));
+    } catch (error) {
+      sendError(res, error, 'Could not read the signed-in devices');
+    }
+  });
+
+  router.delete('/users/:id/devices/:deviceId', async (req, res) => {
+    try {
+      res.json(await require('../utils/jellyfinDevices').signOutDevice(prisma, decrypt, getAccountId(req), req.params.id, req.params.deviceId));
+    } catch (error) {
+      sendError(res, error, 'Could not sign that device out');
+    }
+  });
+
   // Sign a TV (or any Jellyfin app) in with the Quick Connect code it shows,
   // as this person or one of their household profiles: SlickSync approves the
   // code with that sign-in, and the server signs the device in as them.

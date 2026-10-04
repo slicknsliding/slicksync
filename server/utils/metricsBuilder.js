@@ -966,6 +966,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         lastPosition: v.positionMs,
         totalDuration: v.durationMs,
         source: v.source || 'aiostreams',
+        // The device and app it's playing on, when the server says (Jellyfin does).
+        ...(v.device ? { device: v.device } : {}),
         // A Jellyfin app has no link to open a title with, and a Stremio or
         // Nuvio one would open the wrong app.
         ...(v.source === 'jellyfin' ? {} : {

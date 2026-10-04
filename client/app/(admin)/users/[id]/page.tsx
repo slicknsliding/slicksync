@@ -17,6 +17,10 @@ import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { providerLabel, providerBadgeVariant, hasAddonList } from '@/lib/providers';
 import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
+import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButton';
+import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
+import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
+import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -1251,6 +1255,13 @@ export default function UserDetailPage() {
                         {user.providerType === 'jellyfin' && (
                           <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
+                        {/* Only a real Jellyfin server keeps a device list. */}
+                        {user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin' && (
+                          <>
+                            <JellyfinDevicesButton userId={user.id} name={user.username || user.name || 'them'} />
+                            <AgeLimitButton userId={user.id} name={user.username || user.name || 'them'} />
+                          </>
+                        )}
                         {/* Only worth saying when it is not the primary - a
                             Nuvio user that manages profile 1 is the ordinary
                             case and does not need labelling. */}
@@ -1613,6 +1624,13 @@ export default function UserDetailPage() {
                 {/* AIOStreams watch history - the Watch State exchange.
                     See server/utils/watchState.js. */}
                 <WatchStateRow userId={user.id} />
+
+                {/* Played marks pushed to their real Jellyfin server; only
+                    shows for someone who has one. */}
+                <MarkPlayedRow userId={user.id} />
+
+                {/* Opt-in: Vault key changes reach their AIOStreams setup. */}
+                <AioRotateKeysRow userId={user.id} name={user.username || user.name || 'them'} />
                 </div>)}
 
               </Card>

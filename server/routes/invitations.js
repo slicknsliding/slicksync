@@ -31,7 +31,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         orderBy: { createdAt: 'desc' }
       })
 
-      res.json(invitations)
+      // Which Jellyfin server each one makes accounts on (utils/jellyfinInviteAccounts.js).
+      let makes = {}
+      try {
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        const cfg = typeof acc?.sync === 'string' ? JSON.parse(acc.sync) : (acc?.sync || {})
+        makes = cfg.jellyfinInvites || {}
+      } catch {}
+      res.json(invitations.map((inv) => ({ ...inv, jellyfinServerKey: makes[inv.id] || null })))
     } catch (error) {
       console.error('Error fetching invitations:', error)
       res.status(500).json({ error: 'Failed to fetch invitations' })
@@ -154,7 +161,9 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         console.error('Failed to send invitation webhook:', webhookError)
       }
 
-      res.json(invitation)
+      const jellyfinServerKey = typeof req.body?.jellyfinServerKey === 'string' && req.body.jellyfinServerKey ? req.body.jellyfinServerKey : null
+      if (jellyfinServerKey) await require('../utils/jellyfinInviteAccounts').setInvitationServer(prisma, accountId, invitation.id, jellyfinServerKey)
+      res.json({ ...invitation, jellyfinServerKey })
     } catch (error) {
       console.error('Error creating invitation:', error)
       res.status(500).json({ error: 'Failed to create invitation' })
@@ -230,7 +239,11 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         }
       })
 
-      res.json(updated)
+      const inviteAccounts = require('../utils/jellyfinInviteAccounts')
+      if (req.body?.jellyfinServerKey !== undefined) {
+        await inviteAccounts.setInvitationServer(prisma, accountId, id, req.body.jellyfinServerKey || null)
+      }
+      res.json({ ...updated, jellyfinServerKey: await inviteAccounts.invitationServer(prisma, accountId, id) })
     } catch (error) {
       console.error('Error updating invitation:', error)
       res.status(500).json({ error: 'Failed to update invitation' })
@@ -410,6 +423,16 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
             inviteCode: request.invitation.inviteCode
           }
         })
+
+        // A Jellyfin account this invitation made was kept switched off
+        // until now (utils/jellyfinInviteAccounts.js).
+        if (isJellyfinRequest) {
+          try {
+            await require('../utils/jellyfinInviteAccounts').onAccepted(prisma, decrypt, request.invitation.accountId, newUser)
+          } catch (e) {
+            console.warn('Could not switch on the Jellyfin account made for this invite:', e?.message)
+          }
+        }
 
         try {
           const { emitAutomationEvent } = require('../utils/automation/engine')
@@ -718,6 +741,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
       }
       if (request.status === 'pending') {
         return res.status(400).json({ error: 'Cannot delete pending requests. Reject them instead.' })
+      }
+      // A Jellyfin account the invitation made for a request that was never
+      // accepted goes with the request.
+      try {
+        await require('../utils/jellyfinInviteAccounts').onRequestDropped(prisma, decrypt, accountId, request)
+      } catch (e) {
+        console.warn('Could not remove the Jellyfin account made for this request:', e?.message)
       }
 
       // Delete the request
@@ -1065,11 +1095,15 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
       if (!invitation) return res.status(404).json({ error: 'Invitation not found' })
 
+      // An invitation that makes Jellyfin accounts says which server.
+      let jellyfinNewAccount = null
+      try { jellyfinNewAccount = await require('../utils/jellyfinInviteAccounts').publicOffer(prisma, invitation) } catch {}
       res.json({
         isActive: invitation.isActive,
         expiresAt: invitation.expiresAt,
         currentUses: invitation.currentUses,
-        maxUses: invitation.maxUses
+        maxUses: invitation.maxUses,
+        jellyfinNewAccount,
       })
     } catch (error) {
       console.error('Error checking invitation:', error)
@@ -1080,7 +1114,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
   publicRouter.post('/:inviteCode/request', async (req, res) => {
     try {
       const { inviteCode } = req.params
-      const { username, authKey, email: legacyEmail, nuvioCode, jellyfin } = req.body
+      const { username, authKey, email: legacyEmail, nuvioCode, jellyfin, jellyfinNew } = req.body
 
       // Four ways in: a Stremio auth key, a Nuvio device-login code that the
       // poll above already exchanged, a sign-in to a Jellyfin-compatible
@@ -1089,12 +1123,14 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       const hasAuthKey = authKey && typeof authKey === 'string' && authKey.trim()
       const hasNuvio = nuvioCode && typeof nuvioCode === 'string' && nuvioCode.trim()
       const hasJellyfin = jellyfin && typeof jellyfin === 'object' && typeof jellyfin.serverUrl === 'string' && jellyfin.serverUrl.trim()
+      // A new account the invitation makes on its Jellyfin server.
+      const wantsNewJellyfin = jellyfinNew && typeof jellyfinNew === 'object' && typeof jellyfinNew.password === 'string'
 
       if (!username) {
         return res.status(400).json({ error: 'Username is required' })
       }
 
-      if (!hasAuthKey && !hasNuvio && !hasJellyfin && !legacyEmail) {
+      if (!hasAuthKey && !hasNuvio && !hasJellyfin && !wantsNewJellyfin && !legacyEmail) {
         return res.status(400).json({ error: 'Sign in with Stremio, Nuvio or your server, or provide an email' })
       }
 
@@ -1122,13 +1158,16 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       let nuvioUserId = null
       let jellyfinData = null
 
-      // A Jellyfin-compatible server: sign in here and keep the token.
-      if (hasJellyfin) {
+      // A Jellyfin-compatible server: sign in here and keep the token - or,
+      // for an invitation that makes accounts, make one and sign in as it.
+      if (hasJellyfin || wantsNewJellyfin) {
         const { signInFromBody, jellyfinFields } = require('../utils/jellyfinConnect')
         const { identityEmail } = require('../providers/jellyfinAuth')
         let signedIn
         try {
-          signedIn = await signInFromBody(jellyfin)
+          signedIn = wantsNewJellyfin
+            ? await require('../utils/jellyfinInviteAccounts').createForRequest(prisma, decrypt, invitation, { username, password: jellyfinNew.password })
+            : await signInFromBody(jellyfin)
         } catch (err) {
           const status = err?.status === 401 ? 401 : 400
           return res.status(status).json({ error: err?.message || 'Could not sign in to the server', ...(err?.pinNeeded ? { pinNeeded: true } : {}) })

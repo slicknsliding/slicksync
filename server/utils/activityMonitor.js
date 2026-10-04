@@ -330,6 +330,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       // library reads above - see utils/jellyfinLive.js.
       try {
         await require('./jellyfinLive').announceStarts(prisma, accountId, users)
+        await require('./jellyfinLive').noteDevices(prisma, accountId, users)
       } catch (liveError) {
         console.warn(`[ActivityMonitor] Error announcing Jellyfin viewings:`, liveError.message)
       }

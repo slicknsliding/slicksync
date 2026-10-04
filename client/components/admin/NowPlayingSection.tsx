@@ -30,6 +30,12 @@ interface NowPlayingItem {
   // raw wall-clock (see server/utils/proxyNowPlaying.js). Prefer this over
   // watchedAtTimestamp whenever present.
   elapsedSeconds?: number;
+  device?: { name: string | null; client: string | null } | null;
+}
+
+/** "Living room TV · Infuse" - the device and app a viewing is on, when known. */
+function deviceLabel(device?: { name: string | null; client: string | null } | null) {
+  return device ? [device.name, device.client].filter(Boolean).join(' · ') : '';
 }
 
 interface NowPlayingSectionProps {
@@ -124,6 +130,9 @@ export function NowPlayingSection({ items, now, fetchedAt }: NowPlayingSectionPr
                     S{item.item.season.toString().padStart(2, '0')}E{item.item.episode.toString().padStart(2, '0')}
                   </Badge>
                 </>
+              )}
+              {deviceLabel(item.device) && (
+                <span className="truncate" title={`Playing on ${deviceLabel(item.device)}`}>• {deviceLabel(item.device)}</span>
               )}
             </div>
           </div>

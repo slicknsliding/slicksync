@@ -239,6 +239,9 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         item: it,
         positionMs: ticksToMs(s.PlayState?.PositionTicks),
         paused: s.PlayState?.IsPaused === true,
+        // Which device and app - "Living room TV", "Infuse". Real Jellyfin
+        // reports these; AIOStreams and AIOMetadata have no sessions list.
+        device: s.DeviceId || s.DeviceName ? { id: s.DeviceId || null, name: s.DeviceName || null, client: s.Client || null } : null,
       })
     }
 
@@ -250,7 +253,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
 
     // Candidates are ranked by when they were last touched; a live one is "now".
     const entries = new Map()
-    function consider(it, { livePos = null, liveAt = null, paused = false } = {}) {
+    function consider(it, { livePos = null, liveAt = null, paused = false, device = null } = {}) {
       if (!it || (it.Type !== 'Movie' && it.Type !== 'Episode')) return
       const ud = it.UserData || {}
       const durationMs = ticksToMs(it.RunTimeTicks)
@@ -309,7 +312,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         _mtime: lastWatchedMs || now,
         _ctime: lastWatchedMs || now,
         removed: false,
-        _jf: { itemId: normId(it.Id), seriesId: it.SeriesId ? normId(it.SeriesId) : null, live: livePos != null, paused, profile: viewer.label },
+        _jf: { itemId: normId(it.Id), seriesId: it.SeriesId ? normId(it.SeriesId) : null, live: livePos != null, paused, profile: viewer.label, device },
       }
       const kept = entries.get(id)
       if (!kept || (candidate._mtime > kept._mtime) || (candidate._jf.live && !kept._jf.live)) entries.set(id, candidate)
@@ -317,7 +320,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
 
     for (const it of played) consider(it)
     for (const it of resume) consider(it)
-    for (const [, l] of liveById) consider(l.item, { livePos: l.positionMs, liveAt: l.paused ? null : now, paused: l.paused })
+    for (const [, l] of liveById) consider(l.item, { livePos: l.positionMs, liveAt: l.paused ? null : now, paused: l.paused, device: l.device })
 
     // Favourites with nothing played are library bookmarks, the same as a
     // Stremio library item that was added but never opened.
@@ -404,6 +407,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
               durationMs: e.state.duration || null,
               paused: e._jf.paused === true,
               profileLabel: e._jf.profile || null,
+              device: e._jf.device || null,
             })
           }
         }
