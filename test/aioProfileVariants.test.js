@@ -85,7 +85,7 @@ test('after a link is rotated, the profile variant follows the new link', async 
   aio.config.presets.find((p) => p.instanceId === 'slk').options.manifestUrl = `https://ss.example.com/trax/${NEW}/aio/manifest.json`
   await setProfileVariant(prisma, decrypt, { ...owner, traxToken: NEW }, kid, true)
   const script = aio.config.variants.find((v) => v.id === 'slicksync-kid').script
-  assert.match(script, new RegExp(`/trax/${NEW}/aio/p/prof_kid/manifest\.json`))
+  assert.ok(script.includes(`/trax/${NEW}/aio/p/prof_kid/manifest.json`))
   assert.equal(aio.config.variants.filter((v) => v.id === 'slicksync-kid').length, 1)
   assert.equal(aio.puts, 2)
 
