@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
@@ -42,6 +42,26 @@ export const FLOATING_ICON_STYLE: React.CSSProperties = {
   border: '1px solid var(--color-surface-border)',
   boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
 };
+
+// The bell remounts with the page header on every navigation, and each of
+// its sources arrives on its own schedule (stored notifications after a short
+// stagger, alerts straight away). Starting each one empty made the count drop
+// to whatever landed first and climb back - 18, then 1, then 18 - on every
+// page change. Each source now starts from what it last held this session;
+// a sign-out reloads the page, so nothing carries over between accounts.
+const lastKnown: Record<string, any[]> = {};
+type ListUpdate = any[] | ((prev: any[]) => any[]);
+function useRememberedList(key: string): [any[], (next: ListUpdate) => void] {
+  const [value, setValue] = useState<any[]>(() => lastKnown[key] || []);
+  const set = useCallback((next: ListUpdate) => {
+    setValue((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      lastKnown[key] = resolved;
+      return resolved;
+    });
+  }, [key]);
+  return [value, set];
+}
 
 const DISMISSED_STORAGE_KEY = 'notifications-dismissed-ids';
 const READ_STORAGE_KEY = 'notifications-read-ids';
@@ -143,11 +163,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     router.push(url);
   };
 
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useRememberedList('pendingRequests');
   // Accepted invite requests, from the same fetch as pendingRequests below -
   // this IS "real" inviteHistory, no separate endpoint needed. Merged with
   // any inviteHistory passed in via props.
-  const [acceptedRequests, setAcceptedRequests] = useState<any[]>([]);
+  const [acceptedRequests, setAcceptedRequests] = useRememberedList('acceptedRequests');
 
   // Persistent bell notifications (notifications table) - the durable event
   // store written from the SAME dispatch path as push/Discord
@@ -157,7 +177,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // empty for proxy-only or mismatched-account watches even though push and
   // Discord both fired. Watch, sync, vault, invite and mismatch events all
   // flow through here; episode/addon alerts keep their own sources below.
-  const [storedNotifications, setStoredNotifications] = useState<any[]>([]);
+  const [storedNotifications, setStoredNotifications] = useRememberedList('storedNotifications');
   useEffect(() => {
     const fetchStored = async () => {
       // Skip while the tab isn't the one on screen - a backgrounded Safari
@@ -235,7 +255,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // New-episode alerts (fired server-side by the episodeAlerts poller when a
   // show someone here watches gets a newly-released episode). Server polls
   // Cinemeta every 6h, so a 5min client refresh is plenty.
-  const [episodeAlerts, setEpisodeAlerts] = useState<any[]>([]);
+  const [episodeAlerts, setEpisodeAlerts] = useRememberedList('episodeAlerts');
   useEffect(() => {
     const fetchAlerts = async () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
@@ -253,7 +273,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // Addon online<->offline alerts (fired server-side by addonHealthCheck.js
   // when a primary addon goes down - and getGroupAddons silently diverts
   // groups to its backup - or comes back). Same cadence as episode alerts.
-  const [addonHealthAlerts, setAddonHealthAlerts] = useState<any[]>([]);
+  const [addonHealthAlerts, setAddonHealthAlerts] = useRememberedList('addonHealthAlerts');
   useEffect(() => {
     const fetchAddonAlerts = async () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;

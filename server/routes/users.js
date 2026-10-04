@@ -3693,7 +3693,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     let raw = []
     try {
       raw = await provider.getProfiles()
-    } catch {
+    } catch (e) {
+      // An expired sign-in won't fix itself on a retry - say what to do.
+      if (/authentication expired|session does not exist|unauthori[sz]ed|invalid auth| 401/i.test(e?.message || '')) {
+        return { status: 502, message: `${user.username || 'This person'}'s Nuvio sign-in has expired - reconnect them to see their profiles` }
+      }
       return { status: 502, message: "Could not read this account's profiles from Nuvio just now" }
     }
     const profiles = (raw || [])
