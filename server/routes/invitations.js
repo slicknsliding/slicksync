@@ -342,7 +342,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
       // Stremio auth key, or a Nuvio refresh token. Either one means the
       // person already proved who they are, so the user can be made now.
       const isNuvioRequest = request.providerType === 'nuvio' && !!request.nuvioRefreshToken
-      if (request.stremioAuthKey || isNuvioRequest) {
+      const isJellyfinRequest = request.providerType === 'jellyfin' && !!request.jellyfinToken
+      if (request.stremioAuthKey || isNuvioRequest || isJellyfinRequest) {
         // Ensure email uniqueness across all accounts
         const { ensureEmailUniqueness } = require('../utils/helpers/database')
         await ensureEmailUniqueness(prisma, request.email, request.invitation.accountId)
@@ -355,7 +356,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
           where: {
             accountId: request.invitation.accountId,
             email: request.email,
-            providerType: isNuvioRequest ? 'nuvio' : 'stremio'
+            providerType: isJellyfinRequest ? 'jellyfin' : isNuvioRequest ? 'nuvio' : 'stremio'
           }
         })
 
@@ -392,10 +393,18 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
             accountId: request.invitation.accountId,
             email: request.email,
             username: request.username,
-            providerType: isNuvioRequest ? 'nuvio' : 'stremio',
-            stremioAuthKey: isNuvioRequest ? null : request.stremioAuthKey,
+            providerType: isJellyfinRequest ? 'jellyfin' : isNuvioRequest ? 'nuvio' : 'stremio',
+            stremioAuthKey: isNuvioRequest || isJellyfinRequest ? null : request.stremioAuthKey,
             nuvioRefreshToken: isNuvioRequest ? request.nuvioRefreshToken : null,
             nuvioUserId: isNuvioRequest ? request.nuvioUserId : null,
+            ...(isJellyfinRequest ? {
+              jellyfinServerUrl: request.jellyfinServerUrl,
+              jellyfinServerId: request.jellyfinServerId,
+              jellyfinServerKind: request.jellyfinServerKind,
+              jellyfinUserId: request.jellyfinUserId,
+              jellyfinUserName: request.jellyfinUserName,
+              jellyfinToken: request.jellyfinToken,
+            } : {}),
             isActive: true,
             expiresAt: computedExpiresAt,
             inviteCode: request.invitation.inviteCode
@@ -865,6 +874,24 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
     }
   })
 
+  // --- Jellyfin-compatible server sign-in, for someone joining by invite ---
+  //
+  // Same steps the admin's Add User uses (utils/jellyfinConnect.js), gated on
+  // a live invitation instead of a session. The sign-in itself happens in the
+  // request route below, so the server's token never reaches the browser.
+  const inviteJellyfinRouter = express.Router({ mergeParams: true })
+  inviteJellyfinRouter.use(async (req, res, next) => {
+    try {
+      const { error, message } = await liveInvitation(req.params.inviteCode)
+      if (error) return res.status(error).json({ error: message })
+      next()
+    } catch (e) {
+      res.status(500).json({ error: 'Could not check the invitation' })
+    }
+  })
+  require('../utils/jellyfinConnect').mountSignInSteps(inviteJellyfinRouter)
+  publicRouter.use('/:inviteCode/jellyfin', inviteJellyfinRouter)
+
   // Generate OAuth link for account deletion (public endpoint, no invite code needed)
   // MUST be defined BEFORE /:inviteCode routes to avoid route conflicts
   publicRouter.post('/generate-oauth', async (req, res) => {
@@ -1053,20 +1080,22 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
   publicRouter.post('/:inviteCode/request', async (req, res) => {
     try {
       const { inviteCode } = req.params
-      const { username, authKey, email: legacyEmail, nuvioCode } = req.body
+      const { username, authKey, email: legacyEmail, nuvioCode, jellyfin } = req.body
 
-      // Three ways in: a Stremio auth key, a Nuvio device-login code that the
-      // poll above already exchanged, or the older email-only request that
-      // waits for the admin to sort out the account.
+      // Four ways in: a Stremio auth key, a Nuvio device-login code that the
+      // poll above already exchanged, a sign-in to a Jellyfin-compatible
+      // server, or the older email-only request that waits for the admin to
+      // sort out the account.
       const hasAuthKey = authKey && typeof authKey === 'string' && authKey.trim()
       const hasNuvio = nuvioCode && typeof nuvioCode === 'string' && nuvioCode.trim()
+      const hasJellyfin = jellyfin && typeof jellyfin === 'object' && typeof jellyfin.serverUrl === 'string' && jellyfin.serverUrl.trim()
 
       if (!username) {
         return res.status(400).json({ error: 'Username is required' })
       }
 
-      if (!hasAuthKey && !hasNuvio && !legacyEmail) {
-        return res.status(400).json({ error: 'Sign in with Stremio or Nuvio, or provide an email' })
+      if (!hasAuthKey && !hasNuvio && !hasJellyfin && !legacyEmail) {
+        return res.status(400).json({ error: 'Sign in with Stremio, Nuvio or your server, or provide an email' })
       }
 
       const invitation = await prisma.invitation.findUnique({
@@ -1091,6 +1120,25 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       let providerType = 'stremio'
       let encryptedNuvioToken = null
       let nuvioUserId = null
+      let jellyfinData = null
+
+      // A Jellyfin-compatible server: sign in here and keep the token.
+      if (hasJellyfin) {
+        const { signInFromBody, jellyfinFields } = require('../utils/jellyfinConnect')
+        const { identityEmail } = require('../providers/jellyfinAuth')
+        let signedIn
+        try {
+          signedIn = await signInFromBody(jellyfin)
+        } catch (err) {
+          const status = err?.status === 401 ? 401 : 400
+          return res.status(status).json({ error: err?.message || 'Could not sign in to the server', ...(err?.pinNeeded ? { pinNeeded: true } : {}) })
+        }
+        await require('../utils/jellyfinConnect').rememberSignIn(prisma, encrypt, signedIn.probe, signedIn.login)
+        const { providerType: _jfType, ...fields } = jellyfinFields(signedIn.probe, signedIn.login, encrypt, { appAccountId: invitation.accountId })
+        jellyfinData = fields
+        providerType = 'jellyfin'
+        email = identityEmail(signedIn.probe.serverUrl, signedIn.login.userId)
+      }
 
       // Nuvio: the token was exchanged during the poll and held server-side,
       // so all the browser sends back is the code it was issued.
@@ -1183,11 +1231,14 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
           providerType,
           stremioAuthKey: encryptedAuthKey,
           nuvioRefreshToken: encryptedNuvioToken,
-          nuvioUserId
+          nuvioUserId,
+          ...(jellyfinData || {})
         }
       })
 
-      res.json(request)
+      // The stored sign-in stays on the server.
+      const { jellyfinToken: _token, stremioAuthKey: _key, nuvioRefreshToken: _refresh, ...safeRequest } = request
+      res.json(safeRequest)
     } catch (error) {
       console.error('Error submitting invite request:', error)
       res.status(500).json({ error: 'Failed to submit request' })

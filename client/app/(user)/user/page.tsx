@@ -18,6 +18,7 @@ import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { Avatar } from '@/components/ui';
 import { userActivity, userSync, UserActivityData, AtRiskStatus } from '@/lib/user-api';
+import { providerTypeLabel } from '@/lib/providers';
 
 // Format watch time from seconds to human-readable
 function formatWatchTime(seconds: number): string {
@@ -89,7 +90,7 @@ function StatCard({ label, value, icon, color = 'var(--color-primary)', delay = 
 
 export default function UserHomePage() {
   const { userId, userInfo, provider } = useUserAuth();
-  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
+  const providerLabel = providerTypeLabel(provider);
   const { authKey, isReady } = useUserAuthHeaders();
   
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);

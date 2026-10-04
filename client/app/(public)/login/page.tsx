@@ -20,13 +20,32 @@ import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { useUserAuth, UserAuthProvider } from '@/lib/hooks/useUserAuth';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import JellyfinSignIn, { type JellyfinCredentials, type JellyfinSignInApi } from '@/components/jellyfin/JellyfinSignIn';
 
 type LoginMode = 'user' | 'admin';
+
+// The public admin sign-in through a Jellyfin-compatible server talks to
+// /api/auth directly, like the 2FA step below - a session does not exist yet.
+async function jellyfinAuthPost(path: string, body: unknown) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data?.message || data?.error || 'Could not sign in') as Error & { pinNeeded?: boolean };
+    error.pinNeeded = data?.pinNeeded === true;
+    throw error;
+  }
+  return data;
+}
 
 function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { login: userLogin, loginNuvio, isAuthenticated } = useUserAuth();
+  const { login: userLogin, loginNuvio, loginJellyfin, isAuthenticated } = useUserAuth();
   const isTV = useIsTV();
 
   // Mode state
@@ -53,7 +72,7 @@ function LoginContent() {
   // config endpoint) plus whatever the callback redirect handed back.
   const [oidcConfigured, setOidcConfigured] = useState(false);
   const [oidcDisplayName, setOidcDisplayName] = useState('SSO');
-  const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio' | 'nuvio'>(
+  const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio' | 'nuvio' | 'jellyfin'>(
     searchParams.get('linkStremio') === '1' && initialMode === 'admin' ? 'stremio'
       : searchParams.get('linkNuvio') === '1' && initialMode === 'admin' ? 'nuvio'
       : 'credentials'
@@ -63,7 +82,26 @@ function LoginContent() {
   // Stremio or Nuvio. Shares the same underlying nuvio*/oauth* state below
   // with the admin flows (start/poll mechanics are identical either way,
   // only the exchange step at the end differs by mode).
-  const [userLoginType, setUserLoginType] = useState<'stremio' | 'nuvio'>('stremio');
+  const [userLoginType, setUserLoginType] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
+
+  // Jellyfin-compatible servers: the person's portal signs in through
+  // /public-library, an admin on a public instance through /public-auth.
+  const userJellyfinApi: JellyfinSignInApi = userAuthApi.jellyfinSignIn;
+  const adminJellyfinApi: JellyfinSignInApi = {
+    probe: (serverUrl) => jellyfinAuthPost('/api/public-auth/jellyfin-probe', { serverUrl }),
+    startQuickConnect: (serverUrl) => jellyfinAuthPost('/api/public-auth/jellyfin-quick-connect', { serverUrl }),
+    quickConnectStatus: (params) => jellyfinAuthPost('/api/public-auth/jellyfin-quick-connect-status', params),
+  };
+  const handleUserJellyfin = async (credentials: JellyfinCredentials) => {
+    const result = await loginJellyfin(credentials as unknown as Record<string, string>);
+    if (!result.success) throw new Error(result.error || 'Could not sign in');
+    router.push('/user');
+  };
+  const handleAdminJellyfin = async (credentials: JellyfinCredentials) => {
+    const data = await jellyfinAuthPost('/api/public-auth/jellyfin-login', credentials);
+    if (data?.token) localStorage.setItem('slicksync-admin-token', data.token);
+    router.push('/');
+  };
   const [checkingAuth, setCheckingAuth] = useState(INSTANCE_TYPE !== 'public');
 
   // Nuvio admin OAuth state - separate from the Stremio OAuth state below
@@ -786,10 +824,29 @@ function LoginContent() {
                       >
                         Nuvio Login
                       </button>
+                      <button
+                        onClick={() => {
+                          setAdminLoginType('jellyfin');
+                          setAdminError(null);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${adminLoginType === 'jellyfin'
+                          ? 'bg-surface shadow-sm text-default'
+                          : 'text-muted hover:text-default'
+                          }`}
+                      >
+                        Jellyfin | AIOStreams
+                      </button>
                     </div>
                   )}
 
-                  {adminLoginType === 'credentials' && twoFactorPendingToken ? (
+                  {adminLoginType === 'jellyfin' ? (
+                    <div className="space-y-4">
+                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                        Sign in with your Jellyfin server, or the media server AIOStreams or AIOMetadata runs.
+                      </p>
+                      <JellyfinSignIn api={adminJellyfinApi} onSubmit={handleAdminJellyfin} submitLabel="Sign in" compact />
+                    </div>
+                  ) : adminLoginType === 'credentials' && twoFactorPendingToken ? (
                     <form onSubmit={handleVerify2fa} className="space-y-4">
                       <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
                         Enter the 6-digit code from your authenticator app, or one of your backup codes.
@@ -1268,9 +1325,28 @@ function LoginContent() {
                     >
                       Nuvio Login
                     </button>
+                    <button
+                      onClick={() => setUserLoginType('jellyfin')}
+                      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${userLoginType === 'jellyfin'
+                        ? 'bg-surface shadow-sm text-default'
+                        : 'text-muted hover:text-default'
+                        }`}
+                    >
+                      Jellyfin | AIOStreams
+                    </button>
                   </div>
 
-                  {userLoginType === 'stremio' ? (
+                  {userLoginType === 'jellyfin' ? (
+                  <>
+                  <p
+                    className="text-sm text-center mb-4"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
+                  </p>
+                  <JellyfinSignIn api={userJellyfinApi} onSubmit={handleUserJellyfin} submitLabel="Sign in" compact />
+                  </>
+                  ) : userLoginType === 'stremio' ? (
                   <>
                   <p
                     className="text-sm text-center mb-4"

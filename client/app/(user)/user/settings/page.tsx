@@ -23,6 +23,7 @@ import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { ToggleSwitch, Avatar, ConfirmModal } from '@/components/ui';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
 import { toast } from '@/components/ui/Toast';
+import { providerTypeLabel } from '@/lib/providers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -152,7 +153,7 @@ const ThemeCard = memo(function ThemeCard({
 export default function UserSettingsPage() {
   const { userInfo, refreshUserInfo, provider, deleteAccount } = useUserAuth();
   const { userId, authKey, isReady } = useUserAuthHeaders();
-  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
+  const providerLabel = providerTypeLabel(provider);
   const { themeId, setTheme } = useTheme();
 
   // Self-service "delete my account" - only this user's own data, not the

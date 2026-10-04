@@ -114,3 +114,42 @@ test('processLibraryItem: a delta under the 60-second threshold updates the base
   assert.equal(ops.length, 1)
   assert.equal(ops[0].__op, 'watchSnapshot.upsert')
 })
+
+// A Jellyfin server reports where playback IS - a seek or a "mark played"
+// jumps it without anyone watching - so its items carry wallClockCapped and
+// a jump adds no more than the real time between observations (+120s).
+function makeJellyfinItem({ overallTimeWatchedMs, lastWatched }) {
+  return {
+    _id: 'tt7654321',
+    type: 'movie',
+    name: 'Jellyfin Item',
+    state: { overallTimeWatched: String(overallTimeWatchedMs), timeOffset: String(overallTimeWatchedMs), lastWatched, wallClockCapped: true },
+  }
+}
+
+test('processLibraryItem: a Jellyfin seek adds only the real time that passed, not the jump', async () => {
+  const now = Date.now()
+  const priorSnapshot = { overallTimeWatched: '1000000', timeOffset: '1000000', lastWatched: new Date(now - 60 * 1000) }
+  const prisma = makeMockPrisma({ latestSnapshotForToday: priorSnapshot, previousSnapshot: null, mostRecentActivity: null })
+  // An hour further along a minute later.
+  const item = makeJellyfinItem({ overallTimeWatchedMs: 1000000 + 60 * 60 * 1000, lastWatched: new Date(now).toISOString() })
+
+  const result = await processLibraryItem(prisma, 'acct-1', 'user-1', item, new Date(now))
+
+  assert.equal(result.activityCreated, true)
+  const activity = prisma.calls.transactions[0].find((o) => o.__op === 'watchActivity.create')
+  assert.equal(activity.args.data.watchTimeSeconds, 60 + 120, 'capped at the minute that passed plus the pass allowance')
+})
+
+test('processLibraryItem: Jellyfin progress just under a minute is still recorded', async () => {
+  const now = Date.now()
+  const priorSnapshot = { overallTimeWatched: '1000000', timeOffset: '1000000', lastWatched: new Date(now - 60 * 1000) }
+  const prisma = makeMockPrisma({ latestSnapshotForToday: priorSnapshot, previousSnapshot: null, mostRecentActivity: null })
+  const item = makeJellyfinItem({ overallTimeWatchedMs: 1000000 + 58 * 1000, lastWatched: new Date(now).toISOString() })
+
+  const result = await processLibraryItem(prisma, 'acct-1', 'user-1', item, new Date(now))
+
+  assert.equal(result.activityCreated, true, 'a pass a few seconds short of 60 must not lose its viewing')
+  const activity = prisma.calls.transactions[0].find((o) => o.__op === 'watchActivity.create')
+  assert.equal(activity.args.data.watchTimeSeconds, 58)
+})

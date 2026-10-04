@@ -56,6 +56,8 @@ export interface PosterCardProps {
    *  a confusing double-icon; long-press/right-click already opens this
    *  same menu, so removal lives there instead. */
   onRemoveFromCatalog?: (item: PosterCardItem) => void;
+  /** The menu wording for onRemoveFromCatalog - an AIOStreams collection says "Remove from collection". */
+  removeLabel?: string;
   /** Only-one-menu-open-at-a-time state, lifted to the parent so opening
    *  a second card's menu closes the previous card's. */
   isMenuOpen?: boolean;
@@ -94,6 +96,7 @@ export const PosterCard = memo(function PosterCard({
   showNotInterested = false,
   onMarkNotInterested,
   onRemoveFromCatalog,
+  removeLabel = 'Remove from catalog',
   isMenuOpen,
   onMenuOpenChange,
   menuKey,
@@ -292,7 +295,7 @@ export const PosterCard = memo(function PosterCard({
                   onClick={() => { close(); onRemoveFromCatalog(item); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-surface-hover transition-colors"
                 >
-                  <TrashIcon className="w-4 h-4" /> Remove from catalog
+                  <TrashIcon className="w-4 h-4" /> {removeLabel}
                 </button>
               )}
             </>

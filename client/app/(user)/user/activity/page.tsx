@@ -27,6 +27,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
+import { providerTypeLabel } from '@/lib/providers';
 
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
@@ -514,7 +515,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
 
 export default function UserActivityPage() {
   const { userId, userInfo, provider } = useUserAuth();
-  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
+  const providerLabel = providerTypeLabel(provider);
   const { authKey, isReady } = useUserAuthHeaders();
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);
   const [loading, setLoading] = useState(true);

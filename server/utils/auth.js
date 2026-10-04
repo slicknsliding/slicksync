@@ -33,6 +33,11 @@ function pathIsAllowlisted(path) {
     '/api/auth/nuvio-start-oauth',
     '/api/auth/nuvio-poll-oauth',
     '/api/auth/nuvio-login',
+    // Signing in with a Jellyfin-compatible server: checking the address,
+    // Quick Connect and the sign-in itself (publicAuth.js). Every route with
+    // this prefix is one of those four.
+    '/api/public-auth/jellyfin-',
+    '/api/auth/jellyfin-',
     '/api/public-auth/private-login', // Private instance username/password login
     '/api/auth/private-login', // Private instance username/password login (alt path)
     // Passkey sign-in: the whole point is that no session exists yet. Only

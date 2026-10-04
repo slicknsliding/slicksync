@@ -1194,6 +1194,101 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     }
   })
 
+  // --- Sign in with a Jellyfin-compatible server (public instances) ---
+  //
+  // The same shape as the Nuvio sign-in above. A server user has no email, so
+  // the account is keyed by the identity SlickSync stores for that user
+  // (their id on the server plus the server's host - see
+  // providers/jellyfinAuth.js identityEmail). On a public instance the
+  // address must be a public one; jellyfinAuth refuses private networks.
+
+  // POST /jellyfin-probe, /jellyfin-quick-connect, /jellyfin-quick-connect-status
+  require('../utils/jellyfinConnect').mountSignInSteps(router, 'jellyfin-')
+
+  router.post('/jellyfin-login', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(400).json({ message: 'Server sign-in is only available in public auth mode' })
+      }
+      const { signInFromBody, jellyfinFields } = require('../utils/jellyfinConnect')
+      const { identityEmail } = require('../providers/jellyfinAuth')
+      let signedIn
+      try {
+        signedIn = await signInFromBody(req.body)
+      } catch (err) {
+        const status = err?.status === 401 ? 401 : 400
+        return res.status(status).json({ message: err?.message || 'Could not sign in to the server', ...(err?.pinNeeded ? { pinNeeded: true } : {}) })
+      }
+      const { probe, login } = signedIn
+      await require('../utils/jellyfinConnect').rememberSignIn(prisma, encrypt, probe, login)
+      const email = identityEmail(probe.serverUrl, login.userId)
+
+      // Signed in already: link this server login to the current account,
+      // which must already have a person with this login.
+      let currentAccountId = req.appAccountId
+      if (!currentAccountId && parseCookies && JWT_SECRET) {
+        try {
+          const cookies = parseCookies(req)
+          const token = cookies[cookieName('sfm_at')] || cookies['sfm_at'] || cookies[cookieName('sfm_rt')] || cookies['sfm_rt']
+          if (token) {
+            const decoded = jwt.verify(token, JWT_SECRET)
+            if (decoded?.accId && await prisma.appAccount.findUnique({ where: { id: decoded.accId } })) currentAccountId = decoded.accId
+          }
+        } catch { /* not signed in */ }
+      }
+
+      let account = await prisma.appAccount.findUnique({ where: { email } })
+      let isNewAccount = false
+      if (currentAccountId) {
+        if (account && account.id !== currentAccountId) {
+          return res.status(409).json({ message: 'This server login is already linked to another SlickSync account', error: 'EMAIL_ALREADY_LINKED' })
+        }
+        const current = await prisma.appAccount.findUnique({ where: { id: currentAccountId } })
+        if (current.email && current.email !== email) {
+          return res.status(409).json({ message: 'Your account is already linked to a different login', error: 'ACCOUNT_ALREADY_LINKED' })
+        }
+        const person = await prisma.user.findFirst({ where: { accountId: current.id, providerType: 'jellyfin', jellyfinUserId: login.userId } })
+        if (!person) {
+          return res.status(400).json({ message: 'Add this server user as a person first, then link the login.', error: 'NO_USER_WITH_EMAIL' })
+        }
+        account = current.email ? current : await prisma.appAccount.update({ where: { id: current.id }, data: { email, linkedProvider: 'jellyfin' } })
+      } else if (!account) {
+        account = await prisma.appAccount.create({ data: { uuid: null, email, passwordHash: null, linkedProvider: 'jellyfin' } })
+        isNewAccount = true
+      }
+      req.appAccountId = account.id
+
+      const fields = jellyfinFields(probe, login, encrypt, req)
+      let user = null
+      const existing = await prisma.user.findFirst({ where: { accountId: account.id, providerType: 'jellyfin', jellyfinUserId: login.userId } })
+      if (existing) {
+        await prisma.user.update({ where: { id: existing.id }, data: { ...fields, isActive: true } })
+      } else if (isNewAccount) {
+        const username = await ensureUniqueUsername(login.userName || 'jellyfin-user', account.id)
+        const created = await prisma.user.create({
+          data: { accountId: account.id, email, username, isActive: true, ...fields }
+        })
+        user = { id: created.id, email: created.email, username: created.username }
+      }
+
+      const at = issueAccessToken(account.id)
+      const rt = issueRefreshToken(account.id)
+      const csrf = randomCsrfToken()
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+      return res.json({
+        message: 'Login successful',
+        token: at,
+        account: { id: account.id, uuid: account.uuid, email: account.email || null },
+        ...(user ? { user } : {})
+      })
+    } catch (error) {
+      console.error('Jellyfin login error:', error?.message)
+      return responseUtils.internalError(res, 'Could not sign in')
+    }
+  })
+
   // Unlink Stremio account from current account (keep UUID only)
   router.post('/unlink-stremio', async (req, res) => {
     try {
@@ -1459,6 +1554,22 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           } catch (e) {
             console.warn(`Failed to decrypt Nuvio refresh token for user ${user.id}:`, e.message)
             decryptedUser.nuvioRefreshToken = null
+          }
+        }
+        if (user.aioConfigPassword) {
+          try {
+            decryptedUser.aioConfigPassword = decrypt(user.aioConfigPassword, req)
+          } catch (e) {
+            decryptedUser.aioConfigPassword = null
+          }
+        }
+        // A Jellyfin server sign-in, for the same reason as the two above.
+        if (user.jellyfinToken) {
+          try {
+            decryptedUser.jellyfinToken = decrypt(user.jellyfinToken, req)
+          } catch (e) {
+            console.warn(`Failed to decrypt Jellyfin token for user ${user.id}:`, e.message)
+            decryptedUser.jellyfinToken = null
           }
         }
         // Normalize excludedAddons to addon NAMES for export (keep JSON string format for compatibility)
@@ -2130,7 +2241,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
 
         for (const userData of users) {
-          const { id: _exportUserId, stremioAuthKey, nuvioRefreshToken, protectedAddons, excludedAddons, ...userFields } = userData;
+          const { id: _exportUserId, stremioAuthKey, nuvioRefreshToken, jellyfinToken, aioConfigPassword, protectedAddons, excludedAddons, ...userFields } = userData;
 
           // Parse protectedAddons and excludedAddons if they're JSON strings
           const parsedProtectedAddons = (() => {
@@ -2195,6 +2306,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
               accountId,
               stremioAuthKey: stremioAuthKey ? encrypt(stremioAuthKey, req) : null,
               nuvioRefreshToken: nuvioRefreshToken ? encrypt(nuvioRefreshToken, req) : null,
+              jellyfinToken: jellyfinToken ? encrypt(jellyfinToken, req) : null,
+              aioConfigPassword: aioConfigPassword ? encrypt(aioConfigPassword, req) : null,
               protectedAddons: normalizedProtectedNames.length > 0 ? JSON.stringify(normalizedProtectedNames) : null,
               excludedAddons: normalizedExcludedIds.length > 0 ? JSON.stringify(normalizedExcludedIds) : null
             }

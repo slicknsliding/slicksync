@@ -330,7 +330,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           }
         } catch {}
 
-        const plainFields = ['username', 'email', 'isActive', 'expiresAt', 'colorIndex', 'avatarUrl', 'providerType', 'discordWebhookUrl', 'discordUserId', 'notifyOnWatch', 'activityVisibility', 'apiKey', 'protectedAddons']
+        const plainFields = ['username', 'email', 'isActive', 'expiresAt', 'colorIndex', 'avatarUrl', 'providerType', 'discordWebhookUrl', 'discordUserId', 'notifyOnWatch', 'activityVisibility', 'apiKey', 'protectedAddons', 'jellyfinServerUrl', 'jellyfinServerId', 'jellyfinServerKind', 'jellyfinUserId', 'jellyfinUserName', 'aioConfigId']
         const updates = {}
         const changedFields = []
         for (const f of plainFields) {
@@ -348,7 +348,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         // Provider credentials arrive DECRYPTED in the backup (that is what
         // makes it portable) - re-encrypt before they touch the row, and
         // report only that the connection changes, never any value.
-        for (const [field, label] of [['stremioAuthKey', 'Stremio connection'], ['nuvioRefreshToken', 'Nuvio connection']]) {
+        for (const [field, label] of [['stremioAuthKey', 'Stremio connection'], ['nuvioRefreshToken', 'Nuvio connection'], ['jellyfinToken', 'Jellyfin connection'], ['aioConfigPassword', 'AIOStreams configuration access']]) {
           if (!(field in bUser)) continue
           let currentPlain = null
           try { currentPlain = current[field] ? decrypt(current[field], req) : null } catch {}

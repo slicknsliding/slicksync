@@ -36,6 +36,7 @@ import {
 } from '@heroicons/react/24/outline';
 import dynamic from 'next/dynamic';
 import type { SyncStatusData } from '@/components/admin/SyncActivityChart';
+import { providerTypeLabel, providerBadgeVariant } from '@/lib/providers';
 
 // The chart's library (recharts) is loaded on demand - see the component
 // file for why it is not in the dashboard's first-load bundle.
@@ -305,8 +306,8 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           <div className="flex items-center gap-1 mt-0.5">
             <p className="text-[10px] text-subtle truncate">{item.username}</p>
             {item.providerType && (
-              <Badge variant={item.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm" className="shrink-0">
-                {item.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+              <Badge variant={providerBadgeVariant(item)} size="sm" className="shrink-0">
+                {providerTypeLabel(item.providerType)}
               </Badge>
             )}
           </div>

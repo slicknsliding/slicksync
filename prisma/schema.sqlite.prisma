@@ -15,7 +15,7 @@ model User {
   email              String    // was @unique — now scoped by providerType below
   isActive           Boolean   @default(true)
   stremioAuthKey     String? // Encrypted Stremio auth key
-  providerType       String    @default("stremio") // "stremio" | "nuvio"
+  providerType       String    @default("stremio") // "stremio" | "nuvio" | "jellyfin"
   nuvioRefreshToken  String? // Encrypted Supabase refresh token
   nuvioUserId        String? // Nuvio/Supabase user UUID
   // Which Nuvio profile's addon list this user manages - Nuvio's own
@@ -26,6 +26,23 @@ model User {
   // syncs. Defaults to 1, which is what every existing user is, and is
   // ignored entirely for Stremio users.
   nuvioProfileId     Int       @default(1)
+  // A login on a Jellyfin-compatible server (providerType "jellyfin"): a real
+  // Jellyfin, or the media server AIOStreams or AIOMetadata runs. One User per
+  // server user - see server/providers/jellyfin.js.
+  jellyfinServerUrl  String? // Base address the server answers on, no trailing slash
+  jellyfinServerId   String? // The server's own id from /System/Info/Public
+  jellyfinServerKind String? // "jellyfin" | "aiostreams" | "aiometadata"
+  jellyfinUserId     String? // The user's id on that server
+  jellyfinUserName   String? // The name they sign in with there
+  jellyfinToken      String? // Encrypted access token
+  // The AIOStreams configuration behind this person's sign-in, when they
+  // signed in with its password (utils/aiostreamsConfig.js). AIOStreams'
+  // configuration API takes only the real password, so it is kept here,
+  // encrypted, for the few things SlickSync does to it: rotating Vault keys,
+  // adding the SlickTrax link, and noticing outside changes.
+  aioConfigId        String? // The configuration's UUID or alias
+  aioConfigPassword  String? // Encrypted
+  aioConfigStateJson String? // What the configuration looked like when last checked, for the guard
   // SIMKL is an optional supplementary link, not a peer of providerType - it
   // has no addon/manifest concept at all (pure watch-tracking service), so it
   // can't be "the" provider a user is created under. Any Stremio/Nuvio user
@@ -139,10 +156,16 @@ model User {
 model UserProviderCredential {
   id                String   @id @default(cuid())
   userId            String
-  providerType      String // "stremio" | "nuvio" - always the OTHER provider from the owning User's own providerType
+  providerType      String // "stremio" | "nuvio" | "jellyfin" - never the owning User's own providerType
   stremioAuthKey    String? // Encrypted, same scheme as User.stremioAuthKey
   nuvioRefreshToken String? // Encrypted, same scheme as User.nuvioRefreshToken
   nuvioUserId       String?
+  jellyfinServerUrl  String?
+  jellyfinServerId   String?
+  jellyfinServerKind String?
+  jellyfinUserId     String?
+  jellyfinUserName   String?
+  jellyfinToken      String? // Encrypted, same scheme as User.jellyfinToken
   donorId           String? // the absorbed User's original id (that row no longer exists) - lets undoMerge() find its archive
   mergeArchivePath  String? // filename under data/backup/merges/ holding the pre-merge snapshot needed to reverse this merge
   createdAt         DateTime @default(now())
@@ -150,6 +173,32 @@ model UserProviderCredential {
   @@unique([userId, providerType])
   @@map("user_provider_credentials")
 }
+
+// A household user on an AIOStreams or AIOMetadata configuration, tracked as
+// a profile of the person whose sign-in found it - the same idea as a Nuvio
+// profile. Every user there shares the configuration password, so when a
+// person is added SlickSync signs each of them in too and keeps the token
+// here. A profile counts for that person until it is separated into its own
+// person (ownUserId) or left untracked (skip).
+model JellyfinProfile {
+  id             String   @id @default(cuid())
+  accountId      String   @default("default")
+  ownerUserId    String // The person whose configuration this profile is on
+  jellyfinUserId String // The profile's own user id on the server
+  name           String
+  loginName      String? // What it signs in as - "<config uuid>/Kid" on AIOStreams' plain address, else its name
+  token          String? // Encrypted; null until it can be signed in (a PIN, or a Quick Connect add)
+  needsPin       Boolean  @default(false)
+  ownUserId      String? // Separated into this person, who reads it with their own sign-in
+  skip           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([ownerUserId, jellyfinUserId])
+  @@index([accountId])
+  @@map("jellyfin_profiles")
+}
+
 
 model Group {
   id                 String  @id @default(cuid())
@@ -432,6 +481,14 @@ model InviteRequest {
   providerType   String    @default("stremio")
   nuvioRefreshToken String? // Encrypted Nuvio refresh token - the Nuvio half of stremioAuthKey
   nuvioUserId    String? // Nuvio/Supabase user UUID the token belongs to
+  // The Jellyfin-compatible server login they asked to join with - same fields
+  // as User.jellyfin*, copied onto the User when the request is accepted.
+  jellyfinServerUrl  String?
+  jellyfinServerId   String?
+  jellyfinServerKind String?
+  jellyfinUserId     String?
+  jellyfinUserName   String?
+  jellyfinToken      String? // Encrypted
   createdAt      DateTime  @default(now())
   respondedAt    DateTime?
   respondedBy    String? // accountId who responded

@@ -35,6 +35,11 @@ const TRAX_MANIFEST_VERSION = '1.7.0'
 
 const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling snappy without staleness anyone would notice
 
+// The AIOStreams link's collections: one catalog listing SlickSync's catalogs,
+// each a collection with this id prefix.
+const COLLECTIONS_CATALOG = 'slicksync-collections'
+const COLLECTION_PREFIX = 'slicksync.catalog.'
+
 function metaPreview(id, type, name, poster) {
   return { id, type, name: name || id, poster: poster || undefined }
 }
@@ -282,12 +287,20 @@ module.exports = ({ prisma }) => {
         id: `vip.slicksync.trax.watchstate.${owner.id}`,
         version: TRAX_MANIFEST_VERSION,
         name: 'SlickTrax watch history',
-        description: `Keeps ${owner.username || 'this household'}'s watch history in SlickSync in step with AIOStreams - what you watch here is recorded there, and what you watched anywhere else shows up here.`,
+        description: `Keeps ${owner.username || 'this household'}'s watch history in SlickSync in step with AIOStreams - what you watch here is recorded there, and what you watched anywhere else shows up here. SlickSync's catalogs come along as collections.`,
         logo: 'https://slicksync.vip/android-chrome-192x192.png',
         types: ['movie', 'series'],
-        idPrefixes: ['tt'],
-        catalogs: [],
-        resources: [{ name: 'watch_state', types: ['movie', 'series'], idPrefixes: ['tt'] }],
+        idPrefixes: ['tt', COLLECTION_PREFIX],
+        // SlickSync's catalogs, as AIOStreams collections: a catalog whose
+        // entries are all collections is a Collections library in its apps
+        // and in every Jellyfin app signed in to it (see the collection
+        // routes below).
+        catalogs: [{ type: 'movie', id: COLLECTIONS_CATALOG, name: 'SlickSync catalogs' }],
+        resources: [
+          { name: 'catalog', types: ['movie'] },
+          { name: 'meta', types: ['movie'], idPrefixes: [COLLECTION_PREFIX] },
+          { name: 'watch_state', types: ['movie', 'series'], idPrefixes: ['tt'] },
+        ],
         watchState: manifestBlock(),
         behaviorHints: { configurable: false, configurationRequired: false },
       })
@@ -330,6 +343,83 @@ module.exports = ({ prisma }) => {
     } catch (e) {
       console.error('[TraxAddon] watch-state pull failed:', e?.message)
       res.status(503).json({ error: 'Try again later' })
+    }
+  })
+
+  // --- SlickSync's catalogs as AIOStreams collections ----------------------
+  //
+  // On the AIOStreams link only. Each catalog is one collection whose
+  // members are its titles; AIOStreams fills in their details from its own
+  // metadata addons, so a member opens and plays like it does anywhere else.
+
+  // The collections and their order come from utils/aioCollections.js: one
+  // per catalog until the household arranges them on the AIOStreams
+  // Collections page.
+  function collectionPreview(base, token, collection, cover) {
+    return {
+      id: `${COLLECTION_PREFIX}${collection.id}`,
+      type: 'movie',
+      name: collection.name,
+      poster: proxiedPoster(base, token, cover),
+      posterShape: 'poster',
+      // Marks the entry as a collection without opening it, as the protocol asks.
+      collection: {},
+    }
+  }
+
+  router.get('/:token/aio/catalog/:type/:id.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      if (!owner) return res.status(404).json({ error: 'Not found' })
+      if (req.params.id !== COLLECTIONS_CATALOG) return res.json({ metas: [] })
+      const base = requestBase(req)
+      const { loadCollections, membersOf, coverOf } = require('../utils/aioCollections')
+      const { collections, lists } = await loadCollections(prisma, owner.accountId, owner.id)
+      const metas = []
+      for (const c of collections) {
+        if (c.hidden) continue
+        const members = membersOf(c, lists)
+        if (members.length) metas.push(collectionPreview(base, req.params.token, c, coverOf(c, lists, members)))
+      }
+      res.json({ metas })
+    } catch (e) {
+      console.error('[TraxAddon] collections catalog failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
+  router.get('/:token/aio/meta/:type/:id.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      if (!owner) return res.status(404).json({ error: 'Not found' })
+      const id = String(req.params.id || '')
+      if (!id.startsWith(COLLECTION_PREFIX)) return res.status(404).json({ error: 'Not found' })
+      const { loadCollections, membersOf, coverOf } = require('../utils/aioCollections')
+      const { collections, lists } = await loadCollections(prisma, owner.accountId, owner.id)
+      const collection = collections.find((c) => c.id === id.slice(COLLECTION_PREFIX.length))
+      if (!collection) return res.status(404).json({ error: 'Not found' })
+      const base = requestBase(req)
+      const members = membersOf(collection, lists)
+      const first = lists.find((l) => l.id === collection.catalogIds[0])
+      res.json({
+        meta: {
+          ...collectionPreview(base, req.params.token, collection, coverOf(collection, lists, members)),
+          ...(collection.catalogIds.length === 1 && first?.description ? { description: first.description } : {}),
+          collection: {
+            items: members.map((i) => ({
+              id: String(i.id),
+              type: i.type === 'series' ? 'series' : 'movie',
+              name: i.name || String(i.id),
+              ...(i.poster ? { poster: proxiedPoster(base, req.params.token, i.poster) } : {}),
+            })),
+          },
+        },
+      })
+    } catch (e) {
+      console.error('[TraxAddon] collection meta failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
     }
   })
 

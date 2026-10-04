@@ -2,7 +2,7 @@
 
 import { useState, type ComponentType } from 'react';
 import {
-  ChevronDownIcon, UserIcon, ServerStackIcon, UserCircleIcon, FilmIcon, CheckCircleIcon, CalendarDaysIcon,
+  ChevronDownIcon, UserIcon, ServerStackIcon, UserCircleIcon, FilmIcon, CalendarDaysIcon,
   LinkIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -28,13 +28,26 @@ const KEYS = Object.keys(EMPTY_FILTERS) as (keyof ActivityFilters)[];
 export const SOURCE_LABELS: Record<string, string> = { AIOStreams: 'aiostreams', Imported: 'imported', Scrobbled: 'scrobbled' };
 
 export const SOURCE_NAMES: Record<string, string> = {
-  stremio: 'Stremio', nuvio: 'Nuvio', aiostreams: 'AIOStreams', imported: 'Imported', scrobbled: 'Scrobbled',
+  stremio: 'Stremio', nuvio: 'Nuvio', jellyfin: 'Jellyfin', aiostreams: 'AIOStreams', aiometadata: 'AIOMetadata', imported: 'Imported', scrobbled: 'Scrobbled',
 };
 
-/** Where one viewing came from: a special label first, otherwise the person's provider. */
+/** The order the "Watched on" filter lists apps in. */
+export const SOURCE_ORDER = ['stremio', 'nuvio', 'jellyfin', 'aiostreams', 'aiometadata', 'imported', 'scrobbled'];
+
+/**
+ * Where one viewing came from: a special label first, otherwise the person's
+ * app. Someone on a Jellyfin-compatible server is placed by the kind of
+ * server (the page passes 'aiostreams' or 'aiometadata' for those), so
+ * AIOStreams' apps are one entry whichever way their viewing arrived.
+ */
 export function sourceOf(profileLabel: string | undefined, provider: string | undefined) {
   if (profileLabel && SOURCE_LABELS[profileLabel]) return SOURCE_LABELS[profileLabel];
-  return provider === 'nuvio' ? 'nuvio' : 'stremio';
+  return provider && SOURCE_NAMES[provider] ? provider : 'stremio';
+}
+
+/** A profile shown with the app it belongs to: "Kids · Nuvio". */
+export function profileOptionLabel(profile: string, app?: string) {
+  return app && SOURCE_NAMES[app] ? `${profile} · ${SOURCE_NAMES[app]}` : profile;
 }
 
 export function hasAnyFilter(f: ActivityFilters) {
@@ -106,12 +119,14 @@ function Pill({ icon: Icon, label, value, options, onChange }: {
  * kind, finished or not, and when. Each only offers what the feed actually
  * holds, and the page keeps them in the address so a view can be shared.
  */
-export function ActivityFilterBar({ value, onChange, people, sources, profiles }: {
+export function ActivityFilterBar({ value, onChange, people, sources, profiles, profileApps = {} }: {
   value: ActivityFilters;
   onChange: (next: ActivityFilters) => void;
   people: Option[];
   sources: string[];
   profiles: string[];
+  /** Which app each profile belongs to, so the list can say so. */
+  profileApps?: Record<string, string>;
 }) {
   const [copying, setCopying] = useState(false);
   const set = (patch: Partial<ActivityFilters>) => onChange({ ...value, ...patch });
@@ -138,12 +153,10 @@ export function ActivityFilterBar({ value, onChange, people, sources, profiles }
         )}
         {profiles.length > 0 && (
           <Pill icon={UserCircleIcon} label="Profile" value={value.profile} onChange={(profile) => set({ profile })}
-            options={[{ value: '', label: 'Any profile' }, ...profiles.map((p) => ({ value: p, label: p }))]} />
+            options={[{ value: '', label: 'Any profile' }, ...profiles.map((p) => ({ value: p, label: profileOptionLabel(p, profileApps[p]) }))]} />
         )}
         <Pill icon={FilmIcon} label="Kind" value={value.kind} onChange={(kind) => set({ kind })}
           options={[{ value: '', label: 'Movies & shows' }, { value: 'movie', label: 'Movies' }, { value: 'series', label: 'Shows' }]} />
-        <Pill icon={CheckCircleIcon} label="Finished" value={value.status} onChange={(status) => set({ status })}
-          options={[{ value: '', label: 'Finished or not' }, { value: 'finished', label: 'Finished' }, { value: 'partial', label: 'Stopped part-way' }]} />
         <Pill icon={CalendarDaysIcon} label="When" value={value.when}
           onChange={(when) => set(when === 'custom' ? { when, from: value.from || today, to: value.to || today } : { when, from: '', to: '' })}
           options={[

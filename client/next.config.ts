@@ -124,6 +124,12 @@ const nextConfig: NextConfig = {
         source: '/invite/:inviteCode/nuvio/poll',
         destination: 'http://localhost:4000/invite/:inviteCode/nuvio/poll',
       },
+      // Joining with a Jellyfin-compatible server: checking the address and
+      // Quick Connect (routes/invitations.js), for the same reason.
+      {
+        source: '/invite/:inviteCode/jellyfin/:step',
+        destination: 'http://localhost:4000/invite/:inviteCode/jellyfin/:step',
+      },
       // Public user deletion routes
       {
         source: '/invite/generate-oauth',

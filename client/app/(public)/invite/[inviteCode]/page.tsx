@@ -6,6 +6,7 @@ import { InviteLayout } from '@/components/invite/InviteLayout';
 import { StatusCards } from '@/components/invite/StatusCard';
 import { StremioOAuthCard } from '@/components/invite/StremioOAuthCard';
 import { NuvioOAuthCard } from '@/components/invite/NuvioOAuthCard';
+import JellyfinSignIn, { type JellyfinCredentials } from '@/components/jellyfin/JellyfinSignIn';
 import { inviteApi, InviteApiError } from '@/lib/invite-api';
 import { motion } from 'framer-motion';
 import { UserIcon } from '@heroicons/react/24/outline';
@@ -40,7 +41,7 @@ export default function InviteRequestPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Which provider the person is joining with. Invites could only ever
   // create Stremio users before, so that stays the default.
-  const [joinProvider, setJoinProvider] = useState<'stremio' | 'nuvio'>('stremio');
+  const [joinProvider, setJoinProvider] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
   const [groupName, setGroupName] = useState<string | undefined>();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -237,6 +238,35 @@ export default function InviteRequestPage() {
       setSubmitError(error instanceof Error ? error.message : 'Could not complete the request');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Joining with a Jellyfin-compatible server. Errors are thrown back so the
+  // sign-in form can show them where the person typed (a wrong password, a
+  // missing PIN).
+  const handleJellyfinCredentials = async (credentials: JellyfinCredentials) => {
+    if (!username.trim()) {
+      setUsernameError('Username is required');
+      throw new Error('Pick a username first');
+    }
+    setSubmitError(null);
+    try {
+      const result = await inviteApi.submitJellyfinRequest(inviteCode, username.trim(), credentials as unknown as Record<string, string>);
+      const requestEmail = result?.email || '';
+      saveToStorage({ username: username.trim(), email: requestEmail });
+      setEmail(requestEmail);
+      setState('pending');
+    } catch (error) {
+      if (error instanceof InviteApiError) {
+        if (error.code === 'USERNAME_EXISTS') {
+          setUsernameError('This username is already taken');
+          setUsernameConfirmed(false);
+        }
+        if (error.code === 'EMAIL_EXISTS' || error.code === 'EMAIL_AND_USERNAME_EXIST') {
+          throw new Error('This server user is already registered');
+        }
+      }
+      throw error;
     }
   };
 
@@ -500,7 +530,7 @@ export default function InviteRequestPage() {
                   {/* Either provider can join, and the one picked here
                       decides what kind of user the invite creates. */}
                   <div className="flex gap-2 mb-4">
-                    {(['stremio', 'nuvio'] as const).map((p) => (
+                    {(['stremio', 'nuvio', 'jellyfin'] as const).map((p) => (
                       <button
                         key={p}
                         type="button"
@@ -511,12 +541,24 @@ export default function InviteRequestPage() {
                             : 'bg-white/[0.03] text-muted hover:bg-white/[0.06]'
                         }`}
                       >
-                        {p === 'stremio' ? 'Stremio' : 'Nuvio'}
+                        {p === 'stremio' ? 'Stremio' : p === 'nuvio' ? 'Nuvio' : 'Jellyfin | AIOStreams'}
                       </button>
                     ))}
                   </div>
 
-                  {joinProvider === 'stremio' ? (
+                  {joinProvider === 'jellyfin' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                        Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
+                      </p>
+                      <JellyfinSignIn
+                        api={inviteApi.jellyfinSignIn(inviteCode)}
+                        onSubmit={handleJellyfinCredentials}
+                        submitLabel="Request access"
+                        compact
+                      />
+                    </div>
+                  ) : joinProvider === 'stremio' ? (
                     <StremioOAuthCard
                       onAuthKey={handleAuthKey}
                       onError={(msg) => setSubmitError(msg)}

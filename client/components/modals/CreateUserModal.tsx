@@ -7,6 +7,7 @@ import { Button, SlickSyncLogo, PasswordToggleButton } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import JellyfinSignIn, { type JellyfinCredentials, type JellyfinServerInfo, type JellyfinSignInApi } from '@/components/jellyfin/JellyfinSignIn';
 import {
   UsersIcon,
   ArrowPathIcon,
@@ -23,6 +24,7 @@ export function CreateUserModal({
   userId,
   userName,
   onReconnectSuccess,
+  providerType,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -30,11 +32,21 @@ export function CreateUserModal({
   userId?: string;
   userName?: string;
   onReconnectSuccess?: () => void;
+  /** The provider of the user being reconnected; a Jellyfin login reconnects through its own sign-in. */
+  providerType?: string;
 }) {
   const isReconnect = mode === 'reconnect';
+  const isJellyfinReconnect = isReconnect && providerType === 'jellyfin';
   const isTV = useIsTV();
   const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success' | 'nuvio-details' | 'nuvio-oauth'>('tabs');
-  const [provider, setProvider] = useState<'stremio' | 'nuvio'>('stremio');
+  const [provider, setProvider] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
+  // Jellyfin: the name the person gets here (their server name if left
+  // empty), and the server last used, so a household can be added one
+  // person after another without retyping the address.
+  const [jellyfinDisplayName, setJellyfinDisplayName] = useState('');
+  const [jellyfinServer, setJellyfinServer] = useState<JellyfinServerInfo | null>(null);
+  const [jellyfinAdded, setJellyfinAdded] = useState<{ id: string; username: string; household: { name: string; status: string }[] }[]>([]);
+  const [jellyfinFormKey, setJellyfinFormKey] = useState(0);
   const [authMethod, setAuthMethod] = useState<'credentials' | 'authKey' | 'oauth'>('oauth');
 
   // Shared identity fields
@@ -103,6 +115,10 @@ export function CreateUserModal({
         setCountdown(0);
         stopPolling();
         if (countdownRef.current) clearInterval(countdownRef.current);
+        // Jellyfin reset
+        setJellyfinDisplayName('');
+        setJellyfinServer(null);
+        setJellyfinAdded([]);
         // Nuvio reset
         setNuvioAuthMethod('oauth');
         setNuvioEmail('');
@@ -477,6 +493,31 @@ export function CreateUserModal({
     }
   };
 
+  // --- Jellyfin handlers ---
+  const jellyfinApi: JellyfinSignInApi = {
+    probe: (serverUrl) => api.jellyfinProbe(serverUrl),
+    startQuickConnect: (serverUrl) => api.jellyfinStartQuickConnect(serverUrl),
+    quickConnectStatus: (params) => api.jellyfinQuickConnectStatus(params),
+  };
+
+  const handleJellyfinSubmit = async (credentials: JellyfinCredentials) => {
+    if (isJellyfinReconnect) {
+      await api.connectUserWithJellyfin({ ...credentials, userId });
+      toast.success(`${userName || 'User'} is connected again`);
+      onReconnectSuccess?.();
+      return;
+    }
+    const created = await api.connectUserWithJellyfin({
+      ...credentials,
+      ...(jellyfinDisplayName.trim() ? { username: jellyfinDisplayName.trim() } : {}),
+    });
+    toast.success(`${created?.username || 'User'} added`);
+    setJellyfinAdded((list) => [...list, { id: (created as any)?.id, username: (created as any)?.username, household: created?.household || [] }]);
+    setJellyfinDisplayName('');
+    // A fresh form on the same server, for the next person in the household.
+    setJellyfinFormKey((k) => k + 1);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -548,10 +589,12 @@ export function CreateUserModal({
                           )}
                         </motion.div>
                         <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-                          {isReconnect ? 'Reconnect Stremio Account' : 'Add New User'}
+                          {isJellyfinReconnect ? 'Reconnect Server Sign-in' : isReconnect ? 'Reconnect Stremio Account' : 'Add New User'}
                         </h2>
                         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                          {isReconnect 
+                          {isJellyfinReconnect
+                            ? `Sign ${userName} in to their server again`
+                            : isReconnect
                             ? `Choose how you'd like to reconnect ${userName}'s Stremio account`
                             : "Choose how you'd like to add this user"}
                         </p>
@@ -581,10 +624,91 @@ export function CreateUserModal({
                           >
                             Nuvio
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setProvider('jellyfin')}
+                            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
+                            style={{
+                              background: provider === 'jellyfin' ? 'var(--color-primary)' : 'transparent',
+                              color: provider === 'jellyfin' ? 'white' : 'var(--color-text-muted)'
+                            }}
+                          >
+                            Jellyfin | AIOStreams
+                          </button>
                         </div>
                       )}
 
-                      {provider === 'stremio' && (
+                      {(provider === 'jellyfin' || isJellyfinReconnect) && (
+                        <div className="space-y-4">
+                          {!isJellyfinReconnect && (
+                            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                              For anyone who watches through a Jellyfin app - a Jellyfin server, or the media server AIOStreams and AIOMetadata run for Infuse, Swiftfin, Findroid and their own apps.
+                            </p>
+                          )}
+                          {jellyfinAdded.length > 0 && (() => {
+                            const household = jellyfinAdded.flatMap((u) => u.household.map((h) => ({ ...h, owner: u.username })));
+                            const tracked = household.filter((h) => h.status === 'tracked').map((h) => h.name);
+                            const waiting = household.filter((h) => h.status === 'needs-pin' || h.status === 'needs-sign-in').map((h) => h.name);
+                            return (
+                              <div className="p-3 rounded-xl text-sm space-y-1" style={{ background: 'color-mix(in srgb, var(--color-secondary) 15%, transparent)', color: 'var(--color-text)' }}>
+                                <p>
+                                  Added {jellyfinAdded.map((u) => u.username).join(', ')}
+                                  {tracked.length > 0 ? `, with ${tracked.join(', ')} as ${tracked.length === 1 ? 'a profile' : 'profiles'}` : ''}.
+                                </p>
+                                {waiting.length > 0 && (
+                                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                                    {waiting.join(', ')} {waiting.length === 1 ? 'needs' : 'need'} a PIN or the password - finish {waiting.length === 1 ? 'it' : 'them'} from the household card on the Users page.
+                                  </p>
+                                )}
+                                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                                  Add someone else from {jellyfinServer?.serverName || 'this server'}, or close when you are done.
+                                </p>
+                              </div>
+                            );
+                          })()}
+                          {!isJellyfinReconnect && jellyfinServer && (
+                            <div>
+                              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                                Name in SlickSync
+                              </label>
+                              <input
+                                type="text"
+                                value={jellyfinDisplayName}
+                                onChange={(e) => setJellyfinDisplayName(e.target.value)}
+                                placeholder="Their name on the server, if left empty"
+                                className="w-full px-4 py-3 rounded-xl text-sm"
+                                style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                              />
+                            </div>
+                          )}
+                          <JellyfinSignIn
+                            key={jellyfinFormKey}
+                            api={jellyfinApi}
+                            onSubmit={handleJellyfinSubmit}
+                            submitLabel={isJellyfinReconnect ? 'Reconnect' : 'Add user'}
+                            initialServerUrl={jellyfinServer?.serverUrl || ''}
+                            onServerChange={(info) => { if (info) setJellyfinServer(info); }}
+                            compact
+                          />
+                          {jellyfinAdded.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                const last = jellyfinAdded[jellyfinAdded.length - 1];
+                                if (jellyfinAdded.length === 1 && last?.id) window.location.href = `/users/${last.id}`;
+                                else window.location.reload();
+                              }}
+                              className="w-full py-3 text-sm font-medium rounded-xl"
+                              style={{ background: 'var(--color-subtle)', color: 'var(--color-text)' }}
+                            >
+                              Done
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {provider === 'stremio' && !isJellyfinReconnect && (
                       <>
                       {/* 3 Tab Options */}
                       <div className="space-y-3">

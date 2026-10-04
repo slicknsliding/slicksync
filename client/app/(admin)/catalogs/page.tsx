@@ -236,7 +236,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex items-center gap-3 pl-3 pr-6 py-2.5 ml-[92px] rounded-full transition-transform hover:scale-105"
+      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
         // A logo lockup (icon chip + wordmark), same shape as the app's own
         // Sidebar branding, sized up and given real breathing room per
@@ -260,10 +260,52 @@ export default function ListsPage() {
       >
         <PlayIcon className="w-5 h-5 text-white ml-0.5" />
       </span>
-      <span className="font-display font-bold text-xl tracking-tight" style={{ color: 'rgb(147, 197, 253)' }}>
+      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(147, 197, 253)' }}>
         Nuvio Collections
       </span>
     </button>
+  );
+
+  // AIOStreams Collections, next to Nuvio's: which catalogs show up as
+  // collections in AIOStreams' apps. AIOStreams' black and white.
+  const aiostreamsCollectionsButton = (
+    <button
+      type="button"
+      onClick={() => router.push('/catalogs/aiostreams-collections')}
+      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
+      style={{
+        background: 'linear-gradient(115deg, rgb(12, 12, 14) 0%, rgb(12, 12, 14) 50%, rgb(30, 30, 34) 50%, rgb(30, 30, 34) 100%)',
+        border: '1.5px solid rgba(244, 244, 245, 0.55)',
+        boxShadow: '0 0 20px -6px rgba(244, 244, 245, 0.35)',
+      }}
+    >
+      <span
+        className="flex items-center justify-center rounded-2xl shrink-0 font-display font-black text-sm"
+        style={{
+          width: 44,
+          height: 44,
+          background: 'linear-gradient(115deg, rgb(12, 12, 14) 0%, rgb(12, 12, 14) 50%, rgb(244, 244, 245) 50%, rgb(244, 244, 245) 100%)',
+          border: '1px solid rgba(244, 244, 245, 0.5)',
+          color: 'rgb(255, 255, 255)',
+          textShadow: '0 0 2px rgb(0, 0, 0), 0 0 2px rgb(0, 0, 0)',
+        }}
+      >
+        AIO
+      </span>
+      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(244, 244, 245)' }}>
+        AIOStreams Collections
+      </span>
+    </button>
+  );
+
+  // Both pills share one width so they read as a pair: side by side when
+  // the header's left column has room, stacked and left-aligned when it
+  // doesn't (half-width windows, phones), shrinking on the narrowest phones.
+  const collectionsButtons = (
+    <div className="w-full flex flex-wrap items-center gap-3">
+      {nuvioCollectionsButton}
+      {aiostreamsCollectionsButton}
+    </div>
   );
 
   return (
@@ -272,13 +314,13 @@ export default function ListsPage() {
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs' }]} className="text-xl font-semibold" />}
           subtitle={heading.subtitle}
-          leading={nuvioCollectionsButton}
+          leading={collectionsButtons}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={nuvioCollectionsButton} />}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} />}
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>

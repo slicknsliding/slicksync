@@ -408,6 +408,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       useGravatar: true,
       nuvioProfileId: true,
       providerType: true,
+      jellyfinServerKind: true,
       excludeFromHouseholdStats: true
     },
     orderBy: { createdAt: 'asc' }
@@ -876,6 +877,11 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   for (const session of activeSessionsFromDb) {
     const user = userMap.get(session.userId)
     if (!user) continue
+    // Someone on a Jellyfin-compatible server has a real live signal - the
+    // server's own sessions list, added below - so a session only kept open
+    // by the library read's ~15-minute freshness window would leave a
+    // finished viewing on screen long after it stopped.
+    if (user.providerType === 'jellyfin') continue
 
     nowPlaying.push({
       user: {
@@ -919,9 +925,13 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   // playback through Watch State, which none of the above can see - see
   // utils/watchState.js liveViewings(). Added before the proxy merge, so a
   // viewing that also streams through the proxy is shown once.
+  //
+  // A Jellyfin server's own sessions list does the same for people signed in
+  // to one - see utils/jellyfinLive.js.
   try {
     const { liveViewings } = require('./watchState')
-    for (const v of await liveViewings(prisma, accountIdValue || 'default')) {
+    const jellyfinViewings = require('./jellyfinLive').liveViewings(activeUsers.map((u) => u.id)).map((v) => ({ ...v, source: 'jellyfin' }))
+    for (const v of [...await liveViewings(prisma, accountIdValue || 'default'), ...jellyfinViewings]) {
       const user = userMap.get(v.userId)
       if (!user) continue
       if (nowPlaying.some((np) => np.user.id === v.userId && np.item.id === v.itemId)) continue
@@ -948,9 +958,13 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         watchedAtTimestamp: v.startedAt.getTime(),
         lastPosition: v.positionMs,
         totalDuration: v.durationMs,
-        source: 'aiostreams',
-        stremioAppUrl: buildStremioLinks(v.itemId, v.itemType === 'series' ? 'series' : 'movie', v.season, v.episode).appUrl,
-        nuvioAppUrl: buildNuvioAppUrl(v.itemType === 'series' ? 'series' : 'movie', v.itemId),
+        source: v.source || 'aiostreams',
+        // A Jellyfin app has no link to open a title with, and a Stremio or
+        // Nuvio one would open the wrong app.
+        ...(v.source === 'jellyfin' ? {} : {
+          stremioAppUrl: buildStremioLinks(v.itemId, v.itemType === 'series' ? 'series' : 'movie', v.season, v.episode).appUrl,
+          nuvioAppUrl: buildNuvioAppUrl(v.itemType === 'series' ? 'series' : 'movie', v.itemId),
+        }),
       })
     }
   } catch (error) {
@@ -1124,7 +1138,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             colorIndex: user.colorIndex || 0,
             avatarUrl: user.avatarUrl || null,
             useGravatar: user.useGravatar ?? false,
-            providerType: user.providerType || 'stremio'
+            providerType: user.providerType || 'stremio',
+            jellyfinServerKind: user.jellyfinServerKind || null
           },
           item: {
             id: ep.showId,
@@ -1169,7 +1184,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             colorIndex: user.colorIndex || 0,
             avatarUrl: user.avatarUrl || null,
             useGravatar: user.useGravatar ?? false,
-            providerType: user.providerType || 'stremio'
+            providerType: user.providerType || 'stremio',
+            jellyfinServerKind: user.jellyfinServerKind || null
           },
           item: {
             id: m.itemId,

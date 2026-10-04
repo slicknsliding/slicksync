@@ -228,7 +228,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     const showId = item._id || item.id
     const showName = item.name
     const poster = await resolveSinglePoster(showId, 'series', item.poster || null)
-    const profileLabel = item.state?.nuvioProfile || null
+    const profileLabel = item.state?.profileLabel || item.state?.nuvioProfile || null
     const { season, episode } = extractSeasonEpisode(videoId)
 
     // Get watch date from item
@@ -424,7 +424,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
 
     const itemName = item.name
     const poster = await resolveSinglePoster(itemId, 'movie', item.poster || null)
-    const profileLabel = item.state?.nuvioProfile || null
+    const profileLabel = item.state?.profileLabel || item.state?.nuvioProfile || null
 
     // Get watch date from item
     // IMPORTANT: Only use state.lastWatched - this is the actual watch timestamp
@@ -561,6 +561,13 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
     return false
   }
 }
+
+// How much past the real elapsed time a position-based provider's progress
+// may add in one observation - one activity-monitor pass, with room to spare.
+const WALL_CLOCK_SLACK_SECONDS = 120
+// The smallest step such a provider's progress is recorded in (see the
+// minimum-delta comment in processLibraryItem).
+const WALL_CLOCK_MIN_DELTA_SECONDS = 10
 
 // Ratio of runtime a movie's position must drop below to count as "restarted".
 const REWATCH_ARM_RATIO = 0.15
@@ -837,6 +844,21 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         if (totalDeltaMs > 0) {
           totalDeltaSeconds = Number(totalDeltaMs / 1000n)
         }
+
+        // A Jellyfin server reports where playback IS, not time spent: seeking
+        // ahead, or marking a title played halfway through, moves it without
+        // anyone watching. For those items a jump adds no more than the real
+        // time between this observation and the last one, plus the length of
+        // a pass. Only the Jellyfin provider sets this flag, so Stremio and
+        // Nuvio are counted exactly as before.
+        if (item.state?.wallClockCapped && totalDeltaSeconds > 0) {
+          const prevAt = latestSnapshot?.lastWatched ? new Date(latestSnapshot.lastWatched).getTime() : NaN
+          const currAt = current.lastWatched ? current.lastWatched.getTime() : NaN
+          if (Number.isFinite(prevAt) && Number.isFinite(currAt)) {
+            const capSeconds = Math.max(0, Math.floor((currAt - prevAt) / 1000)) + WALL_CLOCK_SLACK_SECONDS
+            totalDeltaSeconds = Math.min(totalDeltaSeconds, capSeconds)
+          }
+        }
       } else {
         // Either first-time ever seeing this item (no prior snapshot exists),
         // or a new episode just started (episodeChanged) - either way,
@@ -887,7 +909,13 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       // 1. The snapshot represents the baseline we've accounted for
       // 2. When snapshot updates, it means library increased, so we should record that increase
       // 3. The only exception is if we JUST created an activity (within 30 seconds), then we skip to avoid duplicates
-      if (remainingDeltaSeconds >= 60 && !shouldSubtractRecent) {
+      // A Jellyfin server is read every pass while something plays, so its
+      // progress arrives a minute at a time - often a second or two under
+      // 60. The snapshot advances either way, so the 60-second floor meant
+      // for providers that report in bigger steps would throw much of that
+      // viewing away.
+      const minDeltaSeconds = item.state?.wallClockCapped ? WALL_CLOCK_MIN_DELTA_SECONDS : 60
+      if (remainingDeltaSeconds >= minDeltaSeconds && !shouldSubtractRecent) {
         activityDeltaSeconds = totalDeltaSeconds
       } else if (shouldSubtractRecent) {
         // Log when we skip creating activity due to very recent activity
@@ -927,7 +955,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             videoId: current.videoId || null,
             // The Nuvio profile it was watched under, so the time can follow
             // the profile if it is ever given to someone else.
-            profileLabel: item.state?.nuvioProfile || null
+            profileLabel: item.state?.profileLabel || item.state?.nuvioProfile || null
           }
         }))
       }

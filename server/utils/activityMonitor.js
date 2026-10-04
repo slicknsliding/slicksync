@@ -124,6 +124,11 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         providerType: true,
         nuvioRefreshToken: true,
         nuvioUserId: true,
+        jellyfinServerUrl: true,
+        jellyfinServerId: true,
+        jellyfinServerKind: true,
+        jellyfinUserId: true,
+        jellyfinToken: true,
         colorIndex: true,
         notifyOnWatch: true,
         discordWebhookUrl: true,
@@ -188,7 +193,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       const canUseLegacyCache = (user) => !!user?.email && emailCounts.get(user.email) === 1
 
       // Helper function to get library for a user via their provider
-      // (Stremio or Nuvio); falls back to cache if no credentials or on error.
+      // (Stremio, Nuvio or Jellyfin); falls back to cache if no credentials or on error.
       // Fetched ONCE per pass: the metrics step and the sessions step both
       // ask for it within the same second, and each used to fetch, parse and
       // re-cache the whole library on its own - twice the network and twice
@@ -254,6 +259,11 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             stremioAuthKey: c.stremioAuthKey,
             nuvioRefreshToken: c.nuvioRefreshToken,
             nuvioUserId: c.nuvioUserId,
+            jellyfinServerUrl: c.jellyfinServerUrl,
+            jellyfinServerId: c.jellyfinServerId,
+            jellyfinServerKind: c.jellyfinServerKind,
+            jellyfinUserId: c.jellyfinUserId,
+            jellyfinToken: c.jellyfinToken,
             providerConnectionError: null,
             __recordAs: owner.id,
             // A refreshed Nuvio token belongs on this login's own row.
@@ -302,6 +312,14 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       } catch (sessionError) {
         heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })
         console.warn(`[ActivityMonitor] Error processing sessions:`, sessionError.message)
+      }
+
+      // Viewings a Jellyfin server's sessions list showed starting during the
+      // library reads above - see utils/jellyfinLive.js.
+      try {
+        await require('./jellyfinLive').announceStarts(prisma, accountId, users)
+      } catch (liveError) {
+        console.warn(`[ActivityMonitor] Error announcing Jellyfin viewings:`, liveError.message)
       }
 
       // Detect silent account mismatches (proxy sees this user watching, but

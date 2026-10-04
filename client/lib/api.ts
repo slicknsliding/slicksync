@@ -2242,6 +2242,105 @@ class ApiClient {
     return (result?.user || result) as User;
   }
 
+  // --- Jellyfin-compatible servers (a real Jellyfin, AIOStreams, AIOMetadata) ---
+  // The server signs in; the browser only ever sends what the person typed.
+
+  async jellyfinProbe(serverUrl: string) {
+    return this.fetch<import('@/components/jellyfin/JellyfinSignIn').JellyfinServerInfo>('/jellyfin/probe', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl }),
+    });
+  }
+
+  async jellyfinStartQuickConnect(serverUrl: string) {
+    return this.fetch<{ code: string; secret: string; device: string; serverUrl: string }>('/jellyfin/quick-connect', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl }),
+    });
+  }
+
+  async jellyfinQuickConnectStatus(params: { serverUrl: string; secret: string; device: string }) {
+    return this.fetch<{ authenticated: boolean; expired?: boolean }>('/jellyfin/quick-connect-status', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  /** Adds a person signed in to their server - or, with userId, reconnects an existing one. */
+  async connectUserWithJellyfin(data: import('@/components/jellyfin/JellyfinSignIn').JellyfinCredentials & {
+    username?: string;
+    groupName?: string;
+    colorIndex?: number;
+    userId?: string;
+  }) {
+    const result = await this.fetch<any>('/jellyfin/connect', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    // The household that came along as profiles, for AIOStreams and AIOMetadata.
+    return { ...(result?.user || result), household: (result?.household || []) as HouseholdProfile[] } as User & { household: HouseholdProfile[] };
+  }
+
+  // --- AIOStreams Collections: SlickSync's catalogs as collections in AIOStreams' apps ---
+
+  // Each AIOStreams login has its own collections; every profile on it sees them.
+  async getAioCollectionAccounts() {
+    return this.fetch<{ accounts: AioCollectionAccount[] }>('/jellyfin/collections/accounts');
+  }
+
+  /** The GET path for one account's collections - also the key api.peekGet reads. */
+  aioCollectionsPath(userId: string) {
+    return `/jellyfin/collections?userId=${encodeURIComponent(userId)}`;
+  }
+
+  async getAioCollections(userId: string) {
+    return this.fetch<AioCollectionsView>(this.aioCollectionsPath(userId));
+  }
+
+  async saveAioCollections(userId: string, collections: Pick<AioCollection, 'id' | 'name' | 'coverUrl' | 'catalogIds' | 'hidden' | 'order'>[]) {
+    return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, collections }) });
+  }
+
+  async resetAioCollections(userId: string) {
+    return this.fetch<{ success: boolean }>('/jellyfin/collections', { method: 'PUT', body: JSON.stringify({ userId, reset: true }) });
+  }
+
+  // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
+
+  async getHousehold(userId: string) {
+    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null }>(
+      `/jellyfin/users/${encodeURIComponent(userId)}/household`
+    );
+  }
+
+  async trackHouseholdProfile(profileId: string, tracked: boolean) {
+    return this.fetch<{ profiles: HouseholdProfile[] }>(`/jellyfin/household/${encodeURIComponent(profileId)}/track`, {
+      method: 'POST',
+      body: JSON.stringify({ tracked }),
+    });
+  }
+
+  async signInHouseholdProfile(profileId: string, data: { password: string; pin?: string }) {
+    return this.fetch<{ profiles: HouseholdProfile[] }>(`/jellyfin/household/${encodeURIComponent(profileId)}/sign-in`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async separateHouseholdProfile(profileId: string) {
+    return this.fetch<{ profiles: HouseholdProfile[]; person: { id: string; username: string } }>(`/jellyfin/household/${encodeURIComponent(profileId)}/separate`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async mergeHouseholdProfileBack(profileId: string) {
+    return this.fetch<{ profiles: HouseholdProfile[] }>(`/jellyfin/household/${encodeURIComponent(profileId)}/merge-back`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
   // --- Nuvio provider ---
   // Mirrors the Stremio pattern above: /nuvio/connect-authkey with create:true
   // is the actual "create a new SlickSync user" endpoint. /nuvio/connect is for
@@ -3154,14 +3253,62 @@ class ApiClient {
 export const api = new ApiClient();
 
 // Types
+/** One collection SlickSync serves to AIOStreams' apps. */
+export interface AioCollection {
+  id: string;
+  name: string;
+  coverUrl: string | null;
+  catalogIds: string[];
+  hidden: boolean;
+  /** Title ids in the order dragged on the collection's page - only for one built from several catalogs. */
+  order?: string[];
+  titles: number;
+  cover: string | null;
+  /** Set when the cover is just this title's poster - shown the way poster cards show it. */
+  coverTitleId?: string | null;
+}
+
+/** An AIOStreams login whose collections can be arranged, and the profiles that share them. */
+export interface AioCollectionAccount {
+  id: string;
+  name: string;
+  email: string | null;
+  avatarUrl: string | null;
+  colorIndex: number | null;
+  linked: boolean;
+  profiles: string[];
+}
+
+export interface AioCollectionsView {
+  configured: boolean;
+  linked: boolean;
+  collections: AioCollection[];
+  catalogs: { id: string; name: string; titles: number; cover: string | null }[];
+}
+
+/** One household user on an AIOStreams or AIOMetadata sign-in, as a profile. */
+export interface HouseholdProfile {
+  id: string;
+  name: string;
+  status: 'tracked' | 'own' | 'untracked' | 'needs-pin' | 'needs-sign-in';
+  person: { id: string; username: string } | null;
+}
+
 export interface User {
   id: string;
   username: string;
   name?: string; // Legacy field, prefer username
   email?: string;
-  providerType?: 'stremio' | 'nuvio';
+  providerType?: 'stremio' | 'nuvio' | 'jellyfin';
   /** Which Nuvio profile's addon list this user manages (1 is the primary). */
   nuvioProfileId?: number;
+  /** For a Jellyfin login: which kind of server, where, and the name they sign in with there. */
+  jellyfinServerKind?: 'jellyfin' | 'aiostreams' | 'aiometadata';
+  jellyfinServerLabel?: string;
+  jellyfinServer?: string | null;
+  jellyfinUserName?: string | null;
+  /** An AIOStreams configuration SlickSync reads to warn about outside changes. */
+  aioConfigWatched?: boolean;
   /** Left out of household numbers - totals, Top Viewers, Wrapped. */
   excludeFromHouseholdStats?: boolean;
   /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
@@ -3209,15 +3356,15 @@ export interface User {
 export interface MergeCandidate {
   id: string;
   username: string;
-  providerType: 'stremio' | 'nuvio';
+  providerType: 'stremio' | 'nuvio' | 'jellyfin';
   avatarUrl?: string | null;
   colorIndex?: number;
   email?: string;
 }
 
 export interface MergePreview {
-  survivor: { id: string; username: string; providerType: 'stremio' | 'nuvio' };
-  donor: { id: string; username: string; providerType: 'stremio' | 'nuvio' };
+  survivor: { id: string; username: string; providerType: 'stremio' | 'nuvio' | 'jellyfin' };
+  donor: { id: string; username: string; providerType: 'stremio' | 'nuvio' | 'jellyfin' };
   movieCount: number;
   episodeCount: number;
   sessionCount: number;
@@ -3228,7 +3375,7 @@ export interface MergePreview {
 }
 
 export interface MergeInfo {
-  providerType: 'stremio' | 'nuvio';
+  providerType: 'stremio' | 'nuvio' | 'jellyfin';
   donorUsername: string | null;
   donorEmail: string | null;
   donorAvatarUrl: string | null;
@@ -4447,7 +4594,7 @@ export interface MetricsData {
   /** True when the feed was capped and older history can still be asked for. */
   activityTruncated?: boolean;
   recentActivity?: Array<{
-    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean; providerType?: 'stremio' | 'nuvio' };
+    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean; providerType?: 'stremio' | 'nuvio' | 'jellyfin' };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
     profileLabel?: string | null;

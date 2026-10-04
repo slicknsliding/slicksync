@@ -58,6 +58,19 @@ if (!diffScript || !diffScript.trim()) {
 // treated as safe to auto-apply.
 const DESTRUCTIVE_CLAUSE_PATTERN = /^DROP\s+(COLUMN|TABLE)\b|^ALTER\s+COLUMN\b[\s\S]*?\bTYPE\b/i
 
+// Columns taken out of the schema on purpose whose data nothing reads any
+// more, approved for dropping by name. Without this, a retired column sits in
+// the database forever and every boot prints the "destructive changes were
+// NOT applied" warning for it, which trains everyone to ignore that warning
+// for the day it matters. Anything not listed here still waits for a human.
+//   users.traxInPlayerActions - SlickTrax in-player actions, removed in 1ec467a.
+const RETIRED_COLUMNS = new Set(['"users"."traxInPlayerActions"'])
+
+function isRetiredColumnDrop(tableName, clause) {
+  const m = clause.match(/^DROP\s+COLUMN\s+("(?:[^"]|"")+")\s*$/i)
+  return !!m && RETIRED_COLUMNS.has(`${tableName}.${m[1]}`)
+}
+
 // Splits a clause list on top-level commas only - a naive split would break
 // on the comma inside e.g. `DECIMAL(10,2)` or `TIMESTAMP(3)` defaults.
 function splitTopLevel(str) {
@@ -109,8 +122,8 @@ for (const raw of rawStatements) {
   if (alterMatch) {
     const [, tableName, clauseList] = alterMatch
     const clauses = splitTopLevel(clauseList)
-    const safeClauses = clauses.filter((c) => !DESTRUCTIVE_CLAUSE_PATTERN.test(c))
-    const unsafeClauses = clauses.filter((c) => DESTRUCTIVE_CLAUSE_PATTERN.test(c))
+    const safeClauses = clauses.filter((c) => !DESTRUCTIVE_CLAUSE_PATTERN.test(c) || isRetiredColumnDrop(tableName, c))
+    const unsafeClauses = clauses.filter((c) => DESTRUCTIVE_CLAUSE_PATTERN.test(c) && !isRetiredColumnDrop(tableName, c))
     if (safeClauses.length > 0) {
       safe.push(`ALTER TABLE ${tableName} ${safeClauses.join(', ')};`)
     }
@@ -131,7 +144,7 @@ async function main() {
   const prisma = new PrismaClient()
   try {
     if (safe.length > 0) {
-      console.log(`📐 Applying ${safe.length} safe (additive-only) schema statement(s) automatically...`)
+      console.log(`📐 Applying ${safe.length} safe schema statement(s) automatically (additive, or dropping a retired column)...`)
       for (const stmt of safe) {
         await prisma.$executeRawUnsafe(stmt.endsWith(';') ? stmt : `${stmt};`)
         console.log('  ✓', stmt.split('\n')[0])

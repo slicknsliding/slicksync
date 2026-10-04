@@ -4,7 +4,7 @@
  * Get addons from the user's provider (Stremio or Nuvio)
  */
 async function getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider }) {
-  // Provider path: routes to Stremio or Nuvio based on user.providerType.
+  // Provider path: routes to Stremio, Nuvio or Jellyfin based on user.providerType.
   // Providers return collection shape ({ addons: [...] }) which callers already handle.
   if (createProvider) {
     try {
@@ -436,6 +436,9 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
       select: { id: true, stremioAuthKey: true, isActive: true, excludedAddons: true, protectedAddons: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, accountId: true, traxAddonEnabled: true, traxToken: true }
     })
     if (!user) return { status: 'error', isSynced: false, message: 'User not found' }
+    // A Jellyfin-compatible server has no addon list for SlickSync to keep in
+    // step, so there is nothing to be synced or unsynced.
+    if (user.providerType === 'jellyfin') return { isSynced: true, status: 'unsupported', message: 'Their server has no addon list to sync' }
     const hasCredentials = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
     if (!hasCredentials) return { isSynced: false, status: 'connect', message: 'User not connected to a provider' }
 
@@ -585,8 +588,12 @@ function createGetGroupSyncStatus(deps) {
         userStatuses.push({ userId: uid, status: 'error', isSynced: false, message: e?.message || 'Failed' })
       }
     }
-    const groupStatus = userStatuses.every(s => s.status === 'synced') ? 'synced' : 'unsynced'
-    return { groupStatus, userStatuses, memberCount: userIds.length, addonCount: group?._count?.addons ?? 0 }
+    // People whose server has no addon list (Jellyfin) have nothing to be in
+    // or out of step with, so the group's verdict is about everyone else - a
+    // group of only them has nothing to sync at all.
+    const syncable = userStatuses.filter(s => s.status !== 'unsupported')
+    const groupStatus = syncable.every(s => s.status === 'synced') ? 'synced' : 'unsynced'
+    return { groupStatus, userStatuses: syncable, memberCount: syncable.length, addonCount: group?._count?.addons ?? 0 }
   }
 }
 
@@ -597,6 +604,8 @@ function createGetGroupSyncStatus(deps) {
 async function computeUserSyncPlan(user, req, { prisma, getAccountId, decrypt, parseAddonIds, parseProtectedAddons, canonicalizeManifestUrl, StremioAPIClient, createProvider, unsafeMode = false, useCustomFields = true, useCustomNames = undefined }) {
   // Backward compatibility: support both useCustomFields (new) and useCustomNames (old)
   const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : (useCustomNames !== undefined ? useCustomNames : true)
+  // Nothing to plan for a server with no addon list (see computeUserSyncStatus).
+  if (user?.providerType === 'jellyfin') return { success: true, unsupported: true, alreadySynced: true, current: [], desired: [] }
   
   // 1) Current - getUserAddons already has repair logic built in
   const currentRes = await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })

@@ -15,6 +15,7 @@ import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal
 import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
+import { providerLabel, providerBadgeVariant, hasAddonList } from '@/lib/providers';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -422,7 +423,7 @@ export default function UserDetailPage() {
     const candidate: MergeCandidate = {
       id: picked.id,
       username: picked.username || picked.name || picked.email || 'Unnamed user',
-      providerType: picked.providerType === 'nuvio' ? 'nuvio' : 'stremio',
+      providerType: (picked.providerType || 'stremio') as 'stremio' | 'nuvio' | 'jellyfin',
       avatarUrl: picked.avatarUrl,
       colorIndex: picked.colorIndex,
       email: picked.email,
@@ -1234,11 +1235,18 @@ export default function UserDetailPage() {
                           className="text-xl md:text-2xl font-bold font-display"
                         />
                         <Badge
-                          variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                          variant={providerBadgeVariant(user)}
                           size="sm"
                         >
-                          {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                          {providerLabel(user)}
                         </Badge>
+                        {/* Which server, and who they sign in as there. */}
+                        {user.providerType === 'jellyfin' && (user.jellyfinServer || user.jellyfinUserName) && (
+                          <span className="text-xs text-muted truncate max-w-[16rem]" title={user.jellyfinServer || undefined}>
+                            {user.jellyfinUserName ? `${user.jellyfinUserName} on ` : ''}{user.jellyfinServer}
+                            {user.aioConfigWatched ? ' · watched for changes' : ''}
+                          </span>
+                        )}
                         {/* Only worth saying when it is not the primary - a
                             Nuvio user that manages profile 1 is the ordinary
                             case and does not need labelling. */}
@@ -1560,8 +1568,8 @@ export default function UserDetailPage() {
                           Merged with {mergeInfo.donorUsername || 'a second account'}
                         </h3>
                         <div className="flex items-center gap-2 mt-1">
-                          <Badge variant={mergeInfo.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                            {mergeInfo.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                          <Badge variant={providerBadgeVariant({ providerType: mergeInfo.providerType })} size="sm">
+                            {providerLabel({ providerType: mergeInfo.providerType })}
                           </Badge>
                           <p className="text-sm text-muted">{mergeInfo.donorEmail || 'Its watch history now lives on this account'}</p>
                         </div>
@@ -1762,6 +1770,7 @@ export default function UserDetailPage() {
                 >
                   Overview
                 </button>
+                {hasAddonList(user) && (
                 <button
                   onClick={() => setActiveTab('addons')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
@@ -1778,6 +1787,7 @@ export default function UserDetailPage() {
                     </span>
                   )}
                 </button>
+                )}
               </div>
             </PageSection>
 
@@ -1985,7 +1995,7 @@ export default function UserDetailPage() {
             )}
 
             {/* Addons Tab Content */}
-            {activeTab === 'addons' && (
+            {activeTab === 'addons' && hasAddonList(user) && (
               <>
                 {/* Group Addons */}
                 <PageSection delay={0.1} className="mb-8">
@@ -2324,7 +2334,7 @@ export default function UserDetailPage() {
                 return (u.username || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query);
               });
               if (candidates.length === 0) {
-                return <p className="text-sm text-muted py-4 text-center">No matching {user?.providerType === 'nuvio' ? 'Stremio' : 'Nuvio'} users found.</p>;
+                return <p className="text-sm text-muted py-4 text-center">No matching users on another app found.</p>;
               }
               return candidates.map((u) => (
                 <button
@@ -2343,8 +2353,8 @@ export default function UserDetailPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-default truncate">{u.username || u.name}</span>
-                      <Badge variant={u.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                        {u.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                      <Badge variant={providerBadgeVariant(u)} size="sm">
+                        {providerLabel(u)}
                       </Badge>
                     </div>
                     {u.email && <p className="text-xs text-muted truncate">{u.email}</p>}
@@ -2465,6 +2475,7 @@ export default function UserDetailPage() {
         mode="reconnect"
         userId={params.id as string}
         userName={user?.username || user?.name || 'User'}
+        providerType={user?.providerType}
         onReconnectSuccess={() => {
           setIsReconnectModalOpen(false);
           window.location.reload();

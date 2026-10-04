@@ -243,6 +243,71 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     return decoded?.provider === 'nuvio' && decoded?.sub === expectedUserId
   }
 
+  // Jellyfin portal sessions work the same way: signing in proves the person
+  // holds a working login on their server, and the session token issued then
+  // is what later requests present.
+  function issueJellyfinSessionToken(userId) {
+    return jwt.sign({ sub: userId, provider: 'jellyfin' }, JWT_SECRET, { expiresIn: NUVIO_SESSION_TTL })
+  }
+  function verifyJellyfinSessionToken(token, expectedUserId) {
+    let decoded
+    try {
+      decoded = jwt.verify(token, JWT_SECRET)
+    } catch (e) {
+      return false
+    }
+    return decoded?.provider === 'jellyfin' && decoded?.sub === expectedUserId
+  }
+
+  // The person a Jellyfin sign-in belongs to: the same server user, active,
+  // and in a group - the same rules getPublicUserNuvio applies. A fresh token
+  // from the sign-in replaces the stored one (the server retires the old
+  // token for the same device when it issues a new one).
+  async function getPublicUserJellyfin(probe, login) {
+    const ors = [{ jellyfinServerUrl: probe.serverUrl }]
+    if (login.serverId) ors.unshift({ jellyfinServerId: login.serverId })
+    const personSelect = { id: true, username: true, email: true, accountId: true, isActive: true, colorIndex: true, createdAt: true, expiresAt: true };
+    let user = await prisma.user.findFirst({
+      where: { providerType: 'jellyfin', jellyfinUserId: login.userId, OR: ors },
+      select: personSelect
+    });
+    // A household profile (utils/jellyfinProfiles.js) signs in as the person
+    // it belongs to, the way a Nuvio profile does.
+    if (!user) {
+      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', OR: ors }, select: { id: true } });
+      const profile = owners.length
+        ? await prisma.jellyfinProfile.findFirst({ where: { ownerUserId: { in: owners.map((o) => o.id) }, jellyfinUserId: login.userId, skip: false } })
+        : null;
+      if (profile) {
+        user = await prisma.user.findUnique({ where: { id: profile.ownUserId || profile.ownerUserId }, select: personSelect });
+        // The profile's own sign-in was already kept (rememberSignIn); the
+        // person's stays theirs.
+        if (user) user.viaProfile = true;
+      }
+    }
+    if (!user) throw new Error('USER_NOT_FOUND');
+    if (!user.isActive) throw new Error('USER_NOT_ACTIVE');
+    const groups = await prisma.group.findMany({ where: { isActive: true }, select: { userIds: true } });
+    const inGroup = groups.some((group) => {
+      try { const ids = JSON.parse(group.userIds || '[]'); return Array.isArray(ids) && ids.includes(user.id) } catch { return false }
+    });
+    if (!inGroup) throw new Error('USER_NOT_IN_GROUP');
+    if (user.viaProfile) return user;
+    const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        jellyfinToken: encrypt(login.token, mockReq),
+        jellyfinServerUrl: probe.serverUrl,
+        jellyfinServerKind: probe.kind,
+        ...(login.serverId ? { jellyfinServerId: login.serverId } : {}),
+        providerConnectionError: null,
+        providerConnectionErrorAt: null,
+      }
+    });
+    return user;
+  }
+
   // Shared identity-only gate for routes whose actual data is 100%
   // SlickSync's own DB (no live provider content call needed) - branches
   // between getPublicUser (Stremio authKey) and getPublicUserNuvio
@@ -250,6 +315,17 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   // branch. Throws with .message set to what the caller should return as
   // the error body (matches this file's existing per-route wording).
   async function verifyProviderIdentity(user, authKey, req) {
+    if (user.providerType === 'jellyfin') {
+      if (!authKey || !verifyJellyfinSessionToken(authKey, user.id)) {
+        throw new Error('Authentication required');
+      }
+      const row = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true, username: true, email: true, accountId: true, isActive: true, protectedAddons: true }
+      });
+      if (!row || !row.isActive) throw new Error('Authentication required');
+      return row;
+    }
     if (user.providerType === 'nuvio') {
       if (!authKey || !verifyNuvioSessionToken(authKey, user.id)) {
         throw new Error('Authentication required');
@@ -757,6 +833,90 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
+  // --- Jellyfin-compatible servers (a real Jellyfin, AIOStreams, AIOMetadata) ---
+
+  // POST /jellyfin-probe, /jellyfin-quick-connect, /jellyfin-quick-connect-status
+  require('../utils/jellyfinConnect').mountSignInSteps(router, 'jellyfin-');
+
+  const portalAuthErrors = {
+    USER_NOT_FOUND: 'Your account is not registered with SlickSync. Please contact an administrator to be added to a SlickSync group first.',
+    USER_NOT_ACTIVE: 'Your account has been disabled. Please contact an administrator to reactivate your account.',
+    USER_NOT_IN_GROUP: 'Your account is not part of any SlickSync group. Please contact an administrator to be added to a group first.',
+  };
+
+  router.post('/authenticate-jellyfin', async (req, res) => {
+    try {
+      const { signInFromBody } = require('../utils/jellyfinConnect');
+      let signedIn;
+      try {
+        signedIn = await signInFromBody(req.body);
+      } catch (err) {
+        const status = err?.status === 401 ? 401 : 400;
+        return res.status(status).json({ error: 'Authentication failed', message: err?.message || 'Could not sign in to the server', ...(err?.pinNeeded ? { pinNeeded: true } : {}) });
+      }
+      await require('../utils/jellyfinConnect').rememberSignIn(prisma, encrypt, signedIn.probe, signedIn.login);
+      const user = await getPublicUserJellyfin(signedIn.probe, signedIn.login);
+      res.json({
+        success: true,
+        sessionToken: issueJellyfinSessionToken(user.id),
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          colorIndex: user.colorIndex || 0,
+          createdAt: user.createdAt,
+          expiresAt: user.expiresAt
+        }
+      });
+    } catch (error) {
+      if (portalAuthErrors[error?.message]) {
+        return res.status(403).json({ error: error.message, message: portalAuthErrors[error.message] });
+      }
+      console.error('Error authenticating with a Jellyfin server:', error?.message);
+      res.status(401).json({ error: 'Authentication failed', message: 'Could not sign in' });
+    }
+  });
+
+  // A restored (page-reload) session: the caller's own session token, and a
+  // stored server login that still works.
+  router.post('/validate-jellyfin', async (req, res) => {
+    try {
+      const { userId } = req.body || {};
+      if (!userId) return res.status(400).json({ error: 'User ID is required' });
+      const callerToken = getAuthKey(req);
+      if (!callerToken || !verifyJellyfinSessionToken(callerToken, userId)) {
+        return res.status(401).json({ error: 'Validation failed', message: 'Invalid or expired session' });
+      }
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, username: true, email: true, isActive: true, providerType: true, accountId: true, jellyfinServerUrl: true, jellyfinToken: true, jellyfinUserId: true }
+      });
+      if (!user || user.providerType !== 'jellyfin' || !user.jellyfinToken) {
+        return res.status(403).json({ error: 'USER_NOT_FOUND', message: portalAuthErrors.USER_NOT_FOUND });
+      }
+      if (!user.isActive) return res.status(403).json({ error: 'USER_NOT_ACTIVE', message: portalAuthErrors.USER_NOT_ACTIVE });
+      try {
+        const { currentUser } = require('../providers/jellyfinAuth');
+        const me = await currentUser(user.jellyfinServerUrl, decrypt(user.jellyfinToken, { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID }));
+        if (me.userId !== user.jellyfinUserId) throw Object.assign(new Error('different user'), { status: 401 });
+      } catch (err) {
+        // A server that is down is not a reason to sign the person out.
+        if (err?.status === 401) {
+          return res.status(401).json({ error: 'Validation failed', message: 'Your server sign-in has expired. Sign in again.' });
+        }
+      }
+      res.json({
+        success: true,
+        valid: true,
+        sessionToken: issueJellyfinSessionToken(user.id),
+        user: { id: user.id, username: user.username, email: user.email }
+      });
+    } catch (error) {
+      console.error('Error validating a Jellyfin session:', error?.message);
+      res.status(401).json({ error: 'Validation failed', message: 'Invalid session' });
+    }
+  });
+
   // Get current user's info (including activityVisibility)
   router.get('/user-info', async (req, res) => {
     try {
@@ -1022,6 +1182,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           providerType: true,
           nuvioRefreshToken: true,
           nuvioUserId: true,
+          jellyfinServerUrl: true,
+          jellyfinServerKind: true,
+          jellyfinUserId: true,
+          jellyfinToken: true,
           isActive: true,
           accountId: true,
           activityVisibility: true
@@ -1058,10 +1222,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(403).json({ error: 'Access denied: User library is private' });
       }
 
-      const isNuvio = user.providerType === 'nuvio';
-      const providerReady = isNuvio ? !!(user.nuvioRefreshToken && user.nuvioUserId) : !!user.stremioAuthKey;
-      if (!providerReady) {
-        return res.status(400).json({ error: `User not connected to ${isNuvio ? 'Nuvio' : 'Stremio'}` });
+      const { providerLabel, isProviderConnected } = require('../utils/providerInfo');
+      const providerName = providerLabel(user);
+      if (!isProviderConnected(user)) {
+        return res.status(400).json({ error: `User not connected to ${providerName}` });
       }
 
       // Get library from cache or fetch
@@ -1074,7 +1238,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       console.log(`[Library Cache] User ${user.id}: cache items=${library?.length || 0}, hasActiveItems=${hasActiveItems}`)
 
       if (!library || !Array.isArray(library) || library.length === 0 || !hasActiveItems) {
-        console.log(`[Library Cache] Refreshing from ${isNuvio ? 'Nuvio' : 'Stremio'} for user ${user.id}`)
+        console.log(`[Library Cache] Refreshing from ${providerName} for user ${user.id}`)
         const mockReq = { appAccountId: user.accountId };
         const provider = createProvider(user, { decrypt, req: mockReq });
         if (!provider) {
@@ -1295,6 +1459,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
+      if (user.providerType === 'jellyfin') {
+        return res.status(400).json({ error: 'NOT_SUPPORTED', message: 'Your server has no addon list for SlickSync to add to' });
+      }
       const isNuvio = user.providerType === 'nuvio';
       const providerReady = isNuvio ? !!(user.nuvioRefreshToken && user.nuvioUserId) : !!user.stremioAuthKey;
       if (!providerReady) {
@@ -1768,19 +1935,27 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         });
       }
 
-      if (!user.stremioAuthKey) {
+      // A Jellyfin server's library is written through its provider:
+      // removing takes the title out of favourites and Continue Watching.
+      const jellyfinProvider = user.providerType === 'jellyfin'
+        ? createProvider(user, { decrypt, req: { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID } })
+        : null;
+      if (user.providerType === 'jellyfin' && !jellyfinProvider) {
+        return res.status(400).json({ error: 'User not connected to their server' });
+      }
+      if (!jellyfinProvider && !user.stremioAuthKey) {
         return res.status(400).json({ error: 'User not connected to Stremio' });
       }
 
       // Decrypt auth key
       const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
-      const authKeyPlain = decrypt(user.stremioAuthKey, mockReq);
+      const authKeyPlain = jellyfinProvider ? null : decrypt(user.stremioAuthKey, mockReq);
 
       const { markLibraryItemRemoved } = require('../utils/libraryDelete');
 
       try {
         await markLibraryItemRemoved({
-          authKey: authKeyPlain,
+          ...(jellyfinProvider ? { provider: jellyfinProvider } : { authKey: authKeyPlain }),
           itemId,
           logPrefix: '[public-library]'
         });
@@ -1917,6 +2092,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
+      if (user.providerType === 'jellyfin') {
+        return res.status(400).json({ error: 'NOT_SUPPORTED', message: 'Your server has no addon list for SlickSync to change' });
+      }
       const isNuvio = user.providerType === 'nuvio';
       const providerReady = isNuvio ? !!(user.nuvioRefreshToken && user.nuvioUserId) : !!user.stremioAuthKey;
       if (!providerReady) {
@@ -2511,7 +2689,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         orderBy: { startTime: 'desc' }
       });
       
-      const nowPlaying = activeSessions.map(s => ({
+      // A Jellyfin login's live signal is its server's sessions list (added
+      // below); its library-read sessions linger after a viewing stops.
+      const nowPlaying = (user.providerType === 'jellyfin' ? [] : activeSessions).map(s => ({
         item: {
           id: s.itemId,
           name: s.itemName,
@@ -2524,10 +2704,12 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         videoId: s.videoId
       }));
 
-      // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings().
+      // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings() -
+      // or on a Jellyfin server they sign in to (utils/jellyfinLive.js).
       try {
         const { liveViewings } = require('../utils/watchState');
-        for (const v of await liveViewings(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [userId])) {
+        const jellyfinViewings = require('../utils/jellyfinLive').liveViewings([userId]);
+        for (const v of [...await liveViewings(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [userId]), ...jellyfinViewings]) {
           if (nowPlaying.some(np => np.item.id === v.itemId)) continue;
           nowPlaying.push({
             item: { id: v.itemId, name: v.itemName || v.itemId, type: v.itemType, poster: v.poster, season: v.season, episode: v.episode },
@@ -2709,7 +2891,14 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       const effectiveProvider = provider || user.providerType || 'stremio'
 
-      if (effectiveProvider === 'nuvio') {
+      if (effectiveProvider === 'jellyfin') {
+        // Same proof of possession as Nuvio below: the caller's own session
+        // token, issued when they signed in to their server.
+        const jellyfinToken = getAuthKey(req)
+        if (user.providerType !== 'jellyfin' || !jellyfinToken || !verifyJellyfinSessionToken(jellyfinToken, userId)) {
+          return res.status(401).json({ error: 'Invalid or expired session', message: 'Your session has expired - please sign in again before deleting your account' })
+        }
+      } else if (effectiveProvider === 'nuvio') {
         // Real proof of possession, not just "does the TARGET's own stored
         // token still work upstream" (that was the bug: it verifies the
         // target user's session, not the caller's - anyone who knew a

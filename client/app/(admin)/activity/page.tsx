@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, memo, useEffect, useMemo, useRef, useCallback, Suspense, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
@@ -13,7 +14,7 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
-import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
+import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, SOURCE_ORDER, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -211,7 +212,9 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         isSynthetic: false,
         poster: entry.item.poster,
         profileLabel: entry.profileLabel ?? undefined,
-        userProvider: entry.user.providerType,
+        // A Jellyfin login is placed by its kind of server (Jellyfin,
+        // AIOStreams, AIOMetadata) for the "Watched on" filter.
+        userProvider: entry.user.providerType === 'jellyfin' ? ((entry.user as { jellyfinServerKind?: string | null }).jellyfinServerKind || 'jellyfin') : entry.user.providerType,
         userAvatarUrl: entry.user.useGravatar ? null : (entry.user.avatarUrl ?? null),
         debridService: entry.debridService,
       });
@@ -222,7 +225,9 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
   // for the "Watched on" filter. History entries carry it.
   const providerByUser = new Map<string, string>();
   for (const entry of metrics.recentActivity || []) {
-    if (entry.user?.providerType) providerByUser.set(entry.user.id, entry.user.providerType);
+    if (entry.user?.providerType) {
+      providerByUser.set(entry.user.id, entry.user.providerType === 'jellyfin' ? ((entry.user as { jellyfinServerKind?: string | null }).jellyfinServerKind || 'jellyfin') : entry.user.providerType);
+    }
   }
   for (const a of activities) {
     if (!a.userProvider) a.userProvider = providerByUser.get(a.userId);
@@ -639,6 +644,26 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   // the poster art itself (just a count badge there); tapping reveals the
   // full list, so it's discoverable on mobile too, not a desktop-only tooltip.
   const [showWatchers, setShowWatchers] = useState(false);
+  // Where the "Watched by" list opens: under the avatar badge, measured when
+  // it is tapped. The list is drawn on top of the page rather than inside
+  // the poster card, which crops anything past its rounded edges.
+  const [watchersAnchor, setWatchersAnchor] = useState<{ top: number; left: number } | null>(null);
+  // It closes on a tap anywhere else (the backdrop under it), on Escape, and
+  // when the page scrolls or resizes, since it would no longer sit under
+  // its badge.
+  useEffect(() => {
+    if (!showWatchers) return;
+    const close = () => { setShowWatchers(false); activePopoverClose = null; };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [showWatchers]);
 
   const cardElement = (
     <motion.div
@@ -710,7 +735,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           // absolute-anchored-to-a-32px-avatar dropdown could run off the
           // top/side of a narrow phone screen), reverting to the original
           // avatar-anchored dropdown at `sm` and up where it already worked.
-          const popoverClass = "fixed inset-x-6 top-1/2 -translate-y-1/2 sm:absolute sm:inset-x-auto sm:top-auto sm:translate-y-0 sm:right-0 sm:mt-1 z-50 w-auto max-w-xs sm:w-44 mx-auto sm:mx-0 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5";
+          const popoverClass = "fixed z-[9999] w-48 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5";
           return (
             <div className="absolute top-2 right-2">
               {count > 1 ? (
@@ -720,6 +745,14 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                     e.stopPropagation();
                     const next = !showWatchers;
                     activePopoverClose?.();
+                    if (next) {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      const width = 192;
+                      setWatchersAnchor({
+                        top: r.bottom + 6,
+                        left: Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8),
+                      });
+                    }
                     setShowWatchers(next);
                     activePopoverClose = next ? () => setShowWatchers(false) : null;
                   }}
@@ -742,12 +775,12 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                 </Link>
               )}
 
-              {count > 1 && showWatchers && (
+              {count > 1 && showWatchers && watchersAnchor && typeof document !== 'undefined' && createPortal(
                 <>
                   {/* Click-away backdrop so the popover closes on any outside
                       tap without also triggering the card underneath. */}
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); activePopoverClose = null; }} />
-                  <div className={popoverClass} onClick={(e) => e.stopPropagation()}>
+                  <div className="fixed inset-0 z-[9998]" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); activePopoverClose = null; }} />
+                  <div className={popoverClass} style={{ top: watchersAnchor.top, left: watchersAnchor.left }} onClick={(e) => e.stopPropagation()}>
                     <p className="text-[10px] uppercase tracking-wide text-subtle px-1.5 pb-1">Watched by</p>
                     {watchers.map((w) => (
                       <Link
@@ -769,7 +802,8 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                       </Link>
                     ))}
                   </div>
-                </>
+                </>,
+                document.body,
               )}
 
             </div>
@@ -1923,15 +1957,21 @@ function ActivityPageContent() {
     const people = new Map<string, string>();
     const sources = new Set<string>();
     const profiles = new Set<string>();
+    const profileApps: Record<string, string> = {};
     for (const a of activityData) {
       people.set(a.userId, a.userName);
       sources.add(sourceOf(a.profileLabel, a.userProvider));
-      if (a.profileLabel && !SOURCE_LABELS[a.profileLabel]) profiles.add(a.profileLabel);
+      if (a.profileLabel && !SOURCE_LABELS[a.profileLabel]) {
+        profiles.add(a.profileLabel);
+        // A profile belongs to the app of the person whose viewing carries it.
+        if (a.userProvider) profileApps[a.profileLabel] = a.userProvider;
+      }
     }
     return {
       people: [...people.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
-      sources: ['stremio', 'nuvio', 'aiostreams', 'imported', 'scrobbled'].filter((s) => sources.has(s)),
+      sources: SOURCE_ORDER.filter((s) => sources.has(s)),
       profiles: [...profiles].sort((a, b) => a.localeCompare(b)),
+      profileApps,
     };
   }, [activityData]);
 
@@ -1956,8 +1996,6 @@ function ActivityPageContent() {
     if (filters.source && sourceOf(activity.profileLabel, activity.userProvider) !== filters.source) return false;
     if (filters.profile && activity.profileLabel !== filters.profile) return false;
     if (filters.kind && activity.contentType !== filters.kind) return false;
-    if (filters.status === 'finished' && activity.completed !== true) return false;
-    if (filters.status === 'partial' && activity.completed !== false) return false;
 
     // 2. Group Filter
     if (selectedGroup) {
@@ -2242,6 +2280,7 @@ function ActivityPageContent() {
                   people={filterOptions.people}
                   sources={filterOptions.sources}
                   profiles={filterOptions.profiles}
+                  profileApps={filterOptions.profileApps}
                 />
               </div>
             </PageSection>

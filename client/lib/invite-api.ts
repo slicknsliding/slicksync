@@ -140,6 +140,31 @@ export const inviteApi = {
   },
 
   /**
+   * Joining with a Jellyfin-compatible server: the server signs in with what
+   * the person typed (or an approved Quick Connect secret) and keeps the
+   * token; nothing secret comes back.
+   */
+  async submitJellyfinRequest(
+    inviteCode: string,
+    username: string,
+    jellyfin: Record<string, string>,
+  ): Promise<{ message?: string; email?: string;[key: string]: any }> {
+    return request(`/${inviteCode}/request`, {
+      method: 'POST',
+      body: JSON.stringify({ username, jellyfin }),
+    });
+  },
+
+  /** The steps before that sign-in - checking the address and Quick Connect - gated on this invitation. */
+  jellyfinSignIn(inviteCode: string) {
+    return {
+      probe: (serverUrl: string) => request<any>(`/${inviteCode}/jellyfin/probe`, { method: 'POST', body: JSON.stringify({ serverUrl }) }),
+      startQuickConnect: (serverUrl: string) => request<any>(`/${inviteCode}/jellyfin/quick-connect`, { method: 'POST', body: JSON.stringify({ serverUrl }) }),
+      quickConnectStatus: (params: { serverUrl: string; secret: string; device: string }) => request<any>(`/${inviteCode}/jellyfin/quick-connect-status`, { method: 'POST', body: JSON.stringify(params) }),
+    };
+  },
+
+  /**
    * Start a Nuvio device sign-in for this invitation. Mirrors the admin
    * route, gated on the invite rather than a session, because someone
    * joining has no account to authenticate with yet.

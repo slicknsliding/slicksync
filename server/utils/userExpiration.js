@@ -190,6 +190,7 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
           await prisma.user.delete({
             where: { id: user.id }
           })
+          await require('./jellyfinProfiles').forgetPersonHousehold(prisma, user.id)
 
           try {
             const [movies, episodes] = await Promise.all([

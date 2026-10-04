@@ -9,6 +9,7 @@ import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, Sy
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { ProfilesCard } from '@/components/user/ProfilesCard';
+import { HouseholdCard } from '@/components/jellyfin/HouseholdCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
@@ -16,6 +17,7 @@ import { api, User, Group, MetricsData } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
+import { providerLabel, providerBadgeVariant, providerTypeLabel, hasAddonList } from '@/lib/providers';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
@@ -51,10 +53,13 @@ interface UserDisplay {
   id: string;
   name: string;
   email?: string;
-  providerType?: 'stremio' | 'nuvio';
+  providerType?: 'stremio' | 'nuvio' | 'jellyfin';
+  jellyfinServerKind?: 'jellyfin' | 'aiostreams' | 'aiometadata';
+  jellyfinServerLabel?: string;
+  jellyfinServer?: string | null;
   /** Which Nuvio profile's addons this user manages; 1 is the primary. */
   nuvioProfileId?: number;
-  secondaryProviderType?: 'stremio' | 'nuvio' | null;
+  secondaryProviderType?: 'stremio' | 'nuvio' | 'jellyfin' | null;
   providerConnectionError?: string | null;
   avatarUrl?: string | null;
   status: 'active' | 'expired' | 'pending';
@@ -99,6 +104,7 @@ export default function UsersPage() {
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
   const [reconnectUserId, setReconnectUserId] = useState<string | null>(null);
   const [reconnectUserName, setReconnectUserName] = useState<string>('');
+  const [reconnectProvider, setReconnectProvider] = useState<string>('stremio');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncingUserIds, setSyncingUserIds] = useState<Set<string>>(new Set());
   // Account Guard actions (see server/utils/accountGuard.js). Re-assert is a
@@ -198,6 +204,9 @@ export default function UsersPage() {
         name: userName,
         email: user.email,
         providerType: user.providerType || 'stremio',
+        jellyfinServerKind: user.jellyfinServerKind,
+        jellyfinServerLabel: user.jellyfinServerLabel,
+        jellyfinServer: user.jellyfinServer,
         nuvioProfileId: user.nuvioProfileId ?? 1,
         secondaryProviderType: (user as any).secondaryProviderType || null,
         providerConnectionError: (user as any).providerConnectionError || null,
@@ -282,6 +291,19 @@ export default function UsersPage() {
     try { setUsers(await api.getUsers()); } catch { /* keep last known list */ }
   }, []);
 
+  // People signed in to an AIOStreams or AIOMetadata configuration, whose
+  // household may have come along as profiles.
+  const householdOwners = useMemo(
+    () => users.filter((u) => u.providerType === 'jellyfin' && (u.jellyfinServerKind === 'aiostreams' || u.jellyfinServerKind === 'aiometadata')),
+    [users]
+  );
+
+  // The Nuvio profiles and household cards under the list load their own
+  // data. Fetched here first, alongside the list, so the whole page appears
+  // at once instead of the cards popping in one after another; on a return
+  // visit they start from what this browser last saw and nothing waits.
+  const [extrasReady, setExtrasReady] = useState(false);
+
   // One entry per Nuvio login: everyone on it shares its email, and the
   // person on its lowest profile - normally the main one - stands for it.
   const nuvioLogins = useMemo(() => {
@@ -297,6 +319,21 @@ export default function UsersPage() {
       return { anchorId: anchor.id, label: `${anchor.username}'s login` };
     });
   }, [users]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const endpoints = [
+      ...nuvioLogins.map((l) => `/users/${encodeURIComponent(l.anchorId)}/profiles`),
+      ...householdOwners.map((o) => `/jellyfin/users/${encodeURIComponent(o.id)}/household`),
+    ];
+    if (endpoints.every((e) => api.peekGet(e) !== undefined)) { setExtrasReady(true); return; }
+    let cancelled = false;
+    Promise.allSettled([
+      ...nuvioLogins.map((l) => api.getProfiles(l.anchorId)),
+      ...householdOwners.map((o) => api.getHousehold(o.id)),
+    ]).then(() => { if (!cancelled) setExtrasReady(true); });
+    return () => { cancelled = true; };
+  }, [isLoading, nuvioLogins, householdOwners]);
 
   const handleGuardReassert = useCallback(async (id: string, name: string) => {
     setGuardBusyId(id);
@@ -560,7 +597,7 @@ export default function UsersPage() {
         />
 
         {/* Loading state */}
-        {isLoading ? (
+        {isLoading || !extrasReady ? (
           <div className="text-center py-16">
             <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
               <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
@@ -599,6 +636,7 @@ export default function UsersPage() {
                             onReconnect={(userId, userName) => {
                               setReconnectUserId(userId);
                               setReconnectUserName(userName);
+                              setReconnectProvider(users.find((u) => u.id === userId)?.providerType || 'stremio');
                               setIsReconnectModalOpen(true);
                             }}
                             onToggleStatus={(userId, newStatus) => {
@@ -691,10 +729,10 @@ export default function UsersPage() {
                                         {user.name}
                                       </p>
                                       <Badge
-                                        variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                                        variant={providerBadgeVariant(user)}
                                         size="sm"
                                       >
-                                        {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                                        {providerLabel(user)}
                                       </Badge>
                                       {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && (
                                         <Badge variant="secondary" size="sm">
@@ -703,10 +741,10 @@ export default function UsersPage() {
                                       )}
                                       {user.secondaryProviderType && (
                                         <Badge
-                                          variant={user.secondaryProviderType === 'nuvio' ? 'nuvio' : 'stremio'}
+                                          variant={providerBadgeVariant({ providerType: user.secondaryProviderType })}
                                           size="sm"
                                         >
-                                          {user.secondaryProviderType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                                          {providerTypeLabel(user.secondaryProviderType)}
                                         </Badge>
                                       )}
                                       {user.providerConnectionError && (
@@ -800,13 +838,30 @@ export default function UsersPage() {
       {/* Nuvio profiles: which profiles of each Nuvio login belong to whom.
           Lives here rather than on a person's page because it decides which
           people exist at all - see components/user/ProfilesCard. */}
-      {!isLoading && nuvioLogins.length > 0 && (
+      {!isLoading && extrasReady && nuvioLogins.length > 0 && (
         <div className="mt-6 flex flex-col gap-4">
           {nuvioLogins.map((login) => (
             <ProfilesCard
               key={login.anchorId}
               userId={login.anchorId}
               loginLabel={nuvioLogins.length > 1 ? login.label : null}
+              onPeopleChanged={refreshUsersQuietly}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* The same, for everyone else on an AIOStreams or AIOMetadata sign-in:
+          its household users count as that person's profiles until separated.
+          A card only shows when there is a household - see HouseholdCard. */}
+      {!isLoading && extrasReady && householdOwners.length > 0 && (
+        <div className="mt-4 flex flex-col gap-4">
+          {householdOwners.map((owner) => (
+            <HouseholdCard
+              key={owner.id}
+              userId={owner.id}
+              personName={(owner as { username?: string }).username || owner.name || 'This person'}
+              kindLabel={owner.jellyfinServerLabel || 'AIOStreams'}
               onPeopleChanged={refreshUsersQuietly}
             />
           ))}
@@ -890,6 +945,7 @@ export default function UsersPage() {
           mode="reconnect"
           userId={reconnectUserId}
           userName={reconnectUserName}
+          providerType={reconnectProvider}
           onReconnectSuccess={() => {
             setIsReconnectModalOpen(false);
             setReconnectUserId(null);
@@ -1133,10 +1189,10 @@ function UserCard({
                 {user.name}
               </Link>
               <Badge
-                variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                variant={providerBadgeVariant(user)}
                 size="sm"
               >
-                {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                {providerLabel(user)}
               </Badge>
               {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && (
                 <Badge variant="secondary" size="sm">
@@ -1145,10 +1201,10 @@ function UserCard({
               )}
               {user.secondaryProviderType && (
                 <Badge
-                  variant={user.secondaryProviderType === 'nuvio' ? 'nuvio' : 'stremio'}
+                  variant={providerBadgeVariant({ providerType: user.secondaryProviderType })}
                   size="sm"
                 >
-                  {user.secondaryProviderType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                  {providerTypeLabel(user.secondaryProviderType)}
                 </Badge>
               )}
               {user.providerConnectionError && (
@@ -1193,12 +1249,16 @@ function UserCard({
                   'No group'
                 )}
               </span>
-              <span className="hidden md:inline">•</span>
-              <span className="flex items-center gap-1.5">
-                <PuzzlePieceIcon className="w-4 h-4 text-secondary" />
-                <span className="md:hidden">{user.addonCount || 0}</span>
-                <span className="hidden md:inline">{user.addonCount || 0} addon{user.addonCount !== 1 ? 's' : ''}</span>
-              </span>
+              {hasAddonList(user) && (
+                <>
+                  <span className="hidden md:inline">•</span>
+                  <span className="flex items-center gap-1.5">
+                    <PuzzlePieceIcon className="w-4 h-4 text-secondary" />
+                    <span className="md:hidden">{user.addonCount || 0}</span>
+                    <span className="hidden md:inline">{user.addonCount || 0} addon{user.addonCount !== 1 ? 's' : ''}</span>
+                  </span>
+                </>
+              )}
               <span className="hidden md:inline">•</span>
               <span className="flex items-center gap-1.5">
                 <ClockIcon className="w-4 h-4 text-secondary" />
@@ -1227,6 +1287,9 @@ function UserCard({
           <EyeIcon className="w-4 h-4" />
           View Details
         </Link>
+        {/* A Jellyfin-compatible server has no addon list to sync or read. */}
+        {hasAddonList(user) && (
+        <>
         <button
           onClick={handleSync}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
@@ -1248,6 +1311,8 @@ function UserCard({
           <ArrowDownTrayIcon className="w-4 h-4" />
           Import Addons
         </button>
+        </>
+        )}
         <div className="my-1 border-t border-default" />
         <button
           onClick={handleDelete}
