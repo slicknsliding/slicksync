@@ -14,7 +14,12 @@ const core = require('../utils/imageCacheCore');
 // URLs via a redirect, and its images already embed rating bars sized by
 // RPDB itself. This route handles everything else - plain http(s) poster
 // URLs already stored in item data, and this instance's own avatars.
-module.exports = () => {
+//
+// One narrow exception to the private-address rule: a Jellyfin-compatible
+// server's own poster on a server someone here signed in to, on an instance
+// allowed to reach private addresses (utils/jellyfinImages.js). Fetched
+// without following redirects.
+module.exports = ({ prisma } = {}) => {
   const router = express.Router();
 
   const serve = (res, hit) => {
@@ -55,23 +60,28 @@ module.exports = () => {
     // against 3ms warm) and a format change should be invisible.
     const hit = await core.findCached(src, w, wantsWebp);
     if (hit) {
-      if (!hit.exact) core.produce(src, { w, wantsWebp, localFile }).catch(() => {});
+      // A server poster may be on a private address: never follow a redirect from one.
+      if (!hit.exact) core.produce(src, { w, wantsWebp, localFile, followRedirects: !require('../utils/jellyfinImages').looksLikeServerPoster(src) }).catch(() => {});
       return serve(res, hit);
     }
 
+    let followRedirects = true;
     if (!localFile) {
       try {
         await core.assertSafeUrl(src);
       } catch {
-        // Not a fetchable/safe URL - don't even redirect to it.
-        return res.status(400).json({ error: 'invalid source url' });
+        if (!(await require('../utils/jellyfinImages').allowPrivatePoster(prisma, src).catch(() => false))) {
+          // Not a fetchable/safe URL - don't even redirect to it.
+          return res.status(400).json({ error: 'invalid source url' });
+        }
+        followRedirects = false;
       }
       // Remote animated/vector formats pass straight through untouched.
       if (core.isPassthroughUrl(src)) return fallback();
     }
 
     try {
-      const out = await core.produce(src, { w, wantsWebp, localFile });
+      const out = await core.produce(src, { w, wantsWebp, localFile, followRedirects });
       return serve(res, out);
     } catch {
       return fallback();

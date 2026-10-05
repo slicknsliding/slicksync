@@ -133,13 +133,13 @@ function pruneIfNeeded() {
   })()
 }
 
-async function fetchOriginWithRetry(src) {
+async function fetchOriginWithRetry(src, { followRedirects = true } = {}) {
   let lastErr
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
     try {
-      const upstream = await fetch(src, { signal: controller.signal, redirect: 'follow' })
+      const upstream = await fetch(src, { signal: controller.signal, redirect: followRedirects ? 'follow' : 'manual' })
       if (!upstream.ok) {
         const retryable = upstream.status === 429 || upstream.status >= 500
         const err = new Error(`upstream ${upstream.status}`)
@@ -162,9 +162,9 @@ async function fetchOriginWithRetry(src) {
 }
 
 // The source bytes, wherever they live.
-async function readSource(src, localFile) {
+async function readSource(src, localFile, followRedirects = true) {
   if (localFile) return fs.promises.readFile(localFile)
-  const upstream = await fetchOriginWithRetry(src)
+  const upstream = await fetchOriginWithRetry(src, { followRedirects })
   const type = (upstream.headers.get('content-type') || '').toLowerCase()
   if (type.includes('gif') || type.includes('svg')) throw new Error('passthrough type')
   return Buffer.from(await upstream.arrayBuffer())
@@ -190,13 +190,13 @@ async function findCached(src, w, wantsWebp) {
  * return where it is. Concurrent callers for the same output share one
  * piece of work.
  */
-function produce(src, { w, wantsWebp, localFile = null }) {
+function produce(src, { w, wantsWebp, localFile = null, followRedirects = true }) {
   const p = pathsFor(src, w)
   const key = wantsWebp ? p.webp : p.jpg
   if (inFlight.has(key)) return inFlight.get(key)
 
   const work = (async () => {
-    const buf = await readSource(src, localFile)
+    const buf = await readSource(src, localFile, followRedirects)
     if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) throw new Error('bad size')
 
     const fmt = sniffFormat(buf)

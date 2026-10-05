@@ -96,9 +96,16 @@ function encodePackedId({ kind, base, season = null, episode = null, version = 0
   return buf.toString('hex')
 }
 
-function posterFor(stremioId) {
-  return /^tt\d+$/.test(stremioId || '') ? `https://images.metahub.space/poster/medium/${stremioId}/img` : null
+// metahub for an IMDb id; otherwise the server's own poster when its images
+// are open (utils/jellyfinImages.js) - anime and TMDb/TVDB-only titles had
+// none. `serverPoster` is that address, or null.
+function posterFor(stremioId, serverPoster = null) {
+  if (/^tt\d+$/.test(stremioId || '')) return `https://images.metahub.space/poster/medium/${stremioId}/img`
+  return serverPoster || null
 }
+
+// Asks for the Primary image tag the poster address needs.
+const IMAGE_PARAMS = { EnableImages: 'true', EnableImageTypes: 'Primary', ImageTypeLimit: '1' }
 
 function dateMs(value) {
   const t = value ? new Date(value).getTime() : NaN
@@ -136,7 +143,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
   }
 
   async function resumeItems(viewer = self) {
-    const qs = new URLSearchParams({ userId: viewer.userId, IncludeItemTypes: 'Movie,Episode', Fields: 'ProviderIds', Limit: '200', EnableUserData: 'true' })
+    const qs = new URLSearchParams({ userId: viewer.userId, IncludeItemTypes: 'Movie,Episode', Fields: 'ProviderIds', Limit: '200', EnableUserData: 'true', ...IMAGE_PARAMS })
     try {
       const data = await call(`/UserItems/Resume?${qs}`, {}, viewer)
       return Array.isArray(data?.Items) ? data.Items : []
@@ -219,11 +226,11 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
       resumeItems(viewer),
       itemsQuery({
         Recursive: 'true', Filters: 'IsPlayed', IncludeItemTypes: 'Movie,Episode', Fields: 'ProviderIds',
-        SortBy: 'DatePlayed', SortOrder: 'Descending', Limit: String(PLAYED_LIMIT), EnableUserData: 'true',
+        SortBy: 'DatePlayed', SortOrder: 'Descending', Limit: String(PLAYED_LIMIT), EnableUserData: 'true', ...IMAGE_PARAMS,
       }, viewer),
       itemsQuery({
         Recursive: 'true', Filters: 'IsFavorite', IncludeItemTypes: 'Movie,Series', Fields: 'ProviderIds',
-        Limit: String(FAVORITES_LIMIT), EnableUserData: 'true',
+        Limit: String(FAVORITES_LIMIT), EnableUserData: 'true', ...IMAGE_PARAMS,
       }, viewer).catch(() => []),
       nowPlaying(viewer).catch(() => []),
     ])
@@ -250,6 +257,12 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
       if (it?.Type === 'Episode' && it.SeriesId) seriesIds.add(normId(it.SeriesId))
     }
     const series = await resolveSeries([...seriesIds], viewer)
+
+    // The server's own posters, unless it wants a sign-in for images.
+    const { serverPosterUrl, imagesOpen } = require('../utils/jellyfinImages')
+    const sample = [...resume, ...played, ...live.map((s) => s.NowPlayingItem), ...favorites].map((it) => serverPosterUrl(base, it)).find(Boolean)
+    const useServerPosters = sample ? await imagesOpen(serverKey, sample) : false
+    const serverPoster = (it) => (useServerPosters ? serverPosterUrl(base, it) : null)
 
     // Candidates are ranked by when they were last touched; a live one is "now".
     const entries = new Map()
@@ -289,7 +302,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         _id: id,
         name,
         type,
-        poster: posterFor(id),
+        poster: posterFor(id, serverPoster(it)),
         state: {
           video_id: videoId,
           season,
@@ -331,7 +344,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         _id: id,
         name: it.Name || '',
         type: it.Type === 'Series' ? 'series' : 'movie',
-        poster: posterFor(id),
+        poster: posterFor(id, serverPoster(it)),
         state: viewer.label ? { profileLabel: viewer.label } : {},
         _mtime: now,
         _ctime: now,
