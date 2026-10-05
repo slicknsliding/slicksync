@@ -2389,6 +2389,23 @@ class ApiClient {
     return this.fetch<AioTestSearch>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-test-search`, { method: 'POST', body: JSON.stringify({ type, id }) });
   }
 
+  // "Caught up to here" (server/utils/catchUp.js).
+  async getCatchUpShows(userId: string) {
+    return this.fetch<{ shows: { id: string; name: string; poster: string | null }[] }>(`/users/${encodeURIComponent(userId)}/catch-up/shows`);
+  }
+
+  async getCatchUpEpisodes(userId: string, showId: string) {
+    return this.fetch<CatchUpEpisodes>(`/users/${encodeURIComponent(userId)}/catch-up/episodes?showId=${encodeURIComponent(showId)}`);
+  }
+
+  async startCatchUp(userId: string, showId: string, season: number, episode: number) {
+    return this.fetch<CatchUpJob>(`/users/${encodeURIComponent(userId)}/catch-up`, { method: 'POST', body: JSON.stringify({ showId, season, episode }) });
+  }
+
+  async getCatchUpStatus(userId: string) {
+    return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/status`);
+  }
+
   // A daily screen-time limit for a person (server/utils/screenTime.js).
   async getScreenTime(userId: string) {
     return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`);
@@ -3425,6 +3442,27 @@ export interface JellyfinAgeLimit {
   levels?: { value: number; label: string }[];
   current?: number | null;
   blockUnrated?: boolean;
+}
+
+/** A show's episodes for "Caught up to here" (server/utils/catchUp.js). */
+export interface CatchUpEpisodes {
+  showId: string;
+  name: string | null;
+  poster: string | null;
+  episodes: { season: number; episode: number; title: string | null; released: string | null; watched: boolean }[];
+}
+
+/** One "Caught up to here" run, as it goes. */
+export interface CatchUpJob {
+  state: 'running' | 'done' | 'failed';
+  show: string;
+  upTo: string;
+  total: number;
+  recorded: number;
+  alreadyWatched: number;
+  server: { state: 'waiting' | 'running' | 'done' | 'failed' | 'not-there'; marked: number; total: number | null; how: 'played-up-to' | 'each' | null; error?: string } | null;
+  error: string | null;
+  startedAt: string;
 }
 
 /** A person's daily screen-time limit, and today so far (server/utils/screenTime.js). */

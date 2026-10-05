@@ -1009,6 +1009,47 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // "Caught up to here" (utils/catchUp.js): mark an episode and every aired
+  // one before it watched - History only, never watch time - and on their
+  // Jellyfin or AIOStreams server.
+  const catchUpError = (res, error, fallback) => res.status(error.status || 500).json({ message: error.status ? error.message : fallback })
+
+  router.get('/:id/catch-up/shows', async (req, res) => {
+    try {
+      res.json({ shows: await require('../utils/catchUp').showsFor(prisma, getAccountId(req), String(req.params.id)) })
+    } catch (error) {
+      catchUpError(res, error, 'Could not read their shows')
+    }
+  })
+
+  router.get('/:id/catch-up/episodes', async (req, res) => {
+    try {
+      res.json(await require('../utils/catchUp').episodesFor(prisma, decrypt, getAccountId(req), String(req.params.id), String(req.query.showId || '')))
+    } catch (error) {
+      catchUpError(res, error, 'Could not read the episodes')
+    }
+  })
+
+  router.post('/:id/catch-up', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const exists = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } })
+      if (!exists) return res.status(404).json({ message: 'User not found' })
+      res.json(await require('../utils/catchUp').start(prisma, decrypt, accountId, String(req.params.id), {
+        showId: req.body?.showId, season: req.body?.season, episode: req.body?.episode,
+      }))
+    } catch (error) {
+      catchUpError(res, error, 'Could not mark them caught up')
+    }
+  })
+
+  router.get('/:id/catch-up/status', async (req, res) => {
+    const accountId = getAccountId(req)
+    const exists = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } }).catch(() => null)
+    if (!exists) return res.status(404).json({ message: 'User not found' })
+    res.json({ job: require('../utils/catchUp').status(String(req.params.id)) })
+  })
+
   // A daily screen-time limit (utils/screenTime.js) - counted across every app.
   router.get('/:id/screen-time', async (req, res) => {
     try {

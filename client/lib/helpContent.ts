@@ -1158,6 +1158,27 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Metrics',
   },
   {
+    id: 'caught-up-to-here',
+    title: 'Marking someone caught up on a show',
+    category: 'Watching & Discover',
+    keywords: ['caught up', 'mark watched', 'mark episodes watched', 'watched up to', 'already seen', 'mark season watched', 'played up to', 'catch up', 'backfill watched'],
+    answer: 'On the person’s page, press Caught up to…, pick the show and the episode they have reached, and every aired episode up to it is marked watched - in SlickSync, and on their Jellyfin or AIOStreams server too.',
+    steps: [
+      'Open the person on the Users page and press Caught up to….',
+      'Pick a show they watch (or type its IMDb id) - the first episode they haven’t watched is picked for you.',
+      'Choose the episode they are up to and press Mark caught up. Progress shows as it goes.',
+    ],
+    details: [
+      'It is marked as watched, not as time spent watching: Watch Time, Stats and Wrapped don’t change. Episodes already in their History stay as they are.',
+      'Episodes that haven’t aired yet and specials are skipped.',
+      'On AIOStreams it is one request; on a real Jellyfin server each episode is marked in turn, a few at a time, so a long show takes a little while. Episodes the server already has as played are left alone.',
+      'A show Cinemeta doesn’t know - anime, or anything with only a TMDb id - is listed from their own server.',
+    ],
+    related: ['daily-screen-time', 'add-jellyfin-account', 'aiostreams-watch-history'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'daily-screen-time',
     title: 'A daily screen-time limit for someone',
     category: 'Users & Groups',

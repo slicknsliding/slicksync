@@ -482,6 +482,41 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
       return ep ? normId(ep.Id) : null
     },
 
+    /**
+     * A show's episodes on the server, by the show's own id (tt123, tmdb:1):
+     * [{ itemId, season, episode, title, premiere, played }]. Null when the
+     * server doesn't have the show.
+     */
+    async listEpisodes(stremioShowId) {
+      const seriesId = await this.findItem(splitStremioId(stremioShowId).base, 'series')
+      if (!seriesId) return null
+      const data = await call(`/Shows/${seriesId}/Episodes?${new URLSearchParams({ userId, EnableUserData: 'true', Fields: 'PremiereDate' })}`)
+      return (Array.isArray(data?.Items) ? data.Items : [])
+        .filter((it) => Number.isInteger(it.ParentIndexNumber) && Number.isInteger(it.IndexNumber))
+        .map((it) => ({
+          itemId: normId(it.Id),
+          season: it.ParentIndexNumber,
+          episode: it.IndexNumber,
+          title: it.Name || null,
+          premiere: it.PremiereDate || null,
+          played: it.UserData?.Played === true,
+        }))
+    },
+
+    /**
+     * AIOStreams' own "this episode and every aired one before it" - one call
+     * instead of one per episode. Only where the server says it has it
+     * (features.playedUpTo); its /AIOStreams/ routes take a sign-in, never an
+     * API key. Returns false when it isn't there, so the caller goes per episode.
+     */
+    async playedUpTo(episodeItemId) {
+      if (serverKind !== 'aiostreams') return false
+      const info = await call('/System/Info/Public').catch(() => null)
+      if (!info?.aiostreams?.features?.playedUpTo) return false
+      await call(`/AIOStreams/PlayedUpTo/${episodeItemId}`, { method: 'POST' })
+      return true
+    },
+
     async setPlayed(itemId, played, profile = null) {
       const viewer = await viewerFor(profile)
       return call(`/UserPlayedItems/${itemId}?userId=${viewer.userId}`, { method: played ? 'POST' : 'DELETE' }, viewer)

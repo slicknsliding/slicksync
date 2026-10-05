@@ -23,6 +23,7 @@ import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { ScreenTimeButton } from '@/components/user/ScreenTimeButton';
+import { CatchUpButton } from '@/components/user/CatchUpButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -1259,6 +1260,8 @@ export default function UserDetailPage() {
                         )}
                         {/* A daily screen-time limit - any app. */}
                         <ScreenTimeButton userId={user.id} name={user.username || user.name || 'them'} />
+                        {/* Mark a show watched up to an episode - here and on their server. */}
+                        <CatchUpButton userId={user.id} name={user.username || user.name || 'them'} hasServer={user.providerType === 'jellyfin'} />
                         {/* What AIOStreams itself says about their configuration. */}
                         {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && (
                           <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />
