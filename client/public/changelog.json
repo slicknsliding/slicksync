@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.92.0",
+    "date": "2026-10-05",
+    "title": "1.92.0 - Daily limits that can pause streaming, Caught up to, and AIOStreams history",
+    "features": [
+      "Daily limit, on every person's page: so many minutes a day on the days you choose, counted across every app. When they reach it you get a bell and push notification - or, chosen per person, their streaming also pauses until midnight or a time you pick. On Stremio and Nuvio the addons that play streams come off their account while catalogs and Continue Watching stay; on a Jellyfin server its own parental schedule applies and nobody is signed out. Resume now gives them the rest of the day.",
+      "Caught up to..., on every person's page: pick one of their shows or search for one, tap the last episode they've seen, and it and every aired episode before it are marked watched - in History (never as watch time) and on their Jellyfin or AIOStreams server. A run can be undone, and a single episode un-ticked.",
+      "AIOStreams history: every version of a configuration SlickSync watches is kept, with what changed from the one before. Put back restores an earlier version, keeping today's debrid services, household users and API keys unless you untick them. The \"changed outside SlickSync\" alert opens it.",
+      "AIOStreams health, on a person's page: each addon's errors, empty answers and slow responses as AIOStreams reports them, the apps using the configuration, and a one-off test search.",
+      "AIOStreams household users can be added, and their PINs set or removed, from the household card.",
+      "Turning on AIOStreams watch history adds SlickTrax to the configuration itself, and you're told once if it stops working - SlickTrax removed, left out of a user's trackers, past AIOStreams' library limit, or nothing arriving for a week. \"Keep SlickSync's collections first\" puts SlickSync's catalog at the top of their AIOStreams catalog order - per person, off by default.",
+      "Last seen on every person, from what they actually watched. A Dormant filter finds people who stopped watching, and a new automation can switch them off after a quiet stretch - reversibly.",
+      "Health lists every Jellyfin, AIOStreams and AIOMetadata server people use as up, down or partly failing, and a whole server going down sends one alert naming who's affected instead of one per person.",
+      "Posters for anime and other titles without an IMDb id on Jellyfin, AIOStreams and AIOMetadata, from the server's own artwork - including titles watched before.",
+      "One colour list for people, groups and catalog covers: your theme's colour and accent plus twelve fixed colours, and what you pick is what shows everywhere.",
+      "On phones, popups stay on screen, the bell and command palette sit in the top bar instead of over the page, and a notification swipes left to dismiss.",
+      "The buttons on a person's page look like buttons and show their state - a daily limit that's on, paused or reached is coloured to match."
+    ],
+    "bugFixes": [
+      "A setting saved while a scheduled sync was running - a daily limit, for one - could be put back when the sync finished. Settings now stay as saved.",
+      "Reconnect offers Nuvio's own sign-in for a Nuvio person, instead of Stremio's.",
+      "The colour picked for a group is the one that shows - red no longer comes out teal - and editing a group from its own page saves its colour.",
+      "Library buttons (add, remove, back up, view) work for Jellyfin, AIOStreams and AIOMetadata people.",
+      "Anime and TMDb-only titles are found on a Jellyfin server, so watched marks and library changes for them take effect.",
+      "Streams an app opens while a title's page is showing no longer appear in Now Playing; a stream counts as playing once it keeps playing for about 45 seconds.",
+      "An AIOStreams server that answers with an error is no longer reported as down.",
+      "When someone's sign-in has expired, Import and their addon list say so and point to Reconnect.",
+      "Import no longer copies SlickTrax into a group.",
+      "Last seen keeps up with the app's own last-watched time."
+    ]
+  },
+  {
     "version": "1.91.0",
     "date": "2026-10-04",
     "title": "1.91.0 - Jellyfin households, invites that make accounts, and collections you can share",
