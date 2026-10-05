@@ -289,10 +289,17 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     const excludedAddonIds = (excludedAddons || []).map(id => String(id).trim()).filter(Boolean)
     const excludedAddonIdSet = new Set(excludedAddonIds)
     
+    // A daily limit set to pause streaming (utils/screenTime.js) takes the
+    // group's stream addons away until the account's midnight. Here rather
+    // than in the pause itself, so every sync - scheduled, Sync All, the
+    // guardian - agrees with it instead of putting them straight back.
+    const { isStreamingPaused, servesStreams } = require('./screenTime')
+    const paused = await isStreamingPaused(prisma, getAccountId(req), user.id).catch(() => false)
+
     const groupAddonsFiltered = groupAddons.filter(groupAddon => {
       const addonId = groupAddon?.id
       const isExcluded = addonId && excludedAddonIdSet.has(addonId)
-      return !isExcluded
+      return !isExcluded && !(paused && servesStreams(groupAddon))
     })
     
     // Strip database fields from filtered group addons for clean JSON

@@ -1054,10 +1054,38 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     res.json({ job: require('../utils/catchUp').status(String(req.params.id)) })
   })
 
+  // Take back the last run (personFor scopes the person to this account).
+  router.post('/:id/catch-up/undo', async (req, res) => {
+    try {
+      res.json({ job: await require('../utils/catchUp').undo(prisma, decrypt, getAccountId(req), String(req.params.id)) })
+    } catch (error) {
+      catchUpError(res, error, 'Could not undo that')
+    }
+  })
+
+  // Clear a finished run's card (and its Undo).
+  router.post('/:id/catch-up/dismiss', async (req, res) => {
+    const accountId = getAccountId(req)
+    const exists = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } }).catch(() => null)
+    if (!exists) return res.status(404).json({ message: 'User not found' })
+    res.json({ job: require('../utils/catchUp').dismiss(String(req.params.id)) })
+  })
+
+  // One episode back to not watched.
+  router.post('/:id/catch-up/unmark', async (req, res) => {
+    try {
+      res.json(await require('../utils/catchUp').unmark(prisma, decrypt, getAccountId(req), String(req.params.id), {
+        showId: String(req.body?.showId || ''), season: req.body?.season, episode: req.body?.episode,
+      }))
+    } catch (error) {
+      catchUpError(res, error, 'Could not mark it not watched')
+    }
+  })
+
   // A daily screen-time limit (utils/screenTime.js) - counted across every app.
   router.get('/:id/screen-time', async (req, res) => {
     try {
-      res.json(await require('../utils/screenTime').getLimit(prisma, getAccountId(req), String(req.params.id)))
+      res.json(await require('../utils/screenTime').getLimit(prisma, getAccountId(req), String(req.params.id), { decrypt }))
     } catch (error) {
       res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not read the daily limit' })
     }
@@ -1065,9 +1093,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
   router.put('/:id/screen-time', async (req, res) => {
     try {
-      res.json(await require('../utils/screenTime').setLimit(prisma, getAccountId(req), String(req.params.id), req.body?.limit ?? null))
+      res.json(await require('../utils/screenTime').setLimit(prisma, getAccountId(req), String(req.params.id), req.body?.limit ?? null, { decrypt }))
     } catch (error) {
       res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not set the daily limit' })
+    }
+  })
+
+  // "Resume now" on a paused person - streaming back for the rest of today.
+  router.post('/:id/screen-time/resume', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').resume(prisma, getAccountId(req), String(req.params.id), { decrypt }))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not resume them' })
     }
   })
 
@@ -3619,7 +3656,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           return res.json({ userId: id, count: addons.length, addons })
         } catch (error) {
           console.error(`Error fetching ${user.providerType} addons:`, error)
-          return res.status(500).json({ message: `Failed to fetch addons from ${user.providerType}`, error: error.message })
+          // An expired sign-in says so, with what to do - not a bare "failed".
+          if (/session does not exist|unauthorized|invalid auth| 401|authentication expired/i.test(String(error?.message || ''))) {
+            const app = user.providerType === 'nuvio' ? 'Nuvio' : user.providerType === 'jellyfin' ? 'server' : 'Stremio'
+            return res.status(409).json({ message: `${user.username || 'This person'}'s ${app} sign-in has expired - reconnect them first (Reconnect, next to their name)`, reconnect: true })
+          }
+          const appName = user.providerType === 'nuvio' ? 'Nuvio' : user.providerType === 'jellyfin' ? 'their server' : 'Stremio'
+          return res.status(500).json({ message: `Couldn't read their addons from ${appName}`, error: error.message })
         }
       }
 
@@ -3680,7 +3723,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         })
       } catch (error) {
         console.error('Error fetching Stremio addons:', error)
-        return res.status(500).json({ message: 'Failed to fetch addons from Stremio', error: error.message })
+        if (/session does not exist|unauthorized|invalid auth| 401/i.test(String(error?.message || ''))) {
+          return res.status(409).json({ message: `${user.username || 'This person'}'s Stremio sign-in has expired - reconnect them first (Reconnect, next to their name)`, reconnect: true })
+        }
+        return res.status(500).json({ message: "Couldn't read their addons from Stremio", error: error.message })
       }
     } catch (error) {
       console.error('Error getting Stremio addons:', error)
@@ -6594,7 +6640,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         throw e
       }
 
-      return res.json({ message: 'Addon removed from Stremio account successfully' })
+      return res.json({ message: 'Addon removed from their account' })
     } catch (error) {
       console.error('Error removing Stremio addon:', error)
       return res.status(502).json({ message: 'Failed to remove addon from Stremio', error: error?.message })
@@ -6799,6 +6845,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (Array.isArray(req.body?.addons) || Array.isArray(req.body?.addonUrls)) {
         if (!Array.isArray(req.body.addons) && Array.isArray(req.body.addonUrls)) {
           req.body.addons = req.body.addonUrls.map((url) => ({ url, manifestUrl: url }))
+        }
+        // SlickTrax is SlickSync's own per-person addon, added to each
+        // person by sync - never something to copy into a group. Importing
+        // it (here, or another instance's copy on a shared account) put a
+        // second SlickTrax on everyone in the group.
+        const isSlickTrax = (a) => {
+          const id = String(a?.manifest?.id || a?.id || '')
+          const url = String(a?.manifestUrl || a?.transportUrl || a?.url || '')
+          return id.startsWith('vip.slicksync.trax') || /\/trax\/[^/]+\/(?:v[\d.]+\/)?(?:aio\/)?manifest\.json$/i.test(url)
+        }
+        req.body.addons = req.body.addons.filter((a) => !isSlickTrax(a))
+        if (req.body.addons.length === 0) {
+          return res.status(400).json({ message: 'Nothing to import - their only addon is SlickTrax, which SlickSync adds to each person itself' })
         }
         return next()
       }

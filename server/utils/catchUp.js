@@ -31,6 +31,9 @@ function fail(message, status = 400) {
 }
 
 const jobs = new Map()
+// What the last run changed, kept apart from the job (which the page polls)
+// so Undo can take back exactly that and nothing else.
+const undoable = new Map()
 
 async function personFor(prisma, accountId, userId) {
   const person = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true, username: true, accountId: true, providerType: true, jellyfinServerKind: true, jellyfinServerUrl: true, jellyfinUserId: true, jellyfinToken: true } })
@@ -44,17 +47,59 @@ function providerFor(person, decrypt, createProvider) {
   return make(person, { decrypt: (t) => decrypt(t, { appAccountId: person.accountId || 'default' }), req: { appAccountId: person.accountId || 'default' } })
 }
 
-/** The shows they have watched, newest first - what the picker offers. */
-async function showsFor(prisma, accountId, userId) {
+const PICKER_SHOWS = 24
+const PICKER_LOOKUPS = 6
+// How far back through their shows the picker looks for ones it can list,
+// so a run of unlistable ones at the top doesn't leave it nearly empty.
+const PICKER_MAX_CHECKED = 60
+// fetchMetadata only caches what it finds, so a show Cinemeta doesn't know
+// would be asked about again on every opening of the picker.
+const UNLISTED_MEMORY_MS = 6 * 60 * 60 * 1000
+const unlisted = new Map()
+
+/**
+ * The shows they have watched, newest first, with the episode they watched
+ * last - what the picker offers as tiles. Only shows whose episodes can be
+ * listed are offered: an IMDb show Cinemeta knows (the same cached lookup
+ * episodesFor makes, so opening one is instant), or any show at all for a
+ * person with their own server to list it from. A show that can't be listed
+ * would only ever answer "couldn't find that show's episodes".
+ */
+async function showsFor(prisma, accountId, userId, { fetchMeta } = {}) {
+  const person = await personFor(prisma, accountId, userId)
   const rows = await prisma.episodeWatchHistory.findMany({
     where: { accountId, userId },
     orderBy: { watchedAt: 'desc' },
     take: 400,
-    select: { showId: true, showName: true, poster: true },
+    select: { showId: true, showName: true, poster: true, season: true, episode: true },
   })
   const seen = new Map()
-  for (const r of rows) if (!seen.has(r.showId)) seen.set(r.showId, { id: r.showId, name: r.showName, poster: r.poster || null })
-  return [...seen.values()].slice(0, 40)
+  for (const r of rows) {
+    const show = seen.get(r.showId)
+    if (!show) seen.set(r.showId, { id: r.showId, name: r.showName, poster: r.poster || null, last: { season: r.season, episode: r.episode } })
+    else if (!show.poster && r.poster) show.poster = r.poster
+  }
+  const ownServer = person.providerType === 'jellyfin' && !!person.jellyfinToken
+  const lookup = fetchMeta || require('./notify').fetchMetadata
+  const { splitStremioId } = require('../providers/jellyfin')
+  const check = async (show) => {
+    const id = splitStremioId(show.id).base
+    if (/^tt\d+$/.test(id || '') && !(Date.now() - (unlisted.get(id) || 0) < UNLISTED_MEMORY_MS)) {
+      const meta = await lookup(id, 'series', null).catch(() => null)
+      if (meta?.allEpisodes?.length) return { ...show, name: show.name || meta.title || null, poster: show.poster || meta.poster || null }
+      unlisted.set(id, Date.now())
+    }
+    return ownServer ? show : null
+  }
+  const all = [...seen.values()].slice(0, PICKER_MAX_CHECKED)
+  const offered = []
+  // A batch at a time, stopping once there are enough: someone whose shows
+  // all list costs two batches, the same as checking only the first 24.
+  for (let i = 0; i < all.length && offered.length < PICKER_SHOWS; i += PICKER_LOOKUPS * 2) {
+    const checked = await mapLimit(all.slice(i, i + PICKER_LOOKUPS * 2), PICKER_LOOKUPS, check)
+    offered.push(...checked.filter(Boolean))
+  }
+  return offered.slice(0, PICKER_SHOWS)
 }
 
 const aired = (released, now) => !released || Number.isNaN(Date.parse(released)) || Date.parse(released) <= now
@@ -104,7 +149,7 @@ async function start(prisma, decrypt, accountId, userId, { showId, season, episo
   const ep = Number(episode)
   if (!(Number.isInteger(s) && s > 0 && Number.isInteger(ep) && ep > 0)) throw fail('Pick the episode they are caught up to')
   const running = jobs.get(userId)
-  if (running?.state === 'running') throw fail('Already marking a show for them - wait for it to finish', 429)
+  if (running?.state === 'running' || running?.state === 'undoing') throw fail('Already marking a show for them - wait for it to finish', 429)
 
   const now = deps.now || Date.now()
   const list = await episodesFor(prisma, decrypt, accountId, userId, showId, deps)
@@ -125,18 +170,27 @@ async function start(prisma, decrypt, accountId, userId, { showId, season, episo
     startedAt: new Date(now).toISOString(),
   }
   jobs.set(userId, job)
+  const record = { added: [], serverIds: [] }
+  undoable.set(userId, record)
 
   const work = (async () => {
     // SlickSync's History first: quick, and the part that is always possible.
     for (const t of targets) {
       if (t.watched) continue
+      const videoId = `${list.showId}:${t.season}:${t.episode}`
+      // An episode they had started already has a row; Undo puts that back
+      // to unfinished instead of deleting it.
+      const existed = await prisma.episodeWatchHistory.findUnique({ where: { accountId_userId_videoId: { accountId, userId, videoId } }, select: { completed: true } }).catch(() => null)
       const result = await recordDiscreteWatch(prisma, {
         accountId, userId, itemId: list.showId, itemType: 'series',
-        season: t.season, episode: t.episode, videoId: `${list.showId}:${t.season}:${t.episode}`,
+        season: t.season, episode: t.episode, videoId,
         title: list.name || list.showId, episodeName: t.title || null, poster: list.poster,
         completed: true, watchedAt: new Date(now), moveForward: false, profileLabel: PROFILE_LABEL,
       }).catch((e) => ({ ok: false, reason: e?.message }))
-      if (result?.ok) job.recorded++
+      if (result?.ok) {
+        job.recorded++
+        record.added.push({ videoId, existed: !!existed })
+      }
     }
 
     if (provider) {
@@ -150,11 +204,12 @@ async function start(prisma, decrypt, accountId, userId, { showId, season, episo
           const last = serverEpisodes.find((e) => e.season === s && e.episode === ep)
           if (todo.length && last && await provider.playedUpTo(last.itemId).catch(() => false)) {
             job.server = { state: 'done', marked: todo.length, total: todo.length, how: 'played-up-to' }
+            record.serverIds.push(...todo.map((e) => e.itemId))
           } else {
             job.server.total = todo.length
             job.server.how = 'each'
             await mapLimit(todo, SERVER_CONCURRENCY, async (e) => {
-              try { await provider.setPlayed(e.itemId, true); job.server.marked++ } catch { /* counted as not marked */ }
+              try { await provider.setPlayed(e.itemId, true); job.server.marked++; record.serverIds.push(e.itemId) } catch { /* counted as not marked */ }
             })
             job.server.state = 'done'
           }
@@ -170,15 +225,93 @@ async function start(prisma, decrypt, accountId, userId, { showId, season, episo
     job.error = e?.message || 'Something went wrong'
   })
   if (deps.wait) await work
-  return job
+  return status(userId)
 }
 
+/**
+ * Take back the last run: the History rows it added go (one they had started
+ * goes back to unfinished), and what it marked played on their server is
+ * marked unplayed. Nothing else is touched - an episode that was already
+ * watched before the run stays watched. Kept until the next run or a restart.
+ */
+async function undo(prisma, decrypt, accountId, userId, deps = {}) {
+  const job = jobs.get(userId)
+  const record = undoable.get(userId)
+  if (!job || job.state !== 'done' || !record) throw fail('Nothing to undo')
+  const person = await personFor(prisma, accountId, userId)
+  const provider = record.serverIds.length ? providerFor(person, decrypt, deps.createProvider) : null
+  undoable.delete(userId)
+  job.state = 'undoing'
+  const work = (async () => {
+    for (const a of record.added) {
+      const where = { accountId, userId, videoId: a.videoId }
+      if (a.existed) await prisma.episodeWatchHistory.updateMany({ where, data: { completed: false } })
+      else await prisma.episodeWatchHistory.deleteMany({ where })
+    }
+    if (provider) {
+      await mapLimit(record.serverIds, SERVER_CONCURRENCY, async (itemId) => {
+        try { await provider.setPlayed(itemId, false) } catch { /* left played there */ }
+      })
+    }
+    job.state = 'undone'
+  })().catch((e) => {
+    job.state = 'failed'
+    job.error = e?.message || 'Could not undo'
+  })
+  if (deps.wait) await work
+  return status(userId)
+}
+
+/** One episode back to not watched: out of History, and unplayed on their server. */
+async function unmark(prisma, decrypt, accountId, userId, { showId, season, episode }, deps = {}) {
+  const s = Number(season)
+  const ep = Number(episode)
+  if (!(Number.isInteger(s) && s > 0 && Number.isInteger(ep) && ep > 0)) throw fail('Pick the episode')
+  const person = await personFor(prisma, accountId, userId)
+  const id = require('../providers/jellyfin').splitStremioId(showId).base
+  if (!id) throw fail('Pick a show')
+  // Every row for it, whichever app's id it was recorded under.
+  const removed = await prisma.episodeWatchHistory.deleteMany({ where: { accountId, userId, showId: id, season: s, episode: ep } })
+  let server = null
+  const provider = providerFor(person, decrypt, deps.createProvider)
+  if (provider) {
+    try {
+      const listed = await provider.listEpisodes(id)
+      const item = listed?.find((e) => e.season === s && e.episode === ep)
+      if (!item) server = 'not-there'
+      else { await provider.setPlayed(item.itemId, false); server = 'done' }
+    } catch {
+      server = 'failed'
+    }
+  }
+  return { removed: removed?.count || 0, server }
+}
+
+/**
+ * Clear a finished run's card - its Done button, or the page's countdown
+ * running out. Undo goes with it. A run still going is left alone.
+ */
+function dismiss(userId) {
+  const job = jobs.get(userId)
+  if (job && job.state !== 'running' && job.state !== 'undoing') {
+    jobs.delete(userId)
+    undoable.delete(userId)
+  }
+  return status(userId)
+}
+
+/** The job as the page sees it, with whether Undo is on offer. */
 function status(userId) {
-  return jobs.get(userId) || null
+  const job = jobs.get(userId)
+  if (!job) return null
+  const record = undoable.get(userId)
+  return { ...job, canUndo: job.state === 'done' && !!record && (record.added.length + record.serverIds.length) > 0 }
 }
 
 function forgetForTests() {
   jobs.clear()
+  undoable.clear()
+  unlisted.clear()
 }
 
-module.exports = { showsFor, episodesFor, start, status, forgetForTests, PROFILE_LABEL }
+module.exports = { showsFor, episodesFor, start, undo, unmark, dismiss, status, forgetForTests, PROFILE_LABEL }

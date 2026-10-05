@@ -14,7 +14,22 @@ function world({ history = [] } = {}) {
     episodeWatchHistory: {
       findMany: async ({ where }) => episodes.filter((e) => !where.showId || e.showId === where.showId),
       findUnique: async ({ where }) => episodes.find((e) => e.videoId === where.accountId_userId_videoId.videoId) || null,
-      upsert: async ({ create }) => { episodes.push(create); return create },
+      upsert: async ({ where, create, update }) => {
+        const row = episodes.find((e) => e.videoId === where.accountId_userId_videoId.videoId)
+        if (row) { Object.assign(row, update); return row }
+        episodes.push(create); return create
+      },
+      deleteMany: async ({ where }) => {
+        const keep = episodes.filter((e) => !Object.entries(where).every(([k, v]) => k === 'accountId' || k === 'userId' || e[k] === v))
+        const count = episodes.length - keep.length
+        episodes.splice(0, episodes.length, ...keep)
+        return { count }
+      },
+      updateMany: async ({ where, data }) => {
+        let count = 0
+        for (const e of episodes) if (e.videoId === where.videoId) { Object.assign(e, data); count++ }
+        return { count }
+      },
     },
     watchActivity: { create: async () => { writes.watchActivity++ }, createMany: async () => { writes.watchActivity++ } },
   }
@@ -95,4 +110,99 @@ test('a show Cinemeta doesn\'t know (anime, TMDb-only) is listed from their serv
   const p = fakeProvider()
   const list = await catchUp.episodesFor(w.prisma, () => 'tok', 'acc', 'mia', 'tmdb:209867', { fetchMeta: async () => null, createProvider: p.createProvider })
   assert.deepEqual(list.episodes.map((e) => `${e.season}:${e.episode}`), ['1:1', '1:2', '1:3', '1:4'])
+})
+
+test('the show picker only offers shows whose episodes can be listed', async () => {
+  catchUp.forgetForTests()
+  const w = world({ history: [
+    { showId: 'tt1', showName: 'Frieren', season: 1, episode: 2, poster: null },
+    { showId: 'tt1', showName: 'Frieren', season: 1, episode: 1, poster: null },
+    { showId: 'tt7000013', showName: 'Made-up show', season: 1, episode: 1, poster: null },
+    { showId: 'tmdb:209867', showName: 'Not on Cinemeta', season: 1, episode: 4, poster: null },
+  ] })
+  const fetchMeta = async (id) => (id === 'tt1' ? meta() : null)
+
+  // No server of their own: only what Cinemeta can list.
+  const findFirst = w.prisma.user.findFirst
+  w.prisma.user.findFirst = async ({ where }) => ({ id: where.id, accountId: 'acc', providerType: 'nuvio', jellyfinToken: null })
+  const shows = await catchUp.showsFor(w.prisma, 'acc', 'mia', { fetchMeta })
+  assert.deepEqual(shows.map((s) => s.id), ['tt1'], 'a show nothing can list is never offered')
+  assert.equal(shows[0].poster, 'https://images.example.com/frieren.jpg', 'the poster comes from Cinemeta when History has none')
+  assert.deepEqual(shows[0].last, { season: 1, episode: 2 }, 'the newest episode they watched')
+
+  // Their own server can list any show, so everything is offered.
+  w.prisma.user.findFirst = findFirst
+  const withServer = await catchUp.showsFor(w.prisma, 'acc', 'mia', { fetchMeta })
+  assert.deepEqual(withServer.map((s) => s.id), ['tt1', 'tt7000013', 'tmdb:209867'])
+})
+
+test('the picker looks past unlistable shows, and asks about each only once', async () => {
+  catchUp.forgetForTests()
+  // Thirty made-up shows watched most recently, then two real ones.
+  const history = Array.from({ length: 30 }, (_, i) => ({ showId: `tt70000${String(i).padStart(2, '0')}`, showName: `Made-up ${i}`, season: 1, episode: 1, poster: null }))
+  history.push({ showId: 'tt1', showName: 'Frieren', season: 1, episode: 3, poster: null }, { showId: 'tt2', showName: 'Dungeon Meshi', season: 1, episode: 1, poster: null })
+  const w = world({ history })
+  w.prisma.user.findFirst = async ({ where }) => ({ id: where.id, accountId: 'acc', providerType: 'nuvio', jellyfinToken: null })
+  const asked = []
+  const fetchMeta = async (id) => { asked.push(id); return id === 'tt1' || id === 'tt2' ? meta() : null }
+  const shows = await catchUp.showsFor(w.prisma, 'acc', 'mia', { fetchMeta })
+  assert.deepEqual(shows.map((s) => s.id), ['tt1', 'tt2'])
+  assert.equal(asked.length, 32)
+  asked.length = 0
+  await catchUp.showsFor(w.prisma, 'acc', 'mia', { fetchMeta })
+  assert.deepEqual(asked, ['tt1', 'tt2'], 'the made-up ones are remembered as unlistable')
+})
+
+test('Undo takes back exactly what the run added, here and on their server', async () => {
+  catchUp.forgetForTests()
+  // E1 already watched, E2 started but not finished, E3 never opened.
+  const w = world({ history: [
+    { showId: 'tt1', videoId: 'tt1:1:1', season: 1, episode: 1, completed: true, showName: 'Frieren' },
+    { showId: 'tt1', videoId: 'tt1:1:2', season: 1, episode: 2, completed: false, showName: 'Frieren' },
+  ] })
+  const p = fakeProvider()
+  const calls = []
+  const createProvider = () => ({ ...p.createProvider(), setPlayed: async (id, played) => { calls.push([id, played]) } })
+  const job = await catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, { fetchMeta: meta, createProvider, now: NOW, wait: true })
+  assert.equal(job.canUndo, true)
+  assert.deepEqual(w.episodes.map((e) => [e.videoId, e.completed]), [['tt1:1:1', true], ['tt1:1:2', true], ['tt1:1:3', true]])
+  assert.deepEqual(calls, [['e2', true], ['e3', true]])
+
+  calls.length = 0
+  const after = await catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', { createProvider, wait: true })
+  assert.equal(after.state, 'undone')
+  assert.equal(after.canUndo, false)
+  assert.deepEqual(w.episodes.map((e) => [e.videoId, e.completed]), [['tt1:1:1', true], ['tt1:1:2', false]], 'E1 stays watched, E2 back to started, E3 gone')
+  assert.deepEqual(calls.sort(), [['e2', false], ['e3', false]], 'only what the run marked is unmarked there')
+  await assert.rejects(catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', { createProvider }), /Nothing to undo/)
+})
+
+test('one episode can be marked not watched again', async () => {
+  catchUp.forgetForTests()
+  const w = world({ history: [
+    { showId: 'tt1', videoId: 'tt1:1:1', season: 1, episode: 1, completed: true, showName: 'Frieren' },
+    { showId: 'tt1', videoId: 'tt1:1:2', season: 1, episode: 2, completed: true, showName: 'Frieren' },
+  ] })
+  const calls = []
+  const createProvider = () => ({ ...fakeProvider().createProvider(), setPlayed: async (id, played) => { calls.push([id, played]) } })
+  const result = await catchUp.unmark(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 2 }, { createProvider })
+  assert.deepEqual(result, { removed: 1, server: 'done' })
+  assert.deepEqual(w.episodes.map((e) => e.videoId), ['tt1:1:1'])
+  assert.deepEqual(calls, [['e2', false]])
+})
+
+test('Done clears a finished run and its Undo; a run still going is left alone', async () => {
+  catchUp.forgetForTests()
+  const w = world({ history: [{ showId: 'tt1', videoId: 'tt1:1:1', season: 1, episode: 1, completed: true, showName: 'Frieren' }] })
+  const p = fakeProvider()
+  const running = await catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 2 }, { fetchMeta: meta, createProvider: p.createProvider, now: NOW })
+  assert.equal(running.state, 'running')
+  assert.equal(catchUp.dismiss('mia').state, 'running', 'not cleared mid-run')
+
+  catchUp.forgetForTests()
+  await catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, { fetchMeta: meta, createProvider: p.createProvider, now: NOW, wait: true })
+  assert.equal(catchUp.status('mia').canUndo, true)
+  assert.equal(catchUp.dismiss('mia'), null)
+  assert.equal(catchUp.status('mia'), null, 'gone at the next opening too')
+  await assert.rejects(catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', { createProvider: p.createProvider }), /Nothing to undo/)
 })

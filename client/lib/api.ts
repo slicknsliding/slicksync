@@ -132,8 +132,11 @@ class ApiClient {
   // so nothing reads meaningfully stale data as if it were fresh; this
   // layer is allowed to be arbitrarily stale precisely because it is only
   // ever read through peekGet by callers that immediately revalidate.
-  // Failures never touch it, and mutations deliberately don't clear it -
-  // the page that mutated refetches and overwrites it with the result.
+  // Failures never touch it. A mutation drops only the copy of the very
+  // resource it changed (PUT /groups/x drops GET /groups/x, not the list):
+  // the page that mutated refetches anyway, but another page showing that
+  // resource next would otherwise open on the pre-change copy - a group
+  // recoloured from the Groups list opened its own page in the old colour.
   private lastKnown = new Map<string, unknown>();
   private lastKnownRestored = false;
   private static readonly LAST_KNOWN_STORAGE_KEY = 'slicksync-last-known';
@@ -268,6 +271,10 @@ class ApiClient {
     if (method !== 'GET') {
       return this.fetchImpl<T>(endpoint, options).finally(() => {
         this.recentGets.clear();
+        const path = endpoint.split('?')[0];
+        for (const k of Array.from(this.lastKnown.keys())) {
+          if (k.startsWith(`${path}::`) || k.startsWith(`${path}?`)) this.lastKnown.delete(k);
+        }
       });
     }
     const key = `${endpoint}::${options.token || this.getToken() || ''}`;
@@ -2400,7 +2407,7 @@ class ApiClient {
 
   // "Caught up to here" (server/utils/catchUp.js).
   async getCatchUpShows(userId: string) {
-    return this.fetch<{ shows: { id: string; name: string; poster: string | null }[] }>(`/users/${encodeURIComponent(userId)}/catch-up/shows`);
+    return this.fetch<{ shows: CatchUpShow[] }>(`/users/${encodeURIComponent(userId)}/catch-up/shows`);
   }
 
   async getCatchUpEpisodes(userId: string, showId: string) {
@@ -2409,6 +2416,18 @@ class ApiClient {
 
   async startCatchUp(userId: string, showId: string, season: number, episode: number) {
     return this.fetch<CatchUpJob>(`/users/${encodeURIComponent(userId)}/catch-up`, { method: 'POST', body: JSON.stringify({ showId, season, episode }) });
+  }
+
+  async undoCatchUp(userId: string) {
+    return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/undo`, { method: 'POST' });
+  }
+
+  async dismissCatchUp(userId: string) {
+    return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/dismiss`, { method: 'POST' });
+  }
+
+  async unmarkEpisode(userId: string, showId: string, season: number, episode: number) {
+    return this.fetch<{ removed: number; server: 'done' | 'not-there' | 'failed' | null }>(`/users/${encodeURIComponent(userId)}/catch-up/unmark`, { method: 'POST', body: JSON.stringify({ showId, season, episode }) });
   }
 
   async getCatchUpStatus(userId: string) {
@@ -2429,8 +2448,12 @@ class ApiClient {
     return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`);
   }
 
-  async setScreenTime(userId: string, limit: { minutes: number; days: number[] } | null) {
+  async setScreenTime(userId: string, limit: ScreenTimeLimit | null) {
     return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`, { method: 'PUT', body: JSON.stringify({ limit }) });
+  }
+
+  async resumeScreenTime(userId: string) {
+    return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time/resume`, { method: 'POST' });
   }
 
   // A real Jellyfin person's age limit on their server.
@@ -2531,6 +2554,14 @@ class ApiClient {
       body: JSON.stringify({ ...data, create: true }),
     });
     return (result?.user || result) as User;
+  }
+
+  /** Sign an existing Nuvio person in again - email and password, or the tokens from Nuvio's sign-in code. */
+  async reconnectUserNuvio(userId: string, data: { email: string; password: string } | { providerUserId: string; refreshToken: string; email?: string }) {
+    return this.fetch<{ success: boolean; user: { id: string; email: string } }>('/nuvio/connect', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...data }),
+    });
   }
 
   async startNuvioOAuth() {
@@ -3485,6 +3516,14 @@ export interface AioHistory {
 }
 
 /** A show's episodes for "Caught up to here" (server/utils/catchUp.js). */
+/** A show the picker offers: one they watch whose episodes can be listed. */
+export interface CatchUpShow {
+  id: string;
+  name: string | null;
+  poster: string | null;
+  last?: { season: number; episode: number };
+}
+
 export interface CatchUpEpisodes {
   showId: string;
   name: string | null;
@@ -3494,7 +3533,9 @@ export interface CatchUpEpisodes {
 
 /** One "Caught up to here" run, as it goes. */
 export interface CatchUpJob {
-  state: 'running' | 'done' | 'failed';
+  state: 'running' | 'done' | 'failed' | 'undoing' | 'undone';
+  /** The last run can still be taken back. */
+  canUndo?: boolean;
   show: string;
   upTo: string;
   total: number;
@@ -3506,10 +3547,23 @@ export interface CatchUpJob {
 }
 
 /** A person's daily screen-time limit, and today so far (server/utils/screenTime.js). */
+export interface ScreenTimeLimit {
+  minutes: number;
+  days: number[];
+  /** What happens at the limit; alerting when absent. */
+  onReach?: 'pause';
+  /** When a pause ends, "HH:MM" on the account's clock; midnight when absent. */
+  resumeAt?: string;
+}
+
 export interface ScreenTimeView {
-  limit: { minutes: number; days: number[] } | null;
+  limit: ScreenTimeLimit | null;
   todayMinutes: number;
   appliesToday: boolean;
+  /** Streaming paused until the account's midnight. */
+  paused: { until: string } | null;
+  /** Whether a pause can work for this person, and why not. */
+  canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'not-supported'; reason?: string };
 }
 
 /** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */

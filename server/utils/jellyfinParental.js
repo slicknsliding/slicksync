@@ -79,4 +79,4 @@ async function setAgeLimit(prisma, decrypt, accountId, userId, { value, blockUnr
   return getAgeLimit(prisma, decrypt, accountId, userId)
 }
 
-module.exports = { getAgeLimit, setAgeLimit, ratingLevels }
+module.exports = { getAgeLimit, setAgeLimit, ratingLevels, adminContext: context }

@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TvIcon } from '@heroicons/react/24/outline';
+import { ActionPill } from '@/components/user/ActionPill';
 import { Button } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, type HouseholdProfile } from '@/lib/api';
@@ -93,16 +94,9 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
 
   return (
     <>
-      <button
-        ref={button}
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-default text-xs text-subtle hover:text-default hover:bg-surface-hover transition-colors"
-      >
-        <TvIcon className="w-3.5 h-3.5" />
+      <ActionPill ref={button} icon={TvIcon} open={open} onClick={toggle}>
         Sign in a TV
-      </button>
+      </ActionPill>
       {open && anchor && typeof document !== 'undefined' && createPortal(
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />

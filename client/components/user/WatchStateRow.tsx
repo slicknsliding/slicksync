@@ -109,8 +109,8 @@ export function WatchStateRow({ userId }: { userId: string }) {
             </div>
             <p className="text-sm text-muted">
               {enabled
-                ? 'What this person watches in AIOStreams\' apps is recorded here, and what they watched anywhere else shows up there.'
-                : 'For anyone watching through AIOStreams\' apps - Odin, Infuse, Swiftfin or its desktop app - which never reach a Stremio or Nuvio library.'}
+                ? 'What they watch on AIOStreams in a Jellyfin app is recorded here, and what they watched anywhere else shows up there.'
+                : 'For anyone watching AIOStreams in a Jellyfin app - Infuse, Swiftfin, Odin or AIOStreams\' desktop app.'}
             </p>
             {enabled && view?.canInstall && (
               <div className="mt-2 flex flex-col gap-1.5">
@@ -174,7 +174,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
       {enabled && view && view.viewers.length > 0 && (
         <div className="mt-4 ml-13 flex flex-col gap-2">
           <p className="text-xs text-muted">
-            AIOStreams profiles using this link. A profile is only recorded once it is linked to a person who has this turned on, and never when it is set to not be tracked.
+            The AIOStreams users watching through this link, and who each one is here. Nothing is recorded for a user until they are matched to someone with this turned on.
           </p>
           {view.viewers.map((v) => (
             <div key={v.viewer} className="flex items-center justify-between gap-3 flex-wrap rounded-lg px-3 py-2" style={{ background: 'var(--color-surface-hover)' }}>

@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
+import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { api, type JellyfinDevice } from '@/lib/api';
 import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
@@ -84,16 +85,9 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
 
   return (
     <>
-      <button
-        ref={button}
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-default text-xs text-subtle hover:text-default hover:bg-surface-hover transition-colors"
-      >
-        <DevicePhoneMobileIcon className="w-3.5 h-3.5" />
+      <ActionPill ref={button} icon={DevicePhoneMobileIcon} open={open} onClick={toggle}>
         Devices
-      </button>
+      </ActionPill>
       {open && anchor && typeof document !== 'undefined' && createPortal(
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />

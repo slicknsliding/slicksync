@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { Button, Modal } from '@/components/ui';
 import { api, type AioHistory } from '@/lib/api';
@@ -84,16 +85,9 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
 
   return (
     <>
-      <button
-        ref={button}
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-default text-xs text-subtle hover:text-default hover:bg-surface-hover transition-colors"
-      >
-        <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
+      <ActionPill ref={button} icon={ArrowUturnLeftIcon} open={open} onClick={toggle}>
         AIOStreams history
-      </button>
+      </ActionPill>
       {open && anchor && typeof document !== 'undefined' && createPortal(
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />
