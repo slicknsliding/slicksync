@@ -153,12 +153,15 @@ which read as an end-of-watch notification).
 ## AIOStreams configurations: what SlickSync writes
 
 SlickSync holds the configuration password for people added with it, and reads their configuration every 30
-minutes for outside changes (`aiostreamsConfig.js`). It writes only four things, each through `writeConfig`,
+minutes for outside changes (`aiostreamsConfig.js`). It writes only five things, each through `writeConfig`,
 preceded by `noteOutsideChanges` and followed by `rebaseline` so the write is never reported as an outside change:
 profile variants (`aioProfileVariants.js`), debrid keys matching a rotated Vault key for people opted in
 (`aioServiceKeys.js`), the SlickTrax link when AIOStreams watch history is turned on (`aioSlickTrax.js`), and
 household users added from the household card or their PINs changed (`aioHousehold.js` - personas are matched by
-id, never name, through AIOStreams' own `sha256("jellyfin-persona:<uuid>:<id>")` user id).
+id, never name, through AIOStreams' own `sha256("jellyfin-persona:<uuid>:<id>")` user id), and an earlier version
+put back from the configuration's history (`aioConfigHistory.js`, keeping today's services, household users and
+API keys by default). Every version seen is kept in `AioConfigSnapshot`, encrypted with the account key (it holds
+debrid keys) and listed in `scripts/consolidate-encryption-keys.js`.
 AIOStreams replaces the whole configuration on save, so each write changes only its own part of what it just read.
 Anything new that writes to a configuration follows the same sequence and is added here and to the header of
 `aiostreamsConfig.js`.

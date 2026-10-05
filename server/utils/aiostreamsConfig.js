@@ -19,7 +19,11 @@
 // - the SlickTrax link, added (or switched back on) when AIOStreams watch
 //   history is turned on for someone (utils/aioSlickTrax.js);
 // - household users added from the household card, and their PINs changed
-//   or removed (utils/aioHousehold.js).
+//   or removed (utils/aioHousehold.js);
+// - an earlier version of the configuration, put back from its history
+//   (utils/aioConfigHistory.js), keeping today's debrid services, household
+//   users and API keys unless asked otherwise.
+// Every version seen is kept (encrypted) for that history.
 // Nothing else in a configuration is touched.
 
 const crypto = require('crypto')
@@ -125,12 +129,14 @@ async function writeConfig({ serverUrl, account, password }, config) {
  * baseline for everyone it is watched through, so the next look finds no
  * outside change.
  */
-async function rebaseline(prisma, person, config) {
+async function rebaseline(prisma, person, config, reason = 'slicksync') {
   const state = JSON.stringify({ ...summarize(config), checkedAt: new Date().toISOString() })
   await prisma.user.updateMany({
     where: { accountId: person.accountId, aioConfigId: person.aioConfigId, jellyfinServerUrl: person.jellyfinServerUrl },
     data: { aioConfigStateJson: state },
   })
+  // The version SlickSync's write left behind (utils/aioConfigHistory.js).
+  await require('./aioConfigHistory').remember(prisma, person, config, reason)
 }
 
 /**
@@ -311,11 +317,14 @@ async function noteOutsideChanges(prisma, person, config, before) {
     await alert(prisma, accountId, {
       title: `${person.username}'s AIOStreams configuration was changed outside SlickSync`,
       body: `Someone ${shown}.`,
-      url: `/users/${person.id}`,
+      // Opens the configuration's history: what changed, and putting it back.
+      url: `/users/${person.id}?aioHistory=1`,
       dedupeKey: `aioconfig:${person.id}:${after.hash}`,
     })
   }
   await prisma.user.update({ where: { id: person.id }, data: { aioConfigStateJson: JSON.stringify(after) } })
+  // Every version seen is kept, so an outside change can be put back.
+  await require('./aioConfigHistory').remember(prisma, person, config, 'seen')
 }
 
 let timer = null

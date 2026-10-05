@@ -415,6 +415,30 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // Every version of their AIOStreams configuration SlickSync has seen, and
+  // putting one back (utils/aioConfigHistory.js).
+  router.get('/users/:id/aio-history', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioConfigHistory').historyFor(prisma, getAccountId(req), String(req.params.id)));
+    } catch (error) {
+      sendError(res, error, 'Could not read the configuration history');
+    }
+  });
+
+  router.post('/users/:id/aio-history/:snapshotId/restore', async (req, res) => {
+    try {
+      const keep = req.body?.keep || {};
+      await require('../utils/aioConfigHistory').restore(prisma, decrypt, getAccountId(req), String(req.params.id), String(req.params.snapshotId), {
+        keepServices: keep.services !== false,
+        keepPersonas: keep.users !== false,
+        keepApiKeys: keep.apiKeys !== false,
+      });
+      res.json(await require('../utils/aioConfigHistory').historyFor(prisma, getAccountId(req), String(req.params.id)));
+    } catch (error) {
+      sendError(res, error, 'Could not put that version back');
+    }
+  });
+
   router.get('/users/:id/age-limit', async (req, res) => {
     try {
       res.json(await require('../utils/jellyfinParental').getAgeLimit(prisma, decrypt, getAccountId(req), req.params.id));

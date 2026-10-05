@@ -22,6 +22,7 @@ import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
+import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
 import { ScreenTimeButton } from '@/components/user/ScreenTimeButton';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -1264,7 +1265,10 @@ export default function UserDetailPage() {
                         <CatchUpButton userId={user.id} name={user.username || user.name || 'them'} hasServer={user.providerType === 'jellyfin'} />
                         {/* What AIOStreams itself says about their configuration. */}
                         {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && (
-                          <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />
+                          <>
+                            <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />
+                            <AioHistoryButton userId={user.id} name={user.username || user.name || 'them'} />
+                          </>
                         )}
                         {/* Only a real Jellyfin server keeps a device list. */}
                         {user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin' && (

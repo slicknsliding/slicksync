@@ -105,6 +105,8 @@ async function run() {
   await consolidateTable('InviteRequest', prisma.inviteRequest, 'id', ['stremioAuthKey', 'nuvioRefreshToken', 'jellyfinToken'])
   await consolidateTable('Addon', prisma.addon, 'id', ['manifestUrl', 'manifest', 'originalManifest'])
   await consolidateTable('VaultEntry', prisma.vaultEntry, 'id', ['encryptedSecret'])
+  // Kept versions of AIOStreams configurations - they hold debrid keys.
+  await consolidateTable('AioConfigSnapshot', prisma.aioConfigSnapshot, 'id', ['config'])
   await consolidateSnapshots()
 
   console.log('Field                                   already  rewrite  UNREADABLE  empty')

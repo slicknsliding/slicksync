@@ -2406,6 +2406,15 @@ class ApiClient {
     return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/status`);
   }
 
+  // Their AIOStreams configuration's history (server/utils/aioConfigHistory.js).
+  async getAioHistory(userId: string) {
+    return this.fetch<AioHistory>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-history`);
+  }
+
+  async restoreAioVersion(userId: string, snapshotId: string, keep: { services: boolean; users: boolean; apiKeys: boolean }) {
+    return this.fetch<AioHistory>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-history/${encodeURIComponent(snapshotId)}/restore`, { method: 'POST', body: JSON.stringify({ keep }) });
+  }
+
   // A daily screen-time limit for a person (server/utils/screenTime.js).
   async getScreenTime(userId: string) {
     return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`);
@@ -3458,6 +3467,12 @@ export interface JellyfinAgeLimit {
   levels?: { value: number; label: string }[];
   current?: number | null;
   blockUnrated?: boolean;
+}
+
+/** Versions of an AIOStreams configuration, newest first (server/utils/aioConfigHistory.js). */
+export interface AioHistory {
+  available: boolean;
+  versions: { id: string; at: string; reason: 'seen' | 'slicksync' | 'restore'; current: boolean; changes: string[]; addons: number; services: number; users: number }[];
 }
 
 /** A show's episodes for "Caught up to here" (server/utils/catchUp.js). */

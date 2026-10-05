@@ -715,6 +715,26 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Users',
   },
   {
+    id: 'aiostreams-config-history',
+    title: 'Putting an AIOStreams configuration back the way it was',
+    category: 'Users & Groups',
+    keywords: ['aiostreams history', 'undo aiostreams', 'restore aiostreams', 'aiostreams changed', 'revert configuration', 'config backup', 'aiostreams backup', 'someone changed aiostreams'],
+    answer: 'On the person’s page, press AIOStreams history. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
+    steps: [
+      'Open the person on the Users page and press AIOStreams history - or tap the "changed outside SlickSync" notification, which opens it.',
+      'Find the version from before the change; each one says what changed since the one before it.',
+      'Press Put back, choose what to keep as it is now, and confirm.',
+    ],
+    details: [
+      'By default today’s debrid services and keys, household users and PINs, and API keys stay as they are - an old version would otherwise bring back a dead key or someone you removed. Untick them to put those back too.',
+      'The configuration is read every 30 minutes; each new version is kept, along with the result of anything SlickSync changes itself. The last 20 are kept. Versions hold debrid keys, so they are stored encrypted.',
+      'Only for someone added with their AIOStreams configuration password. AIOStreams still checks its own limits when it is put back - a version with more addons than it allows now is refused, with the reason.',
+    ],
+    related: ['add-jellyfin-account', 'aiostreams-health'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'aiostreams-health',
     title: 'Checking which AIOStreams addons are failing for someone',
     category: 'Users & Groups',
