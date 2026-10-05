@@ -82,11 +82,98 @@ const avatarStyles = [
   },
 ];
 
+// Fixed colours on top of the theme shades - the same whatever the theme.
+// Their own numbers (from FIXED_COLOR_BASE), so every colorIndex saved before
+// they existed keeps meaning the theme shade it always did.
+export const FIXED_COLOR_BASE = 100;
+const fixedColors: { name: string; hex: string }[] = [
+  { name: 'Red', hex: '#dc2626' },
+  { name: 'Orange', hex: '#ea580c' },
+  { name: 'Amber', hex: '#d97706' },
+  { name: 'Green', hex: '#16a34a' },
+  { name: 'Emerald', hex: '#059669' },
+  { name: 'Teal', hex: '#0d9488' },
+  { name: 'Cyan', hex: '#0891b2' },
+  { name: 'Blue', hex: '#2563eb' },
+  { name: 'Indigo', hex: '#4f46e5' },
+  { name: 'Violet', hex: '#7c3aed' },
+  { name: 'Magenta', hex: '#c026d3' },
+  { name: 'Pink', hex: '#db2777' },
+];
+const fixedStyles = fixedColors.map(({ hex }) => ({
+  background: hex,
+  gradient: `linear-gradient(135deg, color-mix(in srgb, ${hex} 75%, white) 0%, ${hex} 100%)`,
+}));
+const THEME_NAMES = ['Your theme', 'Your theme, lighter', 'Your theme, light', 'Your theme, palest', 'Your accent', 'Your accent, lighter', 'Your accent, light', 'Your accent, palest'];
+
+/** The style a colorIndex draws: a fixed colour from FIXED_COLOR_BASE up, otherwise a theme shade. */
+function styleFor(colorIndex: number) {
+  if (colorIndex >= FIXED_COLOR_BASE) return fixedStyles[(colorIndex - FIXED_COLOR_BASE) % fixedStyles.length];
+  return avatarStyles[Math.abs(colorIndex) % avatarStyles.length];
+}
+
+/** The solid colour a colorIndex stands for - for things drawn flat in it (a catalog's cover). */
+export function avatarColorFill(colorIndex: number): string {
+  return styleFor(colorIndex).background;
+}
+
+/** Every colour a person or group can be, as the colorIndex to save. */
+export const AVATAR_COLORS: { index: number; name: string; gradient: string; group: 'theme' | 'fixed' }[] = [
+  ...avatarStyles.map((st, i) => ({ index: i, name: THEME_NAMES[i], gradient: st.gradient, group: 'theme' as const })),
+  ...fixedStyles.map((st, i) => ({ index: FIXED_COLOR_BASE + i, name: fixedColors[i].name, gradient: st.gradient, group: 'fixed' as const })),
+];
+
+/** Whether a saved colorIndex is this swatch (old theme numbers past 7 wrap, as they always drew). */
+export function isSameAvatarColor(saved: number, index: number): boolean {
+  if (saved >= FIXED_COLOR_BASE || index >= FIXED_COLOR_BASE) return saved === index;
+  return Math.abs(saved) % avatarStyles.length === index;
+}
+
+/**
+ * The colours a colorIndex can be, as one row of round swatches - for every
+ * picker that sets one. Drawn from the same list as the avatar itself, so
+ * what is picked is what shows. (Group dialogs once had a separate list of
+ * fixed colours whose positions meant different shades here: red came out
+ * teal.) Your theme's colour and accent first, then the fixed colours. The
+ * paler theme shades aren't offered any more, but one already in use shows
+ * first, so the current colour is always there and picked.
+ */
+const OFFERED_THEME = [0, 4];
+export function AvatarColorSwatches({ value, onChange }: { value: number; onChange: (colorIndex: number) => void }) {
+  const offered = AVATAR_COLORS.filter((c) => c.group === 'fixed' || OFFERED_THEME.includes(c.index));
+  const current = AVATAR_COLORS.find((c) => c.group === 'theme' && !OFFERED_THEME.includes(c.index) && isSameAvatarColor(value, c.index));
+  const swatches = current ? [current, ...offered] : offered;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {swatches.map((c) => {
+        const picked = isSameAvatarColor(value, c.index);
+        return (
+          <button
+            key={c.index}
+            type="button"
+            onClick={() => onChange(c.index)}
+            aria-label={c.name}
+            title={c.name}
+            aria-pressed={picked}
+            className="w-8 h-8 rounded-full transition-transform"
+            style={{
+              background: c.gradient,
+              transform: picked ? 'scale(1.15)' : 'scale(1)',
+              boxShadow: picked ? '0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-primary)' : 'none',
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function getStyleIndex(name: string): number {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
+  // Theme shades only: an avatar nobody chose a colour for follows the theme.
   return Math.abs(hash) % avatarStyles.length;
 }
 
@@ -115,8 +202,7 @@ function getGravatarUrl(email: string | null | undefined, size: number = 128): s
 
 export function Avatar({ name, src, email, size = 'md', showRing = false, status, colorIndex, fallbackIcon, className, imgClassName, avatarClassName }: AvatarProps) {
   const initials = getInitials(name);
-  const styleIndex = colorIndex !== undefined ? (colorIndex % avatarStyles.length) : getStyleIndex(name);
-  const style = avatarStyles[styleIndex];
+  const style = styleFor(colorIndex !== undefined && colorIndex !== null ? colorIndex : getStyleIndex(name));
 
   const [gravatarSrc, setGravatarSrc] = useState<string | undefined>(undefined);
   const [imageError, setImageError] = useState(false);

@@ -4,11 +4,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { Modal, Button } from '@/components/ui';
-import { Avatar } from '@/components/ui/Avatar';
+import { Avatar, AvatarColorSwatches, avatarColorFill } from '@/components/ui/Avatar';
 import { toast } from '@/components/ui/Toast';
 import { api, NuvioCommunityCover } from '@/lib/api';
 
-const COLOR_COUNT = 8;
 
 interface AvatarPickerModalProps {
   isOpen: boolean;
@@ -68,6 +67,19 @@ export function AvatarPickerModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentAvatarUrl || null);
+  // Each opening starts from what the thing has now. The dialog is mounted
+  // with its page, often before the page's data has arrived, so the values
+  // above were those of nothing-loaded-yet: a red group opened it with the
+  // theme colour picked, and saving would have quietly undone the red.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
+      setSelectedColor(currentColorIndex ?? 0);
+      setUrlInput(currentAvatarUrl || '');
+      setPreviewUrl(currentAvatarUrl || null);
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Infinite scroll for the Nuvio Covers grid, same IntersectionObserver
   // pattern Discover uses. Root is null (the browser viewport) rather than
@@ -303,7 +315,7 @@ export function AvatarPickerModal({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="" className="w-full h-full object-cover" />
             ) : tab === 'color' ? (
-              <div className="w-full h-full" style={{ background: `color-mix(in srgb, var(--color-${selectedColor < 4 ? 'primary' : 'secondary'}) ${100 - (selectedColor % 4) * 25}%, white)` }} />
+              <div className="w-full h-full" style={{ background: avatarColorFill(selectedColor) }} />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-xs text-subtle">
                 {name}
@@ -396,21 +408,7 @@ export function AvatarPickerModal({
 
         {tab === 'color' && (
           <div>
-            <div className="grid grid-cols-8 gap-2 mb-4">
-              {Array.from({ length: COLOR_COUNT }).map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setSelectedColor(i)}
-                  className="w-9 h-9 rounded-full transition-transform"
-                  style={{
-                    background: `color-mix(in srgb, var(--color-${i < 4 ? 'primary' : 'secondary'}) ${100 - (i % 4) * 25}%, white)`,
-                    transform: selectedColor === i ? 'scale(1.15)' : 'scale(1)',
-                    boxShadow: selectedColor === i ? '0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-primary)' : 'none',
-                  }}
-                />
-              ))}
-            </div>
+            <div className="mb-4"><AvatarColorSwatches value={selectedColor} onChange={setSelectedColor} /></div>
             <Button variant="primary" className="w-full" onClick={handleSaveColor} isLoading={isSaving}>
               Use Color Avatar
             </Button>

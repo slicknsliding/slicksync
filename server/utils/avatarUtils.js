@@ -54,8 +54,14 @@ async function getUserAvatarUrl(username, email, colorIndex) {
     { bg: '8b5cf6', text: 'ffffff' }, // Purple
   ]
   
-  const index = (colorIndex || 0) % colorPalette.length
-  const colors = colorPalette[index]
+  // A fixed colour picked in the app (colorIndex 100 and up - the same list as
+  // client/components/ui/Avatar.tsx) is the same colour here. The theme
+  // shades below 100 depend on the viewer's theme, which isn't known here.
+  const FIXED_COLOR_BASE = 100
+  const fixedColors = ['dc2626', 'ea580c', 'd97706', '16a34a', '059669', '0d9488', '0891b2', '2563eb', '4f46e5', '7c3aed', 'c026d3', 'db2777']
+  const colors = (colorIndex || 0) >= FIXED_COLOR_BASE
+    ? { bg: fixedColors[(colorIndex - FIXED_COLOR_BASE) % fixedColors.length], text: 'ffffff' }
+    : colorPalette[(colorIndex || 0) % colorPalette.length]
   const initial = username.charAt(0).toUpperCase()
   
   // Use UI Avatars service to generate avatar
