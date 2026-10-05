@@ -4439,11 +4439,22 @@ export interface HealthStatus {
   // a private-mode, single-shared-instance concept with no per-account
   // Settings field, so there's nothing real to report for a given tenant.
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean; healthIgnored: boolean } | null;
+  /** Jellyfin, AIOStreams and AIOMetadata servers, from each person's last read (server/utils/serverStatus.js). */
+  servers?: Array<{
+    key: string;
+    kind: 'jellyfin' | 'aiostreams' | 'aiometadata';
+    label: string;
+    address: string;
+    status: 'up' | 'down' | 'partial';
+    since: string | null;
+    failingCount: number;
+    people: Array<{ id: string; name: string; state: 'ok' | 'issue' | 'reconnect'; error: string | null; since: string | null }>;
+  }>;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
   timeline: Array<{
     id: string;
-    source: 'addon' | 'vault' | 'proxy';
+    source: 'addon' | 'vault' | 'proxy' | 'server';
     status: 'up' | 'down';
     title: string;
     detail: string | null;
