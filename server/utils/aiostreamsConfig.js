@@ -17,7 +17,9 @@
 // - debrid keys that match a rotated Vault key, for people opted in
 //   (utils/aioServiceKeys.js);
 // - the SlickTrax link, added (or switched back on) when AIOStreams watch
-//   history is turned on for someone (utils/aioSlickTrax.js).
+//   history is turned on for someone (utils/aioSlickTrax.js);
+// - household users added from the household card, and their PINs changed
+//   or removed (utils/aioHousehold.js).
 // Nothing else in a configuration is touched.
 
 const crypto = require('crypto')

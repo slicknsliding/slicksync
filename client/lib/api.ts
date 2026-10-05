@@ -2446,7 +2446,7 @@ class ApiClient {
   }
 
   async getHousehold(userId: string) {
-    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null }>(
+    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean }>(
       `/jellyfin/users/${encodeURIComponent(userId)}/household`
     );
   }
@@ -2455,6 +2455,22 @@ class ApiClient {
     return this.fetch<{ profiles: HouseholdProfile[] }>(`/jellyfin/household/${encodeURIComponent(profileId)}/track`, {
       method: 'POST',
       body: JSON.stringify({ tracked }),
+    });
+  }
+
+  // Add an AIOStreams household user (server/utils/aioHousehold.js).
+  async addHouseholdUser(userId: string, data: { name: string; pin?: string | null; history: 'own' | 'shared' }) {
+    return this.fetch<{ profiles: HouseholdProfile[]; tracked: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/household`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Change (or, with null, remove) a household user's PIN.
+  async setHouseholdPin(profileId: string, pin: string | null) {
+    return this.fetch<{ profiles: HouseholdProfile[]; tracked: boolean }>(`/jellyfin/household/${encodeURIComponent(profileId)}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
     });
   }
 

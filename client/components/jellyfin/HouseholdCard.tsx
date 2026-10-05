@@ -12,7 +12,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   ChevronDownIcon, UserPlusIcon, EyeSlashIcon, EyeIcon, KeyIcon,
-  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon,
+  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon, PlusIcon, LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import { api, type HouseholdProfile } from '@/lib/api';
 import { Badge, Button, Card, ConfirmModal, Modal } from '@/components/ui';
@@ -80,12 +80,23 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
   const [signingIn, setSigningIn] = useState<HouseholdProfile | null>(null);
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
+  // Adding household users and changing PINs (server/utils/aioHousehold.js):
+  // only for someone added with their AIOStreams configuration password.
+  const [canManage, setCanManage] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [newHistory, setNewHistory] = useState<'own' | 'shared'>('own');
+  const [pinFor, setPinFor] = useState<HouseholdProfile | null>(null);
+  const [changedPin, setChangedPin] = useState('');
   const popoverRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => { setSelected(null); setPlacement(null); }, []);
 
   const load = useCallback(async () => {
     try {
-      setProfiles((await api.getHousehold(userId)).profiles);
+      const h = await api.getHousehold(userId);
+      setProfiles(h.profiles);
+      setCanManage(!!h.canManage);
     } catch {
       setProfiles(null);
     }
@@ -175,7 +186,41 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
     }
   };
 
-  if (!profiles || profiles.length === 0) return null;
+  const submitAdd = async () => {
+    setBusy(true);
+    try {
+      const next = await api.addHouseholdUser(userId, { name: newName.trim(), pin: newPin.trim() || null, history: newHistory });
+      setProfiles(next.profiles);
+      toast.success(next.tracked ? `${newName.trim()} added and tracked` : `${newName.trim()} added - sign them in to track them`);
+      setAdding(false);
+      setNewName('');
+      setNewPin('');
+      setNewHistory('own');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not add them');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitPin = async (value: string | null) => {
+    if (!pinFor) return;
+    setBusy(true);
+    try {
+      const next = await api.setHouseholdPin(pinFor.id, value);
+      setProfiles(next.profiles);
+      toast.success(value ? `${pinFor.name}'s PIN changed` : `${pinFor.name} has no PIN now`);
+      if (!next.tracked) toast.error(`Sign ${pinFor.name} in again to keep tracking them`);
+      setPinFor(null);
+      setChangedPin('');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not change the PIN');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!profiles || (profiles.length === 0 && !canManage)) return null;
 
   const sel = profiles.find((p) => p.id === selected) || null;
   const tracked = profiles.filter((p) => p.status === 'tracked').length;
@@ -253,6 +298,19 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               </button>
             );
           })}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => { closeMenu(); setAdding(true); }}
+              className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 transition-colors hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <span className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-dashed border-default text-muted group-hover:text-default transition-colors">
+                <PlusIcon className="w-6 h-6" />
+              </span>
+              <span className="text-sm font-medium text-default">Add</span>
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted">Household user</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -303,6 +361,11 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               <KeyIcon className="w-4 h-4 text-muted" /> Sign in
             </button>
           )}
+          {canManage && (
+            <button className={MENU_ITEM} onClick={() => { closeMenu(); setPinFor(sel); }}>
+              <LockClosedIcon className="w-4 h-4 text-muted" /> Change PIN
+            </button>
+          )}
           {sel.status === 'own' && sel.person && (
             <Link href={`/users/${sel.person.id}`} className={MENU_ITEM} onClick={closeMenu}>
               <ArrowTopRightOnSquareIcon className="w-4 h-4 text-muted" /> Open {sel.person.username}
@@ -322,6 +385,53 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
         variant={pending?.variant || 'default'}
         isLoading={busy}
       />
+
+      <Modal isOpen={adding} onClose={() => { if (!busy) setAdding(false); }} title={`Add someone to ${personName}'s AIOStreams`}>
+        <form onSubmit={(e) => { e.preventDefault(); submitAdd(); }} className="space-y-4">
+          <p className="text-sm text-muted">They show up in every AIOStreams and Jellyfin app signed in to this configuration, and are tracked here with {personName} straight away.</p>
+          <div>
+            <label htmlFor="household-new-name" className="block text-sm font-medium mb-2 text-default">Name</label>
+            <input id="household-new-name" value={newName} maxLength={32} onChange={(e) => setNewName(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+          </div>
+          <div>
+            <label htmlFor="household-new-pin" className="block text-sm font-medium mb-2 text-default">PIN <span className="text-muted font-normal">(optional, 4 to 12 digits)</span></label>
+            <input id="household-new-pin" type="password" inputMode="numeric" autoComplete="new-password" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+              className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-default">History</p>
+            {([['own', 'Their own', 'Their own Continue Watching and watched marks, and their own trackers.'], ['shared', `Shared with ${personName}`, `One history with ${personName}, using ${personName}'s trackers.`]] as const).map(([value, label, hint]) => (
+              <label key={value} className="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="radio" name="household-history" className="mt-1" checked={newHistory === value} onChange={() => setNewHistory(value)} />
+                <span><span className="text-default">{label}</span><span className="block text-xs text-muted">{hint}</span></span>
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" type="button" onClick={() => setAdding(false)} disabled={busy}>Cancel</Button>
+            <Button variant="primary" type="submit" isLoading={busy} disabled={!newName.trim()}>Add</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={!!pinFor} onClose={() => { if (!busy) setPinFor(null); }} title={pinFor ? `${pinFor.name}'s PIN` : ''}>
+        <form onSubmit={(e) => { e.preventDefault(); submitPin(changedPin.trim()); }} className="space-y-4">
+          <p className="text-sm text-muted">The new PIN works in every app straight away. SlickSync signs {pinFor?.name} in once with it to keep tracking them.</p>
+          <div>
+            <label htmlFor="household-change-pin" className="block text-sm font-medium mb-2 text-default">New PIN <span className="text-muted font-normal">(4 to 12 digits)</span></label>
+            <input id="household-change-pin" type="password" inputMode="numeric" autoComplete="new-password" value={changedPin} onChange={(e) => setChangedPin(e.target.value.replace(/\D/g, ''))}
+              className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+          </div>
+          <div className="flex gap-3 justify-between flex-wrap">
+            <Button variant="ghost" type="button" onClick={() => submitPin(null)} disabled={busy}>Remove the PIN</Button>
+            <div className="flex gap-3">
+              <Button variant="secondary" type="button" onClick={() => setPinFor(null)} disabled={busy}>Cancel</Button>
+              <Button variant="primary" type="submit" isLoading={busy} disabled={changedPin.trim().length < 4}>Change PIN</Button>
+            </div>
+          </div>
+        </form>
+      </Modal>
 
       <Modal isOpen={!!signingIn} onClose={() => { if (!busy) setSigningIn(null); }} title={signingIn ? `Sign in ${signingIn.name}` : ''}>
         <form onSubmit={(e) => { e.preventDefault(); submitSignIn(); }} className="space-y-4">
@@ -364,14 +474,19 @@ export function HouseholdsCard({ owners, onPeopleChanged }: {
   onPeopleChanged?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [manageable, setManageable] = useState<Record<string, boolean>>({});
   const [byOwner, setByOwner] = useState<Record<string, HouseholdProfile[]>>(() => Object.fromEntries(
     owners.map((o) => [o.id, api.peekGet<{ profiles: HouseholdProfile[] }>(`/jellyfin/users/${encodeURIComponent(o.id)}/household`)?.profiles ?? []])
   ));
   const ownerKey = owners.map((o) => o.id).join(',');
   useEffect(() => {
     let live = true;
-    Promise.all(owners.map((o) => api.getHousehold(o.id).then((h) => [o.id, h.profiles || []] as const).catch(() => [o.id, [] as HouseholdProfile[]] as const)))
-      .then((rows) => { if (live) setByOwner(Object.fromEntries(rows)); });
+    Promise.all(owners.map((o) => api.getHousehold(o.id).then((h) => [o.id, h.profiles || [], !!h.canManage] as const).catch(() => [o.id, [] as HouseholdProfile[], false] as const)))
+      .then((rows) => {
+        if (!live) return;
+        setByOwner(Object.fromEntries(rows.map(([id, profiles]) => [id, profiles])));
+        setManageable(Object.fromEntries(rows.map(([id, , can]) => [id, can])));
+      });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerKey]);
@@ -379,7 +494,7 @@ export function HouseholdsCard({ owners, onPeopleChanged }: {
     setByOwner((prev) => (prev[id] === profiles ? prev : { ...prev, [id]: profiles }));
   }, []);
 
-  const withHousehold = owners.filter((o) => (byOwner[o.id] || []).length > 0);
+  const withHousehold = owners.filter((o) => (byOwner[o.id] || []).length > 0 || manageable[o.id]);
   if (withHousehold.length === 0) return null;
   const all = withHousehold.flatMap((o) => byOwner[o.id]);
 

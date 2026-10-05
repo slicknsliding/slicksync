@@ -295,6 +295,7 @@ module.exports = {
   forgetProfileSignIn,
   hasHousehold,
   loginNamesFor,
+  signInAs,
   signInHousehold,
   saveHousehold,
   trackedProfiles,

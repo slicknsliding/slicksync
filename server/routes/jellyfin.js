@@ -553,9 +553,37 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         const owner = await prisma.user.findFirst({ where: { id: membership.ownerUserId, accountId }, select: { id: true, username: true } });
         if (owner) partOf = { profileId: membership.id, name: membership.name, owner };
       }
-      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null });
+      const full = await prisma.user.findFirst({ where: { id: person.id }, select: { providerType: true, jellyfinServerKind: true, aioConfigId: true, aioConfigPassword: true } });
+      // Household users can be added, and PINs changed, here (utils/aioHousehold.js).
+      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage: require('../utils/aioHousehold').canManage(full) });
     } catch (error) {
       sendError(res, error, 'Could not read the household');
+    }
+  });
+
+  // Add a household user to their AIOStreams configuration (utils/aioHousehold.js).
+  router.post('/users/:id/household', async (req, res) => {
+    try {
+      const owner = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId: getAccountId(req) } });
+      if (!owner) return res.status(404).json({ error: 'User not found' });
+      const result = await require('../utils/aioHousehold').addPersona(prisma, decrypt, encrypt, owner, {
+        name: req.body?.name, pin: req.body?.pin ?? null, history: req.body?.history,
+      });
+      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, owner.id) });
+    } catch (error) {
+      sendError(res, error, 'Could not add the household user');
+    }
+  });
+
+  // Change or remove a household user's PIN.
+  router.post('/household/:profileId/pin', async (req, res) => {
+    try {
+      const found = await loadProfile(req, res);
+      if (!found) return;
+      const result = await require('../utils/aioHousehold').setPersonaPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null);
+      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, found.owner.id) });
+    } catch (error) {
+      sendError(res, error, 'Could not change the PIN');
     }
   });
 
