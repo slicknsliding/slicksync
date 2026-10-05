@@ -51,15 +51,6 @@ async function queueDigestEntry(prisma, accountId, category, summary) {
   }
 }
 
-/** Persists AppAccount.sync the same dual-shape way syncScheduler.js does (Postgres Json column vs SQLite String). */
-async function persistSyncConfig(prisma, accountId, nextCfg) {
-  try {
-    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } })
-  } catch {
-    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } }).catch(() => {})
-  }
-}
-
 /** Checks every account; sends + clears the digest for any that are due. */
 async function sendDueDigests(prisma) {
   const accounts = await prisma.appAccount.findMany({ select: { id: true, sync: true } })
@@ -115,7 +106,8 @@ async function sendDueDigests(prisma) {
         await prisma.notificationDigestEntry.deleteMany({ where: { id: { in: entries.map((e) => e.id) } } })
       }
 
-      await persistSyncConfig(prisma, account.id, { ...cfg, notifyDigestLastSentAt: new Date().toISOString() })
+      // A fresh read: cfg was read before the push and Discord sends above.
+      await require('./accountSync').setAccountSyncKeys(prisma, account.id, { notifyDigestLastSentAt: new Date().toISOString() })
     } catch (e) {
       console.warn(`[NotificationDigest] Failed processing account ${account.id}:`, e?.message)
     }

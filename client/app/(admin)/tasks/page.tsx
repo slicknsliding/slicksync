@@ -1376,7 +1376,10 @@ export default function TasksPage() {
                 onClick={handleClearLibrary}
                 isLoading={isClearingLibrary}
                 leftIcon={!isClearingLibrary ? <TrashIcon className="w-4 h-4" /> : undefined}
-                disabled={!selectedUserId}
+                // Clearing reaches into a Stremio account only; for anyone
+                // else the server would just answer "not connected to Stremio".
+                disabled={!selectedUserId || (users.find((u) => u.id === selectedUserId)?.providerType || 'stremio') !== 'stremio'}
+                title={selectedUserId && (users.find((u) => u.id === selectedUserId)?.providerType || 'stremio') !== 'stremio' ? 'Clearing a library works for Stremio accounts only' : undefined}
               >
                 {isClearingLibrary ? 'Clearing...' : 'Clear Library'}
               </Button>

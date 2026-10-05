@@ -168,7 +168,7 @@ function lazyJellyfinProvider(load) {
     return provider[name](...args)
   }
   const lazy = { type: 'jellyfin', supportsAddons: false, supportsLibraryWrite: true }
-  for (const name of ['getAddons', 'setAddons', 'addAddon', 'clearAddons', 'getLibrary', 'getNowPlaying', 'findItem', 'setPlayed', 'setFavorite', 'clearResume', 'addLibraryItem', 'removeLibraryItem', 'getLikeStatus', 'setLikeStatus']) {
+  for (const name of ['getAddons', 'setAddons', 'addAddon', 'clearAddons', 'getLibrary', 'getNowPlaying', 'findItem', 'listEpisodes', 'playedUpTo', 'setPlayed', 'setFavorite', 'clearResume', 'addLibraryItem', 'removeLibraryItem', 'getLikeStatus', 'setLikeStatus']) {
     lazy[name] = forward(name)
   }
   return lazy

@@ -15,6 +15,7 @@ import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
+import { avatarColorFill } from '@/components/ui/Avatar';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
   ShieldExclamationIcon,
@@ -24,7 +25,7 @@ import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/sol
 // Matches AvatarPickerModal's own color-swatch formula exactly, so a
 // catalog's solid-color cover reads as the same color the picker showed.
 function coverColorStyle(colorIndex: number): React.CSSProperties {
-  return { background: `color-mix(in srgb, var(--color-${colorIndex < 4 ? 'primary' : 'secondary'}) ${100 - (colorIndex % 4) * 25}%, white)` };
+  return { background: avatarColorFill(colorIndex) };
 }
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete

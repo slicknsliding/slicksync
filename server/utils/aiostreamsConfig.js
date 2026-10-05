@@ -9,10 +9,22 @@
 // household hears about it: which addons came or went, which debrid services,
 // which household users, or that some other setting moved.
 //
-// The one thing SlickSync ever writes to a configuration is its own profile
-// variants, when the household gives a profile collections of its own
-// (utils/aioProfileVariants.js) - and it re-reads the configuration straight
-// after, so that write is never reported as an outside change.
+// What SlickSync ever writes to a configuration - each through writeConfig
+// below, each preceded by noteOutsideChanges and followed by rebaseline, so
+// none is ever reported as an outside change:
+// - its own profile variants, when the household gives a profile collections
+//   of its own (utils/aioProfileVariants.js);
+// - debrid keys that match a rotated Vault key, for people opted in
+//   (utils/aioServiceKeys.js);
+// - the SlickTrax link, added (or switched back on) when AIOStreams watch
+//   history is turned on for someone (utils/aioSlickTrax.js);
+// - household users added from the household card, and their PINs changed
+//   or removed (utils/aioHousehold.js);
+// - an earlier version of the configuration, put back from its history
+//   (utils/aioConfigHistory.js), keeping today's debrid services, household
+//   users and API keys unless asked otherwise.
+// Every version seen is kept (encrypted) for that history.
+// Nothing else in a configuration is touched.
 
 const crypto = require('crypto')
 
@@ -117,12 +129,14 @@ async function writeConfig({ serverUrl, account, password }, config) {
  * baseline for everyone it is watched through, so the next look finds no
  * outside change.
  */
-async function rebaseline(prisma, person, config) {
+async function rebaseline(prisma, person, config, reason = 'slicksync') {
   const state = JSON.stringify({ ...summarize(config), checkedAt: new Date().toISOString() })
   await prisma.user.updateMany({
     where: { accountId: person.accountId, aioConfigId: person.aioConfigId, jellyfinServerUrl: person.jellyfinServerUrl },
     data: { aioConfigStateJson: state },
   })
+  // The version SlickSync's write left behind (utils/aioConfigHistory.js).
+  await require('./aioConfigHistory').remember(prisma, person, config, reason)
 }
 
 /**
@@ -166,8 +180,13 @@ function summarize(config) {
     keyHash: crypto.createHash('sha256').update(stableJson(s.credentials || {})).digest('hex').slice(0, 12),
   }))
   const users = (Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []).map((p) => String(p.name || p.id || ''))
+  // Which catalogs show, and in what order - the order also decides which make
+  // AIOStreams' library limit.
+  const catalogOrder = crypto.createHash('sha256')
+    .update(stableJson((Array.isArray(config?.catalogModifications) ? config.catalogModifications : []).map((m) => [m?.id, m?.type, m?.enabled !== false])))
+    .digest('hex').slice(0, 12)
   const hash = crypto.createHash('sha256').update(stableJson(config || {})).digest('hex').slice(0, 16)
-  return { addons, services, users, hash }
+  return { addons, services, users, catalogOrder, hash }
 }
 
 const SERVICE_NAMES = {
@@ -202,6 +221,8 @@ function describeChanges(before, after) {
   const afterUsers = new Set(after.users || [])
   for (const u of afterUsers) if (!beforeUsers.has(u)) out.push(`added household user ${u}`)
   for (const u of beforeUsers) if (!afterUsers.has(u)) out.push(`removed household user ${u}`)
+  // Looks taken before catalogOrder existed carry none; nothing to compare.
+  if (before.catalogOrder && after.catalogOrder && before.catalogOrder !== after.catalogOrder) out.push('changed the catalog order')
   if (!out.length && before.hash !== after.hash) out.push('changed other settings')
   return out
 }
@@ -303,11 +324,14 @@ async function noteOutsideChanges(prisma, person, config, before) {
     await alert(prisma, accountId, {
       title: `${person.username}'s AIOStreams configuration was changed outside SlickSync`,
       body: `Someone ${shown}.`,
-      url: `/users/${person.id}`,
+      // Opens the configuration's history: what changed, and putting it back.
+      url: `/users/${person.id}?aioHistory=1`,
       dedupeKey: `aioconfig:${person.id}:${after.hash}`,
     })
   }
   await prisma.user.update({ where: { id: person.id }, data: { aioConfigStateJson: JSON.stringify(after) } })
+  // Every version seen is kept, so an outside change can be put back.
+  await require('./aioConfigHistory').remember(prisma, person, config, 'seen')
 }
 
 let timer = null
@@ -318,12 +342,15 @@ function scheduleConfigGuard(prisma, decrypt) {
     // follows doesn't report SlickSync's own fix as an outside change.
     await require('./aioProfileVariants').healProfileVariants(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] profile variants check failed:', e?.message))
     await checkConfigs(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] check failed:', e?.message))
+    // Is their AIOStreams watch history still reaching SlickSync?
+    await require('./aioSlickTrax').checkSlickTrax(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] SlickTrax check failed:', e?.message))
   }
   setTimeout(run, 2 * 60 * 1000)
   timer = setInterval(run, CHECK_INTERVAL_MS)
 }
 
 module.exports = {
+  alert,
   instanceBase,
   configAccountFrom,
   readConfig,

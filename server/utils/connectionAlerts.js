@@ -13,6 +13,12 @@
  * - One alert per outage: the dedupe key is the outage's start time, which
  *   recordConnectionError keeps fixed until the connection recovers.
  * - "Connected again" only follows an outage that was actually announced.
+ * - A Jellyfin-compatible server (Jellyfin, AIOStreams, AIOMetadata) that is
+ *   down for everyone signed in to it is ONE outage, not one per person:
+ *   when everyone on that server is failing with a connection issue and the
+ *   server doesn't answer its public /System/Info/Public either, a single
+ *   "Can't reach <server>" goes out, and a single "back up" when it returns.
+ *   A rejected sign-in stays per person - only that person can fix it.
  *
  * On by default (notifyOnConnectionHealth !== false), like key health: a
  * broken sign-in silently stops watch tracking for that person, so finding
@@ -24,6 +30,73 @@ const ICON = '/android-chrome-192x192.png'
 
 function outageKey(userId, since) {
   return `connection-${userId}-${new Date(since).getTime()}`
+}
+
+// A server outage is keyed by the server and the start of the outage, like a
+// person's; recovery finds it by the server prefix since each person on the
+// server noticed the outage a poll apart.
+function serverOutagePrefix(serverKey) {
+  return `connection-server-${serverKey}-`
+}
+
+function isConnectionIssue(message) {
+  return /^Connection issue:/i.test(message || '')
+}
+
+function serverKeyOf(person) {
+  return require('./jellyfinServerCollections').serverKeyOf(person)
+}
+
+/**
+ * Whether the server is up, asked through its public, no-sign-in info route.
+ * Any answer short of a server error counts: AIOStreams answers that route
+ * only under a valid configuration's address and says "Unauthorized" or
+ * "Unknown configuration" otherwise - which is a server that is up. Down is
+ * no answer at all, or a 5xx (a reverse proxy with nothing behind it).
+ */
+async function serverAnswers(url) {
+  try {
+    const { jfRequest } = require('../providers/jellyfinAuth')
+    await jfRequest(url, '/System/Info/Public', { timeoutMs: 5000 })
+    return true
+  } catch (e) {
+    if (e?.unreachable) return false
+    return Number(e?.status) > 0 && Number(e.status) < 500
+  }
+}
+
+/**
+ * Everyone on `user`'s Jellyfin-compatible server, when ALL of them are
+ * failing with a connection issue right now - else null. Reads the rows the
+ * pass has already written, so a person this pass hasn't reached yet counts
+ * by the failure recorded on the previous pass.
+ */
+async function everyoneOnServerFailing(prisma, accountId, user) {
+  if (user.providerType !== 'jellyfin' || !user.jellyfinServerUrl) return null
+  const key = serverKeyOf(user)
+  if (!key) return null
+  const people = (await prisma.user.findMany({
+    where: { accountId, isActive: true, providerType: 'jellyfin', jellyfinToken: { not: null } },
+    select: { id: true, username: true, jellyfinServerUrl: true, jellyfinServerId: true, jellyfinServerKind: true, providerConnectionError: true, providerConnectionErrorAt: true },
+  })).filter((p) => serverKeyOf(p) === key)
+  if (!people.some((p) => p.id === user.id)) return null
+  if (!people.every((p) => isConnectionIssue(p.providerConnectionError) && p.providerConnectionErrorAt)) return null
+  return { key, people }
+}
+
+function serverName(user) {
+  try {
+    const { displayServer } = require('../providers/jellyfinAuth')
+    return displayServer(user.jellyfinServerUrl) || user.jellyfinServerUrl
+  } catch {
+    return user.jellyfinServerUrl
+  }
+}
+
+function names(people) {
+  const list = people.map((p) => p.username || 'Someone')
+  if (list.length <= 3) return list.join(', ').replace(/, ([^,]*)$/, ' and $1')
+  return `${list.slice(0, 2).join(', ')} and ${list.length - 2} others`
 }
 
 function providerLabel(user) {
@@ -75,8 +148,9 @@ async function send(prisma, accountId, { title, body, dedupeKey }) {
  * the pass (so its providerConnectionError is the state BEFORE this
  * failure); `since` is when this outage started; `message` is what was
  * recorded, with its "Reconnect needed: " / "Connection issue: " prefix.
+ * `probe` checks whether a server answers (tests pass their own).
  */
-async function onConnectionFailed(prisma, accountId, user, message, since, now = Date.now()) {
+async function onConnectionFailed(prisma, accountId, user, message, since, now = Date.now(), { probe = serverAnswers } = {}) {
   try {
     if (!accountId || !user?.id || !since || user.__recordAs) return false
     const needsReconnect = /^Reconnect needed:/i.test(message || '')
@@ -87,6 +161,26 @@ async function onConnectionFailed(prisma, accountId, user, message, since, now =
     if (await alreadySent(prisma, accountId, dedupeKey)) return false
     const cfg = await readConfig(prisma, accountId)
     if (cfg.notifyOnConnectionHealth === false) return false
+
+    // The whole server down: one alert for everyone on it.
+    if (!needsReconnect) {
+      const server = await everyoneOnServerFailing(prisma, accountId, user).catch(() => null)
+      if (server) {
+        const prefix = serverOutagePrefix(server.key)
+        if (await openServerOutage(prisma, accountId, prefix)) return false
+        if (!(await probe(user.jellyfinServerUrl))) {
+          const start = Math.min(...server.people.map((p) => new Date(p.providerConnectionErrorAt).getTime()))
+          const label = providerLabel(user)
+          await send(prisma, accountId, {
+            title: `Can't reach the ${label} server ${serverName(user)}`,
+            body: `It has been down for over ${Math.round(SETTLE_MS / 60000)} minutes. Watching isn't being tracked for ${names(server.people)} until it's back.`,
+            dedupeKey: `${prefix}${start}`,
+          })
+          return true
+        }
+        // It answers - so it isn't the server; each person is told as before.
+      }
+    }
 
     const name = user.username || 'Someone'
     const label = providerLabel(user)
@@ -109,10 +203,39 @@ async function onConnectionFailed(prisma, accountId, user, message, since, now =
   }
 }
 
+// The newest announced outage of this server that has no "back up" yet, or null.
+async function openServerOutage(prisma, accountId, prefix) {
+  const row = await prisma.notification.findFirst({
+    where: { accountId, dedupeKey: { startsWith: prefix } },
+    orderBy: { createdAt: 'desc' },
+    select: { dedupeKey: true },
+  }).catch(() => null)
+  if (!row || row.dedupeKey.endsWith('-ok')) return null
+  return row.dedupeKey
+}
+
 /** After a successful live fetch for a person who had a recorded failure. */
 async function onConnectionRecovered(prisma, accountId, user) {
   try {
     if (!accountId || !user?.id || !user.providerConnectionErrorAt || user.__recordAs) return false
+
+    // The first person back on a server that was announced down says the
+    // server is back; everyone after them stays quiet.
+    if (user.providerType === 'jellyfin' && user.jellyfinServerUrl) {
+      const key = serverKeyOf(user)
+      const open = key ? await openServerOutage(prisma, accountId, serverOutagePrefix(key)) : null
+      if (open) {
+        const cfg = await readConfig(prisma, accountId)
+        if (cfg.notifyOnConnectionHealth === false) return false
+        await send(prisma, accountId, {
+          title: `The ${providerLabel(user)} server ${serverName(user)} is back`,
+          body: 'Watching is being tracked again for everyone on it.',
+          dedupeKey: `${open}-ok`,
+        })
+        return true
+      }
+    }
+
     const failedKey = outageKey(user.id, user.providerConnectionErrorAt)
     // Nothing was announced (a blip, or alerts were off) - nothing to undo.
     if (!(await alreadySent(prisma, accountId, failedKey))) return false
@@ -134,4 +257,4 @@ async function onConnectionRecovered(prisma, accountId, user) {
   }
 }
 
-module.exports = { onConnectionFailed, onConnectionRecovered, outageKey, SETTLE_MS }
+module.exports = { onConnectionFailed, onConnectionRecovered, outageKey, serverOutagePrefix, serverAnswers, SETTLE_MS }

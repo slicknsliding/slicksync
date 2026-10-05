@@ -1499,3 +1499,22 @@ model Passkey {
   @@index([accountId])
   @@map("passkeys")
 }
+
+// One version of an AIOStreams configuration, kept so it can be compared and
+// put back (utils/aioConfigHistory.js). A configuration holds debrid keys, so
+// the whole thing is encrypted with the account's key; the summary beside it
+// names addons, services and household users only, never a key.
+model AioConfigSnapshot {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  configKey String // "<instance>|<config uuid or alias>" - one configuration, whoever it is watched through
+  userId    String // The person it was read through
+  hash      String // summarize().hash - the same version has the same hash
+  summary   String // JSON summarize() - addons, services (key hashes only), household users
+  config    String // Encrypted (account key) full configuration
+  reason    String // "seen" | "slicksync" | "restore"
+  createdAt DateTime @default(now())
+
+  @@index([accountId, configKey, createdAt])
+  @@map("aio_config_snapshots")
+}

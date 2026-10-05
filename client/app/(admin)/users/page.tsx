@@ -28,7 +28,7 @@ import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
-import { formatLastSync } from '@/lib/relativeTime';
+import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -66,8 +66,22 @@ interface UserDisplay {
   watchTime: number;
   groups: string[];
   lastSync: string;
+  /** "2h ago", or 'Never' - see server/utils/lastSeen.js. */
+  lastSeen: string;
+  /** Not seen watching for DORMANT_DAYS (or never, and added longer ago than that). */
+  dormant: boolean;
   addonCount: number;
   colorIndex?: number;
+}
+
+// Same 30 days Metrics uses for "at risk".
+const DORMANT_DAYS = 30;
+
+function isDormant(lastActive?: string | null, createdAt?: string | null): boolean {
+  const since = lastActive || createdAt;
+  if (!since) return false;
+  const t = new Date(since).getTime();
+  return Number.isFinite(t) && Date.now() - t >= DORMANT_DAYS * 86400000;
 }
 
 function formatWatchTime(minutes: number): string {
@@ -86,6 +100,7 @@ export default function UsersPage() {
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [peopleFilter, setPeopleFilter] = useState<'all' | 'dormant'>('all');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -215,15 +230,20 @@ export default function UsersPage() {
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
         groups: userGroups,
         lastSync,
+        lastSeen: formatRelativeTime(user.lastActive) ?? 'Never',
+        dormant: isDormant(user.lastActive, user.createdAt),
         addonCount: user.stremioAddonsCount || user.addons || 0,
         colorIndex: user.colorIndex,
       };
     });
   }, [users, groups]);
 
+  const dormantCount = usersDisplay.filter((u) => u.dormant).length;
   const filteredUsers = usersDisplay.filter(user =>
-    (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+    (peopleFilter === 'all' || user.dormant) && (
+      (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+    )
   );
 
   // Register this page's drag-end logic with the layout-level DndContext,
@@ -582,6 +602,16 @@ export default function UsersPage() {
             onChange: (value) => setSearchQuery(value),
             placeholder: 'Search users...',
           }}
+          filterTabs={{
+            options: [
+              { key: 'all', label: 'All' },
+              { key: 'dormant', label: 'Dormant', count: dormantCount },
+            ],
+            activeKey: peopleFilter,
+            onChange: (key) => setPeopleFilter(key === 'dormant' ? 'dormant' : 'all'),
+            layoutId: 'users-people-filter',
+            visible: peopleFilter === 'dormant' || dormantCount > 0,
+          }}
           primaryAction={(() => {
             const btn = (
               <Button
@@ -688,6 +718,7 @@ export default function UsersPage() {
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">User</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Status</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Watch Time</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Last Seen</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Groups</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Last Sync</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Actions</th>
@@ -766,6 +797,9 @@ export default function UsersPage() {
                               <td className="px-6 py-4 text-muted">
                                 {formatWatchTime(user.watchTime)}
                               </td>
+                              <td className="px-6 py-4 text-sm text-muted">
+                                {user.lastSeen}
+                              </td>
                               <td className="px-6 py-4">
                                 <div className="flex gap-1">
                                   {user.groups.slice(0, 2).map((group, i) => (
@@ -822,9 +856,9 @@ export default function UsersPage() {
                 </div>
                 <h3 className="text-lg font-medium mb-2 text-default">No users found</h3>
                 <p className="mb-6 text-muted">
-                  {searchQuery ? 'Try adjusting your search' : 'Get started by adding your first user'}
+                  {peopleFilter === 'dormant' ? `Everyone has watched something in the last ${DORMANT_DAYS} days` : searchQuery ? 'Try adjusting your search' : 'Get started by adding your first user'}
                 </p>
-                {!searchQuery && (
+                {!searchQuery && peopleFilter === 'all' && (
                   <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
                     Add User
                   </Button>
@@ -1264,6 +1298,9 @@ function UserCard({
                 <span className="hidden md:inline">{formatWatchTime(user.watchTime)}</span>
               </span>
             </div>
+            <p className="mt-1 text-xs text-subtle">
+              {user.lastSeen === 'Never' ? 'Never seen' : `Last seen ${user.lastSeen}`}
+            </p>
           </div>
         </div>
       </Card>

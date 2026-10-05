@@ -96,9 +96,29 @@ function encodePackedId({ kind, base, season = null, episode = null, version = 0
   return buf.toString('hex')
 }
 
-function posterFor(stremioId) {
-  return /^tt\d+$/.test(stremioId || '') ? `https://images.metahub.space/poster/medium/${stremioId}/img` : null
+/**
+ * A Stremio-style id in its parts: the title's own id, then season and
+ * episode. An IMDb id is one part (tt123:1:2); a prefixed one is two
+ * (tmdb:603, kitsu:46676:1), so splitting on the first ':' alone read
+ * "tmdb:209867" as show "tmdb", season 209867.
+ */
+function splitStremioId(id) {
+  const parts = String(id || '').split(':')
+  const prefixed = parts.length > 1 && !/^tt\d+$/i.test(parts[0])
+  const rest = parts.slice(prefixed ? 2 : 1)
+  return { base: prefixed ? `${parts[0]}:${parts[1]}` : parts[0], season: rest[0], episode: rest[1] }
 }
+
+// metahub for an IMDb id; otherwise the server's own poster when its images
+// are open (utils/jellyfinImages.js) - anime and TMDb/TVDB-only titles had
+// none. `serverPoster` is that address, or null.
+function posterFor(stremioId, serverPoster = null) {
+  if (/^tt\d+$/.test(stremioId || '')) return `https://images.metahub.space/poster/medium/${stremioId}/img`
+  return serverPoster || null
+}
+
+// Asks for the Primary image tag the poster address needs.
+const IMAGE_PARAMS = { EnableImages: 'true', EnableImageTypes: 'Primary', ImageTypeLimit: '1' }
 
 function dateMs(value) {
   const t = value ? new Date(value).getTime() : NaN
@@ -136,7 +156,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
   }
 
   async function resumeItems(viewer = self) {
-    const qs = new URLSearchParams({ userId: viewer.userId, IncludeItemTypes: 'Movie,Episode', Fields: 'ProviderIds', Limit: '200', EnableUserData: 'true' })
+    const qs = new URLSearchParams({ userId: viewer.userId, IncludeItemTypes: 'Movie,Episode', Fields: 'ProviderIds', Limit: '200', EnableUserData: 'true', ...IMAGE_PARAMS })
     try {
       const data = await call(`/UserItems/Resume?${qs}`, {}, viewer)
       return Array.isArray(data?.Items) ? data.Items : []
@@ -219,11 +239,11 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
       resumeItems(viewer),
       itemsQuery({
         Recursive: 'true', Filters: 'IsPlayed', IncludeItemTypes: 'Movie,Episode', Fields: 'ProviderIds',
-        SortBy: 'DatePlayed', SortOrder: 'Descending', Limit: String(PLAYED_LIMIT), EnableUserData: 'true',
+        SortBy: 'DatePlayed', SortOrder: 'Descending', Limit: String(PLAYED_LIMIT), EnableUserData: 'true', ...IMAGE_PARAMS,
       }, viewer),
       itemsQuery({
         Recursive: 'true', Filters: 'IsFavorite', IncludeItemTypes: 'Movie,Series', Fields: 'ProviderIds',
-        Limit: String(FAVORITES_LIMIT), EnableUserData: 'true',
+        Limit: String(FAVORITES_LIMIT), EnableUserData: 'true', ...IMAGE_PARAMS,
       }, viewer).catch(() => []),
       nowPlaying(viewer).catch(() => []),
     ])
@@ -250,6 +270,12 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
       if (it?.Type === 'Episode' && it.SeriesId) seriesIds.add(normId(it.SeriesId))
     }
     const series = await resolveSeries([...seriesIds], viewer)
+
+    // The server's own posters, unless it wants a sign-in for images.
+    const { serverPosterUrl, imagesOpen } = require('../utils/jellyfinImages')
+    const sample = [...resume, ...played, ...live.map((s) => s.NowPlayingItem), ...favorites].map((it) => serverPosterUrl(base, it)).find(Boolean)
+    const useServerPosters = sample ? await imagesOpen(serverKey, sample) : false
+    const serverPoster = (it) => (useServerPosters ? serverPosterUrl(base, it) : null)
 
     // Candidates are ranked by when they were last touched; a live one is "now".
     const entries = new Map()
@@ -289,7 +315,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         _id: id,
         name,
         type,
-        poster: posterFor(id),
+        poster: posterFor(id, serverPoster(it)),
         state: {
           video_id: videoId,
           season,
@@ -331,7 +357,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         _id: id,
         name: it.Name || '',
         type: it.Type === 'Series' ? 'series' : 'movie',
-        poster: posterFor(id),
+        poster: posterFor(id, serverPoster(it)),
         state: viewer.label ? { profileLabel: viewer.label } : {},
         _mtime: now,
         _ctime: now,
@@ -431,7 +457,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
      * searched through its movies and shows.
      */
     async findItem(stremioId, type) {
-      const [baseId, s, e] = String(stremioId || '').split(':')
+      const { base: baseId, season: s, episode: e } = splitStremioId(stremioId)
       const season = s != null && s !== '' ? Number(s) : null
       const episode = e != null && e !== '' ? Number(e) : null
       const wantEpisode = type === 'series' && Number.isInteger(season) && Number.isInteger(episode)
@@ -454,6 +480,41 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
       const eps = await call(`/Shows/${match.Id}/Episodes?${new URLSearchParams({ userId, season: String(season) })}`)
       const ep = (Array.isArray(eps?.Items) ? eps.Items : []).find((it) => it.IndexNumber === episode && (it.ParentIndexNumber == null || it.ParentIndexNumber === season))
       return ep ? normId(ep.Id) : null
+    },
+
+    /**
+     * A show's episodes on the server, by the show's own id (tt123, tmdb:1):
+     * [{ itemId, season, episode, title, premiere, played }]. Null when the
+     * server doesn't have the show.
+     */
+    async listEpisodes(stremioShowId) {
+      const seriesId = await this.findItem(splitStremioId(stremioShowId).base, 'series')
+      if (!seriesId) return null
+      const data = await call(`/Shows/${seriesId}/Episodes?${new URLSearchParams({ userId, EnableUserData: 'true', Fields: 'PremiereDate' })}`)
+      return (Array.isArray(data?.Items) ? data.Items : [])
+        .filter((it) => Number.isInteger(it.ParentIndexNumber) && Number.isInteger(it.IndexNumber))
+        .map((it) => ({
+          itemId: normId(it.Id),
+          season: it.ParentIndexNumber,
+          episode: it.IndexNumber,
+          title: it.Name || null,
+          premiere: it.PremiereDate || null,
+          played: it.UserData?.Played === true,
+        }))
+    },
+
+    /**
+     * AIOStreams' own "this episode and every aired one before it" - one call
+     * instead of one per episode. Only where the server says it has it
+     * (features.playedUpTo); its /AIOStreams/ routes take a sign-in, never an
+     * API key. Returns false when it isn't there, so the caller goes per episode.
+     */
+    async playedUpTo(episodeItemId) {
+      if (serverKind !== 'aiostreams') return false
+      const info = await call('/System/Info/Public').catch(() => null)
+      if (!info?.aiostreams?.features?.playedUpTo) return false
+      await call(`/AIOStreams/PlayedUpTo/${episodeItemId}`, { method: 'POST' })
+      return true
     },
 
     async setPlayed(itemId, played, profile = null) {
@@ -513,4 +574,4 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
   }
 }
 
-module.exports = { createJellyfinProvider, stremioIdFromProviderIds, decodePackedId, encodePackedId, ticksToMs }
+module.exports = { createJellyfinProvider, stremioIdFromProviderIds, decodePackedId, encodePackedId, ticksToMs, splitStremioId }

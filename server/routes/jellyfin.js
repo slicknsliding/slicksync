@@ -397,6 +397,48 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
   });
 
   // A Jellyfin person's age limit on their server (utils/jellyfinParental.js).
+  // What AIOStreams itself says about this person's configuration, and a
+  // one-off "test this title" search (utils/aioHealth.js). Read-only.
+  router.get('/users/:id/aio-health', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioHealth').healthFor(prisma, decrypt, getAccountId(req), String(req.params.id), { range: req.query.range === '7d' ? '7d' : '24h' }));
+    } catch (error) {
+      sendError(res, error, 'Could not read AIOStreams');
+    }
+  });
+
+  router.post('/users/:id/aio-test-search', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioHealth').testSearch(prisma, decrypt, getAccountId(req), String(req.params.id), { type: req.body?.type, id: req.body?.id }));
+    } catch (error) {
+      sendError(res, error, 'Could not run the search');
+    }
+  });
+
+  // Every version of their AIOStreams configuration SlickSync has seen, and
+  // putting one back (utils/aioConfigHistory.js).
+  router.get('/users/:id/aio-history', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioConfigHistory').historyFor(prisma, getAccountId(req), String(req.params.id)));
+    } catch (error) {
+      sendError(res, error, 'Could not read the configuration history');
+    }
+  });
+
+  router.post('/users/:id/aio-history/:snapshotId/restore', async (req, res) => {
+    try {
+      const keep = req.body?.keep || {};
+      await require('../utils/aioConfigHistory').restore(prisma, decrypt, getAccountId(req), String(req.params.id), String(req.params.snapshotId), {
+        keepServices: keep.services !== false,
+        keepPersonas: keep.users !== false,
+        keepApiKeys: keep.apiKeys !== false,
+      });
+      res.json(await require('../utils/aioConfigHistory').historyFor(prisma, getAccountId(req), String(req.params.id)));
+    } catch (error) {
+      sendError(res, error, 'Could not put that version back');
+    }
+  });
+
   router.get('/users/:id/age-limit', async (req, res) => {
     try {
       res.json(await require('../utils/jellyfinParental').getAgeLimit(prisma, decrypt, getAccountId(req), req.params.id));
@@ -535,9 +577,37 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         const owner = await prisma.user.findFirst({ where: { id: membership.ownerUserId, accountId }, select: { id: true, username: true } });
         if (owner) partOf = { profileId: membership.id, name: membership.name, owner };
       }
-      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null });
+      const full = await prisma.user.findFirst({ where: { id: person.id }, select: { providerType: true, jellyfinServerKind: true, aioConfigId: true, aioConfigPassword: true } });
+      // Household users can be added, and PINs changed, here (utils/aioHousehold.js).
+      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage: require('../utils/aioHousehold').canManage(full) });
     } catch (error) {
       sendError(res, error, 'Could not read the household');
+    }
+  });
+
+  // Add a household user to their AIOStreams configuration (utils/aioHousehold.js).
+  router.post('/users/:id/household', async (req, res) => {
+    try {
+      const owner = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId: getAccountId(req) } });
+      if (!owner) return res.status(404).json({ error: 'User not found' });
+      const result = await require('../utils/aioHousehold').addPersona(prisma, decrypt, encrypt, owner, {
+        name: req.body?.name, pin: req.body?.pin ?? null, history: req.body?.history,
+      });
+      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, owner.id) });
+    } catch (error) {
+      sendError(res, error, 'Could not add the household user');
+    }
+  });
+
+  // Change or remove a household user's PIN.
+  router.post('/household/:profileId/pin', async (req, res) => {
+    try {
+      const found = await loadProfile(req, res);
+      if (!found) return;
+      const result = await require('../utils/aioHousehold').setPersonaPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null);
+      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, found.owner.id) });
+    } catch (error) {
+      sendError(res, error, 'Could not change the PIN');
     }
   });
 

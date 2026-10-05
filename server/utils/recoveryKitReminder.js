@@ -63,12 +63,8 @@ async function runRecoveryKitCheck(prisma) {
         url: '/tasks',
       })
 
-      const nextCfg = { ...cfg, lastRecoveryKitReminderAt: new Date().toISOString() }
-      try {
-        await prisma.appAccount.update({ where: { id: acc.id }, data: { sync: nextCfg } })
-      } catch {
-        await prisma.appAccount.update({ where: { id: acc.id }, data: { sync: JSON.stringify(nextCfg) } })
-      }
+      // A fresh read, not the copy from before the push went out.
+      await require('./accountSync').setAccountSyncKeys(prisma, acc.id, { lastRecoveryKitReminderAt: new Date().toISOString() })
     }
   } catch (err) {
     console.error('[RecoveryKitReminder] Run failed:', err?.message)

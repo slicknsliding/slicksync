@@ -9,6 +9,7 @@ const { sendShareNotification } = require('../utils/activityMonitor');
 const { postDiscord, fetchMetadata } = require('../utils/notify');
 const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateUtils');
 const { fetchOmdbRatings } = require('../utils/omdb');
+const { isProviderConnected, PROVIDER_SELECT } = require('../utils/providerInfo');
 const { resolveSimklClientId, startSimklPin, pollSimklPin, getSimklAccountInfo } = require('../utils/simklAuth');
 
 // Export a function that returns the router, allowing dependency injection
@@ -149,6 +150,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       })
       const secondaryProviderByUserId = new Map(secondaryCredentials.map((c) => [c.userId, c.providerType]))
 
+      // "Last seen" on every card, from SlickSync's own records (utils/lastSeen.js).
+      let lastSeen = new Map()
+      try {
+        lastSeen = await require('../utils/lastSeen').lastSeenByUser(prisma, getAccountId(req) || 'default', users)
+      } catch (error) {
+        console.warn('[users] last seen failed:', error.message)
+      }
+
       // Transform data for frontend compatibility
       const transformedUsers = await Promise.all(users.map(async (user) => {
         // For SQLite, we need to find groups that contain this user
@@ -234,7 +243,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           addons: addonCount,
           stremioAddonsCount: stremioAddonsCount,
           groups: groups.length,
-          lastActive: null,
+          lastActive: lastSeen.get(user.id)?.toISOString() || null,
+          createdAt: user.createdAt || null,
           hasStremioConnection: !!user.stremioAuthKey,
           isActive: user.isActive,
           excludedAddons: excludedAddons,
@@ -914,9 +924,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     return base
   }
 
-  async function watchStateView(req, accountId, user) {
+  async function watchStateView(req, accountId, user, extra = {}) {
     const { readViewerMap } = require('../utils/watchState')
     const base = await watchStateBase(req, accountId)
+    // What the 30-minute check last found wrong (utils/aioSlickTrax.js).
+    let issues = []
+    let collectionsFirst = false
+    try {
+      const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acct?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      issues = Object.keys(cfg?.aioSlickTraxIssues?.[user.id] || {})
+      collectionsFirst = cfg?.aioSlickTraxFirst?.[user.id] === true
+    } catch { /* optional */ }
     const map = readViewerMap(user)
     const people = await prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true, username: true, watchStateEnabled: true } })
     const byId = new Map(people.map((p) => [p.id, p]))
@@ -938,6 +958,24 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         }
       }),
       people: people.map((p) => ({ id: p.id, username: p.username, enabled: !!p.watchStateEnabled })),
+      // Someone added with their AIOStreams configuration password: SlickSync
+      // adds the link to that configuration itself.
+      canInstall: user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && !!user.aioConfigId && !!user.aioConfigPassword,
+      issues,
+      // Their choice: keep SlickSync's collections at the top of their AIOStreams catalogs.
+      collectionsFirst,
+      ...extra,
+    }
+  }
+
+  // Add the SlickTrax link to their AIOStreams configuration (utils/aioSlickTrax.js).
+  async function installIntoAio(req, accountId, user) {
+    try {
+      const base = await watchStateBase(req, accountId)
+      const result = await require('../utils/aioSlickTrax').installSlickTrax(prisma, decrypt, user, base)
+      return { install: result.added ? 'added' : 'already' }
+    } catch (e) {
+      return { install: 'failed', installError: e?.message || 'AIOStreams refused the change' }
     }
   }
 
@@ -965,10 +1003,144 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // then kept stable so a link already pasted into AIOStreams keeps working.
       const traxToken = user.traxToken || (enabled ? require('crypto').randomBytes(24).toString('hex') : null)
       const updated = await prisma.user.update({ where: { id: user.id }, data: { watchStateEnabled: enabled, traxToken } })
-      res.json(await watchStateView(req, accountId, updated))
+      // Turning it on for someone whose configuration SlickSync can write to
+      // adds the link there too, instead of handing it over to paste.
+      const canInstall = enabled && updated.providerType === 'jellyfin' && updated.jellyfinServerKind === 'aiostreams' && updated.aioConfigId && updated.aioConfigPassword
+      res.json(await watchStateView(req, accountId, updated, canInstall ? await installIntoAio(req, accountId, updated) : {}))
     } catch (error) {
       console.error('Error toggling Watch State:', error)
       res.status(500).json({ error: 'Failed to update Watch State' })
+    }
+  })
+
+  // "Caught up to here" (utils/catchUp.js): mark an episode and every aired
+  // one before it watched - History only, never watch time - and on their
+  // Jellyfin or AIOStreams server.
+  const catchUpError = (res, error, fallback) => res.status(error.status || 500).json({ message: error.status ? error.message : fallback })
+
+  router.get('/:id/catch-up/shows', async (req, res) => {
+    try {
+      res.json({ shows: await require('../utils/catchUp').showsFor(prisma, getAccountId(req), String(req.params.id)) })
+    } catch (error) {
+      catchUpError(res, error, 'Could not read their shows')
+    }
+  })
+
+  router.get('/:id/catch-up/episodes', async (req, res) => {
+    try {
+      res.json(await require('../utils/catchUp').episodesFor(prisma, decrypt, getAccountId(req), String(req.params.id), String(req.query.showId || '')))
+    } catch (error) {
+      catchUpError(res, error, 'Could not read the episodes')
+    }
+  })
+
+  router.post('/:id/catch-up', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const exists = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } })
+      if (!exists) return res.status(404).json({ message: 'User not found' })
+      res.json(await require('../utils/catchUp').start(prisma, decrypt, accountId, String(req.params.id), {
+        showId: req.body?.showId, season: req.body?.season, episode: req.body?.episode,
+      }))
+    } catch (error) {
+      catchUpError(res, error, 'Could not mark them caught up')
+    }
+  })
+
+  router.get('/:id/catch-up/status', async (req, res) => {
+    const accountId = getAccountId(req)
+    const exists = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } }).catch(() => null)
+    if (!exists) return res.status(404).json({ message: 'User not found' })
+    res.json({ job: require('../utils/catchUp').status(String(req.params.id)) })
+  })
+
+  // Take back the last run (personFor scopes the person to this account).
+  router.post('/:id/catch-up/undo', async (req, res) => {
+    try {
+      res.json({ job: await require('../utils/catchUp').undo(prisma, decrypt, getAccountId(req), String(req.params.id)) })
+    } catch (error) {
+      catchUpError(res, error, 'Could not undo that')
+    }
+  })
+
+  // Clear a finished run's card (and its Undo).
+  router.post('/:id/catch-up/dismiss', async (req, res) => {
+    const accountId = getAccountId(req)
+    const exists = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } }).catch(() => null)
+    if (!exists) return res.status(404).json({ message: 'User not found' })
+    res.json({ job: require('../utils/catchUp').dismiss(String(req.params.id)) })
+  })
+
+  // One episode back to not watched.
+  router.post('/:id/catch-up/unmark', async (req, res) => {
+    try {
+      res.json(await require('../utils/catchUp').unmark(prisma, decrypt, getAccountId(req), String(req.params.id), {
+        showId: String(req.body?.showId || ''), season: req.body?.season, episode: req.body?.episode,
+      }))
+    } catch (error) {
+      catchUpError(res, error, 'Could not mark it not watched')
+    }
+  })
+
+  // A daily screen-time limit (utils/screenTime.js) - counted across every app.
+  router.get('/:id/screen-time', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').getLimit(prisma, getAccountId(req), String(req.params.id), { decrypt }))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not read the daily limit' })
+    }
+  })
+
+  router.put('/:id/screen-time', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').setLimit(prisma, getAccountId(req), String(req.params.id), req.body?.limit ?? null, { decrypt }))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not set the daily limit' })
+    }
+  })
+
+  // "Resume now" on a paused person - streaming back for the rest of today.
+  router.post('/:id/screen-time/resume', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').resume(prisma, getAccountId(req), String(req.params.id), { decrypt }))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not resume them' })
+    }
+  })
+
+  // Try adding it to their AIOStreams configuration again (after fixing what stopped it).
+  router.post('/:id/watch-state/install', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      res.json(await watchStateView(req, accountId, user, await installIntoAio(req, accountId, user)))
+    } catch (error) {
+      console.error('Error adding SlickTrax to AIOStreams:', error)
+      res.status(500).json({ error: 'Failed to add it to AIOStreams' })
+    }
+  })
+
+  // "Keep SlickSync's collections first" in their AIOStreams catalog order -
+  // the household's choice, off by default (utils/aioSlickTrax.js).
+  router.put('/:id/watch-state/collections-first', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      let moveError = null
+      try {
+        await require('../utils/aioSlickTrax').setCollectionsFirst(prisma, decrypt, user, !!req.body?.enabled)
+      } catch (e) {
+        // The choice is kept either way; the 30-minute check tries again.
+        moveError = e?.message || 'AIOStreams refused the change'
+      }
+      res.json(await watchStateView(req, accountId, user, moveError ? { firstError: moveError } : {}))
+    } catch (error) {
+      console.error('Error changing collections first:', error)
+      res.status(500).json({ error: 'Failed to change that' })
     }
   })
 
@@ -2721,6 +2893,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         console.warn(`Error fetching watch time for user ${id}:`, error.message)
       }
 
+      let lastActive = null
+      try {
+        lastActive = (await require('../utils/lastSeen').lastSeenFor(prisma, currentAccountId || 'default', id))?.toISOString() || null
+      } catch (error) {
+        console.warn(`[users] last seen failed for ${id}:`, error.message)
+      }
+
       // Transform for frontend
       // Same precedence sync itself uses: an explicit env var, then the
       // address set in Settings, then one an admin request revealed.
@@ -2748,7 +2927,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         groups: userGroups,
         groupName: groups[0]?.name || null,
         groupId: groups[0]?.id || null,
-        lastActive: null,
+        lastActive,
         stremioAddonsCount: stremioAddonsCount,
         stremioAddons: stremioAddons,
         excludedAddons: excludedAddons,
@@ -2995,6 +3174,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         groupName: userGroup?.name || null,
         groupId: userGroup?.id || null,
         lastActive: null
+      }
+      try {
+        transformedUser.lastActive = (await require('../utils/lastSeen').lastSeenFor(prisma, getAccountId(req) || 'default', id))?.toISOString() || null
+      } catch (error) {
+        console.warn(`[users] last seen failed for ${id}:`, error.message)
       }
 
       // Log activity (temporarily disabled for debugging)
@@ -3472,7 +3656,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           return res.json({ userId: id, count: addons.length, addons })
         } catch (error) {
           console.error(`Error fetching ${user.providerType} addons:`, error)
-          return res.status(500).json({ message: `Failed to fetch addons from ${user.providerType}`, error: error.message })
+          // An expired sign-in says so, with what to do - not a bare "failed".
+          if (/session does not exist|unauthorized|invalid auth| 401|authentication expired/i.test(String(error?.message || ''))) {
+            const app = user.providerType === 'nuvio' ? 'Nuvio' : user.providerType === 'jellyfin' ? 'server' : 'Stremio'
+            return res.status(409).json({ message: `${user.username || 'This person'}'s ${app} sign-in has expired - reconnect them first (Reconnect, next to their name)`, reconnect: true })
+          }
+          const appName = user.providerType === 'nuvio' ? 'Nuvio' : user.providerType === 'jellyfin' ? 'their server' : 'Stremio'
+          return res.status(500).json({ message: `Couldn't read their addons from ${appName}`, error: error.message })
         }
       }
 
@@ -3533,7 +3723,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         })
       } catch (error) {
         console.error('Error fetching Stremio addons:', error)
-        return res.status(500).json({ message: 'Failed to fetch addons from Stremio', error: error.message })
+        if (/session does not exist|unauthorized|invalid auth| 401/i.test(String(error?.message || ''))) {
+          return res.status(409).json({ message: `${user.username || 'This person'}'s Stremio sign-in has expired - reconnect them first (Reconnect, next to their name)`, reconnect: true })
+        }
+        return res.status(500).json({ message: "Couldn't read their addons from Stremio", error: error.message })
       }
     } catch (error) {
       console.error('Error getting Stremio addons:', error)
@@ -5886,11 +6079,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         },
         select: {
           id: true,
-          stremioAuthKey: true,
           isActive: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -5900,11 +6090,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(404).json({ message: 'User not found or inactive' })
       }
 
-      if (!user.stremioAuthKey && !(user.nuvioRefreshToken && user.nuvioUserId)) {
+      if (!isProviderConnected(user)) {
         return res.status(400).json({ message: 'User not connected to a provider' })
       }
 
-      // Build provider for this user (Stremio or Nuvio)
+      // Build provider for this user (Stremio, Nuvio or Jellyfin)
       const providerInstance = createProvider(user, { decrypt, req })
       if (!providerInstance) {
         return res.status(400).json({ message: 'Failed to initialize provider for user' })
@@ -6005,11 +6195,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         },
         select: {
           id: true,
-          stremioAuthKey: true,
           isActive: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -6023,11 +6210,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'User is disabled' })
       }
 
-      if (!user.stremioAuthKey && !(user.nuvioRefreshToken && user.nuvioUserId)) {
+      if (!isProviderConnected(user)) {
         return res.status(400).json({ error: 'User not connected to a provider' })
       }
 
-      // Build provider for this user (Stremio or Nuvio)
+      // Build provider for this user (Stremio, Nuvio or Jellyfin)
       const providerInstance = createProvider(user, { decrypt, req })
       if (!providerInstance) {
         return res.status(400).json({ error: 'Failed to initialize provider for user' })
@@ -6080,13 +6267,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         },
         select: {
           id: true,
-          stremioAuthKey: true,
           isActive: true,
           username: true,
           email: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -6100,11 +6284,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'User is disabled' })
       }
 
-      if (!user.stremioAuthKey && !(user.nuvioRefreshToken && user.nuvioUserId)) {
+      if (!isProviderConnected(user)) {
         return res.status(400).json({ error: 'User not connected to a provider' })
       }
 
-      // Fetch via the user's provider (Stremio or Nuvio)
+      // Fetch via the user's provider (Stremio, Nuvio or Jellyfin)
       const providerInstance = createProvider(user, { decrypt, req })
       if (!providerInstance) {
         return res.status(400).json({ error: 'Failed to initialize provider for user' })
@@ -6155,11 +6339,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         select: {
           id: true,
           email: true,
-          stremioAuthKey: true,
           isActive: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -6459,7 +6640,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         throw e
       }
 
-      return res.json({ message: 'Addon removed from Stremio account successfully' })
+      return res.json({ message: 'Addon removed from their account' })
     } catch (error) {
       console.error('Error removing Stremio addon:', error)
       return res.status(502).json({ message: 'Failed to remove addon from Stremio', error: error?.message })
@@ -6664,6 +6845,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (Array.isArray(req.body?.addons) || Array.isArray(req.body?.addonUrls)) {
         if (!Array.isArray(req.body.addons) && Array.isArray(req.body.addonUrls)) {
           req.body.addons = req.body.addonUrls.map((url) => ({ url, manifestUrl: url }))
+        }
+        // SlickTrax is SlickSync's own per-person addon, added to each
+        // person by sync - never something to copy into a group. Importing
+        // it (here, or another instance's copy on a shared account) put a
+        // second SlickTrax on everyone in the group.
+        const isSlickTrax = (a) => {
+          const id = String(a?.manifest?.id || a?.id || '')
+          const url = String(a?.manifestUrl || a?.transportUrl || a?.url || '')
+          return id.startsWith('vip.slicksync.trax') || /\/trax\/[^/]+\/(?:v[\d.]+\/)?(?:aio\/)?manifest\.json$/i.test(url)
+        }
+        req.body.addons = req.body.addons.filter((a) => !isSlickTrax(a))
+        if (req.body.addons.length === 0) {
+          return res.status(400).json({ message: 'Nothing to import - their only addon is SlickTrax, which SlickSync adds to each person itself' })
         }
         return next()
       }

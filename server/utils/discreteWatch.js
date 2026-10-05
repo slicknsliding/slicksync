@@ -50,6 +50,8 @@ async function describeTitle(prisma, accountId, { itemId, itemType, videoId, tit
  * @param {number|null} [w.season]
  * @param {number|null} [w.episode]
  * @param {string|null} [w.title] skips the lookup when the caller already knows it
+ * @param {string|null} [w.episodeName] with title, skips the episode lookup too
+ * @param {string|null} [w.poster] used when the lookup is skipped
  * @param {boolean|null} w.completed  true finished, false stopped short, null unknown
  * @param {Date} w.watchedAt
  * @param {boolean} w.moveForward  this event is real new viewing, so the date may move
@@ -74,9 +76,14 @@ async function recordDiscreteWatch(prisma, w) {
 
   // A row that already has its title, episode name and poster needs no lookup.
   const known = existing && (isSeries ? existing.showName && existing.episodeName : existing.itemName)
+  // A caller marking a run of episodes already knows each one's name and the
+  // show's poster (w.episodeName, w.poster) - no lookup per episode.
+  const given = w.title && (!isSeries || w.episodeName !== undefined)
+    ? { title: w.title, episodeName: w.episodeName || null, poster: w.poster || null }
+    : null
   const described = known
     ? { title: isSeries ? existing.showName : existing.itemName, episodeName: existing.episodeName || null, poster: existing.poster || null }
-    : await describeTitle(prisma, accountId, { itemId: w.itemId, itemType: w.itemType, videoId, title: w.title })
+    : given || await describeTitle(prisma, accountId, { itemId: w.itemId, itemType: w.itemType, videoId, title: w.title })
   if (!described.title) return { ok: false, reason: 'no-title' }
 
   const completed = existing?.completed === true ? true : (w.completed ?? existing?.completed ?? null)

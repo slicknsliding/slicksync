@@ -10,7 +10,7 @@ import { formatLastSync } from '@/lib/relativeTime';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { Button, Card, Avatar, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
+import { Button, Card, Avatar, AvatarColorSwatches, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
@@ -49,9 +49,6 @@ import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { DraggableList } from '@/components/ui/DragSortable';
 
-const colorOptions = [
-  '#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899', '#14b8a6',
-];
 
 // Chart color palette for users - theme-aware colors
 const USER_COLORS = [
@@ -494,13 +491,18 @@ export default function GroupDetailPage() {
       setIsLoading(true);
       setError(null);
       try {
+        // The group is applied the moment it arrives: if one of the other
+        // three requests fails, the page still replaces the saved copy it
+        // opened on (useLastKnown) instead of leaving a stale one up.
         const [groupData, usersData, groupAddonsData, allAddonsData] = await Promise.all([
-          api.getGroup(params.id as string),
+          api.getGroup(params.id as string).then((g) => {
+            setGroup(g as Group & { color?: string; colorIndex?: number });
+            return g;
+          }),
           api.getUsers(),
           api.getGroupAddons(params.id as string),
           api.getAddons(),
         ]);
-        setGroup(groupData as Group & { color?: string; colorIndex?: number });
         setUsers(usersData);
         // Filter out any addons without valid IDs
         const validGroupAddons = (groupAddonsData || []).filter((a: Addon) => {
@@ -1438,14 +1440,14 @@ function EditGroupForm({ group, onClose }: { group: Group | null; onClose: () =>
   const [isLoading, setIsLoading] = useState(false);
   const [name, setName] = useState(group?.name || '');
   const [description, setDescription] = useState(group?.description || '');
-  const [selectedColor, setSelectedColor] = useState(group?.color || '#7c3aed');
+  const [selectedColorIndex, setSelectedColorIndex] = useState(group?.colorIndex ?? 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!group?.id) return;
     setIsLoading(true);
     try {
-      await api.updateGroup(group.id, { name, description, color: selectedColor });
+      await api.updateGroup(group.id, { name, description, colorIndex: selectedColorIndex });
       toast.success('Group updated successfully');
       onClose();
       window.location.reload();
@@ -1477,23 +1479,7 @@ function EditGroupForm({ group, onClose }: { group: Group | null; onClose: () =>
         <label className="block text-sm font-medium mb-3 text-muted">
           Group Color
         </label>
-        <div className="flex flex-wrap gap-3">
-          {colorOptions.map((color) => (
-            <motion.button
-              key={color}
-              type="button"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setSelectedColor(color)}
-              className={`w-10 h-10 rounded-xl transition-all ${
-                selectedColor === color
-                  ? 'ring-2 ring-white ring-offset-2 ring-offset-[var(--color-bg)]'
-                  : ''
-              }`}
-              style={{ backgroundColor: color }}
-            />
-          ))}
-        </div>
+        <AvatarColorSwatches value={selectedColorIndex} onChange={setSelectedColorIndex} />
       </div>
 
       <div className="flex gap-3 justify-end pt-4">

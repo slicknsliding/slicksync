@@ -5,7 +5,8 @@ const express = require('express');
 // Guardian's already-computed state), Addons (reachability, from the
 // existing health-check poller), Vault (credential check failures + expiry
 // windows, from the existing vault monitor), and the AIOStreams Proxy
-// (last poll outcome). Every signal here is read from state ALREADY
+// (last poll outcome), and each Jellyfin-compatible server people sign in
+// to (utils/serverStatus.js). Every signal here is read from state ALREADY
 // maintained by an existing background monitor - this route computes
 // nothing live and makes no outbound calls itself, so loading the page has
 // no cost beyond a few fast DB reads.
@@ -78,6 +79,22 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
         prisma.appAccount.findUnique({ where: { id: accountId }, select: { proxyHealthIgnored: true } }),
       ]);
 
+      // Jellyfin, AIOStreams and AIOMetadata servers, from each person's last
+      // read, plus their outage alerts for the timeline.
+      let servers = [];
+      let serverEvents = [];
+      try {
+        servers = await require('../utils/serverStatus').serverStatusList(prisma, accountId);
+        serverEvents = await prisma.notification.findMany({
+          where: { accountId, dedupeKey: { startsWith: 'connection-server-' } },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: { id: true, title: true, body: true, dedupeKey: true, createdAt: true },
+        });
+      } catch (e) {
+        console.warn('[Health] server status failed:', e.message);
+      }
+
       const timeline = [
         ...addonEvents.map((e) => ({
           id: e.id,
@@ -96,6 +113,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
           // "down" for every vault event - an accurate reflection of what's
           // actually tracked, not a gap in this timeline.
           status: n.title.startsWith('✅') ? 'up' : 'down',
+          title: n.title,
+          detail: n.body || null,
+          at: n.createdAt,
+        })),
+        ...serverEvents.map((n) => ({
+          id: n.id,
+          source: 'server',
+          status: n.dedupeKey.endsWith('-ok') ? 'up' : 'down',
           title: n.title,
           detail: n.body || null,
           at: n.createdAt,
@@ -160,7 +185,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
 
       const overall =
         addonsOffline.length === 0 && vaultFailing.length === 0 && driftVisible.length === 0 &&
-        (!proxy || proxy.ok !== false || proxy.healthIgnored)
+        (!proxy || proxy.ok !== false || proxy.healthIgnored) &&
+        servers.every((s) => s.status === 'up')
           ? 'healthy'
           : 'attention';
 
@@ -197,6 +223,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
           ignored: vaultIgnored.map((v) => ({ id: v.id, name: v.name, provider: v.provider })),
         },
         proxy,
+        servers,
         mismatchCount,
         version,
         timeline,

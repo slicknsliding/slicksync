@@ -125,6 +125,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **AIOStreams watch history** — turn it on per person and viewing in AIOStreams' own apps (Odin, Infuse, Swiftfin, the desktop app) becomes history and Now Playing; watched marks, the watchlist, drops and ratings flow back the other way. One link serves the whole household.
 - **Keep Jellyfin in step** — what someone finishes in Stremio, Nuvio or AIOStreams is marked played on their Jellyfin server, and what they stop part-way picks up at the same spot there.
 - On a Jellyfin server, Now Playing names the **device and app**, and a device someone hasn't used before can raise a notification.
+- **Posters for anime and other titles without an IMDb id**, straight from the server's own artwork.
 
 ### Households
 
@@ -134,6 +135,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Devices** — everything signed in as someone on a Jellyfin server, with Sign out next to each.
 - **Age limit** — the highest age rating someone's Jellyfin account can play, from the server's own list, enforced in every Jellyfin app.
 - **Invites that make the account** — an invitation can create the person's Jellyfin account with a password they choose; it stays off until you accept them, and switches off again if they expire or are removed.
+- **AIOStreams household users** — add one, or set or remove their PIN, from the household card.
 
 ### Collections
 
@@ -148,6 +150,8 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 
 - A change made to an AIOStreams configuration outside SlickSync raises a bell and push notification. SlickSync writes there only for a profile's own collections setup, and — if you switch it on for a person — to swap a debrid key the Vault rotated or failed over.
 - Exports and Disaster Recovery Kits carry households, their sign-ins and their collections.
+- **AIOStreams history** — every version of a configuration is kept, with what changed from the one before; **Put back** restores an earlier one, keeping today's debrid services, household users and API keys unless you untick them.
+- **AIOStreams health** on a person's page — each addon's errors, empty answers and slow responses as AIOStreams itself reports them, and a one-off test search.
 
 ---
 
@@ -167,6 +171,9 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Watching Together** — an alert the moment someone starts an episode past the shared frontier.
 - **Device claims** — on a shared login, claim a device and its activity is attributed to the right person.
 - **Leave someone out of household numbers** — a test or guest person keeps their own page but stops counting toward totals, charts, Top Viewers and the year in review.
+- **Daily limits** — so many minutes a day on the days you choose, counted across every app. At the limit you're told — or, per person, their streaming pauses until midnight or a time you pick: the addons that play streams come off on Stremio and Nuvio, and the server's own parental schedule applies on Jellyfin. **Resume now** gives the rest of the day back.
+- **Caught up to…** — mark a show watched up to an episode, in SlickSync and on their server, with **Undo** and un-ticking a single episode.
+- **Last seen** on every person, a **Dormant** filter for people who stopped watching, and an automation that can switch them off after a quiet stretch.
 </details>
 
 <details>
@@ -223,6 +230,7 @@ Every type works with zero Discord setup; a webhook only adds Discord delivery o
 
 - Per-type toggles: activity, sync, invites, Vault, addon health, connection problems, backups, proxy connectivity, updates and monthly recap.
 - **Connection problems** — told the moment someone's sign-in needs reconnecting (after 15 minutes if their server is just unreachable), and again when it's back. One alert per outage, on by default.
+- A whole Jellyfin, AIOStreams or AIOMetadata server going down is **one alert**, naming who's affected — not one per person.
 - Instant "started watching" ping, **unconfirmed-device alerts**, new-episode alerts and a Coming Up calendar.
 - **Monthly poster-mosaic recap**, **Recovery Kit reminders**, and **digest mode** to batch everything into one summary.
 - Per-user opt-out and personal webhook override.
@@ -237,6 +245,7 @@ Every type works with zero Discord setup; a webhook only adds Discord delivery o
 - Posters are served at the size actually displayed, as **WebP** where the browser accepts it, cached on your own box.
 - Discover's lists are kept warm, hovering a poster preloads its details, and large grids stay fast at any depth.
 - **Share into SlickSync** from another app, and **app shortcuts** straight to Activity, Discover or Health.
+- **On a phone**, popups stay on screen, the bell and command palette sit in the top bar, and a notification swipes away to dismiss.
 </details>
 
 <details>
@@ -272,6 +281,7 @@ Every type works with zero Discord setup; a webhook only adds Discord delivery o
 - Leaderboards, streaks, watch-time trends and per-group dashboards, with same-person Stremio/Nuvio pairs deduped.
 - **Taste Profiles** and a Wrapped-style **Year in Review**; an opt-in **public stats page** for a single user.
 - **System Health** answers "is everything working right now" — sync drift, addon reachability, credential checks, proxy connectivity.
+- **Servers** — every Jellyfin, AIOStreams and AIOMetadata server people use, shown as up, down or partly failing.
 - **Addon uptime %** over 7/30 days, ignorable known failures, and a version card showing what's running.
 </details>
 

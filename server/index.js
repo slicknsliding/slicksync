@@ -425,7 +425,7 @@ app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, 
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // Resize/cache proxy for plain external poster/backdrop URLs - see the
 // route's own header for how it relates to /api/poster above.
-app.use('/api/img', require('./routes/imageCache')());
+app.use('/api/img', require('./routes/imageCache')({ prisma }));
 app.use('/api/qr', require('./routes/qr')());
 // Anime metadata (AniList) - key-free and strictly additive; see the
 // route's own header for why anime needs a source beyond Cinemeta.
@@ -750,6 +750,13 @@ async function bootstrap() {
       scheduleAutomationTimeTriggers(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize automation scheduler:', err)
+    }
+
+    // Daily screen-time limits (every 5m, only for accounts that set one)
+    try {
+      require('./utils/screenTime').scheduleScreenTime(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize screen-time limits:', err)
     }
 
     // Schedule auto-generated themed catalogs (daily, only for accounts

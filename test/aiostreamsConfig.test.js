@@ -46,3 +46,14 @@ test('changes: what changes on its own does not count, anything else is "other s
   const c = summarize({ presets: [], formatter: { id: 'gdrive' } })
   assert.deepEqual(describeChanges(a, c), ['changed other settings'])
 })
+
+test('a change to the catalog order is named as one, not "other settings"', () => {
+  const { summarize, describeChanges } = require('../server/utils/aiostreamsConfig')
+  const base = { presets: [], catalogModifications: [{ id: 'a.top', type: 'movie' }, { id: 'b.slicksync-collections', type: 'movie' }] }
+  const moved = { ...base, catalogModifications: [base.catalogModifications[1], base.catalogModifications[0]] }
+  assert.deepEqual(describeChanges(summarize(base), summarize(moved)), ['changed the catalog order'])
+  // A look kept before the order was summarised has nothing to compare against.
+  const old = { ...summarize(base) }
+  delete old.catalogOrder
+  assert.deepEqual(describeChanges(old, summarize(moved)), ['changed other settings'])
+})

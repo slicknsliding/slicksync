@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
+import { avatarColorFill } from '@/components/ui/Avatar';
 import {
   Card, Button, Badge, Modal, ConfirmModal, MediaDetailModal, PosterCard, PosterCardItem,
   SelectionCheckbox, SelectAllCheckbox, ToggleSwitch,
@@ -36,7 +37,7 @@ import {
 // the Catalogs index card), so a catalog's solid-color cover looks identical
 // on both surfaces.
 function coverColorStyle(colorIndex: number): React.CSSProperties {
-  return { background: `color-mix(in srgb, var(--color-${colorIndex < 4 ? 'primary' : 'secondary'}) ${100 - (colorIndex % 4) * 25}%, white)` };
+  return { background: avatarColorFill(colorIndex) };
 }
 
 // "More" action menu building blocks (the catalog detail page's secondary

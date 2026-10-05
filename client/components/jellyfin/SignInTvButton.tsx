@@ -11,15 +11,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TvIcon } from '@heroicons/react/24/outline';
+import { ActionPill } from '@/components/user/ActionPill';
 import { Button } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, type HouseholdProfile } from '@/lib/api';
+import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
 
 type Who = { id: string | null; name: string; ready: boolean; hint?: string };
 
 export function SignInTvButton({ userId, name }: { userId: string; name: string }) {
   const button = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
   const [profiles, setProfiles] = useState<HouseholdProfile[] | null>(null);
   const [who, setWho] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -31,9 +34,7 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
   const place = () => {
     const r = button.current?.getBoundingClientRect();
     if (!r) return null;
-    const width = Math.min(320, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16));
-    return { top: r.bottom + 8, left, width };
+    return placePopup(r, 320, panel.current?.scrollHeight);
   };
 
   const toggle = () => {
@@ -45,6 +46,7 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
       api.getHousehold(userId).then((h) => setProfiles(h.profiles || [])).catch(() => setProfiles([]));
     }
   };
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;
@@ -92,24 +94,18 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
 
   return (
     <>
-      <button
-        ref={button}
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-default text-xs text-subtle hover:text-default hover:bg-surface-hover transition-colors"
-      >
-        <TvIcon className="w-3.5 h-3.5" />
+      <ActionPill ref={button} icon={TvIcon} open={open} onClick={toggle}>
         Sign in a TV
-      </button>
+      </ActionPill>
       {open && anchor && typeof document !== 'undefined' && createPortal(
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />
           <div
+            ref={panel}
             role="dialog"
             aria-label="Sign in a TV"
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
-            style={{ top: anchor.top, left: anchor.left, width: anchor.width, background: 'var(--color-surface)' }}
+            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
           >
             <div>
               <p className="text-sm font-semibold text-default">Sign in a TV</p>

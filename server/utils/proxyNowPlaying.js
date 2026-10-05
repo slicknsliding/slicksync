@@ -32,7 +32,7 @@ const RECENTLY_CLOSED_MS = 23 * 60 * 1000
 const { proxyDisplayTitle } = require('./proxyTitle')
 // Only connections that have shown they are playing - a source warmed up or
 // checked by an app is one request and then nothing (proxyPlaying.js).
-const { MIN_PLAYING_REQUESTS } = require('./proxyPlaying')
+const { isPlayingConnection } = require('./proxyPlaying')
 
 // AIOStreams only bumps a connection's `lastSeen` when a new byte-range
 // request actually comes in - it does NOT expire/close the connection just
@@ -60,10 +60,12 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   let proxySessions
   let recentlyClosedSessions
   try {
-    proxySessions = await prisma.proxyStreamSession.findMany({
-      where: { accountId, isActive: true, requestCount: { gte: MIN_PLAYING_REQUESTS } },
+    // Only connections that are playing (proxyPlaying.js) - a source an app
+    // warmed up is recorded, but isn't someone watching.
+    proxySessions = (await prisma.proxyStreamSession.findMany({
+      where: { accountId, isActive: true },
       orderBy: { startTime: 'desc' },
-    })
+    })).filter(isPlayingConnection)
     // Also load streams the proxy recently finished. The proxy is
     // authoritative for content it carries: if it saw a stream and that
     // stream has ended, a native "still watching" entry for the same title is
@@ -73,15 +75,14 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // lingering in Now Playing. Content the proxy NEVER carried (e.g. usenet
     // via newznab, which bypasses the proxy entirely) has no such signal, so
     // its native entry is left alone - native is the only truth for it.
-    recentlyClosedSessions = await prisma.proxyStreamSession.findMany({
+    recentlyClosedSessions = (await prisma.proxyStreamSession.findMany({
       where: {
         accountId,
         isActive: false,
-        requestCount: { gte: MIN_PLAYING_REQUESTS },
         endTime: { gte: new Date(Date.now() - RECENTLY_CLOSED_MS) },
       },
       orderBy: { endTime: 'desc' },
-    })
+    })).filter(isPlayingConnection)
   } catch (error) {
     console.warn('[ProxyNowPlaying] Failed to fetch proxy sessions:', error.message)
     return watchSessionNowPlaying

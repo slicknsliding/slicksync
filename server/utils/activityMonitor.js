@@ -234,6 +234,15 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             itemCount: Array.isArray(library) ? library.length : 0
           })
 
+          // Titles watched before server posters existed (utils/jellyfinImages.js).
+          if (user.providerType === 'jellyfin') {
+            try {
+              await require('./jellyfinImages').fillMissingPosters(prisma, accountId, user.__recordAs || user.id, library)
+            } catch (e) {
+              console.warn(`[ActivityMonitor] poster fill failed for ${user.id}:`, e.message)
+            }
+          }
+
           if (user.providerConnectionError) {
             await clearConnectionError(user.id)
             await require('./connectionAlerts').onConnectionRecovered(prisma, accountId, user)
@@ -242,9 +251,16 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         } catch (error) {
           heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
-          const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
-          const since = await recordConnectionError(user, prefix + error.message)
-          if (since) await require('./connectionAlerts').onConnectionFailed(prisma, accountId, user, prefix + error.message, since)
+          // A daily limit's pause blocks a Jellyfin person through their
+          // access schedule, which refuses SlickSync's own requests too.
+          // That's expected while it lasts - not a sign-in to reconnect.
+          const pausedByLimit = user.providerType === 'jellyfin'
+            && await require('./screenTime').isStreamingPaused(prisma, accountId, user.__recordAs || user.id).catch(() => false)
+          if (!pausedByLimit) {
+            const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
+            const since = await recordConnectionError(user, prefix + error.message)
+            if (since) await require('./connectionAlerts').onConnectionFailed(prisma, accountId, user, prefix + error.message, since)
+          }
           // Fallback to cache if API call fails
           const cachedLibrary = getCachedLibrary(accountId, user, { allowLegacyEmailFile: canUseLegacyCache(user) })
           return cachedLibrary || []

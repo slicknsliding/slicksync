@@ -43,6 +43,17 @@ export interface WatchStateView {
   baseKnown: boolean;
   viewers: Array<{ viewer: string; userId: string | null; skipped?: boolean; username: string | null; userEnabled: boolean | null }>;
   people: Array<{ id: string; username: string; enabled: boolean }>;
+  /** SlickSync can add the link to their AIOStreams configuration itself. */
+  canInstall?: boolean;
+  /** The outcome of adding it just now, when one was tried. */
+  install?: 'added' | 'already' | 'failed';
+  installError?: string;
+  /** What the 30-minute check last found wrong (server/utils/aioSlickTrax.js). */
+  issues?: Array<'missing' | 'trackers' | 'libraries' | 'quiet'>;
+  /** Their choice: keep SlickSync's collections first in their AIOStreams catalogs. */
+  collectionsFirst?: boolean;
+  /** Why moving it to the top didn't work just now, when it didn't. */
+  firstError?: string;
 }
 
 export interface PersonCredit {
@@ -121,8 +132,11 @@ class ApiClient {
   // so nothing reads meaningfully stale data as if it were fresh; this
   // layer is allowed to be arbitrarily stale precisely because it is only
   // ever read through peekGet by callers that immediately revalidate.
-  // Failures never touch it, and mutations deliberately don't clear it -
-  // the page that mutated refetches and overwrites it with the result.
+  // Failures never touch it. A mutation drops only the copy of the very
+  // resource it changed (PUT /groups/x drops GET /groups/x, not the list):
+  // the page that mutated refetches anyway, but another page showing that
+  // resource next would otherwise open on the pre-change copy - a group
+  // recoloured from the Groups list opened its own page in the old colour.
   private lastKnown = new Map<string, unknown>();
   private lastKnownRestored = false;
   private static readonly LAST_KNOWN_STORAGE_KEY = 'slicksync-last-known';
@@ -257,6 +271,10 @@ class ApiClient {
     if (method !== 'GET') {
       return this.fetchImpl<T>(endpoint, options).finally(() => {
         this.recentGets.clear();
+        const path = endpoint.split('?')[0];
+        for (const k of Array.from(this.lastKnown.keys())) {
+          if (k.startsWith(`${path}::`) || k.startsWith(`${path}?`)) this.lastKnown.delete(k);
+        }
       });
     }
     const key = `${endpoint}::${options.token || this.getToken() || ''}`;
@@ -606,6 +624,16 @@ class ApiClient {
   // Watch State with AIOStreams - see server/utils/watchState.js.
   async getWatchState(id: string) {
     return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`);
+  }
+
+  // Keep SlickSync's collections first in their AIOStreams catalog order, or stop.
+  async setWatchStateCollectionsFirst(id: string, enabled: boolean) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state/collections-first`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+  }
+
+  // Add the SlickTrax link to their AIOStreams configuration again.
+  async installWatchStateIntoAio(id: string) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state/install`, { method: 'POST' });
   }
 
   async setWatchState(id: string, enabled: boolean) {
@@ -2367,6 +2395,67 @@ class ApiClient {
     return this.fetch<{ available: boolean; canWrite?: boolean; enabled?: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-rotate-keys`, { method: 'PUT', body: JSON.stringify({ enabled }) });
   }
 
+  // What AIOStreams itself says about this person's configuration (server/utils/aioHealth.js).
+  async getAioHealth(userId: string, range: '24h' | '7d' = '24h') {
+    return this.fetch<AioHealth>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-health?range=${range}`);
+  }
+
+  // One real search through their AIOStreams configuration - one at a time.
+  async runAioTestSearch(userId: string, type: 'movie' | 'series', id: string) {
+    return this.fetch<AioTestSearch>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-test-search`, { method: 'POST', body: JSON.stringify({ type, id }) });
+  }
+
+  // "Caught up to here" (server/utils/catchUp.js).
+  async getCatchUpShows(userId: string) {
+    return this.fetch<{ shows: CatchUpShow[] }>(`/users/${encodeURIComponent(userId)}/catch-up/shows`);
+  }
+
+  async getCatchUpEpisodes(userId: string, showId: string) {
+    return this.fetch<CatchUpEpisodes>(`/users/${encodeURIComponent(userId)}/catch-up/episodes?showId=${encodeURIComponent(showId)}`);
+  }
+
+  async startCatchUp(userId: string, showId: string, season: number, episode: number) {
+    return this.fetch<CatchUpJob>(`/users/${encodeURIComponent(userId)}/catch-up`, { method: 'POST', body: JSON.stringify({ showId, season, episode }) });
+  }
+
+  async undoCatchUp(userId: string) {
+    return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/undo`, { method: 'POST' });
+  }
+
+  async dismissCatchUp(userId: string) {
+    return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/dismiss`, { method: 'POST' });
+  }
+
+  async unmarkEpisode(userId: string, showId: string, season: number, episode: number) {
+    return this.fetch<{ removed: number; server: 'done' | 'not-there' | 'failed' | null }>(`/users/${encodeURIComponent(userId)}/catch-up/unmark`, { method: 'POST', body: JSON.stringify({ showId, season, episode }) });
+  }
+
+  async getCatchUpStatus(userId: string) {
+    return this.fetch<{ job: CatchUpJob | null }>(`/users/${encodeURIComponent(userId)}/catch-up/status`);
+  }
+
+  // Their AIOStreams configuration's history (server/utils/aioConfigHistory.js).
+  async getAioHistory(userId: string) {
+    return this.fetch<AioHistory>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-history`);
+  }
+
+  async restoreAioVersion(userId: string, snapshotId: string, keep: { services: boolean; users: boolean; apiKeys: boolean }) {
+    return this.fetch<AioHistory>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-history/${encodeURIComponent(snapshotId)}/restore`, { method: 'POST', body: JSON.stringify({ keep }) });
+  }
+
+  // A daily screen-time limit for a person (server/utils/screenTime.js).
+  async getScreenTime(userId: string) {
+    return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`);
+  }
+
+  async setScreenTime(userId: string, limit: ScreenTimeLimit | null) {
+    return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`, { method: 'PUT', body: JSON.stringify({ limit }) });
+  }
+
+  async resumeScreenTime(userId: string) {
+    return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time/resume`, { method: 'POST' });
+  }
+
   // A real Jellyfin person's age limit on their server.
   async getJellyfinAgeLimit(userId: string) {
     return this.fetch<JellyfinAgeLimit>(`/jellyfin/users/${encodeURIComponent(userId)}/age-limit`);
@@ -2398,7 +2487,7 @@ class ApiClient {
   }
 
   async getHousehold(userId: string) {
-    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null }>(
+    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean }>(
       `/jellyfin/users/${encodeURIComponent(userId)}/household`
     );
   }
@@ -2407,6 +2496,22 @@ class ApiClient {
     return this.fetch<{ profiles: HouseholdProfile[] }>(`/jellyfin/household/${encodeURIComponent(profileId)}/track`, {
       method: 'POST',
       body: JSON.stringify({ tracked }),
+    });
+  }
+
+  // Add an AIOStreams household user (server/utils/aioHousehold.js).
+  async addHouseholdUser(userId: string, data: { name: string; pin?: string | null; history: 'own' | 'shared' }) {
+    return this.fetch<{ profiles: HouseholdProfile[]; tracked: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/household`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Change (or, with null, remove) a household user's PIN.
+  async setHouseholdPin(profileId: string, pin: string | null) {
+    return this.fetch<{ profiles: HouseholdProfile[]; tracked: boolean }>(`/jellyfin/household/${encodeURIComponent(profileId)}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
     });
   }
 
@@ -2449,6 +2554,14 @@ class ApiClient {
       body: JSON.stringify({ ...data, create: true }),
     });
     return (result?.user || result) as User;
+  }
+
+  /** Sign an existing Nuvio person in again - email and password, or the tokens from Nuvio's sign-in code. */
+  async reconnectUserNuvio(userId: string, data: { email: string; password: string } | { providerUserId: string; refreshToken: string; email?: string }) {
+    return this.fetch<{ success: boolean; user: { id: string; email: string } }>('/nuvio/connect', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...data }),
+    });
   }
 
   async startNuvioOAuth() {
@@ -3396,6 +3509,94 @@ export interface JellyfinAgeLimit {
   blockUnrated?: boolean;
 }
 
+/** Versions of an AIOStreams configuration, newest first (server/utils/aioConfigHistory.js). */
+export interface AioHistory {
+  available: boolean;
+  versions: { id: string; at: string; reason: 'seen' | 'slicksync' | 'restore'; current: boolean; changes: string[]; addons: number; services: number; users: number }[];
+}
+
+/** A show's episodes for "Caught up to here" (server/utils/catchUp.js). */
+/** A show the picker offers: one they watch whose episodes can be listed. */
+export interface CatchUpShow {
+  id: string;
+  name: string | null;
+  poster: string | null;
+  last?: { season: number; episode: number };
+}
+
+export interface CatchUpEpisodes {
+  showId: string;
+  name: string | null;
+  poster: string | null;
+  episodes: { season: number; episode: number; title: string | null; released: string | null; watched: boolean }[];
+}
+
+/** One "Caught up to here" run, as it goes. */
+export interface CatchUpJob {
+  state: 'running' | 'done' | 'failed' | 'undoing' | 'undone';
+  /** The last run can still be taken back. */
+  canUndo?: boolean;
+  show: string;
+  upTo: string;
+  total: number;
+  recorded: number;
+  alreadyWatched: number;
+  server: { state: 'waiting' | 'running' | 'done' | 'failed' | 'not-there'; marked: number; total: number | null; how: 'played-up-to' | 'each' | null; error?: string } | null;
+  error: string | null;
+  startedAt: string;
+}
+
+/** A person's daily screen-time limit, and today so far (server/utils/screenTime.js). */
+export interface ScreenTimeLimit {
+  minutes: number;
+  days: number[];
+  /** What happens at the limit; alerting when absent. */
+  onReach?: 'pause';
+  /** When a pause ends, "HH:MM" on the account's clock; midnight when absent. */
+  resumeAt?: string;
+}
+
+export interface ScreenTimeView {
+  limit: ScreenTimeLimit | null;
+  todayMinutes: number;
+  appliesToday: boolean;
+  /** Streaming paused until the account's midnight. */
+  paused: { until: string } | null;
+  /** Whether a pause can work for this person, and why not. */
+  canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'not-supported'; reason?: string };
+}
+
+/** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */
+export interface AioHealth {
+  available: boolean;
+  canRead?: boolean;
+  reason?: string;
+  searchAvailable?: boolean;
+  analyticsEnabled?: boolean;
+  analyticsError?: string;
+  analytics?: {
+    range: '24h' | '7d';
+    requests: number;
+    errorRate: number;
+    addons: { name: string; preset: string | null; requests: number; errorRate: number; emptyRate: number; avgLatencyMs: number | null; share: number; slow: boolean; redundant: boolean }[];
+    services: { id: string; streams: number; cachedShare: number }[];
+  } | null;
+  apps?: { name: string; lastSeen: string | null }[];
+  /** What they watched lately, to test with one click. */
+  recent?: { type: 'movie' | 'series'; id: string; name: string }[];
+}
+
+/** What one AIOStreams test search found. */
+export interface AioTestSearch {
+  streams: number;
+  cached: number;
+  usenet: number;
+  p2p: number;
+  addons: { name: string; streams: number; cached: number; library: number }[];
+  errors: { title: string; description: string }[];
+  tookMs: number;
+}
+
 /** A device signed in as someone on a Jellyfin server (server/utils/jellyfinDevices.js). */
 export interface JellyfinDevice {
   id: string;
@@ -3498,6 +3699,9 @@ export interface User {
   // hardcoded 'Unknown'.
   lastSyncedAt?: string | null;
   syncStatus?: string | null;
+  /** When they were last seen watching anything, from SlickSync's own
+   *  records (server/utils/lastSeen.js). Null = never. */
+  lastActive?: string | null;
   // Account Guard: non-null when this user's provider account was changed by
   // something other than SlickSync since our last write - carries the diff
   // for display. Cleared by a sync (re-assert) or by accepting the change.
@@ -4436,11 +4640,22 @@ export interface HealthStatus {
   // a private-mode, single-shared-instance concept with no per-account
   // Settings field, so there's nothing real to report for a given tenant.
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean; healthIgnored: boolean } | null;
+  /** Jellyfin, AIOStreams and AIOMetadata servers, from each person's last read (server/utils/serverStatus.js). */
+  servers?: Array<{
+    key: string;
+    kind: 'jellyfin' | 'aiostreams' | 'aiometadata';
+    label: string;
+    address: string;
+    status: 'up' | 'down' | 'partial';
+    since: string | null;
+    failingCount: number;
+    people: Array<{ id: string; name: string; state: 'ok' | 'issue' | 'reconnect'; error: string | null; since: string | null }>;
+  }>;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
   timeline: Array<{
     id: string;
-    source: 'addon' | 'vault' | 'proxy';
+    source: 'addon' | 'vault' | 'proxy' | 'server';
     status: 'up' | 'down';
     title: string;
     detail: string | null;

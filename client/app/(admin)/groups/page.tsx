@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'rea
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, Avatar, UserAvatar, AvatarGroup, Badge, SearchInput, Input, ConfirmModal, SyncBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
+import { Button, Card, Avatar, AvatarColorSwatches, UserAvatar, AvatarGroup, Badge, SearchInput, Input, ConfirmModal, SyncBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
@@ -1114,24 +1114,7 @@ function CreateGroupModal({
                             <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>
                               Group Color
                             </label>
-                            <div className="flex flex-wrap gap-3">
-                              {colorOptions.map((color, index) => (
-                                <motion.button
-                                  key={color}
-                                  type="button"
-                                  whileHover={{ scale: 1.1 }}
-                                  whileTap={{ scale: 0.95 }}
-                                  onClick={() => setSelectedColorIndex(index)}
-                                  className="w-10 h-10 rounded-xl transition-all"
-                                  style={{
-                                    backgroundColor: color,
-                                    boxShadow: selectedColorIndex === index
-                                      ? `0 0 0 2px var(--color-surface), 0 0 0 4px ${color}`
-                                      : 'none'
-                                  }}
-                                />
-                              ))}
-                            </div>
+                            <AvatarColorSwatches value={selectedColorIndex} onChange={setSelectedColorIndex} />
                           </div>
                         </div>
 
@@ -1355,24 +1338,7 @@ function CloneGroupModal({
                       <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>
                         Group Color
                       </label>
-                      <div className="flex flex-wrap gap-3">
-                        {colorOptions.map((color, index) => (
-                          <motion.button
-                            key={color}
-                            type="button"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setSelectedColorIndex(index)}
-                            className="w-10 h-10 rounded-xl transition-all"
-                            style={{
-                              backgroundColor: color,
-                              boxShadow: selectedColorIndex === index
-                                ? `0 0 0 2px var(--color-surface), 0 0 0 4px ${color}`
-                                : 'none'
-                            }}
-                          />
-                        ))}
-                      </div>
+                      <AvatarColorSwatches value={selectedColorIndex} onChange={setSelectedColorIndex} />
                     </div>
 
                     <motion.button

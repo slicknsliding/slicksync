@@ -1328,6 +1328,39 @@ export default function MetricsPage() {
                   </div>
                   )}
 
+                  {/* Jellyfin, AIOStreams and AIOMetadata servers people sign
+                      in to - from each person's last read, no live calls. */}
+                  {(healthData.servers?.length ?? 0) > 0 && (
+                  <div className="mb-4 break-inside-avoid-column">
+                  <HealthCheckCard
+                    icon={<ServerIcon className="w-5 h-5" />}
+                    title="Servers"
+                    ok={healthData.servers!.every((s) => s.status === 'up')}
+                    summary={`${healthData.servers!.length} server${healthData.servers!.length !== 1 ? 's' : ''} people sign in to`}
+                  >
+                    <div className="space-y-2">
+                      {healthData.servers!.map((s) => (
+                        <div key={s.key} className="flex items-start justify-between gap-3 text-xs">
+                          <div className="min-w-0">
+                            <p className="text-sm text-default truncate">{s.address}</p>
+                            <p className="text-subtle">
+                              {s.label} · {s.people.length} {s.people.length === 1 ? 'person' : 'people'}
+                              {s.status === 'down' && s.since ? ` · down since ${healthTimeAgo(s.since)}` : ''}
+                              {s.status === 'partial'
+                                ? ` · ${s.people.filter((p) => p.state !== 'ok').map((p) => `${p.name} ${p.state === 'reconnect' ? 'needs to reconnect' : 'failing'}`).join(', ')}`
+                                : ''}
+                            </p>
+                          </div>
+                          <Badge variant={s.status === 'up' ? 'success' : s.status === 'down' ? 'error' : 'warning'} size="sm" className="flex-shrink-0">
+                            {s.status === 'up' ? 'Up' : s.status === 'down' ? 'Down' : 'Some failing'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </HealthCheckCard>
+                  </div>
+                  )}
+
                   {/* Unified incident timeline: every offline/online addon
                       transition plus every vault/proxy health notification,
                       in one feed - answers "when did this actually start"
@@ -1341,7 +1374,7 @@ export default function MetricsPage() {
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold text-default">Incident timeline</h3>
-                          <p className="text-xs text-muted">Addon, Vault, and Proxy health events, most recent first</p>
+                          <p className="text-xs text-muted">Addon, Vault, Proxy and server health events, most recent first</p>
                         </div>
                       </div>
                       <div className="space-y-0 max-h-64 overflow-y-auto">

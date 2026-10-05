@@ -73,7 +73,7 @@ async function setProfileVariant(prisma, decrypt, owner, profile, on) {
   if (on) {
     const preset = slickTraxPreset(config, owner.traxToken)
     if (!preset) {
-      throw fail(`The AIOStreams watch history link isn't in ${owner.username}'s AIOStreams configuration - add it there first.`, 409)
+      throw fail(`The AIOStreams watch history link isn't in ${owner.username}'s AIOStreams configuration - press "Add it to AIOStreams again" under AIOStreams watch history on their page first.`, 409)
     }
     const url = profileManifestUrl(String(preset.options.manifestUrl || preset.options.url), owner.traxToken, profile.id)
     const field = preset.options.manifestUrl !== undefined ? 'manifestUrl' : 'url'

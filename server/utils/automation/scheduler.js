@@ -21,7 +21,17 @@ function parseJson(raw, fallback) {
   } catch { return fallback }
 }
 
+// The hourly inactivity check (inactivity.js), on the same tick.
+let lastInactivityCheck = 0
+const INACTIVITY_EVERY_MS = 60 * 60 * 1000
+
 async function runAutomationScheduler(prisma) {
+  if (Date.now() - lastInactivityCheck >= INACTIVITY_EVERY_MS) {
+    lastInactivityCheck = Date.now()
+    try { await require('./inactivity').runInactivityCheck(prisma) } catch (err) {
+      console.warn('[AutomationScheduler] Inactivity check failed:', err?.message || err)
+    }
+  }
   try {
     const rules = await prisma.automationRule.findMany({
       where: { triggerType: 'time.daily', enabled: true },

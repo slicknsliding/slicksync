@@ -21,6 +21,10 @@ import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButt
 import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
+import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
+import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
+import { ScreenTimeButton } from '@/components/user/ScreenTimeButton';
+import { CatchUpButton } from '@/components/user/CatchUpButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -945,12 +949,12 @@ export default function UserDetailPage() {
           }
         }
       }
-      toast.success('Stremio addons cleared');
+      toast.success('Addons cleared from their account');
       // Refresh user data
       const stremioAddonsData = await api.getUserStremioAddons(params.id as string);
       setStremioAddons(stremioAddonsData || []);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to clear Stremio addons');
+      toast.error(err.message || 'Could not clear their addons');
     }
   }, [params.id, stremioAddons]);
 
@@ -1255,6 +1259,17 @@ export default function UserDetailPage() {
                         {user.providerType === 'jellyfin' && (
                           <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
+                        {/* A daily screen-time limit - any app. */}
+                        <ScreenTimeButton userId={user.id} name={user.username || user.name || 'them'} onPickGroup={() => setIsEditDetailsOpen(true)} />
+                        {/* Mark a show watched up to an episode - here and on their server. */}
+                        <CatchUpButton userId={user.id} name={user.username || user.name || 'them'} hasServer={user.providerType === 'jellyfin'} />
+                        {/* What AIOStreams itself says about their configuration. */}
+                        {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && (
+                          <>
+                            <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />
+                            <AioHistoryButton userId={user.id} name={user.username || user.name || 'them'} />
+                          </>
+                        )}
                         {/* Only a real Jellyfin server keeps a device list. */}
                         {user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin' && (
                           <>
@@ -1453,7 +1468,7 @@ export default function UserDetailPage() {
                       </div>
                       <div>
                         <h3 className="text-base font-semibold text-default">Same person on another provider?</h3>
-                        <p className="text-sm text-muted">Merge this account with a specific Stremio or Nuvio user.</p>
+                        <p className="text-sm text-muted">Merge this person with their login on another app - Stremio, Nuvio, Jellyfin or AIOStreams.</p>
                       </div>
                     </div>
                     <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
@@ -2280,7 +2295,7 @@ export default function UserDetailPage() {
                     ) : (
                       <div className="text-center py-8">
                         <PuzzlePieceIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
-                        <p className="text-muted">No Stremio addons found</p>
+                        <p className="text-muted">No addons on their {user ? providerLabel(user) : ''} account</p>
                         <p className="text-sm text-subtle mt-1">Sync the user to populate their addons</p>
                       </div>
                     )}
@@ -2457,8 +2472,8 @@ export default function UserDetailPage() {
         {mergePreview && mergeCandidate && (
           <div className="space-y-4">
             <p className="text-default">
-              Merge <strong>{mergePreview.donor.username}</strong> ({mergePreview.donor.providerType}) into{' '}
-              <strong>{mergePreview.survivor.username}</strong> ({mergePreview.survivor.providerType})?
+              Merge <strong>{mergePreview.donor.username}</strong> ({providerLabel(mergePreview.donor)}) into{' '}
+              <strong>{mergePreview.survivor.username}</strong> ({providerLabel(mergePreview.survivor)})?
             </p>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="p-3 rounded-lg bg-surface-hover">
