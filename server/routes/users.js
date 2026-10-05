@@ -244,6 +244,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           stremioAddonsCount: stremioAddonsCount,
           groups: groups.length,
           lastActive: lastSeen.get(user.id)?.toISOString() || null,
+          createdAt: user.createdAt || null,
           hasStremioConnection: !!user.stremioAuthKey,
           isActive: user.isActive,
           excludedAddons: excludedAddons,

@@ -172,6 +172,15 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     needs: 'Add your webhook URL before saving.',
   },
   {
+    id: 'inactive-deactivate',
+    title: 'Switch off people who stopped watching',
+    description: 'When someone hasn\'t watched anything for the number of days you set, they\'re switched off - the same as the toggle on their card, so switching them back on is one click. Nothing is deleted, and anyone given an access end date is left alone.',
+    name: 'Switch off inactive people',
+    triggerType: 'user.inactive',
+    actions: [{ type: 'user.deactivate', config: {} }],
+    needs: 'Set how many days without watching before saving.',
+  },
+  {
     id: 'nightly-extra-backup',
     title: 'Run an extra backup at an hour you choose',
     description: 'The nightly backup already runs on its own schedule; this adds another at whatever hour you set - useful before a nightly maintenance window, or just for belt-and-braces.',

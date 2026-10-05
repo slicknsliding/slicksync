@@ -209,6 +209,23 @@ const TRIGGERS = {
       { name: 'runningVersion', label: 'Running version', type: 'string' },
     ],
   },
+  // Checked hourly (automation/inactivity.js) from the same "Last seen" the
+  // person cards show. Its own triggerConfig carries the number of days.
+  'user.inactive': {
+    label: 'Someone has been inactive for a while',
+    description: 'Fires once when a person hasn\'t watched anything for the number of days you set - the "Last seen" on their card - and again only after they come back and go quiet once more. Checked every hour. People already switched off, and people given an access end date in the future, are skipped.',
+    fields: [
+      { name: 'username', label: 'Username', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'email', label: 'Email', type: 'string' },
+      { name: 'providerType', label: 'Provider', type: 'string' },
+      { name: 'daysInactive', label: 'Days without watching', type: 'number' },
+      { name: 'neverSeen', label: 'Never watched anything', type: 'boolean' },
+    ],
+    triggerConfigFields: [
+      { name: 'days', label: 'Days without watching', type: 'number', required: true },
+    ],
+  },
   // Fires on a recurring daily schedule rather than in response to
   // something happening elsewhere in the app - the odd one out among these
   // triggers, which is why it's the only one with its own triggerConfig
@@ -595,6 +612,34 @@ const ACTIONS = {
       // exception. A total failure does throw, so the rule is marked failed.
       if (synced === 0) throw new Error('Sync failed for all ' + userIds.length + ' user(s): ' + (failures[0] || 'unknown error'))
       return 'Synced ' + synced + '/' + userIds.length + ' user(s) in ' + what + (failures.length ? ', ' + failures.length + ' failed' : '')
+    },
+  },
+
+  // Reversible on purpose: the same switch as the toggle on a person's card,
+  // never a delete. Pairs with "Someone has been inactive for a while".
+  'user.deactivate': {
+    label: 'Deactivate a user',
+    description: 'Switches the person off - the same as the toggle on their card, and switched back on the same way. Nothing is deleted. A Jellyfin account an invitation made for them is switched off on the server too. Someone given an access end date in the future is left alone.',
+    configFields: [
+      { name: 'userId', label: 'User', type: 'user', hint: 'Leave blank to act on the user from the trigger.' },
+    ],
+    async run({ prisma, accountId, config, payload }) {
+      const userId = config.userId || payload.userId
+      if (!userId) throw new Error('No user specified and the trigger carried none')
+      const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true, username: true, isActive: true, expiresAt: true } })
+      if (!user) throw new Error('User not found on this account')
+      if (!user.isActive) return `${user.username} was already switched off`
+      if (user.expiresAt && new Date(user.expiresAt).getTime() > Date.now()) {
+        return `Left ${user.username} on: their access has an end date set`
+      }
+      await prisma.user.update({ where: { id: user.id }, data: { isActive: false } })
+      try {
+        const { decrypt } = require('../encryption')
+        await require('../jellyfinInviteAccounts').reconcileAccount(prisma, decrypt, accountId)
+      } catch (e) {
+        console.warn('[Automation] invite-made Jellyfin account not switched off yet:', e?.message)
+      }
+      return `Deactivated ${user.username} - switch them back on from Users`
     },
   },
 

@@ -168,6 +168,9 @@ function validateRule(body) {
       return { ok: false, error: `${field.label} must be a number` }
     }
   }
+  if (triggerType === 'user.inactive' && !(Number(triggerConfig.days) >= 1)) {
+    return { ok: false, error: 'Days without watching must be 1 or more' }
+  }
   if (triggerType === 'time.daily') {
     const hour = Number(triggerConfig.hour)
     const minute = Number(triggerConfig.minute)

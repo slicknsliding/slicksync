@@ -494,10 +494,10 @@ function RuleEditorModal({
           {trigger && <p className="text-xs text-muted mt-1.5">{trigger.description}</p>}
         </div>
 
-        {/* Only time.daily has triggerConfigFields today - a schedule isn't
-            a condition on an event's payload, it's the trigger's own
-            configuration, so it gets its own small form here rather than
-            living in ConditionBuilder below. */}
+        {/* A trigger's own settings (time.daily's schedule, user.inactive's
+            number of days) - not a condition on an event's payload, so they
+            get their own small form here rather than living in
+            ConditionBuilder below. */}
         {trigger && trigger.triggerConfigFields && trigger.triggerConfigFields.length > 0 && (
           <div className="space-y-3">
             <div className="flex gap-3">
