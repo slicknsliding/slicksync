@@ -2389,6 +2389,15 @@ class ApiClient {
     return this.fetch<AioTestSearch>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-test-search`, { method: 'POST', body: JSON.stringify({ type, id }) });
   }
 
+  // A daily screen-time limit for a person (server/utils/screenTime.js).
+  async getScreenTime(userId: string) {
+    return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`);
+  }
+
+  async setScreenTime(userId: string, limit: { minutes: number; days: number[] } | null) {
+    return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time`, { method: 'PUT', body: JSON.stringify({ limit }) });
+  }
+
   // A real Jellyfin person's age limit on their server.
   async getJellyfinAgeLimit(userId: string) {
     return this.fetch<JellyfinAgeLimit>(`/jellyfin/users/${encodeURIComponent(userId)}/age-limit`);
@@ -3416,6 +3425,13 @@ export interface JellyfinAgeLimit {
   levels?: { value: number; label: string }[];
   current?: number | null;
   blockUnrated?: boolean;
+}
+
+/** A person's daily screen-time limit, and today so far (server/utils/screenTime.js). */
+export interface ScreenTimeView {
+  limit: { minutes: number; days: number[] } | null;
+  todayMinutes: number;
+  appliesToday: boolean;
 }
 
 /** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */

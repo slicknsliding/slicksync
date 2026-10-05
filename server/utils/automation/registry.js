@@ -126,6 +126,17 @@ const TRIGGERS = {
       { name: 'episode', label: 'Episode (episodes only)', type: 'number' },
     ],
   },
+  // Fired by utils/screenTime.js, once per person per account day.
+  'watch.budget_exceeded': {
+    label: 'Someone reaches their daily screen-time limit',
+    description: 'Fires once a day when a person\'s watching today reaches the daily limit set on their page. Counted like Watch Time, so it can fire a little late for Stremio and Nuvio - they only report at pause or stop - but never early. The built-in alert already covers push and the bell; this is for anything extra.',
+    fields: [
+      { name: 'username', label: 'Username', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'minutesWatched', label: 'Minutes watched today', type: 'number' },
+      { name: 'limitMinutes', label: 'Daily limit (minutes)', type: 'number' },
+    ],
+  },
   'invite.accepted': {
     label: 'An invitation is accepted',
     description: 'Fires when someone completes an invite and their user is created.',

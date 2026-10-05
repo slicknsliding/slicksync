@@ -1009,6 +1009,23 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // A daily screen-time limit (utils/screenTime.js) - counted across every app.
+  router.get('/:id/screen-time', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').getLimit(prisma, getAccountId(req), String(req.params.id)))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not read the daily limit' })
+    }
+  })
+
+  router.put('/:id/screen-time', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').setLimit(prisma, getAccountId(req), String(req.params.id), req.body?.limit ?? null))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not set the daily limit' })
+    }
+  })
+
   // Try adding it to their AIOStreams configuration again (after fixing what stopped it).
   router.post('/:id/watch-state/install', async (req, res) => {
     try {

@@ -22,6 +22,7 @@ import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
+import { ScreenTimeButton } from '@/components/user/ScreenTimeButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -1256,6 +1257,8 @@ export default function UserDetailPage() {
                         {user.providerType === 'jellyfin' && (
                           <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
+                        {/* A daily screen-time limit - any app. */}
+                        <ScreenTimeButton userId={user.id} name={user.username || user.name || 'them'} />
                         {/* What AIOStreams itself says about their configuration. */}
                         {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && (
                           <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />

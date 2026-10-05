@@ -1158,6 +1158,27 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Metrics',
   },
   {
+    id: 'daily-screen-time',
+    title: 'A daily screen-time limit for someone',
+    category: 'Users & Groups',
+    keywords: ['screen time', 'daily limit', 'time limit', 'watch limit', 'kids limit', 'too much tv', 'budget', 'minutes a day', 'school days', 'parental'],
+    answer: 'On the person’s page, press Daily limit, pick the minutes and the days - every day, school days, weekends or your own - and you get a bell and push notification when they reach it, whatever app they watch in.',
+    steps: [
+      'Open the person on the Users page and press Daily limit.',
+      'Pick the minutes a day and the days it applies.',
+      'Press Set limit. The pill then shows the limit, and the popup shows what they have watched today.',
+    ],
+    details: [
+      'It counts the same minutes as Watch Time, across Stremio, Nuvio, Jellyfin and AIOStreams, for your account’s own day (Settings -> Privacy & Display sets the time zone).',
+      'Stremio and Nuvio only report at pause or stop, so the alert can come a little after the limit - never before it. Jellyfin and AIOStreams report as they play.',
+      'One alert per person per day. The automation trigger "Someone reaches their daily screen-time limit" fires at the same moment, for anything extra - a Discord message, a webhook.',
+      'It only tells you - nothing is stopped mid-film. On a real Jellyfin server, Age limit and the server’s own access schedule are the ways to actually restrict what plays.',
+    ],
+    related: ['dormant-people', 'automation-create'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'dormant-people',
     title: 'Finding and switching off people who stopped watching',
     category: 'Users & Groups',

@@ -752,6 +752,13 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize automation scheduler:', err)
     }
 
+    // Daily screen-time limits (every 5m, only for accounts that set one)
+    try {
+      require('./utils/screenTime').scheduleScreenTime(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize screen-time limits:', err)
+    }
+
     // Schedule auto-generated themed catalogs (daily, only for accounts
     // that opted in via Settings -> SlickTrax -> Auto-generated catalogs)
     try {
