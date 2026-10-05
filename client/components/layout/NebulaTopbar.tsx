@@ -266,7 +266,10 @@ export function NebulaTopbar() {
             TV-only and independent of the D-pad reachability fix (scroll-
             padding-top in TVPageProvider) - this is purely about how much
             screen real estate the bar eats, not whether focus can reach it. */}
-        <div className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4 mb-4'}>
+        {/* data-nebula-logo-row: on a phone, TopbarActions docks the command
+            palette and bell inside this row once the page heading scrolls
+            past, instead of floating them over the page under the bar. */}
+        <div data-nebula-logo-row className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4 mb-4'}>
           {/* Hamburger - never on TV (nav is always shown inline there
               instead, see navVisible below); on mobile AND desktop alike,
               only once scrolled - nav shows inline at the top of the page

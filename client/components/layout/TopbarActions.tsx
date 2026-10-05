@@ -29,6 +29,11 @@ const FLOAT_GAP = 8;
 // Fallback pin position for layouts with no `data-nebula-topbar` bar to
 // measure against (the sidebar Header, which has its own fixed chrome).
 const FALLBACK_FLOAT_TOP = 12;
+// Below this width (Tailwind's md), the cluster docks INSIDE the top bar's
+// logo row rather than floating under it: on a phone the floating pair sat
+// over the page's own controls - a person's pills, the Users Add button -
+// and taps meant for them hit the bell instead.
+const DOCK_BELOW_WIDTH = 768;
 
 // The topbar's right-hand cluster: command palette, then notifications.
 // Grouped into one component because the resume-tour prompt deliberately
@@ -42,7 +47,8 @@ const FALLBACK_FLOAT_TOP = 12;
 // sync.
 //
 // The cluster sits inline in the page heading at rest, then pins itself
-// just under the sticky nav once that spot scrolls past. Without this it
+// just under the sticky nav once that spot scrolls past - or, on a phone,
+// docks inside the nav's logo row (see DOCK_BELOW_WIDTH). Without this it
 // scrolled away entirely, which mattered most on mobile: there's no Ctrl+K
 // on a phone, so this button is the only way into the command palette, and
 // on a long page (Discover's infinite scroll especially) it was unreachable
@@ -71,7 +77,8 @@ export function TopbarActions({
   // THIS, not the placeholder, so it follows the buttons while they're
   // pinned instead of sitting over an empty gap up the page.
   const buttonsRef = useRef<HTMLDivElement>(null);
-  const [pinned, setPinned] = useState<{ top: number; right: number } | null>(null);
+  // docked: inside the bar's logo row (phones) rather than floating under it.
+  const [pinned, setPinned] = useState<{ top: number; right: number; docked: boolean } | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -120,13 +127,18 @@ export function TopbarActions({
     // would re-render the whole cluster (and the bell's subtree) for the
     // entire length of a scroll even when nothing moved.
     if (natural.top < floatTop) {
-      const next = { top: floatTop, right: Math.max(window.innerWidth - natural.right, 0) };
+      // On a phone, centred on the logo row and flush with its right edge.
+      const row = window.innerWidth < DOCK_BELOW_WIDTH ? document.querySelector('[data-nebula-logo-row]') : null;
+      const rr = row?.getBoundingClientRect();
+      const next = rr
+        ? { top: Math.round(rr.top + (rr.height - natural.height) / 2), right: Math.max(Math.round(window.innerWidth - rr.right), 0), docked: true }
+        : { top: floatTop, right: Math.max(window.innerWidth - natural.right, 0), docked: false };
       setSize((prev) =>
         prev && prev.width === natural.width && prev.height === natural.height
           ? prev
           : { width: natural.width, height: natural.height }
       );
-      setPinned((prev) => (prev && prev.top === next.top && prev.right === next.right ? prev : next));
+      setPinned((prev) => (prev && prev.top === next.top && prev.right === next.right && prev.docked === next.docked ? prev : next));
     } else {
       setPinned((prev) => (prev === null ? prev : null));
     }
@@ -205,13 +217,17 @@ export function TopbarActions({
     </div>
   );
 
+  // Floating over scrolling content (pinned under the bar, not docked in it)
+  // is when the icons would be unreadable against posters and cards - so
+  // each gets its own round backdrop then. Docked in the bar they sit on the
+  // bar's own surface and look as they do inline.
+  const floating = !!pinned && !pinned.docked;
+
   const buttons = (
     <div
       ref={buttonsRef}
-      className={`flex items-center ${pinned ? 'gap-2' : 'gap-0.5'}`}
-      // Only while pinned does it float over scrolling content, where the
-      // icons would be unreadable against posters and cards - so each icon
-      // gets its own round backdrop then, not one rectangle around the pair.
+      className={`flex items-center ${floating ? 'gap-2' : 'gap-0.5'}`}
+      // Above the bar (z-30) so docked buttons show on it.
       style={pinned ? { position: 'fixed', top: pinned.top, right: pinned.right, zIndex: 35 } : undefined}
     >
       {/* Styled to match NotificationsDropdown's bell exactly - same
@@ -222,16 +238,16 @@ export function TopbarActions({
         onClick={openCommandPalette}
         title="Search, jump to a page, or ask how to do something (Ctrl+K)"
         aria-label="Open the command palette"
-        className={`p-2 transition-colors ${pinned ? 'rounded-full' : 'rounded-lg'}`}
-        style={{ color: 'var(--color-text-muted)', ...(pinned ? FLOATING_ICON_STYLE : {}) }}
-        onMouseEnter={(e) => { if (!pinned) e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
-        onMouseLeave={(e) => { if (!pinned) e.currentTarget.style.background = 'transparent'; }}
+        className={`p-2 transition-colors ${floating ? 'rounded-full' : 'rounded-lg'}`}
+        style={{ color: 'var(--color-text-muted)', ...(floating ? FLOATING_ICON_STYLE : {}) }}
+        onMouseEnter={(e) => { if (!floating) e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
+        onMouseLeave={(e) => { if (!floating) e.currentTarget.style.background = 'transparent'; }}
       >
         <WizardBooksIcon className="w-5 h-5" />
       </button>
 
       <NotificationsDropdown
-        floating={!!pinned}
+        floating={floating}
         activities={activities}
         inviteHistory={inviteHistory}
         taskHistory={taskHistory}
