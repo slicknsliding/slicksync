@@ -171,3 +171,13 @@ test('household: each profile is read with its own sign-in and its viewing carri
     jellyfinLive.forgetUser('person-h')
   }
 })
+
+test('ids split into title, season and episode - a prefixed id keeps its prefix', () => {
+  const { splitStremioId } = require('../server/providers/jellyfin')
+  assert.deepEqual(splitStremioId('tt0903747:1:2'), { base: 'tt0903747', season: '1', episode: '2' })
+  assert.deepEqual(splitStremioId('tt0133093'), { base: 'tt0133093', season: undefined, episode: undefined })
+  // Read as show "tmdb", season 209867 before this existed.
+  assert.deepEqual(splitStremioId('tmdb:209867'), { base: 'tmdb:209867', season: undefined, episode: undefined })
+  assert.deepEqual(splitStremioId('tmdb:209867:1:3'), { base: 'tmdb:209867', season: '1', episode: '3' })
+  assert.deepEqual(splitStremioId('kitsu:46676:1'), { base: 'kitsu:46676', season: '1', episode: undefined })
+})

@@ -96,6 +96,19 @@ function encodePackedId({ kind, base, season = null, episode = null, version = 0
   return buf.toString('hex')
 }
 
+/**
+ * A Stremio-style id in its parts: the title's own id, then season and
+ * episode. An IMDb id is one part (tt123:1:2); a prefixed one is two
+ * (tmdb:603, kitsu:46676:1), so splitting on the first ':' alone read
+ * "tmdb:209867" as show "tmdb", season 209867.
+ */
+function splitStremioId(id) {
+  const parts = String(id || '').split(':')
+  const prefixed = parts.length > 1 && !/^tt\d+$/i.test(parts[0])
+  const rest = parts.slice(prefixed ? 2 : 1)
+  return { base: prefixed ? `${parts[0]}:${parts[1]}` : parts[0], season: rest[0], episode: rest[1] }
+}
+
 // metahub for an IMDb id; otherwise the server's own poster when its images
 // are open (utils/jellyfinImages.js) - anime and TMDb/TVDB-only titles had
 // none. `serverPoster` is that address, or null.
@@ -444,7 +457,7 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
      * searched through its movies and shows.
      */
     async findItem(stremioId, type) {
-      const [baseId, s, e] = String(stremioId || '').split(':')
+      const { base: baseId, season: s, episode: e } = splitStremioId(stremioId)
       const season = s != null && s !== '' ? Number(s) : null
       const episode = e != null && e !== '' ? Number(e) : null
       const wantEpisode = type === 'series' && Number.isInteger(season) && Number.isInteger(episode)
@@ -526,4 +539,4 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
   }
 }
 
-module.exports = { createJellyfinProvider, stremioIdFromProviderIds, decodePackedId, encodePackedId, ticksToMs }
+module.exports = { createJellyfinProvider, stremioIdFromProviderIds, decodePackedId, encodePackedId, ticksToMs, splitStremioId }
