@@ -13,6 +13,11 @@
 // - WatchSession.startTime - a native viewing SlickSync noticed.
 // - ProxyStreamSession.lastSeenAt - the proxy's own login name, matched to a
 //   person the same way Now Playing does (an ambiguous name counts for nobody).
+// - WatchSnapshot.lastWatched - the app's own "last watched" time for each
+//   title, as SlickSync last read it from their Stremio or Nuvio library (or
+//   a Jellyfin server's last-played date). Something watched only part-way,
+//   or first seen after a sign-in had expired, leaves no History row and no
+//   watch time, so without this "last seen" lagged the app's own record.
 
 const { resolveUserForActiveConnection } = require('./proxyStreamMonitor')
 
@@ -47,6 +52,7 @@ async function lastSeenByUser(prisma, accountId, users) {
     maxBy(prisma.movieWatchHistory, accountId, ids, 'watchedAt'),
     maxBy(prisma.episodeWatchHistory, accountId, ids, 'watchedAt'),
     maxBy(prisma.watchSession, accountId, ids, 'startTime'),
+    maxBy(prisma.watchSnapshot, accountId, ids, 'lastWatched'),
   ].map((p) => p.catch((error) => {
     console.warn('[LastSeen] a source failed:', error.message)
     return []

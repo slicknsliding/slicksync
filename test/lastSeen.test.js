@@ -90,3 +90,10 @@ test('the user routes send it instead of a hard-coded null, and never read Jelly
   assert.equal((src.match(/lastSeenFor\(/g) || []).length, 2, 'the person page and the edit response')
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'server/utils/lastSeen.js'), 'utf8'), /LastActivityDate['"]?\]|\.LastActivityDate/)
 })
+
+test("the app's own last-watched time counts, when it is the newest", async () => {
+  // Nuvio says dee watched something 30 minutes ago that never made a History row.
+  const seen = await lastSeenByUser(prismaWith({ watchSnapshot: table([{ accountId: 'acc', userId: 'dee', lastWatched: ago(30) }, { accountId: 'acc', userId: 'ann', lastWatched: ago(9000) }]) }), 'acc', users)
+  assert.equal(seen.get('dee').getTime(), ago(30).getTime())
+  assert.equal(seen.get('ann').getTime(), ago(120).getTime(), 'an older snapshot does not pull anyone back')
+})
