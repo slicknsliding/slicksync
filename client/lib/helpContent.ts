@@ -603,6 +603,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tips: [
       'On iPhone, push only works after you add SlickSync to the Home Screen - Safari will not offer the prompt from a normal browser tab. This is an iOS restriction, not a SlickSync one.',
       'A revoked device stops receiving push immediately; you do not need to reinstall to re-add it later.',
+      'To dismiss a single notification in the bell, swipe it to the left on a phone, or use its × on a computer. Clear removes them all.',
     ],
     related: ['watch-notification-overrides', 'discord-poster-recap', 'automation-create'],
     href: '/settings',

@@ -8,6 +8,9 @@ import { Badge, Button, Avatar } from '@/components/ui';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
+import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
+import { useIsTV } from '@/lib/hooks/useIsTV';
 
 interface NotificationItem {
   id: string;
@@ -79,7 +82,13 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   });
 
-  // IDs individually dismissed via the per-row X button - kept separate
+  // Phones swipe a row left to dismiss it instead of the X. Not TVs: a remote
+  // can't swipe, so they keep the button.
+  const coarse = useCoarsePointer();
+  const isTV = useIsTV();
+  const swipeToDismiss = coarse && !isTV;
+
+  // IDs individually dismissed via the per-row X button (or a swipe) - kept separate
   // from lastChecked (which hides everything at once) so dismissing one
   // notification doesn't also hide unrelated newer ones.
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
@@ -101,7 +110,20 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
 
   const handleDismiss = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    persistDismissedIds(new Set(dismissedIds).add(id));
+    dismissOne(id);
+  };
+
+  // From the row (state updater, not the rendered set): a swipe finishes its
+  // slide-out animation a moment after it starts, and another row may have
+  // been dismissed in between.
+  const dismissOne = (id: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev).add(id);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
     // Persisted bell notifications (id prefixed "stored-") are deleted
     // server-side too, so they don't just reappear on the next poll.
     if (id.startsWith('stored-')) {
@@ -458,7 +480,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       });
 
     // Sort by timestamp, most recent first, then drop anything individually
-    // dismissed via the per-row X button.
+    // dismissed via the per-row X button or a swipe.
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
@@ -701,8 +723,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   ) : (
                     <div className="divide-y divide-default">
                       {notifications.map((notification) => (
-                        <motion.div
+                        <SwipeToDismiss
                           key={notification.id}
+                          enabled={swipeToDismiss && notification.type !== 'request'}
+                          onDismiss={() => dismissOne(notification.id)}
+                        >
+                        <motion.div
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           onClick={() => handleNotificationClick(notification)}
@@ -787,8 +813,9 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                               {/* Pending requests already clear themselves
                                   from the list via Accept/Reject below - an
                                   extra dismiss button there would let one
-                                  get hidden without ever being acted on. */}
-                              {notification.type !== 'request' && (
+                                  get hidden without ever being acted on.
+                                  On a phone the row is swiped away instead. */}
+                              {notification.type !== 'request' && !swipeToDismiss && (
                                 <button
                                   type="button"
                                   onClick={(e) => handleDismiss(e, notification.id)}
@@ -824,6 +851,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                             )}
                           </div>
                         </motion.div>
+                        </SwipeToDismiss>
                       ))}
                     </div>
                   )}
