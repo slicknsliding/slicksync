@@ -150,6 +150,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       })
       const secondaryProviderByUserId = new Map(secondaryCredentials.map((c) => [c.userId, c.providerType]))
 
+      // "Last seen" on every card, from SlickSync's own records (utils/lastSeen.js).
+      let lastSeen = new Map()
+      try {
+        lastSeen = await require('../utils/lastSeen').lastSeenByUser(prisma, getAccountId(req) || 'default', users)
+      } catch (error) {
+        console.warn('[users] last seen failed:', error.message)
+      }
+
       // Transform data for frontend compatibility
       const transformedUsers = await Promise.all(users.map(async (user) => {
         // For SQLite, we need to find groups that contain this user
@@ -235,7 +243,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           addons: addonCount,
           stremioAddonsCount: stremioAddonsCount,
           groups: groups.length,
-          lastActive: null,
+          lastActive: lastSeen.get(user.id)?.toISOString() || null,
           hasStremioConnection: !!user.stremioAuthKey,
           isActive: user.isActive,
           excludedAddons: excludedAddons,
@@ -2722,6 +2730,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         console.warn(`Error fetching watch time for user ${id}:`, error.message)
       }
 
+      let lastActive = null
+      try {
+        lastActive = (await require('../utils/lastSeen').lastSeenFor(prisma, currentAccountId || 'default', id))?.toISOString() || null
+      } catch (error) {
+        console.warn(`[users] last seen failed for ${id}:`, error.message)
+      }
+
       // Transform for frontend
       // Same precedence sync itself uses: an explicit env var, then the
       // address set in Settings, then one an admin request revealed.
@@ -2749,7 +2764,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         groups: userGroups,
         groupName: groups[0]?.name || null,
         groupId: groups[0]?.id || null,
-        lastActive: null,
+        lastActive,
         stremioAddonsCount: stremioAddonsCount,
         stremioAddons: stremioAddons,
         excludedAddons: excludedAddons,
@@ -2996,6 +3011,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         groupName: userGroup?.name || null,
         groupId: userGroup?.id || null,
         lastActive: null
+      }
+      try {
+        transformedUser.lastActive = (await require('../utils/lastSeen').lastSeenFor(prisma, getAccountId(req) || 'default', id))?.toISOString() || null
+      } catch (error) {
+        console.warn(`[users] last seen failed for ${id}:`, error.message)
       }
 
       // Log activity (temporarily disabled for debugging)

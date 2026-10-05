@@ -28,7 +28,7 @@ import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
-import { formatLastSync } from '@/lib/relativeTime';
+import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -66,6 +66,8 @@ interface UserDisplay {
   watchTime: number;
   groups: string[];
   lastSync: string;
+  /** "2h ago", or 'Never' - see server/utils/lastSeen.js. */
+  lastSeen: string;
   addonCount: number;
   colorIndex?: number;
 }
@@ -215,6 +217,7 @@ export default function UsersPage() {
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
         groups: userGroups,
         lastSync,
+        lastSeen: formatRelativeTime(user.lastActive) ?? 'Never',
         addonCount: user.stremioAddonsCount || user.addons || 0,
         colorIndex: user.colorIndex,
       };
@@ -688,6 +691,7 @@ export default function UsersPage() {
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">User</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Status</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Watch Time</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Last Seen</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Groups</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Last Sync</th>
                           <th className="px-6 py-4 text-left text-sm font-medium text-muted">Actions</th>
@@ -765,6 +769,9 @@ export default function UsersPage() {
                               </td>
                               <td className="px-6 py-4 text-muted">
                                 {formatWatchTime(user.watchTime)}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-muted">
+                                {user.lastSeen}
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex gap-1">
@@ -1264,6 +1271,9 @@ function UserCard({
                 <span className="hidden md:inline">{formatWatchTime(user.watchTime)}</span>
               </span>
             </div>
+            <p className="mt-1 text-xs text-subtle">
+              {user.lastSeen === 'Never' ? 'Never seen' : `Last seen ${user.lastSeen}`}
+            </p>
           </div>
         </div>
       </Card>

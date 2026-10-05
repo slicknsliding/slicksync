@@ -3498,6 +3498,9 @@ export interface User {
   // hardcoded 'Unknown'.
   lastSyncedAt?: string | null;
   syncStatus?: string | null;
+  /** When they were last seen watching anything, from SlickSync's own
+   *  records (server/utils/lastSeen.js). Null = never. */
+  lastActive?: string | null;
   // Account Guard: non-null when this user's provider account was changed by
   // something other than SlickSync since our last write - carries the diff
   // for display. Cleared by a sync (re-assert) or by accepting the change.
