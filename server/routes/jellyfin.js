@@ -397,6 +397,24 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
   });
 
   // A Jellyfin person's age limit on their server (utils/jellyfinParental.js).
+  // What AIOStreams itself says about this person's configuration, and a
+  // one-off "test this title" search (utils/aioHealth.js). Read-only.
+  router.get('/users/:id/aio-health', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioHealth').healthFor(prisma, decrypt, getAccountId(req), String(req.params.id), { range: req.query.range === '7d' ? '7d' : '24h' }));
+    } catch (error) {
+      sendError(res, error, 'Could not read AIOStreams');
+    }
+  });
+
+  router.post('/users/:id/aio-test-search', async (req, res) => {
+    try {
+      res.json(await require('../utils/aioHealth').testSearch(prisma, decrypt, getAccountId(req), String(req.params.id), { type: req.body?.type, id: req.body?.id }));
+    } catch (error) {
+      sendError(res, error, 'Could not run the search');
+    }
+  });
+
   router.get('/users/:id/age-limit', async (req, res) => {
     try {
       res.json(await require('../utils/jellyfinParental').getAgeLimit(prisma, decrypt, getAccountId(req), req.params.id));

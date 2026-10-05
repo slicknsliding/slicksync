@@ -2367,6 +2367,16 @@ class ApiClient {
     return this.fetch<{ available: boolean; canWrite?: boolean; enabled?: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-rotate-keys`, { method: 'PUT', body: JSON.stringify({ enabled }) });
   }
 
+  // What AIOStreams itself says about this person's configuration (server/utils/aioHealth.js).
+  async getAioHealth(userId: string, range: '24h' | '7d' = '24h') {
+    return this.fetch<AioHealth>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-health?range=${range}`);
+  }
+
+  // One real search through their AIOStreams configuration - one at a time.
+  async runAioTestSearch(userId: string, type: 'movie' | 'series', id: string) {
+    return this.fetch<AioTestSearch>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-test-search`, { method: 'POST', body: JSON.stringify({ type, id }) });
+  }
+
   // A real Jellyfin person's age limit on their server.
   async getJellyfinAgeLimit(userId: string) {
     return this.fetch<JellyfinAgeLimit>(`/jellyfin/users/${encodeURIComponent(userId)}/age-limit`);
@@ -3394,6 +3404,37 @@ export interface JellyfinAgeLimit {
   levels?: { value: number; label: string }[];
   current?: number | null;
   blockUnrated?: boolean;
+}
+
+/** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */
+export interface AioHealth {
+  available: boolean;
+  canRead?: boolean;
+  reason?: string;
+  searchAvailable?: boolean;
+  analyticsEnabled?: boolean;
+  analyticsError?: string;
+  analytics?: {
+    range: '24h' | '7d';
+    requests: number;
+    errorRate: number;
+    addons: { name: string; preset: string | null; requests: number; errorRate: number; emptyRate: number; avgLatencyMs: number | null; share: number; slow: boolean; redundant: boolean }[];
+    services: { id: string; streams: number; cachedShare: number }[];
+  } | null;
+  apps?: { name: string; lastSeen: string | null }[];
+  /** What they watched lately, to test with one click. */
+  recent?: { type: 'movie' | 'series'; id: string; name: string }[];
+}
+
+/** What one AIOStreams test search found. */
+export interface AioTestSearch {
+  streams: number;
+  cached: number;
+  usenet: number;
+  p2p: number;
+  addons: { name: string; streams: number; cached: number; library: number }[];
+  errors: { title: string; description: string }[];
+  tookMs: number;
 }
 
 /** A device signed in as someone on a Jellyfin server (server/utils/jellyfinDevices.js). */

@@ -714,6 +714,27 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Users',
   },
   {
+    id: 'aiostreams-health',
+    title: 'Checking which AIOStreams addons are failing for someone',
+    category: 'Users & Groups',
+    keywords: ['aiostreams health', 'aiostreams addon failing', 'no streams', 'addon errors', 'slow addon', 'redundant addon', 'test search', 'why no streams', 'aiostreams stats'],
+    answer: 'On the person’s page, press AIOStreams health. It shows what AIOStreams itself reports about their configuration - each addon’s errors and empty answers over the last day or week, which ones it calls slow or redundant - and lets you test a title to see what every addon finds for it right now.',
+    steps: [
+      'Open the person on the Users page and press AIOStreams health.',
+      'Read the addon list: the ones in trouble are at the top.',
+      'Under Test a title, pick something they watched lately - or type an IMDb id, with :season:episode for a show - and see what each addon found, and any errors.',
+    ],
+    details: [
+      'Slow and Redundant are AIOStreams’ own labels: slow means an addon was cut off for taking too long on many searches, redundant that what it finds nearly always comes from other addons too.',
+      'The addon stats are only there when the AIOStreams owner has per-user analytics turned on; it is off by default. A test search works either way.',
+      'A test search goes through every addon and debrid service the way pressing play would, so it runs one at a time, with a short pause between searches. Stream links never leave the server - you see counts and errors.',
+      'It needs the configuration password: someone added with Quick Connect can’t be checked until they are reconnected with it.',
+    ],
+    related: ['add-jellyfin-account', 'aiostreams-watch-history'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'sign-in-tv',
     title: 'Signing a TV in to Jellyfin or AIOStreams with a code',
     category: 'Users & Groups',
@@ -1144,7 +1165,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Every person card says when they were last seen watching anything. Users -> Dormant lists everyone not seen for 30 days, and an automation can switch people off after however many days you choose - the same switch as on their card, so turning them back on is one click.',
     steps: [
       'Go to Users and pick Dormant to see who hasn’t watched anything for 30 days.',
-      'To do it automatically, go to Tasks → Automation → Manage Rules → Recipes and pick "Switch off people who stopped watching".',
+      'To do it automatically, go to Tasks -> Automation -> Recipes and pick "Switch off people who stopped watching".',
       'Set the number of days without watching and save.',
     ],
     details: [

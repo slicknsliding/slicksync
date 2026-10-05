@@ -21,6 +21,7 @@ import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButt
 import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
+import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -1254,6 +1255,10 @@ export default function UserDetailPage() {
                         )}
                         {user.providerType === 'jellyfin' && (
                           <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
+                        )}
+                        {/* What AIOStreams itself says about their configuration. */}
+                        {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && (
+                          <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
                         {/* Only a real Jellyfin server keeps a device list. */}
                         {user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin' && (
