@@ -169,12 +169,8 @@ async function checkAndPostIfNewMonth(prisma, accountId) {
     // unmarked (so the next 6h check retries) on an actual failure
     // (Discord unreachable, every poster fetch failed).
     if (result.posted || result.reason === 'nothing watched') {
-      const nextCfg = { ...cfg, lastMosaicMonth: targetMonth }
-      try {
-        await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } })
-      } catch {
-        await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } })
-      }
+      // A fresh read: building and posting the mosaic takes a while.
+      await require('./accountSync').setAccountSyncKeys(prisma, accountId, { lastMosaicMonth: targetMonth })
     }
   } catch (e) {
     console.warn('[PosterMosaic] Monthly check failed:', e?.message)

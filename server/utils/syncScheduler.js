@@ -2,6 +2,7 @@
 const fs = require('fs')
 const path = require('path')
 const { sendSyncNotification } = require('./notify')
+const { setAccountSyncKeys } = require('./accountSync')
 
 // Persist sync schedule under data/sync so Docker mount ./data captures it
 const SYNC_DIR = path.join(process.cwd(), 'data', 'sync')
@@ -255,11 +256,7 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
 
         // Update lastRunAt
         try {
-          const nowIso = new Date().toISOString()
-          if (syncCfg && typeof syncCfg === 'object') {
-            const nextCfg = { ...syncCfg, lastRunAt: nowIso }
-            try { await prisma.appAccount.update({ where: { id: accountIdOrNull }, data: { sync: nextCfg } }) } catch { await prisma.appAccount.update({ where: { id: accountIdOrNull }, data: { sync: JSON.stringify(nextCfg) } }) }
-          }
+          if (syncCfg && typeof syncCfg === 'object') await stampLastRun(prisma, accountIdOrNull, new Date().toISOString())
         } catch {}
 
         // Send notifications (Discord + push)
@@ -367,13 +364,24 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
   seedHeap().then(() => { schedulerLoop() })
 }
 
+/**
+ * Records when a sync run finished - on a fresh read of the settings, not
+ * the copy taken when the run began. A run lasts as long as every person's
+ * provider takes to answer, and writing that old copy back undid anything
+ * saved in the meantime.
+ */
+async function stampLastRun(prisma, accountId, nowIso) {
+  return setAccountSyncKeys(prisma, accountId, { lastRunAt: nowIso })
+}
+
 module.exports = {
   ensureSyncDir,
   readSyncFrequencyMinutes,
   writeSyncFrequencyMinutes,
   performSyncOnce,
   clearSyncSchedule,
-  scheduleSyncs
+  scheduleSyncs,
+  stampLastRun
 }
 
 
