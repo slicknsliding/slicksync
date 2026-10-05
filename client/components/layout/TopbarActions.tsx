@@ -34,6 +34,9 @@ const FALLBACK_FLOAT_TOP = 12;
 // over the page's own controls - a person's pills, the Users Add button -
 // and taps meant for them hit the bell instead.
 const DOCK_BELOW_WIDTH = 768;
+// Docked, how far the cluster sits in from the bar card's right edge: into
+// the card's padding, so it isn't crowding the centred logo.
+const DOCK_EDGE_INSET = 8;
 
 // The topbar's right-hand cluster: command palette, then notifications.
 // Grouped into one component because the resume-tour prompt deliberately
@@ -127,12 +130,18 @@ export function TopbarActions({
     // would re-render the whole cluster (and the bell's subtree) for the
     // entire length of a scroll even when nothing moved.
     if (natural.top < floatTop) {
-      // On a phone, centred on the logo row and flush with its right edge.
+      // On a phone, centred on the logo row, near the bar card's right edge.
       const row = window.innerWidth < DOCK_BELOW_WIDTH ? document.querySelector('[data-nebula-logo-row]') : null;
       const rr = row?.getBoundingClientRect();
+      const card = row?.parentElement?.getBoundingClientRect();
+      const edge = card ? card.right - DOCK_EDGE_INSET : rr?.right ?? 0;
+      // A fixed element's `right` counts from the page's visible width, which
+      // excludes a desktop-style scrollbar; innerWidth would include it and
+      // shift the buttons left by the scrollbar's width.
+      const viewW = document.documentElement.clientWidth;
       const next = rr
-        ? { top: Math.round(rr.top + (rr.height - natural.height) / 2), right: Math.max(Math.round(window.innerWidth - rr.right), 0), docked: true }
-        : { top: floatTop, right: Math.max(window.innerWidth - natural.right, 0), docked: false };
+        ? { top: Math.round(rr.top + (rr.height - natural.height) / 2), right: Math.max(Math.round(viewW - edge), 0), docked: true }
+        : { top: floatTop, right: Math.max(viewW - natural.right, 0), docked: false };
       setSize((prev) =>
         prev && prev.width === natural.width && prev.height === natural.height
           ? prev
@@ -151,7 +160,7 @@ export function TopbarActions({
     const r = target.getBoundingClientRect();
     const nextAnchor = {
       top: Math.max(r.top, 12),
-      right: Math.max(window.innerWidth - r.right, 12),
+      right: Math.max(document.documentElement.clientWidth - r.right, 12),
     };
     setAnchor((prev) =>
       prev && prev.top === nextAnchor.top && prev.right === nextAnchor.right ? prev : nextAnchor
