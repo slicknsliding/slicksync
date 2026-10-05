@@ -50,6 +50,10 @@ export interface WatchStateView {
   installError?: string;
   /** What the 30-minute check last found wrong (server/utils/aioSlickTrax.js). */
   issues?: Array<'missing' | 'trackers' | 'libraries' | 'quiet'>;
+  /** Their choice: keep SlickSync's collections first in their AIOStreams catalogs. */
+  collectionsFirst?: boolean;
+  /** Why moving it to the top didn't work just now, when it didn't. */
+  firstError?: string;
 }
 
 export interface PersonCredit {
@@ -613,6 +617,11 @@ class ApiClient {
   // Watch State with AIOStreams - see server/utils/watchState.js.
   async getWatchState(id: string) {
     return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`);
+  }
+
+  // Keep SlickSync's collections first in their AIOStreams catalog order, or stop.
+  async setWatchStateCollectionsFirst(id: string, enabled: boolean) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state/collections-first`, { method: 'PUT', body: JSON.stringify({ enabled }) });
   }
 
   // Add the SlickTrax link to their AIOStreams configuration again.

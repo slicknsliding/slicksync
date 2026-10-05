@@ -329,6 +329,8 @@ module.exports = ({ prisma }) => {
       // the backlog and deliver it once this is turned back on; any other 4xx
       // has it drop the event, which is what off promises.
       if (!owner) return res.status(410).json({ error: 'Watch State is off for this link' })
+      // AIOStreams is still sending - for the "nothing for a week" check (utils/aioSlickTrax.js).
+      require('../utils/aioSlickTrax').notePush(prisma, owner).catch(() => {})
       const { resolveViewer, handlePush } = require('../utils/watchState')
       const user = await resolveViewer(prisma, owner, req.query.viewer)
       // An unknown profile is answered 404, which drops that event without a

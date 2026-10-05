@@ -21,13 +21,14 @@ import { copyToClipboard } from '@/lib/clipboard';
 const ISSUE_TEXT: Record<string, string> = {
   missing: 'SlickTrax isn’t in their AIOStreams configuration any more, or is switched off - what they watch there isn’t arriving.',
   trackers: 'A household user’s tracker list in AIOStreams leaves SlickTrax out - add it back there.',
-  libraries: 'SlickSync’s collections didn’t make AIOStreams’ library limit - move “SlickSync catalogs” higher in their catalog order.',
+  libraries: 'SlickSync’s collections didn’t make AIOStreams’ library limit - turn on “Keep SlickSync’s collections first” below, or move “SlickSync catalogs” higher in their catalog order yourself.',
   quiet: 'Nothing has arrived from AIOStreams for a week.',
 };
 export function WatchStateRow({ userId }: { userId: string }) {
   const [view, setView] = useState<WatchStateView | null>(null);
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [movingFirst, setMovingFirst] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +66,21 @@ export function WatchStateRow({ userId }: { userId: string }) {
       toast.error(err?.message || 'Couldn’t add it to AIOStreams');
     } finally {
       setInstalling(false);
+    }
+  };
+
+  // Their AIOStreams, their order: only moved when this is on.
+  const setFirst = async (on: boolean) => {
+    setMovingFirst(true);
+    try {
+      const next = await api.setWatchStateCollectionsFirst(userId, on);
+      setView(next);
+      if (next.firstError) toast.error(`Kept the choice, but couldn’t move it yet: ${next.firstError}`);
+      else toast.success(on ? 'SlickSync’s collections are first in their AIOStreams' : 'Their AIOStreams catalog order is left as they set it');
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not change that');
+    } finally {
+      setMovingFirst(false);
     }
   };
 
@@ -108,6 +124,19 @@ export function WatchStateRow({ userId }: { userId: string }) {
                     Add it to AIOStreams again
                   </Button>
                 )}
+                <label className="mt-1 flex items-start gap-2 text-xs text-default cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={!!view.collectionsFirst}
+                    disabled={movingFirst}
+                    onChange={(e) => setFirst(e.target.checked)}
+                  />
+                  <span>
+                    Keep SlickSync’s collections first
+                    <span className="block text-muted">Moves “SlickSync catalogs” to the top of their AIOStreams catalogs so it’s never past the library limit. Nothing else in their order changes. Off: SlickSync never reorders their catalogs.</span>
+                  </span>
+                </label>
               </div>
             )}
             {enabled && (view?.issues?.length ?? 0) > 0 && (

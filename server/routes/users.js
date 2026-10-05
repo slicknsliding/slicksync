@@ -929,11 +929,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     const base = await watchStateBase(req, accountId)
     // What the 30-minute check last found wrong (utils/aioSlickTrax.js).
     let issues = []
+    let collectionsFirst = false
     try {
       const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
       let cfg = acct?.sync
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
       issues = Object.keys(cfg?.aioSlickTraxIssues?.[user.id] || {})
+      collectionsFirst = cfg?.aioSlickTraxFirst?.[user.id] === true
     } catch { /* optional */ }
     const map = readViewerMap(user)
     const people = await prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true, username: true, watchStateEnabled: true } })
@@ -960,6 +962,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // adds the link to that configuration itself.
       canInstall: user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && !!user.aioConfigId && !!user.aioConfigPassword,
       issues,
+      // Their choice: keep SlickSync's collections at the top of their AIOStreams catalogs.
+      collectionsFirst,
       ...extra,
     }
   }
@@ -1078,6 +1082,28 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error adding SlickTrax to AIOStreams:', error)
       res.status(500).json({ error: 'Failed to add it to AIOStreams' })
+    }
+  })
+
+  // "Keep SlickSync's collections first" in their AIOStreams catalog order -
+  // the household's choice, off by default (utils/aioSlickTrax.js).
+  router.put('/:id/watch-state/collections-first', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      let moveError = null
+      try {
+        await require('../utils/aioSlickTrax').setCollectionsFirst(prisma, decrypt, user, !!req.body?.enabled)
+      } catch (e) {
+        // The choice is kept either way; the 30-minute check tries again.
+        moveError = e?.message || 'AIOStreams refused the change'
+      }
+      res.json(await watchStateView(req, accountId, user, moveError ? { firstError: moveError } : {}))
+    } catch (error) {
+      console.error('Error changing collections first:', error)
+      res.status(500).json({ error: 'Failed to change that' })
     }
   })
 

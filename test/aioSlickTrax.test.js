@@ -74,9 +74,8 @@ test('install: AIOStreams\' refusals in plain words', async () => {
   await assert.rejects(trax.installSlickTrax(prisma, decrypt, person(), ''), /Public address of this instance/)
 })
 
-const counts = (recent, earlier) => ({
-  watchStateEvent: { count: async ({ where }) => (where.createdAt.lt ? earlier : recent) },
-})
+// The quiet check reads a stored "last heard" time, not the event table.
+const counts = () => ({})
 
 test('watch: SlickTrax gone, or switched off', async () => {
   for (const cfg of [{ presets: [] }, { presets: [slickTrax({ enabled: false })] }]) {
@@ -106,11 +105,44 @@ test('watch: libraries at the cap without SlickSync\'s collections', async () =>
   assert.deepEqual(await at(twenty.slice(0, 12)), [], 'under the cap: hidden on purpose, not cut')
 })
 
-test('watch: quiet for a week after arriving the week before - not when it never arrived', async () => {
+test('watch: quiet once AIOStreams has sent nothing for a week - never when it never sent anything', async () => {
   const cfg = { presets: [slickTrax()] }
-  assert.deepEqual((await trax.findProblems(counts(0, 9), person(), cfg)).map((p) => p.kind), ['quiet'])
-  assert.deepEqual(await trax.findProblems(counts(0, 0), person(), cfg), [])
-  assert.deepEqual(await trax.findProblems(counts(3, 9), person(), cfg), [])
+  const now = Date.parse('2026-10-05T12:00:00Z')
+  const daysAgo = (d) => new Date(now - d * 86400000).toISOString()
+  assert.deepEqual((await trax.findProblems({}, person(), cfg, { lastPush: daysAgo(8), now })).map((p) => p.kind), ['quiet'])
+  assert.deepEqual(await trax.findProblems({}, person(), cfg, { lastPush: daysAgo(2), now }), [])
+  assert.deepEqual(await trax.findProblems({}, person(), cfg, { lastPush: null, now }), [], 'never heard from: nothing to say has stopped')
+})
+
+test('"last heard" is noted on a push, at most once an hour', async () => {
+  let sync = {}
+  let writes = 0
+  const db = {
+    appAccount: {
+      findUnique: async () => ({ sync: JSON.stringify(sync) }),
+      update: async ({ data }) => { writes++; sync = JSON.parse(data.sync) },
+    },
+  }
+  const owner = { id: 'owner-hourly', accountId: 'acc' }
+  const t0 = Date.parse('2026-10-05T12:00:00Z')
+  assert.equal(await trax.notePush(db, owner, t0), true)
+  assert.equal(await trax.notePush(db, owner, t0 + 30 * 60000), false)
+  assert.equal(await trax.notePush(db, owner, t0 + 61 * 60000), true)
+  assert.equal(writes, 2)
+  assert.equal(sync.aioSlickTraxLastPush['owner-hourly'], new Date(t0 + 61 * 60000).toISOString())
+})
+
+test('collections first: only SlickSync’s catalog moves, everything else keeps its order and settings', () => {
+  const ours = { id: 'st1e3b0.slicksync-collections', type: 'movie' }
+  // No order set yet: an entry for ours alone puts it first; the rest keep AIOStreams' natural order.
+  assert.deepEqual(trax.moveFirst(undefined, ours), [{ id: ours.id, type: 'movie', enabled: true }])
+  const mods = [
+    { id: 'cm.top', type: 'movie', name: 'Popular films' },
+    { id: ours.id, type: 'movie', name: 'Our picks', enabled: true },
+    { id: 'cm.year', type: 'series', enabled: false },
+  ]
+  assert.deepEqual(trax.moveFirst(mods, ours), [mods[1], mods[0], mods[2]], 'its own name kept; the others untouched')
+  assert.equal(trax.moveFirst([mods[1], mods[0]], ours), null, 'already first: nothing to write')
 })
 
 test('alerts: once when a problem starts, again only after it was fixed and came back', async () => {
