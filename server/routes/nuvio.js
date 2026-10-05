@@ -92,6 +92,18 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         return res.status(400).json({ error: 'Either email+password or OAuth tokens are required' });
       }
 
+      // Reconnecting someone already on Nuvio means the same Nuvio account:
+      // signing in as a different one by mistake would quietly move their
+      // tracking and addons onto someone else's.
+      const existing = await prisma.user.findFirst({
+        where: { id: userId, accountId: getAccountId(req) },
+        select: { username: true, providerType: true, nuvioUserId: true },
+      });
+      if (!existing) return res.status(404).json({ error: 'User not found' });
+      if (existing.providerType === 'nuvio' && existing.nuvioUserId && existing.nuvioUserId !== nuvioUserId) {
+        return res.status(409).json({ error: `That's a different Nuvio account from the one ${existing.username || 'this person'} uses - sign in with theirs` });
+      }
+
       const encryptedRefreshToken = encrypt(refreshToken, req);
 
       await prisma.user.update({
@@ -102,7 +114,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           nuvioUserId,
           email: nuvioEmail || email,
           stremioAuthKey: null,
-          isActive: true
+          isActive: true,
+          // Signed in again: the "needs reconnecting" warning goes now,
+          // not at the next check.
+          providerConnectionError: null,
+          providerConnectionErrorAt: null,
         }
       });
 

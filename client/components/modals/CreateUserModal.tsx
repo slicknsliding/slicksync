@@ -37,6 +37,8 @@ export function CreateUserModal({
 }) {
   const isReconnect = mode === 'reconnect';
   const isJellyfinReconnect = isReconnect && providerType === 'jellyfin';
+  // A Nuvio person signs in to Nuvio again - never offered Stremio's options.
+  const isNuvioReconnect = isReconnect && providerType === 'nuvio';
   const isTV = useIsTV();
   const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success' | 'nuvio-details' | 'nuvio-oauth'>('tabs');
   const [provider, setProvider] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
@@ -431,6 +433,12 @@ export function CreateUserModal({
             setUsername(exchanged.user.email.split('@')[0]);
           }
           setNuvioOauthStatus('completed');
+          if (isNuvioReconnect && userId) {
+            await api.reconnectUserNuvio(userId, { providerUserId: exchanged.user.id, refreshToken: exchanged.refreshToken, email: exchanged.user.email });
+            toast.success(`${userName || 'They'} is connected again`);
+            onReconnectSuccess?.();
+            return;
+          }
           setStep('nuvio-details');
         } catch (err: any) {
           stopNuvioPolling();
@@ -488,6 +496,25 @@ export function CreateUserModal({
       }, 800);
     } catch (err: any) {
       toast.error(err.message || 'Failed to create Nuvio user');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Reconnect by email and password: the same account (the server refuses another).
+  const handleNuvioReconnect = async () => {
+    if (!userId) return;
+    if (!nuvioEmail.trim() || !nuvioPassword) {
+      toast.error('Email and password are required');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await api.reconnectUserNuvio(userId, { email: nuvioEmail.trim(), password: nuvioPassword });
+      toast.success(`${userName || 'They'} is connected again`);
+      onReconnectSuccess?.();
+    } catch (err) {
+      toast.error((err as Error)?.message || 'Could not reconnect them');
     } finally {
       setIsSubmitting(false);
     }
@@ -589,11 +616,13 @@ export function CreateUserModal({
                           )}
                         </motion.div>
                         <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-                          {isJellyfinReconnect ? 'Reconnect Server Sign-in' : isReconnect ? 'Reconnect Stremio Account' : 'Add New User'}
+                          {isJellyfinReconnect ? 'Reconnect Server Sign-in' : isNuvioReconnect ? 'Reconnect Nuvio Account' : isReconnect ? 'Reconnect Stremio Account' : 'Add New User'}
                         </h2>
                         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {isJellyfinReconnect
                             ? `Sign ${userName} in to their server again`
+                            : isNuvioReconnect
+                            ? `Sign ${userName} in to Nuvio again`
                             : isReconnect
                             ? `Choose how you'd like to reconnect ${userName}'s Stremio account`
                             : "Choose how you'd like to add this user"}
@@ -703,7 +732,7 @@ export function CreateUserModal({
                         </div>
                       )}
 
-                      {provider === 'stremio' && !isJellyfinReconnect && (
+                      {provider === 'stremio' && !isJellyfinReconnect && !isNuvioReconnect && (
                       <>
                       {/* 3 Tab Options */}
                       <div className="space-y-3">
@@ -968,7 +997,7 @@ export function CreateUserModal({
                       </>
                       )}
 
-                      {provider === 'nuvio' && (
+                      {(provider === 'nuvio' || isNuvioReconnect) && (
                       <>
                         <div className="space-y-3">
                           {/* Nuvio Credentials Option */}
@@ -1022,6 +1051,7 @@ export function CreateUserModal({
                         {nuvioAuthMethod === 'credentials' && (
                           <div className="mt-6 p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
                             <div className="space-y-4">
+                              {!isNuvioReconnect && (
                               <div>
                                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Username <span style={{ color: 'var(--color-error)' }}>*</span>
@@ -1035,6 +1065,7 @@ export function CreateUserModal({
                                   style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                 />
                               </div>
+                              )}
                               <div>
                                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Email <span style={{ color: 'var(--color-error)' }}>*</span>
@@ -1074,8 +1105,8 @@ export function CreateUserModal({
                               >
                                 Cancel
                               </button>
-                              <Button variant="primary" className="flex-1" onClick={handleNuvioSubmit} isLoading={isSubmitting}>
-                                Add User
+                              <Button variant="primary" className="flex-1" onClick={isNuvioReconnect ? handleNuvioReconnect : handleNuvioSubmit} isLoading={isSubmitting}>
+                                {isNuvioReconnect ? 'Reconnect' : 'Add User'}
                               </Button>
                             </div>
                           </div>
