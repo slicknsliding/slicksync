@@ -9,6 +9,7 @@ const { sendShareNotification } = require('../utils/activityMonitor');
 const { postDiscord, fetchMetadata } = require('../utils/notify');
 const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateUtils');
 const { fetchOmdbRatings } = require('../utils/omdb');
+const { isProviderConnected, PROVIDER_SELECT } = require('../utils/providerInfo');
 const { resolveSimklClientId, startSimklPin, pollSimklPin, getSimklAccountInfo } = require('../utils/simklAuth');
 
 // Export a function that returns the router, allowing dependency injection
@@ -5886,11 +5887,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         },
         select: {
           id: true,
-          stremioAuthKey: true,
           isActive: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -5900,11 +5898,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(404).json({ message: 'User not found or inactive' })
       }
 
-      if (!user.stremioAuthKey && !(user.nuvioRefreshToken && user.nuvioUserId)) {
+      if (!isProviderConnected(user)) {
         return res.status(400).json({ message: 'User not connected to a provider' })
       }
 
-      // Build provider for this user (Stremio or Nuvio)
+      // Build provider for this user (Stremio, Nuvio or Jellyfin)
       const providerInstance = createProvider(user, { decrypt, req })
       if (!providerInstance) {
         return res.status(400).json({ message: 'Failed to initialize provider for user' })
@@ -6005,11 +6003,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         },
         select: {
           id: true,
-          stremioAuthKey: true,
           isActive: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -6023,11 +6018,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'User is disabled' })
       }
 
-      if (!user.stremioAuthKey && !(user.nuvioRefreshToken && user.nuvioUserId)) {
+      if (!isProviderConnected(user)) {
         return res.status(400).json({ error: 'User not connected to a provider' })
       }
 
-      // Build provider for this user (Stremio or Nuvio)
+      // Build provider for this user (Stremio, Nuvio or Jellyfin)
       const providerInstance = createProvider(user, { decrypt, req })
       if (!providerInstance) {
         return res.status(400).json({ error: 'Failed to initialize provider for user' })
@@ -6080,13 +6075,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         },
         select: {
           id: true,
-          stremioAuthKey: true,
           isActive: true,
           username: true,
           email: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
@@ -6100,11 +6092,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'User is disabled' })
       }
 
-      if (!user.stremioAuthKey && !(user.nuvioRefreshToken && user.nuvioUserId)) {
+      if (!isProviderConnected(user)) {
         return res.status(400).json({ error: 'User not connected to a provider' })
       }
 
-      // Fetch via the user's provider (Stremio or Nuvio)
+      // Fetch via the user's provider (Stremio, Nuvio or Jellyfin)
       const providerInstance = createProvider(user, { decrypt, req })
       if (!providerInstance) {
         return res.status(400).json({ error: 'Failed to initialize provider for user' })
@@ -6155,11 +6147,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         select: {
           id: true,
           email: true,
-          stremioAuthKey: true,
           isActive: true,
-          providerType: true,
-          nuvioRefreshToken: true,
-          nuvioUserId: true,
+          ...PROVIDER_SELECT,
           traxAddonEnabled: true,
           traxToken: true
         }
