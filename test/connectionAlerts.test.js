@@ -167,3 +167,24 @@ test('a rejected sign-in stays per person even when the whole server is failing'
   assert.equal(probed, false)
   assert.match(p.rows[0].title, /Ann needs to reconnect Jellyfin/)
 })
+
+test('the "is it up?" check: an error answer is up, no answer or a 5xx is down', async () => {
+  const { serverAnswers } = require('../server/utils/connectionAlerts')
+  const original = global.fetch
+  const answer = (status, body) => async () => ({ ok: status < 400, status, text: async () => body })
+  try {
+    global.fetch = answer(200, '{"ServerName":"x"}')
+    assert.equal(await serverAnswers('https://jf.example.com'), true)
+    // What a real AIOStreams says at a configuration address it doesn't know.
+    global.fetch = answer(401, '{"message":"Unauthorized"}')
+    assert.equal(await serverAnswers('https://aio.example.com/jellyfin/u/family'), true)
+    global.fetch = answer(404, 'Unknown configuration')
+    assert.equal(await serverAnswers('https://aio.example.com/jellyfin/u/family'), true)
+    global.fetch = answer(502, 'Bad Gateway')
+    assert.equal(await serverAnswers('https://jf.example.com'), false)
+    global.fetch = async () => { throw new TypeError('fetch failed') }
+    assert.equal(await serverAnswers('https://jf.example.com'), false)
+  } finally {
+    global.fetch = original
+  }
+})

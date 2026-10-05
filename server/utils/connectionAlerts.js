@@ -47,14 +47,21 @@ function serverKeyOf(person) {
   return require('./jellyfinServerCollections').serverKeyOf(person)
 }
 
-/** Whether the server answers its public, no-sign-in info route. */
+/**
+ * Whether the server is up, asked through its public, no-sign-in info route.
+ * Any answer short of a server error counts: AIOStreams answers that route
+ * only under a valid configuration's address and says "Unauthorized" or
+ * "Unknown configuration" otherwise - which is a server that is up. Down is
+ * no answer at all, or a 5xx (a reverse proxy with nothing behind it).
+ */
 async function serverAnswers(url) {
   try {
     const { jfRequest } = require('../providers/jellyfinAuth')
-    const info = await jfRequest(url, '/System/Info/Public', { timeoutMs: 5000 })
-    return !!info && typeof info === 'object'
-  } catch {
-    return false
+    await jfRequest(url, '/System/Info/Public', { timeoutMs: 5000 })
+    return true
+  } catch (e) {
+    if (e?.unreachable) return false
+    return Number(e?.status) > 0 && Number(e.status) < 500
   }
 }
 
@@ -250,4 +257,4 @@ async function onConnectionRecovered(prisma, accountId, user) {
   }
 }
 
-module.exports = { onConnectionFailed, onConnectionRecovered, outageKey, serverOutagePrefix, SETTLE_MS }
+module.exports = { onConnectionFailed, onConnectionRecovered, outageKey, serverOutagePrefix, serverAnswers, SETTLE_MS }
