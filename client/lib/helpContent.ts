@@ -839,13 +839,14 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'In SlickSync\'s .env, set AIOSTREAMS_URL to that address.',
       'If your AIOStreams has AIOSTREAMS_AUTH set, mirror the same values into AIOSTREAMS_AUTH_USERNAME and AIOSTREAMS_AUTH_PASSWORD - they have to match or every poll is rejected.',
       'Restart SlickSync, then open Metrics -> Health. The Proxy card tells you whether the connection actually works.',
-      'Play something routed through AIOStreams. It should appear in Now Playing within about 30 seconds.',
+      'Play something routed through AIOStreams. It should appear in Now Playing within about a minute.',
     ],
     details: [
       'This is optional. History, Watch Time, streaks, Metrics and Year in Review all come from each provider\'s own library state and work with no proxy at all. The proxy adds live presence, which nothing else can provide.',
       'The two signals are deliberately separate and answer different questions. The proxy says "someone is streaming this right now" and disappears the moment playback stops; the provider library says "this was watched" and is the permanent record. That is why a usenet stream shows up in History but never in Now Playing - it never passed through the proxy.',
       'Attribution matches the AIOStreams username against your users, first by username and then by the local part of their email. If two users share an email address, SlickSync will not guess between them - set AIOSTREAMS_FALLBACK_USER_IDS to a comma-separated list of user IDs to break the tie in that order.',
       'AIOSTREAMS_IGNORE_IPS excludes specific addresses, useful when something automated hits the proxy and you do not want it counted as a watch.',
+      'A stream counts as playing once it has kept playing for about 45 seconds. Apps like Nuvio quietly open a title’s top few streams while you look at its page, so the one you press starts faster - those are listed on Activity -> Proxy, but never show in Now Playing, send a started-watching notification or raise a sync warning.',
     ],
     tips: [
       'If Now Playing is empty while something is genuinely streaming, check the Proxy card on the Health page first - a wrong URL or mismatched auth is by far the most common cause.',
