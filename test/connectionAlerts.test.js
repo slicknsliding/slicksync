@@ -79,3 +79,91 @@ test('a merged person\'s second login does not alert on its own', async () => {
   const p = fakePrisma()
   assert.equal(await onConnectionFailed(p, 'acc', person({ __recordAs: 'u0' }), 'Reconnect needed: 401', new Date(NOW), NOW), false)
 })
+
+// A Jellyfin-compatible server down for everyone on it is one outage.
+function serverPrisma(people, sync = {}) {
+  const p = fakePrisma(sync)
+  p.user = { findMany: async () => people }
+  p.notification.findFirst = async ({ where }) => {
+    const prefix = where.dedupeKey.startsWith
+    const hits = p.rows.filter((r) => r.accountId === where.accountId && r.dedupeKey.startsWith(prefix))
+    return hits.at(-1) || null
+  }
+  return p
+}
+const onServer = (id, username, extra = {}) => ({
+  id, username, providerType: 'jellyfin', jellyfinServerKind: 'jellyfin',
+  jellyfinServerUrl: 'https://jellyfin.example.com', jellyfinServerId: 'srv1', ...extra,
+})
+
+test('four people on one dead server: one alert, then one "back up"', async () => {
+  const since = new Date(NOW)
+  const down = (id, name) => onServer(id, name, { providerConnectionError: 'Connection issue: Could not reach the server', providerConnectionErrorAt: since })
+  const people = [down('a', 'Ann'), down('b', 'Bo'), down('c', 'Cy'), down('d', 'Dee')]
+  const p = serverPrisma(people)
+  const probed = []
+  const probe = async (url) => { probed.push(url); return false }
+
+  // Every person on the server hits the alert path in the same pass.
+  let sent = 0
+  for (const u of people) sent += await onConnectionFailed(p, 'acc', u, 'Connection issue: Could not reach the server', since, NOW + SETTLE_MS, { probe }) ? 1 : 0
+  assert.equal(sent, 1)
+  assert.equal(p.rows.length, 1)
+  assert.match(p.rows[0].title, /Can't reach the Jellyfin server/)
+  assert.match(p.rows[0].body, /Ann, Bo and 2 others/)
+  assert.equal(probed.length, 1, 'confirmed with the public info route before calling it an outage')
+
+  // Later passes stay quiet while it is still down.
+  for (const u of people) assert.equal(await onConnectionFailed(p, 'acc', u, 'Connection issue: Could not reach the server', since, NOW + 3 * SETTLE_MS, { probe }), false)
+  assert.equal(p.rows.length, 1)
+
+  // It comes back: the first person back says so, the rest stay quiet.
+  let back = 0
+  for (const u of people) back += await onConnectionRecovered(p, 'acc', u) ? 1 : 0
+  assert.equal(back, 1)
+  assert.equal(p.rows.length, 2)
+  assert.match(p.rows[1].title, /The Jellyfin server .* is back/)
+})
+
+test('one person failing on a server others still reach is told about on their own', async () => {
+  const since = new Date(NOW)
+  const people = [
+    onServer('a', 'Ann', { providerConnectionError: 'Connection issue: timeout', providerConnectionErrorAt: since }),
+    onServer('b', 'Bo'),
+  ]
+  const p = serverPrisma(people)
+  assert.equal(await onConnectionFailed(p, 'acc', people[0], 'Connection issue: timeout', since, NOW + SETTLE_MS, { probe: async () => false }), true)
+  assert.equal(p.rows.length, 1)
+  assert.match(p.rows[0].title, /Can't reach Ann's Jellyfin/)
+})
+
+test('everyone failing but the server answers: not an outage, each person as before', async () => {
+  const since = new Date(NOW)
+  const people = [
+    onServer('a', 'Ann', { providerConnectionError: 'Connection issue: HTTP 500', providerConnectionErrorAt: since }),
+    onServer('b', 'Bo', { providerConnectionError: 'Connection issue: HTTP 500', providerConnectionErrorAt: since }),
+  ]
+  const p = serverPrisma(people)
+  for (const u of people) assert.equal(await onConnectionFailed(p, 'acc', u, 'Connection issue: HTTP 500', since, NOW + SETTLE_MS, { probe: async () => true }), true)
+  assert.equal(p.rows.length, 2)
+  assert.ok(p.rows.every((r) => /^Can't reach (Ann|Bo)'s Jellyfin/.test(r.title)))
+})
+
+test('a one-person server that is down still gets its server alert', async () => {
+  const since = new Date(NOW)
+  const solo = onServer('a', 'Ann', { jellyfinServerKind: 'aiostreams', jellyfinServerUrl: 'https://aio.example.com', jellyfinServerId: 'aio1', providerConnectionError: 'Connection issue: timeout', providerConnectionErrorAt: since })
+  const p = serverPrisma([solo])
+  assert.equal(await onConnectionFailed(p, 'acc', solo, 'Connection issue: timeout', since, NOW + SETTLE_MS, { probe: async () => false }), true)
+  assert.match(p.rows[0].title, /Can't reach the AIOStreams server/)
+  assert.match(p.rows[0].body, /for Ann until/)
+})
+
+test('a rejected sign-in stays per person even when the whole server is failing', async () => {
+  const since = new Date(NOW)
+  const people = [onServer('a', 'Ann', { providerConnectionError: 'Reconnect needed: 401', providerConnectionErrorAt: since })]
+  const p = serverPrisma(people)
+  let probed = false
+  assert.equal(await onConnectionFailed(p, 'acc', people[0], 'Reconnect needed: 401', since, NOW, { probe: async () => { probed = true; return false } }), true)
+  assert.equal(probed, false)
+  assert.match(p.rows[0].title, /Ann needs to reconnect Jellyfin/)
+})
