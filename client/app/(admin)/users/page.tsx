@@ -605,7 +605,7 @@ export default function UsersPage() {
           filterTabs={{
             options: [
               { key: 'all', label: 'All' },
-              { key: 'dormant', label: `Dormant (${DORMANT_DAYS}+ days)`, count: dormantCount },
+              { key: 'dormant', label: 'Dormant', count: dormantCount },
             ],
             activeKey: peopleFilter,
             onChange: (key) => setPeopleFilter(key === 'dormant' ? 'dormant' : 'all'),

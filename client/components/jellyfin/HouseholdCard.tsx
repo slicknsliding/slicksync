@@ -403,7 +403,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
             <p className="text-sm font-medium text-default">History</p>
             {([['own', 'Their own', 'Their own Continue Watching and watched marks, and their own trackers.'], ['shared', `Shared with ${personName}`, `One history with ${personName}, using ${personName}'s trackers.`]] as const).map(([value, label, hint]) => (
               <label key={value} className="flex items-start gap-2 text-sm cursor-pointer">
-                <input type="radio" name="household-history" className="mt-1" checked={newHistory === value} onChange={() => setNewHistory(value)} />
+                <input type="radio" name="household-history" className="mt-1" aria-label={label} checked={newHistory === value} onChange={() => setNewHistory(value)} />
                 <span><span className="text-default">{label}</span><span className="block text-xs text-muted">{hint}</span></span>
               </label>
             ))}

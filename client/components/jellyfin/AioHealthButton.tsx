@@ -11,10 +11,12 @@ import { createPortal } from 'react-dom';
 import { HeartIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { api, type AioHealth, type AioTestSearch } from '@/lib/api';
+import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
 
 export function AioHealthButton({ userId, name }: { userId: string; name: string }) {
   const button = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
   const [range, setRange] = useState<'24h' | '7d'>('24h');
   const [state, setState] = useState<AioHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,15 +30,14 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
   const place = () => {
     const r = button.current?.getBoundingClientRect();
     if (!r) return null;
-    const width = Math.min(380, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16));
-    return { top: r.bottom + 8, left, width };
+    return placePopup(r, 380, panel.current?.scrollHeight);
   };
   const toggle = () => {
     if (open) { close(); return; }
     const at = place();
     if (at) setAnchor(at);
   };
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
 
   // Read when opened (and when the range changes) - it asks AIOStreams.
   useEffect(() => {
@@ -89,10 +90,11 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />
           <div
+            ref={panel}
             role="dialog"
             aria-label={`AIOStreams health for ${name}`}
-            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3 max-h-[75vh] overflow-y-auto"
-            style={{ top: anchor.top, left: anchor.left, width: anchor.width, background: 'var(--color-surface)' }}
+            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
+            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
           >
             <div>
               <p className="text-sm font-semibold text-default">AIOStreams health for {name}</p>
@@ -142,7 +144,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
                             <div className="min-w-0">
                               <p className="text-default truncate">{x.name}</p>
                               <p className="text-subtle">
-                                {x.requests} searches · {x.errorRate}% errors · {x.emptyRate}% empty{x.avgLatencyMs != null ? ` · ${(x.avgLatencyMs / 1000).toFixed(1)}s` : ''}
+                                {x.requests} search{x.requests === 1 ? "" : "es"} · {x.errorRate}% errors · {x.emptyRate}% empty{x.avgLatencyMs != null ? ` · ${(x.avgLatencyMs / 1000).toFixed(1)}s` : ''}
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-1 justify-end flex-shrink-0">

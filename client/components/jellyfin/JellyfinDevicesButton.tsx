@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { api, type JellyfinDevice } from '@/lib/api';
+import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
 
 function ago(iso: string | null) {
   if (!iso) return null;
@@ -25,7 +26,8 @@ function ago(iso: string | null) {
 
 export function JellyfinDevicesButton({ userId, name }: { userId: string; name: string }) {
   const button = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
   const [state, setState] = useState<{ needsAdmin: boolean; devices: JellyfinDevice[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -36,9 +38,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
   const place = () => {
     const r = button.current?.getBoundingClientRect();
     if (!r) return null;
-    const width = Math.min(340, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16));
-    return { top: r.bottom + 8, left, width };
+    return placePopup(r, 340, panel.current?.scrollHeight);
   };
 
   const load = () => {
@@ -53,6 +53,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
     setAnchor(at);
     load();
   };
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;
@@ -97,10 +98,11 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />
           <div
+            ref={panel}
             role="dialog"
             aria-label={`Devices signed in as ${name}`}
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
-            style={{ top: anchor.top, left: anchor.left, width: anchor.width, background: 'var(--color-surface)' }}
+            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
           >
             <div>
               <p className="text-sm font-semibold text-default">Signed in as {name}</p>

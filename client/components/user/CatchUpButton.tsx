@@ -10,10 +10,12 @@ import { createPortal } from 'react-dom';
 import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { api, type CatchUpEpisodes, type CatchUpJob } from '@/lib/api';
+import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
 
 export function CatchUpButton({ userId, name, hasServer }: { userId: string; name: string; hasServer: boolean }) {
   const button = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
   const [shows, setShows] = useState<{ id: string; name: string }[] | null>(null);
   const [showId, setShowId] = useState('');
   const [typedId, setTypedId] = useState('');
@@ -29,15 +31,14 @@ export function CatchUpButton({ userId, name, hasServer }: { userId: string; nam
   const place = () => {
     const r = button.current?.getBoundingClientRect();
     if (!r) return null;
-    const width = Math.min(360, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16));
-    return { top: r.bottom + 8, left, width };
+    return placePopup(r, 360, panel.current?.scrollHeight);
   };
   const toggle = () => {
     if (open) { close(); return; }
     const at = place();
     if (at) setAnchor(at);
   };
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;
@@ -123,10 +124,11 @@ export function CatchUpButton({ userId, name, hasServer }: { userId: string; nam
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />
           <div
+            ref={panel}
             role="dialog"
             aria-label={`Mark ${name} caught up`}
-            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3 max-h-[75vh] overflow-y-auto"
-            style={{ top: anchor.top, left: anchor.left, width: anchor.width, background: 'var(--color-surface)' }}
+            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
+            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
           >
             <div>
               <p className="text-sm font-semibold text-default">Caught up to…</p>

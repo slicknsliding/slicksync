@@ -8,10 +8,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { Button, Modal } from '@/components/ui';
 import { api, type AioHistory } from '@/lib/api';
+import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
 
 const REASON: Record<string, string> = {
   seen: 'Seen',
@@ -21,7 +22,8 @@ const REASON: Record<string, string> = {
 
 export function AioHistoryButton({ userId, name }: { userId: string; name: string }) {
   const button = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
   const [state, setState] = useState<AioHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<AioHistory['versions'][number] | null>(null);
@@ -33,15 +35,14 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
   const place = () => {
     const r = button.current?.getBoundingClientRect();
     if (!r) return null;
-    const width = Math.min(380, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16));
-    return { top: r.bottom + 8, left, width };
+    return placePopup(r, 380, panel.current?.scrollHeight);
   };
   const toggle = () => {
     if (open) { close(); return; }
     const at = place();
     if (at) setAnchor(at);
   };
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
 
   // The change alert links here with ?aioHistory=1.
   useEffect(() => {
@@ -90,17 +91,18 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
         aria-expanded={open}
         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-default text-xs text-subtle hover:text-default hover:bg-surface-hover transition-colors"
       >
-        <ClockIcon className="w-3.5 h-3.5" />
+        <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
         AIOStreams history
       </button>
       {open && anchor && typeof document !== 'undefined' && createPortal(
         <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => { if (!restoring) close(); }} />
+          <div className="fixed inset-0 z-[9998]" onClick={close} />
           <div
+            ref={panel}
             role="dialog"
             aria-label={`AIOStreams history for ${name}`}
-            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3 max-h-[75vh] overflow-y-auto"
-            style={{ top: anchor.top, left: anchor.left, width: anchor.width, background: 'var(--color-surface)' }}
+            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
+            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
           >
             <div>
               <p className="text-sm font-semibold text-default">AIOStreams history for {name}</p>
@@ -120,13 +122,14 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
                   <div key={v.id} className="rounded-xl px-3 py-2 text-xs space-y-1" style={{ background: 'var(--color-surface-hover)' }}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-default">
-                        {new Date(v.at).toLocaleString()} · {REASON[v.reason] || v.reason}{v.current ? ' · now' : ''}
+                        {new Date(v.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} · {REASON[v.reason] || v.reason}{v.current ? ' · now' : ''}
                       </span>
                       {!v.current && (
                         <button
                           type="button"
-                          onClick={() => setRestoring(v)}
-                          className="px-2 py-0.5 rounded-md border border-default text-[11px] text-default hover:bg-surface"
+                          // The confirmation is a dialog of its own; the popup would sit on top of it.
+                          onClick={() => { setRestoring(v); close(); }}
+                          className="shrink-0 whitespace-nowrap px-2 py-0.5 rounded-md border border-default text-[11px] text-default hover:bg-surface"
                         >
                           Put back
                         </button>
@@ -146,7 +149,7 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
       <Modal
         isOpen={!!restoring}
         onClose={() => { if (!busy) setRestoring(null); }}
-        title={restoring ? `Put ${name}'s configuration back to ${new Date(restoring.at).toLocaleString()}?` : ''}
+        title={restoring ? `Put ${name}'s configuration back to ${new Date(restoring.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}?` : ''}
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">Its addons, filters and settings come back. Keep what is there now for:</p>

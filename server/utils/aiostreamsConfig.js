@@ -180,8 +180,13 @@ function summarize(config) {
     keyHash: crypto.createHash('sha256').update(stableJson(s.credentials || {})).digest('hex').slice(0, 12),
   }))
   const users = (Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []).map((p) => String(p.name || p.id || ''))
+  // Which catalogs show, and in what order - the order also decides which make
+  // AIOStreams' library limit.
+  const catalogOrder = crypto.createHash('sha256')
+    .update(stableJson((Array.isArray(config?.catalogModifications) ? config.catalogModifications : []).map((m) => [m?.id, m?.type, m?.enabled !== false])))
+    .digest('hex').slice(0, 12)
   const hash = crypto.createHash('sha256').update(stableJson(config || {})).digest('hex').slice(0, 16)
-  return { addons, services, users, hash }
+  return { addons, services, users, catalogOrder, hash }
 }
 
 const SERVICE_NAMES = {
@@ -216,6 +221,8 @@ function describeChanges(before, after) {
   const afterUsers = new Set(after.users || [])
   for (const u of afterUsers) if (!beforeUsers.has(u)) out.push(`added household user ${u}`)
   for (const u of beforeUsers) if (!afterUsers.has(u)) out.push(`removed household user ${u}`)
+  // Looks taken before catalogOrder existed carry none; nothing to compare.
+  if (before.catalogOrder && after.catalogOrder && before.catalogOrder !== after.catalogOrder) out.push('changed the catalog order')
   if (!out.length && before.hash !== after.hash) out.push('changed other settings')
   return out
 }
