@@ -234,6 +234,15 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             itemCount: Array.isArray(library) ? library.length : 0
           })
 
+          // Titles watched before server posters existed (utils/jellyfinImages.js).
+          if (user.providerType === 'jellyfin') {
+            try {
+              await require('./jellyfinImages').fillMissingPosters(prisma, accountId, user.__recordAs || user.id, library)
+            } catch (e) {
+              console.warn(`[ActivityMonitor] poster fill failed for ${user.id}:`, e.message)
+            }
+          }
+
           if (user.providerConnectionError) {
             await clearConnectionError(user.id)
             await require('./connectionAlerts').onConnectionRecovered(prisma, accountId, user)

@@ -128,9 +128,42 @@ async function imagesOpen(serverKey, posterUrl, { fetchImpl = fetch } = {}) {
   }
 }
 
+/**
+ * Titles watched before server posters existed were recorded with none. After
+ * a library read, fill the person's blank History, viewing and session
+ * posters from it - only blank ones, only titles the library now has a poster
+ * for. Two cheap reads when there is nothing to do.
+ */
+async function fillMissingPosters(prisma, accountId, userId, library) {
+  if (!userId || !Array.isArray(library) || library.length === 0) return 0
+  const posters = new Map()
+  for (const item of library) if (item?._id && item.poster) posters.set(item._id, item.poster)
+  if (posters.size === 0) return 0
+  let filled = 0
+  const where = { accountId, userId, poster: null }
+  const [movies, episodes, sessions] = await Promise.all([
+    prisma.movieWatchHistory.findMany({ where, select: { itemId: true }, distinct: ['itemId'] }).catch(() => []),
+    prisma.episodeWatchHistory.findMany({ where, select: { showId: true }, distinct: ['showId'] }).catch(() => []),
+    prisma.watchSession.findMany({ where, select: { itemId: true }, distinct: ['itemId'] }).catch(() => []),
+  ])
+  for (const { itemId } of movies) {
+    if (!posters.has(itemId)) continue
+    filled += (await prisma.movieWatchHistory.updateMany({ where: { ...where, itemId }, data: { poster: posters.get(itemId) } })).count
+  }
+  for (const { showId } of episodes) {
+    if (!posters.has(showId)) continue
+    filled += (await prisma.episodeWatchHistory.updateMany({ where: { ...where, showId }, data: { poster: posters.get(showId) } })).count
+  }
+  for (const { itemId } of sessions) {
+    if (!posters.has(itemId)) continue
+    filled += (await prisma.watchSession.updateMany({ where: { ...where, itemId }, data: { poster: posters.get(itemId) } })).count
+  }
+  return filled
+}
+
 function forgetForTests() {
   openByServer.clear()
   known = { at: 0, urls: [] }
 }
 
-module.exports = { serverPosterUrl, isServerPosterUrl, looksLikeServerPoster, knownServerUrls, allowPrivatePoster, imagesOpen, forgetForTests, POSTER_WIDTH }
+module.exports = { serverPosterUrl, isServerPosterUrl, looksLikeServerPoster, fillMissingPosters, knownServerUrls, allowPrivatePoster, imagesOpen, forgetForTests, POSTER_WIDTH }

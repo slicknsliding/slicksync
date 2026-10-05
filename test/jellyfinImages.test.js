@@ -178,3 +178,44 @@ test('/api/img serves a poster from a home server, and never follows a redirect 
     fs.rmSync(tmp, { recursive: true, force: true })
   }
 })
+
+test('titles watched before server posters existed get theirs filled in, blank ones only', async () => {
+  const rows = {
+    movieWatchHistory: [
+      { accountId: 'acc', userId: 'u1', itemId: 'tmdb:129', poster: null },
+      { accountId: 'acc', userId: 'u1', itemId: 'tmdb:500', poster: 'https://kept.example.com/p.jpg' },
+      { accountId: 'acc', userId: 'u2', itemId: 'tmdb:129', poster: null },
+    ],
+    episodeWatchHistory: [
+      { accountId: 'acc', userId: 'u1', showId: 'tvdb:424536', poster: null },
+      { accountId: 'acc', userId: 'u1', showId: 'tvdb:424536', poster: null },
+      { accountId: 'acc', userId: 'u1', showId: 'tvdb:999', poster: null },
+    ],
+    watchSession: [{ accountId: 'acc', userId: 'u1', itemId: 'tmdb:129', poster: null }],
+  }
+  const matches = (r, where) => Object.entries(where).every(([k, v]) => r[k] === v)
+  const prisma = Object.fromEntries(Object.entries(rows).map(([name, list]) => [name, {
+    findMany: async ({ where, distinct }) => {
+      const seen = new Set()
+      return list.filter((r) => matches(r, where)).filter((r) => !seen.has(r[distinct[0]]) && seen.add(r[distinct[0]])).map((r) => ({ [distinct[0]]: r[distinct[0]] }))
+    },
+    updateMany: async ({ where, data }) => {
+      const hit = list.filter((r) => matches(r, where))
+      for (const r of hit) Object.assign(r, data)
+      return { count: hit.length }
+    },
+  }]))
+  const library = [
+    { _id: 'tmdb:129', poster: 'https://jf.example.com/Items/a/Images/Primary?tag=m' },
+    { _id: 'tmdb:500', poster: 'https://jf.example.com/Items/b/Images/Primary?tag=n' },
+    { _id: 'tvdb:424536', poster: 'https://jf.example.com/Items/c/Images/Primary?tag=s' },
+  ]
+  assert.equal(await images.fillMissingPosters(prisma, 'acc', 'u1', library), 4)
+  assert.equal(rows.movieWatchHistory[0].poster, library[0].poster)
+  assert.equal(rows.movieWatchHistory[1].poster, 'https://kept.example.com/p.jpg', 'a poster already there is kept')
+  assert.equal(rows.movieWatchHistory[2].poster, null, 'another person is left alone')
+  assert.ok(rows.episodeWatchHistory.slice(0, 2).every((r) => r.poster === library[2].poster), 'every episode of the show')
+  assert.equal(rows.episodeWatchHistory[2].poster, null, 'a show the library has no poster for stays blank')
+  assert.equal(rows.watchSession[0].poster, library[0].poster)
+  assert.equal(await images.fillMissingPosters(prisma, 'acc', 'u1', library), 0, 'nothing left to do')
+})
