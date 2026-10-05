@@ -924,9 +924,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     return base
   }
 
-  async function watchStateView(req, accountId, user) {
+  async function watchStateView(req, accountId, user, extra = {}) {
     const { readViewerMap } = require('../utils/watchState')
     const base = await watchStateBase(req, accountId)
+    // What the 30-minute check last found wrong (utils/aioSlickTrax.js).
+    let issues = []
+    try {
+      const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acct?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      issues = Object.keys(cfg?.aioSlickTraxIssues?.[user.id] || {})
+    } catch { /* optional */ }
     const map = readViewerMap(user)
     const people = await prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true, username: true, watchStateEnabled: true } })
     const byId = new Map(people.map((p) => [p.id, p]))
@@ -948,6 +956,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         }
       }),
       people: people.map((p) => ({ id: p.id, username: p.username, enabled: !!p.watchStateEnabled })),
+      // Someone added with their AIOStreams configuration password: SlickSync
+      // adds the link to that configuration itself.
+      canInstall: user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && !!user.aioConfigId && !!user.aioConfigPassword,
+      issues,
+      ...extra,
+    }
+  }
+
+  // Add the SlickTrax link to their AIOStreams configuration (utils/aioSlickTrax.js).
+  async function installIntoAio(req, accountId, user) {
+    try {
+      const base = await watchStateBase(req, accountId)
+      const result = await require('../utils/aioSlickTrax').installSlickTrax(prisma, decrypt, user, base)
+      return { install: result.added ? 'added' : 'already' }
+    } catch (e) {
+      return { install: 'failed', installError: e?.message || 'AIOStreams refused the change' }
     }
   }
 
@@ -975,10 +999,27 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // then kept stable so a link already pasted into AIOStreams keeps working.
       const traxToken = user.traxToken || (enabled ? require('crypto').randomBytes(24).toString('hex') : null)
       const updated = await prisma.user.update({ where: { id: user.id }, data: { watchStateEnabled: enabled, traxToken } })
-      res.json(await watchStateView(req, accountId, updated))
+      // Turning it on for someone whose configuration SlickSync can write to
+      // adds the link there too, instead of handing it over to paste.
+      const canInstall = enabled && updated.providerType === 'jellyfin' && updated.jellyfinServerKind === 'aiostreams' && updated.aioConfigId && updated.aioConfigPassword
+      res.json(await watchStateView(req, accountId, updated, canInstall ? await installIntoAio(req, accountId, updated) : {}))
     } catch (error) {
       console.error('Error toggling Watch State:', error)
       res.status(500).json({ error: 'Failed to update Watch State' })
+    }
+  })
+
+  // Try adding it to their AIOStreams configuration again (after fixing what stopped it).
+  router.post('/:id/watch-state/install', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      res.json(await watchStateView(req, accountId, user, await installIntoAio(req, accountId, user)))
+    } catch (error) {
+      console.error('Error adding SlickTrax to AIOStreams:', error)
+      res.status(500).json({ error: 'Failed to add it to AIOStreams' })
     }
   })
 

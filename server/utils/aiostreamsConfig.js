@@ -9,10 +9,16 @@
 // household hears about it: which addons came or went, which debrid services,
 // which household users, or that some other setting moved.
 //
-// The one thing SlickSync ever writes to a configuration is its own profile
-// variants, when the household gives a profile collections of its own
-// (utils/aioProfileVariants.js) - and it re-reads the configuration straight
-// after, so that write is never reported as an outside change.
+// What SlickSync ever writes to a configuration - each through writeConfig
+// below, each preceded by noteOutsideChanges and followed by rebaseline, so
+// none is ever reported as an outside change:
+// - its own profile variants, when the household gives a profile collections
+//   of its own (utils/aioProfileVariants.js);
+// - debrid keys that match a rotated Vault key, for people opted in
+//   (utils/aioServiceKeys.js);
+// - the SlickTrax link, added (or switched back on) when AIOStreams watch
+//   history is turned on for someone (utils/aioSlickTrax.js).
+// Nothing else in a configuration is touched.
 
 const crypto = require('crypto')
 
@@ -318,12 +324,15 @@ function scheduleConfigGuard(prisma, decrypt) {
     // follows doesn't report SlickSync's own fix as an outside change.
     await require('./aioProfileVariants').healProfileVariants(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] profile variants check failed:', e?.message))
     await checkConfigs(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] check failed:', e?.message))
+    // Is their AIOStreams watch history still reaching SlickSync?
+    await require('./aioSlickTrax').checkSlickTrax(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] SlickTrax check failed:', e?.message))
   }
   setTimeout(run, 2 * 60 * 1000)
   timer = setInterval(run, CHECK_INTERVAL_MS)
 }
 
 module.exports = {
+  alert,
   instanceBase,
   configAccountFrom,
   readConfig,

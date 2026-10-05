@@ -1668,11 +1668,11 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Watch history from AIOStreams - Odin, Infuse, Swiftfin and the desktop app',
     category: 'Sharing & integrations',
     keywords: ['aiostreams', 'watch state', 'jellyfin', 'odin', 'infuse', 'swiftfin', 'aiostreams desktop', 'watched sync', 'jellyfin history', 'aiostreams history'],
-    answer: 'People who watch through AIOStreams\' own apps never touch a Stremio or Nuvio library, so their viewing used to be invisible here. Turn on AIOStreams watch history for them - the user\'s page -> Watch-Tracking Integrations - and add the link it gives you to AIOStreams. What they watch there is recorded in SlickSync, and what they watched anywhere else shows as watched in those apps.',
+    answer: 'People who watch through AIOStreams\' own apps never touch a Stremio or Nuvio library, so their viewing used to be invisible here. Turn on AIOStreams watch history for them - the user\'s page -> Watch-Tracking Integrations. For someone added with their AIOStreams configuration password, SlickSync adds the link to their configuration itself; otherwise add the link it gives you to AIOStreams. What they watch there is recorded in SlickSync, and what they watched anywhere else shows as watched in those apps.',
     steps: [
       'Open the user -> Watch-Tracking Integrations -> AIOStreams watch history -> Turn on.',
-      'Copy the link it shows.',
-      'In AIOStreams, open the configuration, add an addon by URL, and paste the link.',
+      'Someone added with their AIOStreams configuration password: that\'s it - SlickSync adds the link to their configuration.',
+      'Anyone else: copy the link it shows, then in AIOStreams open the configuration, add an addon by URL, and paste it.',
       'Watch something in Odin, Infuse, Swiftfin or the AIOStreams desktop app. Once AIOStreams has been used, its profiles appear under the toggle - check each one is linked to the right person.',
     ],
     details: [
@@ -1684,6 +1684,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'One link covers the whole AIOStreams setup, so it is only needed once per household; the toggle on each person decides whose viewing counts.',
       'AIOStreams has to be able to reach this instance. Fill in Public address of this instance under Settings -> Integrations if the link shows a warning. Like the SlickTrax Addon, the link carries a private token, so it works without a login - and if a login gate sits in front of the instance, the /trax/ path must be exempt from it.',
       'Turning it off stops recording straight away. Turning it back on keeps the same link.',
+      'When SlickSync adds the link itself, AIOStreams has to accept it: a configuration already at its addon limit, or an AIOStreams that can\'t reach this instance, is refused - the reason is shown under the switch, with a button to try again once it\'s fixed. Nothing else in the configuration is changed.',
+      'Every 30 minutes SlickSync also checks the link is still doing its job, and tells you once (bell and push) if it stops: SlickTrax removed or switched off in AIOStreams, a household user whose tracker list leaves it out, SlickSync\'s catalogs pushed past AIOStreams\' library limit by the catalogs above them, or nothing arriving for a week after it had been. The same notes show under the switch until fixed.',
       'Watching in AIOStreams shows under Now Playing the moment it starts, with the same "started watching" notification as any other viewing. AIOStreams only reports play, pause and stop, so the position shown is worked out from the time since it started, and a viewing whose stop never arrives drops off once its runtime has passed.',
       'Nothing is counted twice. AIOStreams used as an addon inside Stremio or Nuvio is recorded the usual way, through that app\'s library; only AIOStreams\' own apps report through this link.',
       'Someone added with their AIOStreams sign-in (Users -> New User -> Jellyfin) is read straight from the server instead, so for them this link only carries their Watchlist, ratings and dropped shows - their viewing already comes from the server.',

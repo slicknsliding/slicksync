@@ -11,13 +11,23 @@ import { copyToClipboard } from '@/lib/clipboard';
  * The AIOStreams half of watch tracking. People watching through AIOStreams'
  * Jellyfin apps (Odin, Infuse, Swiftfin, its desktop app) never touch a
  * Stremio or Nuvio library, so nothing they watch there reached SlickSync.
- * This turns on the exchange for one person and hands over the link to add
- * to AIOStreams; it also lists the AIOStreams profiles that have shown up, so
- * each can be linked to the right person instead of guessed.
+ * This turns on the exchange for one person and adds the link to their
+ * AIOStreams configuration when SlickSync has its password (otherwise hands
+ * the link over to add by hand); it also lists the AIOStreams profiles that
+ * have shown up, so each can be linked to the right person instead of guessed,
+ * and what the 30-minute check found wrong (server/utils/aioSlickTrax.js).
  */
+
+const ISSUE_TEXT: Record<string, string> = {
+  missing: 'SlickTrax isn’t in their AIOStreams configuration any more, or is switched off - what they watch there isn’t arriving.',
+  trackers: 'A household user’s tracker list in AIOStreams leaves SlickTrax out - add it back there.',
+  libraries: 'SlickSync’s collections didn’t make AIOStreams’ library limit - move “SlickSync catalogs” higher in their catalog order.',
+  quiet: 'Nothing has arrived from AIOStreams for a week.',
+};
 export function WatchStateRow({ userId }: { userId: string }) {
   const [view, setView] = useState<WatchStateView | null>(null);
   const [busy, setBusy] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -35,11 +45,26 @@ export function WatchStateRow({ userId }: { userId: string }) {
     try {
       const next = await api.setWatchState(userId, !view.enabled);
       setView(next);
-      toast.success(next.enabled ? 'AIOStreams watch history on' : 'AIOStreams watch history off');
+      if (next.install === 'failed') toast.error(next.installError || 'Couldn’t add it to AIOStreams');
+      else toast.success(!next.enabled ? 'AIOStreams watch history off' : next.install === 'added' ? 'On, and added to their AIOStreams' : 'AIOStreams watch history on');
     } catch (err: any) {
       toast.error(err?.message || 'Could not change that');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const install = async () => {
+    setInstalling(true);
+    try {
+      const next = await api.installWatchStateIntoAio(userId);
+      setView(next);
+      if (next.install === 'failed') toast.error(next.installError || 'Couldn’t add it to AIOStreams');
+      else toast.success(next.install === 'added' ? 'Added to their AIOStreams' : 'It’s already in their AIOStreams');
+    } catch (err: any) {
+      toast.error(err?.message || 'Couldn’t add it to AIOStreams');
+    } finally {
+      setInstalling(false);
     }
   };
 
@@ -71,7 +96,28 @@ export function WatchStateRow({ userId }: { userId: string }) {
                 ? 'What this person watches in AIOStreams\' apps is recorded here, and what they watched anywhere else shows up there.'
                 : 'For anyone watching through AIOStreams\' apps - Odin, Infuse, Swiftfin or its desktop app - which never reach a Stremio or Nuvio library.'}
             </p>
-            {enabled && view?.manifestUrl && (
+            {enabled && view?.canInstall && (
+              <div className="mt-2 flex flex-col gap-1.5">
+                <p className="text-xs text-muted">
+                  {view.install === 'failed'
+                    ? <span className="text-warning">{view.installError}</span>
+                    : 'SlickSync adds it to their AIOStreams configuration itself.'}
+                </p>
+                {(view.install === 'failed' || (view.issues || []).includes('missing')) && (
+                  <Button variant="secondary" size="sm" isLoading={installing} onClick={install} className="self-start">
+                    Add it to AIOStreams again
+                  </Button>
+                )}
+              </div>
+            )}
+            {enabled && (view?.issues?.length ?? 0) > 0 && (
+              <ul className="mt-2 space-y-1">
+                {view!.issues!.map((k) => (
+                  <li key={k} className="text-xs text-warning">{ISSUE_TEXT[k] || k}</li>
+                ))}
+              </ul>
+            )}
+            {enabled && view?.manifestUrl && !view.canInstall && (
               <>
                 <p className="mt-2 text-xs text-muted">Add this to the AIOStreams configuration as an addon by URL:</p>
                 <button

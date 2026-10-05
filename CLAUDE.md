@@ -145,6 +145,21 @@ which read as an end-of-watch notification).
   `searchCinemetaPosterByTitle()` returns a poster *only* on an exact normalized-title match, plus an exact year
   match when the filename carries a year. No confident match ⇒ no poster, never a guessed one. A previous fuzzy
   lookup (the removed AIOMetadata integration) routinely picked the wrong same-titled film.
+- Jellyfin-compatible servers: metahub for IMDb ids; titles with no IMDb id use the server's own Primary image
+  (`jellyfinImages.js`), with the image tag in the address so new art is a new cache entry. `/api/img` lets those
+  exact addresses through on a private server only on instances allowed to reach private addresses, and never
+  follows a redirect from one.
+
+## AIOStreams configurations: what SlickSync writes
+
+SlickSync holds the configuration password for people added with it, and reads their configuration every 30
+minutes for outside changes (`aiostreamsConfig.js`). It writes only three things, each through `writeConfig`,
+preceded by `noteOutsideChanges` and followed by `rebaseline` so the write is never reported as an outside change:
+profile variants (`aioProfileVariants.js`), debrid keys matching a rotated Vault key for people opted in
+(`aioServiceKeys.js`), and the SlickTrax link when AIOStreams watch history is turned on (`aioSlickTrax.js`).
+AIOStreams replaces the whole configuration on save, so each write changes only its own part of what it just read.
+Anything new that writes to a configuration follows the same sequence and is added here and to the header of
+`aiostreamsConfig.js`.
 
 ## Database: SQLite in "private" instance mode
 

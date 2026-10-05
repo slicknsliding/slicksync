@@ -43,6 +43,13 @@ export interface WatchStateView {
   baseKnown: boolean;
   viewers: Array<{ viewer: string; userId: string | null; skipped?: boolean; username: string | null; userEnabled: boolean | null }>;
   people: Array<{ id: string; username: string; enabled: boolean }>;
+  /** SlickSync can add the link to their AIOStreams configuration itself. */
+  canInstall?: boolean;
+  /** The outcome of adding it just now, when one was tried. */
+  install?: 'added' | 'already' | 'failed';
+  installError?: string;
+  /** What the 30-minute check last found wrong (server/utils/aioSlickTrax.js). */
+  issues?: Array<'missing' | 'trackers' | 'libraries' | 'quiet'>;
 }
 
 export interface PersonCredit {
@@ -606,6 +613,11 @@ class ApiClient {
   // Watch State with AIOStreams - see server/utils/watchState.js.
   async getWatchState(id: string) {
     return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`);
+  }
+
+  // Add the SlickTrax link to their AIOStreams configuration again.
+  async installWatchStateIntoAio(id: string) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state/install`, { method: 'POST' });
   }
 
   async setWatchState(id: string, enabled: boolean) {
