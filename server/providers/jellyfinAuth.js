@@ -93,15 +93,36 @@ async function jfRequest(baseUrl, path, { method = 'GET', token, deviceId, body,
 }
 
 /**
- * Which kind of server answers here. AIOMetadata names itself; AIOStreams and
- * AIOMetadata both carry the `aiostreams` extension block (AIOMetadata offers
- * it so the AIOStreams apps work against it), so the name is checked first.
+ * Which kind of server answers here, before anyone signs in. AIOMetadata
+ * names itself; AIOStreams and AIOMetadata both carry the `aiostreams`
+ * extension block (AIOMetadata offers it so the AIOStreams apps work against
+ * it), so the name is checked first. Only a first guess: AIOStreams already
+ * names each configuration after its owner, and if AIOMetadata does the same
+ * its servers would read as AIOStreams here - signing in settles it
+ * (signedInKind).
  */
 function serverKindOf(info) {
   if (!info || typeof info !== 'object') return 'jellyfin'
   if (String(info.ServerName || '').toLowerCase() === 'aiometadata') return 'aiometadata'
   if (info.aiostreams && typeof info.aiostreams === 'object') return 'aiostreams'
   return 'jellyfin'
+}
+
+/**
+ * Which software answers, once signed in. AIOStreams and AIOMetadata each put
+ * their own name in /System/Info's PackageName, which - unlike ServerName -
+ * no configuration renames, and any signed-in user may read it there. A real
+ * Jellyfin keeps that page for administrators, or names its own package, so
+ * null means "go by the public answer".
+ */
+async function signedInKind(baseUrl, token, { deviceId } = {}) {
+  try {
+    const info = await jfRequest(baseUrl, '/System/Info', { token, deviceId })
+    const pkg = String(info?.PackageName || '').toLowerCase()
+    return pkg === 'aiostreams' || pkg === 'aiometadata' ? pkg : null
+  } catch {
+    return null
+  }
 }
 
 const KIND_LABELS = { jellyfin: 'Jellyfin', aiostreams: 'AIOStreams', aiometadata: 'AIOMetadata' }
@@ -301,6 +322,7 @@ module.exports = {
   authorizationHeader,
   jfRequest,
   serverKindOf,
+  signedInKind,
   serverKindLabel,
   probeServer,
   authenticateByName,
