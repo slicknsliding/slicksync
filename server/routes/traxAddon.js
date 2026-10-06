@@ -238,6 +238,21 @@ module.exports = ({ prisma }) => {
     res.sendFile(file)
   })
 
+  // The stream addon a paused AIOMetadata user is pointed at while a daily
+  // limit or bedtime holds (utils/aiomPause.js): every title has nothing to
+  // play, so their apps still browse and the next thing they press play on
+  // finds nothing - what a pause does everywhere else. Under /trax/ because
+  // AIOMetadata asks for it from its own server, past any login gate. Never
+  // cached, so the moment a pause ends nothing stale stands in for it.
+  router.get('/paused/manifest.json', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res.json({ id: 'slicksync.paused', version: '1.0.0', name: 'SlickSync - paused', description: 'Streaming is paused', resources: ['stream'], types: ['movie', 'series'], catalogs: [] })
+  })
+  router.get('/paused/stream/:type/:id.json', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res.json({ streams: [] })
+  })
+
   async function resolveUser(token) {
     if (!token || typeof token !== 'string' || token.length < 16) return null
     const user = await prisma.user.findFirst({ where: { traxToken: token, traxAddonEnabled: true } })

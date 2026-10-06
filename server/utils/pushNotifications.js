@@ -188,4 +188,39 @@ async function notifyPushForType(prisma, accountId, typeKey, payload) {
   }
 }
 
-module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType }
+/**
+ * Sends one payload to a person's own devices - the ones they turned
+ * notifications on for from their SlickSync page (PersonPushSubscription),
+ * never the admin's. Nothing happens for someone who turned none on. Prunes
+ * gone endpoints like sendPushToAccount; never throws.
+ */
+async function sendPushToPerson(prisma, accountId, userId, payload) {
+  if (!userId || !configureWebPush()) return { sent: 0, pruned: 0 }
+  let subs = []
+  try {
+    subs = await prisma.personPushSubscription.findMany({ where: { accountId: accountId || 'default', userId } })
+  } catch {
+    return { sent: 0, pruned: 0 }
+  }
+  const body = JSON.stringify(payload)
+  let sent = 0
+  let pruned = 0
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, body)
+      sent++
+      prisma.personPushSubscription.update({ where: { id: sub.id }, data: { lastSeenAt: new Date() } }).catch(() => {})
+    } catch (err) {
+      const status = err?.statusCode
+      if (status === 404 || status === 410) {
+        try { await prisma.personPushSubscription.delete({ where: { id: sub.id } }); pruned++ } catch {}
+      } else {
+        console.warn(`[Push] Send to a person's device failed (${new URL(sub.endpoint).host}): status=${status} ${err?.body || err?.message || ''}`)
+      }
+    }
+  }
+  heartbeat('push:person_dispatch_done', { accountId, title: payload?.title, sent, pruned, totalSubs: subs.length })
+  return { sent, pruned }
+}
+
+module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType, sendPushToPerson }

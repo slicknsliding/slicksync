@@ -24,6 +24,7 @@ import { ToggleSwitch, Avatar, ConfirmModal } from '@/components/ui';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
 import { toast } from '@/components/ui/Toast';
 import { providerTypeLabel } from '@/lib/providers';
+import { PersonPushRow } from '@/components/user/PersonPushRow';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -757,6 +758,10 @@ export default function UserSettingsPage() {
           </div>
 
           <div className="p-6">
+            {/* This device: their sign-in stopping, and a daily limit or
+                bedtime about to pause them. Off until they turn it on. */}
+            <PersonPushRow userId={userId} authKey={authKey} />
+
             {/* Watch notifications toggle - independent of the shared account
                 notification settings; opting out here only affects pings
                 about MY OWN watch activity, nobody else's. */}

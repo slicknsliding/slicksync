@@ -360,3 +360,39 @@ test('switching the limit off forgets a "Resume now", so switching it on again a
   await st.setLimit(w.prisma, 'acc', 'mia', null, deps)
   assert.equal(w.sync.screenTimePauses.mia, undefined)
 })
+
+// The person's own phone (devices they turned notifications on for from their
+// page): the same ten minutes' notice Jellyfin puts on screen, for every kind
+// of account, and a word when the pause starts - once each.
+test('the person\'s phone: ten minutes\' notice, then the pause, once each', async () => {
+  st.forgetWarningsForTests()
+  const activity = [row('mia', 82, MON_NOON_LA)]
+  const w = world({ limits: { mia: { minutes: 90, days: [], onReach: 'pause' } }, activity })
+  const pushes = []
+  const deps = { syncPerson: async () => {}, sendPushToPerson: async (_p, _a, id, payload) => { pushes.push([id, payload.title]) } }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 60000), emit: quiet, deps })
+  assert.deepEqual(pushes, [['mia', '8 minutes of watching left today']])
+  activity.push(row('mia', 10, MON_NOON_LA))
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 120000), emit: quiet, deps })
+  assert.deepEqual(pushes[1], ['mia', 'Streaming paused'])
+  assert.equal(pushes.length, 2)
+})
+
+test('a limit that only tells you warns nobody\'s phone', async () => {
+  st.forgetWarningsForTests()
+  const w = world({ limits: { mia: { minutes: 90, days: [] } }, activity: [row('mia', 85, MON_NOON_LA)] })
+  const pushes = []
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps: { sendPushToPerson: async (...a) => { pushes.push(a) } } })
+  assert.deepEqual(pushes, [])
+})
+
+test('bedtime on the person\'s phone: a heads-up ten minutes before, and "Bedtime" when it starts', async () => {
+  st.forgetWarningsForTests()
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [] })
+  const pushes = []
+  const deps = { syncPerson: async () => {}, sendPushToPerson: async (_p, _a, _id, payload) => { pushes.push(payload.title) } }
+  await st.checkScreenTime(w.prisma, { now: at('2026-10-06T03:52:00Z'), emit: quiet, deps }) // 8:52 PM in LA
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  assert.deepEqual(pushes, ['Bedtime in 8 minutes', 'Bedtime'])
+})

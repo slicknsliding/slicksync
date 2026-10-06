@@ -836,6 +836,27 @@ export const userShares = {
   },
 };
 
+/**
+ * Notifications on the person's own devices (PersonPushSubscription on the
+ * server) - off until they turn them on, and never the admin's devices.
+ */
+export const userPush = {
+  async status(userId: string, authKey: string, endpoint?: string): Promise<{ enabled: boolean; publicKey: string | null; subscribed: boolean }> {
+    const q = new URLSearchParams({ userId, ...(endpoint ? { endpoint } : {}) });
+    return request(`/public-library/push/status?${q}`, { authKey });
+  },
+  async subscribe(userId: string, authKey: string, subscription: PushSubscriptionJSON): Promise<{ success: boolean }> {
+    return request('/public-library/push/subscribe', {
+      method: 'POST',
+      authKey,
+      body: JSON.stringify({ userId, subscription, userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null }),
+    });
+  },
+  async unsubscribe(userId: string, authKey: string, endpoint: string): Promise<{ success: boolean }> {
+    return request('/public-library/push/unsubscribe', { method: 'POST', authKey, body: JSON.stringify({ userId, endpoint }) });
+  },
+};
+
 // Convenience export
 export const userApi = {
   oauth: userOAuth,

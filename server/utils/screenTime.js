@@ -23,8 +23,9 @@
 // - AIOStreams: a variant that takes the streams out of every addon, given to
 //   their users in the configuration (utils/aioPause.js). Needs the
 //   configuration password, like every write to it.
-// - AIOMetadata has no way to switch one person off, so a limit there can
-//   only alert.
+// - AIOMetadata: their users are pointed at SlickSync's "paused" stream addon,
+//   which has nothing to play (utils/aiomPause.js). Also needs the
+//   configuration password.
 // Otherwise what is already playing carries on; the next thing they try won't.
 //
 // Minutes are counted exactly like Watch Time: today's WatchActivity rows,
@@ -286,6 +287,7 @@ function pauseKind(person) {
   if (person.providerType !== 'jellyfin') return 'addons'
   if (!person.jellyfinServerKind || person.jellyfinServerKind === 'jellyfin') return 'jellyfin'
   if (person.jellyfinServerKind === 'aiostreams') return 'aiostreams'
+  if (person.jellyfinServerKind === 'aiometadata') return 'aiometadata'
   return null
 }
 
@@ -358,13 +360,14 @@ async function messageJellyfinScreens(prisma, accountId, userId, { text, stop = 
 }
 
 const setAioPaused = (...args) => require('./aioPause').setAioPaused(...args)
+const setAiomPaused = (...args) => require('./aiomPause').setAiomPaused(...args)
 
-const defaultDeps = { syncPerson, setJellyfinBlocked, setAioPaused, messageScreens: messageJellyfinScreens }
+const defaultDeps = { syncPerson, setJellyfinBlocked, setAioPaused, setAiomPaused, messageScreens: messageJellyfinScreens }
 
 /** Whether a pause can work for them, and why not. */
 async function canPause(prisma, accountId, person, deps = {}) {
   const kind = pauseKind(person)
-  if (!kind) return { ok: false, code: 'not-supported', reason: 'AIOMetadata can’t switch one person off, so here a limit can only alert.' }
+  if (!kind) return { ok: false, code: 'not-supported', reason: 'This server can’t switch one person off, so here a limit can only alert.' }
   if (kind === 'addons') {
     let groups = 1
     try { groups = await prisma.group.count({ where: { accountId, userIds: { contains: person.id } } }) } catch { /* offer it; the sync will say */ }
@@ -373,6 +376,10 @@ async function canPause(prisma, accountId, person, deps = {}) {
   if (kind === 'aiostreams') {
     const access = await (deps.aioAccess || require('./aioPause').pauseAccess)(prisma, accountId, person).catch(() => null)
     return access ? { ok: true } : { ok: false, code: 'needs-config-password', reason: 'Pausing needs their AIOStreams configuration password - reconnect them with it.' }
+  }
+  if (kind === 'aiometadata') {
+    const access = await (deps.aiomAccess || require('./aiomPause').pauseAccess)(prisma, accountId, person).catch(() => null)
+    return access ? { ok: true } : { ok: false, code: 'needs-config-password', reason: 'Pausing needs their AIOMetadata configuration password - reconnect them with it.' }
   }
   const ctx = await (deps.adminContext || require('./jellyfinParental').adminContext)(prisma, deps.decrypt || require('./encryption').decrypt, accountId, person.id).catch(() => null)
   return ctx?.available && ctx.session ? { ok: true } : { ok: false, code: 'needs-admin', reason: 'Pausing needs an administrator’s sign-in on their Jellyfin server.' }
@@ -404,6 +411,10 @@ async function pausePerson(prisma, accountId, person, want, deps = {}, { day = n
     const done = await d.setAioPaused(prisma, accountId, person, true, { decrypt: deps.decrypt })
     entry.aioUsers = done?.users || []
   }
+  if (kind === 'aiometadata') {
+    // What was pointed away and what it held before, to put back exactly that.
+    entry.aiomState = await d.setAiomPaused(prisma, accountId, person, true, { decrypt: deps.decrypt })
+  }
   await patchEntry(prisma, accountId, PAUSES, person.id, entry)
   // The sync reads the entry just written.
   if (kind === 'addons') await d.syncPerson(prisma, accountId, person.id)
@@ -421,6 +432,7 @@ async function unpausePerson(prisma, accountId, person, entry, deps = {}, { resu
   if (kind === 'addons') await d.syncPerson(prisma, accountId, person.id)
   if (kind === 'jellyfin' && Array.isArray(entry?.jellyfinSchedules)) await d.setJellyfinBlocked(prisma, accountId, person.id, false, { decrypt: deps.decrypt, restore: entry.jellyfinSchedules })
   if (kind === 'aiostreams' && entry?.aioUsers) await d.setAioPaused(prisma, accountId, person, false, { decrypt: deps.decrypt, users: entry.aioUsers })
+  if (kind === 'aiometadata' && entry?.aiomState) await d.setAiomPaused(prisma, accountId, person, false, { decrypt: deps.decrypt, state: entry.aiomState })
 }
 
 /** A pause made to match `want` without lifting it: a later end, the reasons it holds for. */
@@ -521,7 +533,20 @@ async function setLimit(prisma, accountId, userId, raw, deps = {}) {
   // Switched off: a "Resume now" note for today or tonight goes too, so one
   // switched back on later applies from the start.
   if (!limit && entry && !pauseInForce(entry)) await patchEntry(prisma, accountId, PAUSES, userId, null)
+  await syncServerBedtime(prisma, accountId, person, limit, { timezone, now }, deps)
   return getLimit(prisma, accountId, userId, deps)
+}
+
+/**
+ * A real Jellyfin server's own copy of their bedtime (jellyfinBedtime.js):
+ * written, moved or taken away to match, on a fresh read of their pause.
+ */
+async function syncServerBedtime(prisma, accountId, person, limit, { timezone, now = new Date() }, deps = {}) {
+  if (pauseKind(person) !== 'jellyfin') return
+  const entry = (await readSync(prisma, accountId)).cfg[PAUSES]?.[person.id]
+  const sync = deps.syncBedtimeSchedule || require('./jellyfinBedtime').syncBedtimeSchedule
+  await sync(prisma, accountId, person, limit, { entry, timezone, now }, { decrypt: deps.decrypt })
+    .catch((e) => console.warn(`[ScreenTime] bedtime schedule for ${person.id}:`, e?.message))
 }
 
 /** "Resume now": streaming back for the rest of today - and tonight, if it's bedtime. */
@@ -537,6 +562,8 @@ async function resume(prisma, accountId, userId, deps = {}, { now = new Date() }
   // Remembered, so the next check doesn't pause them again: today for the
   // limit, and tonight for a bedtime that's on now.
   await unpausePerson(prisma, accountId, person, pause, deps, { resumedOn: accountToday(timezone, now).date, skipNight: bed?.night || null })
+  // Tonight opened on the server's own schedule too.
+  await syncServerBedtime(prisma, accountId, person, limit, { timezone, now }, deps)
   return getLimit(prisma, accountId, userId, deps)
 }
 
@@ -578,6 +605,40 @@ async function warnScreens(prisma, accountId, person, limit, { watched, today, n
   if (soon && entry?.skipNight !== soon.night) await say(`${person.id}:bedtime:${soon.night}`, `Bedtime in ${soon.minutes} minute${soon.minutes === 1 ? '' : 's'} - streaming stops at ${backOnLabel(limit.bedtime.from)}.`)
 }
 
+/**
+ * The same ten minutes' notice on the person's own phone, for every kind of
+ * account - only Jellyfin can put it on the screen they're watching. Sent to
+ * devices they turned notifications on for from their own page, so nobody
+ * who didn't ask hears anything; and only when a pause will really happen.
+ */
+async function warnPerson(prisma, accountId, person, limit, { watched, today, now, timezone, entry }, deps) {
+  if (pauseInForce(entry) || !pauseKind(person)) return
+  const notes = []
+  if (limit.minutes && limit.onReach === 'pause' && appliesToday(limit, today.weekday) && entry?.resumedOn !== today.date) {
+    const left = limit.minutes - watched
+    if (left > 0 && left <= WARN_MINUTES) notes.push([`push:${person.id}:limit:${today.date}`, `${left} minute${left === 1 ? '' : 's'} of watching left today`, `Streaming pauses after that${limit.resumeAt && limit.resumeAt !== '00:00' ? `, back on at ${backOnLabel(limit.resumeAt)}` : ' until midnight'}.`])
+  }
+  const soon = minutesToBedtime(limit.bedtime, timezone, now, WARN_MINUTES)
+  if (soon && entry?.skipNight !== soon.night) notes.push([`push:${person.id}:bedtime:${soon.night}`, `Bedtime in ${soon.minutes} minute${soon.minutes === 1 ? '' : 's'}`, `Streaming stops at ${backOnLabel(limit.bedtime.from)} until ${backOnLabel(limit.bedtime.to)}.`])
+  const due = notes.filter(([key]) => !warned.has(key))
+  if (!due.length) return
+  if (!(await canPause(prisma, accountId, person, deps)).ok) return
+  const sendTo = deps.sendPushToPerson || require('./pushNotifications').sendPushToPerson
+  for (const [key, title, body] of due) {
+    warned.add(key)
+    await sendTo(prisma, accountId, person.id, { title, body, url: '/user' }).catch(() => {})
+  }
+}
+
+/** The person's own phone, when a pause starts. */
+async function tellPersonPaused(prisma, accountId, person, want, timezone, deps) {
+  const sendTo = deps.sendPushToPerson || require('./pushNotifications').sendPushToPerson
+  const until = untilLabelFor(timezone, want.until)
+  await sendTo(prisma, accountId, person.id, want.night && !want.budgetDay
+    ? { title: 'Bedtime', body: `Streaming is off until ${until}.`, url: '/user' }
+    : { title: 'Streaming paused', body: `That's today's watching - streaming is back on at ${until}.`, url: '/user' }).catch(() => {})
+}
+
 /** One look across every account with a limit or a pause. Returns the alerts sent. */
 async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {}) {
   const fire = emit || require('./automation/engine').emitAutomationEvent
@@ -588,7 +649,9 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
     if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
     const limits = new Map(Object.entries(cfg?.screenTime || {}).map(([userId, raw]) => [userId, cleanLimit(raw)]).filter(([, l]) => l))
     const pauses = cfg?.[PAUSES] || {}
-    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses)])]
+    // Also anyone whose Jellyfin server still has a bedtime SlickSync wrote,
+    // so one switched off is always taken away.
+    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {})])]
     if (!ids.length) continue
     try {
       const timezone = await resolveAccountTimezone(prisma, account.id)
@@ -621,6 +684,9 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
           console.warn(`[ScreenTime] pausing ${userId}:`, e?.message)
         }
         if (limit) await warnScreens(prisma, account.id, person, limit, ctx, deps).catch(() => {})
+        if (limit) await warnPerson(prisma, account.id, person, limit, ctx, deps).catch(() => {})
+        if (pausedNow && want) await tellPersonPaused(prisma, account.id, person, want, timezone, deps)
+        await syncServerBedtime(prisma, account.id, person, limit, { timezone, now }, deps)
 
         // The limit's own alert: once a day, whether or not it pauses.
         if (!limit?.minutes || !appliesToday(limit, today.weekday) || watched < limit.minutes) continue
@@ -666,5 +732,7 @@ function scheduleScreenTime(prisma) {
 module.exports = {
   getLimit, setLimit, resume, checkScreenTime, scheduleScreenTime, cleanLimit, cleanBedtime, accountToday, nextAccountMidnight, nextAccountTime,
   bedtimeWindow, isStreamingPaused, servesStreams, CHECK_INTERVAL_MS,
+  // For jellyfinBedtime.js, which keeps its state beside the pauses.
+  readSync, patchEntry, pauseInForce,
   forgetWarningsForTests: () => warned.clear(),
 }

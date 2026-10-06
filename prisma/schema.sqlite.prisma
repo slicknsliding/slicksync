@@ -1276,6 +1276,27 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
+// A device a person (not the admin) turned notifications on for, from their
+// own SlickSync page: told when their sign-in stops working, and before a
+// daily limit or bedtime pauses them (utils/pushNotifications.sendPushToPerson).
+// Separate from PushSubscription so the admin's devices are never reached by,
+// or removed with, a person's - one phone can hold both.
+model PersonPushSubscription {
+  id         String    @id @default(cuid())
+  accountId  String    @default("default")
+  userId     String
+  endpoint   String
+  p256dh     String
+  auth       String
+  userAgent  String?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([userId, endpoint])
+  @@index([accountId, userId])
+  @@map("person_push_subscriptions")
+}
+
 // Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
 // built-in proxy (which sees every stream request passing through it in real
 // time, regardless of provider - Stremio, Nuvio, anything using the proxy).
