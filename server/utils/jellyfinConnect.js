@@ -35,14 +35,21 @@ async function signInFromBody(body = {}) {
   if (!serverUrl) throw httpError(400, 'Enter the server address')
   const probe = await jfAuth.probeServer(serverUrl)
   let login
+  let deviceId
   if (body.quickConnectSecret) {
-    login = await jfAuth.quickConnectAuthenticate(probe.serverUrl, String(body.quickConnectSecret), { deviceId: body.quickConnectDevice })
+    deviceId = body.quickConnectDevice
+    login = await jfAuth.quickConnectAuthenticate(probe.serverUrl, String(body.quickConnectSecret), { deviceId })
   } else {
     const username = String(body.jellyfinUsername ?? body.loginName ?? '').trim()
     if (!username) throw httpError(400, 'Enter the user name to sign in as')
+    deviceId = jfAuth.deviceIdFor(probe.serverUrl, username)
     login = await jfAuth.authenticateByName(probe.serverUrl, username, String(body.password ?? ''))
   }
-  return { probe, login: { ...login, serverId: login.serverId || probe.serverId } }
+  // Before signing in, the kind is a guess from the server's name; signed in,
+  // the server says which software it is, and that wins.
+  const kind = await jfAuth.signedInKind(probe.serverUrl, login.token, { deviceId })
+  const confirmed = kind && kind !== probe.kind ? { ...probe, kind, kindLabel: jfAuth.serverKindLabel(kind) } : probe
+  return { probe: confirmed, login: { ...login, serverId: login.serverId || probe.serverId } }
 }
 
 /** The columns a User (or an invite request) stores for this sign-in. */

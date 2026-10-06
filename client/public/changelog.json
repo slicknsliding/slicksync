@@ -22,7 +22,9 @@
       "Adding someone with a Stremio email and password no longer writes the password to the server log.",
       "Adding someone with a Stremio email and password whose name matched another person - a Nuvio or Jellyfin one, say - no longer took over that person; they are added as someone new.",
       "A person's own pages fit a phone: the header keeps their picture and name together, with Sync underneath.",
-      "People signed in through a Jellyfin, AIOStreams or AIOMetadata server show their server instead of a made-up email."
+      "People signed in through a Jellyfin, AIOStreams or AIOMetadata server show their server instead of a made-up email.",
+      "A colour picked for a group or person shows straight away on their own page, also in browsers with a page-recolouring extension - a group set to red no longer stayed purple there.",
+      "An AIOMetadata server named after its owner is still recognised as AIOMetadata, in Add User and once someone is added, instead of being taken for AIOStreams."
     ]
   },
   {
