@@ -359,10 +359,46 @@ async function messageJellyfinScreens(prisma, accountId, userId, { text, stop = 
   return reached
 }
 
+// ---------------------------------------------------------------------------
+// After a pause on Stremio and Nuvio
+//
+// The app on someone's device holds the addon list it last saw - during a
+// pause, the paused one - and can write it back to their account after the
+// pause has ended and SlickSync has put the full list back (seen live on
+// Nuvio, three minutes after a bedtime ended: Account Guard flagged it and
+// their streams stayed off). So the list a pause leaves on the account is
+// remembered as a fingerprint, and for a while after the pause ends each
+// check reads their account: if it is exactly that paused list again, the
+// full list is put back. Any other change is the household's and is left
+// alone. A few tries at most, so SlickSync never fights an app forever.
+const AFTER_PAUSE = 'screenTimeAfterPause'
+const AFTER_PAUSE_MS = 15 * 60 * 1000
+const AFTER_PAUSE_TRIES = 3
+
+/** A fingerprint of an account's addon list: its addresses, in any order. */
+function addonPrint(addons) {
+  const urls = [...new Set((Array.isArray(addons) ? addons : [])
+    .map((a) => String(a?.transportUrl || a?.manifestUrl || a?.url || '').trim())
+    .filter(Boolean))].sort()
+  return require('crypto').createHash('sha256').update(urls.join('\n')).digest('hex').slice(0, 24)
+}
+
+/** The addons on someone's Stremio or Nuvio account right now. */
+async function readAccountAddons(prisma, accountId, userId) {
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user) return null
+  const { makeCreateProvider } = require('../providers')
+  const { encrypt, decrypt } = require('./encryption')
+  const provider = makeCreateProvider({ prisma, encrypt, getAccountId: () => accountId })(user, { decrypt, req: { appAccountId: accountId } })
+  if (!provider?.getAddons) return null
+  const { addons } = await provider.getAddons()
+  return addons
+}
+
 const setAioPaused = (...args) => require('./aioPause').setAioPaused(...args)
 const setAiomPaused = (...args) => require('./aiomPause').setAiomPaused(...args)
 
-const defaultDeps = { syncPerson, setJellyfinBlocked, setAioPaused, setAiomPaused, messageScreens: messageJellyfinScreens }
+const defaultDeps = { syncPerson, setJellyfinBlocked, setAioPaused, setAiomPaused, messageScreens: messageJellyfinScreens, readAddons: readAccountAddons }
 
 /** Whether a pause can work for them, and why not. */
 async function canPause(prisma, accountId, person, deps = {}) {
@@ -417,7 +453,13 @@ async function pausePerson(prisma, accountId, person, want, deps = {}, { day = n
   }
   await patchEntry(prisma, accountId, PAUSES, person.id, entry)
   // The sync reads the entry just written.
-  if (kind === 'addons') await d.syncPerson(prisma, accountId, person.id)
+  if (kind === 'addons') {
+    await d.syncPerson(prisma, accountId, person.id)
+    // What the pause left on their account, to recognise it if their app
+    // writes it back after the pause ends ("After a pause" above).
+    const left = await d.readAddons(prisma, accountId, person.id).catch(() => null)
+    if (left) await patchEntry(prisma, accountId, PAUSES, person.id, { ...entry, pausedPrint: addonPrint(left) })
+  }
   if (kind === 'jellyfin' && stopPlaying) {
     await d.messageScreens(prisma, accountId, person.id, { text: `Streaming is paused until ${untilLabel || 'later'}.`, stop: true, decrypt: deps.decrypt }).catch((e) => console.warn(`[ScreenTime] stopping ${person.id}:`, e?.message))
   }
@@ -425,11 +467,21 @@ async function pausePerson(prisma, accountId, person, want, deps = {}, { day = n
 }
 
 /** Undo a pause: their stream addons back, their Jellyfin account on again, or AIOStreams' variant off. */
-async function unpausePerson(prisma, accountId, person, entry, deps = {}, { resumedOn = null, skipNight = null } = {}) {
+async function unpausePerson(prisma, accountId, person, entry, deps = {}, { resumedOn = null, skipNight = null, now = new Date() } = {}) {
   const d = { ...defaultDeps, ...deps }
   await patchEntry(prisma, accountId, PAUSES, person.id, resumedOn || skipNight ? { resumedOn: resumedOn || null, ...(skipNight ? { skipNight } : {}) } : null)
   const kind = pauseKind(person)
-  if (kind === 'addons') await d.syncPerson(prisma, accountId, person.id)
+  if (kind === 'addons') {
+    await d.syncPerson(prisma, accountId, person.id)
+    // Watch for their app writing the paused list back - unless the full
+    // list is the same as the paused one (no stream addons to lose).
+    if (entry?.pausedPrint) {
+      const restored = await d.readAddons(prisma, accountId, person.id).catch(() => null)
+      if (!restored || addonPrint(restored) !== entry.pausedPrint) {
+        await patchEntry(prisma, accountId, AFTER_PAUSE, person.id, { print: entry.pausedPrint, until: new Date(now.getTime() + AFTER_PAUSE_MS).toISOString(), tries: 0 })
+      }
+    }
+  }
   if (kind === 'jellyfin' && Array.isArray(entry?.jellyfinSchedules)) await d.setJellyfinBlocked(prisma, accountId, person.id, false, { decrypt: deps.decrypt, restore: entry.jellyfinSchedules })
   if (kind === 'aiostreams' && entry?.aioUsers) await d.setAioPaused(prisma, accountId, person, false, { decrypt: deps.decrypt, users: entry.aioUsers })
   if (kind === 'aiometadata' && entry?.aiomState) await d.setAiomPaused(prisma, accountId, person, false, { decrypt: deps.decrypt, state: entry.aiomState })
@@ -468,9 +520,9 @@ async function reconcile(prisma, accountId, person, limit, ctx, deps, { settings
       if (settings || longer || !activePause(entry, now.getTime())) await reshapePause(prisma, accountId, person, entry, want)
     } else if (settings) {
       // The household changed it: no note, so pausing again today is still theirs to choose.
-      await unpausePerson(prisma, accountId, person, entry, deps)
+      await unpausePerson(prisma, accountId, person, entry, deps, { now })
     } else if (!activePause(entry, now.getTime())) {
-      await unpausePerson(prisma, accountId, person, entry, deps, endNote())
+      await unpausePerson(prisma, accountId, person, entry, deps, { ...endNote(), now })
     }
     return { pausedNow: false, want }
   }
@@ -561,7 +613,7 @@ async function resume(prisma, accountId, userId, deps = {}, { now = new Date() }
   const bed = limit?.bedtime ? bedtimeWindow(limit.bedtime, timezone, now) : null
   // Remembered, so the next check doesn't pause them again: today for the
   // limit, and tonight for a bedtime that's on now.
-  await unpausePerson(prisma, accountId, person, pause, deps, { resumedOn: accountToday(timezone, now).date, skipNight: bed?.night || null })
+  await unpausePerson(prisma, accountId, person, pause, deps, { resumedOn: accountToday(timezone, now).date, skipNight: bed?.night || null, now })
   // Tonight opened on the server's own schedule too.
   await syncServerBedtime(prisma, accountId, person, limit, { timezone, now }, deps)
   return getLimit(prisma, accountId, userId, deps)
@@ -639,6 +691,33 @@ async function tellPersonPaused(prisma, accountId, person, want, timezone, deps)
     : { title: 'Streaming paused', body: `That's today's watching - streaming is back on at ${until}.`, url: '/user' }).catch(() => {})
 }
 
+/**
+ * For a while after a pause ends: their account showing exactly the paused
+ * list again means their app wrote it back - put the full list back, and say
+ * so. Returns true when it did.
+ */
+async function guardAfterPause(prisma, accountId, person, watch, { now, entry }, deps) {
+  const d = { ...defaultDeps, ...deps }
+  if (!watch || Date.parse(watch.until) <= now.getTime() || (watch.tries || 0) >= AFTER_PAUSE_TRIES) {
+    if (watch) await patchEntry(prisma, accountId, AFTER_PAUSE, person.id, null)
+    return false
+  }
+  // A new pause is meant to look like this.
+  if (pauseInForce(entry)) return false
+  const addons = await d.readAddons(prisma, accountId, person.id).catch(() => null)
+  if (!addons || addonPrint(addons) !== watch.print) return false
+  await d.syncPerson(prisma, accountId, person.id)
+  await patchEntry(prisma, accountId, AFTER_PAUSE, person.id, { ...watch, tries: (watch.tries || 0) + 1 })
+  const name = person.username || 'Someone'
+  await send(prisma, accountId, {
+    title: `${name}'s addons put back`,
+    body: `Their app wrote back the addon list from their pause after it ended, so SlickSync put their full list back.`,
+    url: '/users',
+    dedupeKey: `screen-time-after-pause:${person.id}:${watch.until}:${(watch.tries || 0) + 1}`,
+  }).catch(() => {})
+  return true
+}
+
 /** One look across every account with a limit or a pause. Returns the alerts sent. */
 async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {}) {
   const fire = emit || require('./automation/engine').emitAutomationEvent
@@ -651,7 +730,7 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
     const pauses = cfg?.[PAUSES] || {}
     // Also anyone whose Jellyfin server still has a bedtime SlickSync wrote,
     // so one switched off is always taken away.
-    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {})])]
+    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {}), ...Object.keys(cfg?.[AFTER_PAUSE] || {})])]
     if (!ids.length) continue
     try {
       const timezone = await resolveAccountTimezone(prisma, account.id)
@@ -686,6 +765,13 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
         if (limit) await warnScreens(prisma, account.id, person, limit, ctx, deps).catch(() => {})
         if (limit) await warnPerson(prisma, account.id, person, limit, ctx, deps).catch(() => {})
         if (pausedNow && want) await tellPersonPaused(prisma, account.id, person, want, timezone, deps)
+        {
+          // Read fresh: reconcile may have just ended a pause and started the watch.
+          const fresh = (await readSync(prisma, account.id)).cfg
+          const watch = fresh[AFTER_PAUSE]?.[userId]
+          if (watch) await guardAfterPause(prisma, account.id, person, watch, { now, entry: fresh[PAUSES]?.[userId] }, deps)
+            .catch((e) => console.warn(`[ScreenTime] after ${userId}'s pause:`, e?.message))
+        }
         await syncServerBedtime(prisma, account.id, person, limit, { timezone, now }, deps)
 
         // The limit's own alert: once a day, whether or not it pauses.

@@ -396,3 +396,72 @@ test('bedtime on the person\'s phone: a heads-up ten minutes before, and "Bedtim
   await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
   assert.deepEqual(pushes, ['Bedtime in 8 minutes', 'Bedtime'])
 })
+
+// After a pause on Stremio and Nuvio, their app can write the paused addon
+// list back to their account (seen live on Nuvio). For a while after the
+// pause ends, exactly that list coming back is undone - and nothing else.
+const PAUSED = [{ transportUrl: 'https://cinemeta.example.com/manifest.json' }]
+const FULL = [...PAUSED, { transportUrl: 'https://streams.example.com/manifest.json' }]
+function afterPauseWorld() {
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [] })
+  const account = { addons: FULL }
+  let syncs = 0
+  const deps = {
+    // SlickSync's own sync: the paused list while paused, the full one after.
+    syncPerson: async (_p, _a, id) => { syncs++; account.addons = (await st.isStreamingPaused(w.prisma, 'acc', id)) ? PAUSED : FULL },
+    readAddons: async () => account.addons,
+    sendPushToPerson: async () => {},
+  }
+  return { w, account, deps, syncs: () => syncs }
+}
+const TUE_0701_LA = at('2026-10-06T14:01:00Z')
+const later = (d, min) => new Date(d.getTime() + min * 60000)
+
+test('after a pause: the app writing the paused list back is undone, and said so', async () => {
+  const { w, account, deps, syncs } = afterPauseWorld()
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  assert.deepEqual(account.addons, PAUSED, 'paused at bedtime')
+  await st.checkScreenTime(w.prisma, { now: TUE_0701_LA, emit: quiet, deps })
+  assert.deepEqual(account.addons, FULL, 'bedtime over, full list back')
+  const before = syncs()
+  account.addons = PAUSED // their app writes its paused list back
+  await st.checkScreenTime(w.prisma, { now: later(TUE_0701_LA, 2), emit: quiet, deps })
+  assert.deepEqual(account.addons, FULL, 'put back')
+  assert.equal(syncs(), before + 1)
+  assert.ok(w.notes.some((n) => /Mia's addons put back/.test(n.title)))
+  await st.checkScreenTime(w.prisma, { now: later(TUE_0701_LA, 3), emit: quiet, deps })
+  assert.equal(syncs(), before + 1, 'nothing more to do while the full list holds')
+})
+
+test('after a pause: any other change is the household\'s, and is left alone', async () => {
+  const { w, account, deps, syncs } = afterPauseWorld()
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  await st.checkScreenTime(w.prisma, { now: TUE_0701_LA, emit: quiet, deps })
+  const before = syncs()
+  account.addons = [...FULL, { transportUrl: 'https://their-own.example.com/manifest.json' }]
+  await st.checkScreenTime(w.prisma, { now: later(TUE_0701_LA, 2), emit: quiet, deps })
+  assert.equal(syncs(), before)
+  assert.equal(account.addons.length, 3)
+})
+
+test('after a pause: the watch ends after a while, and after a few tries', async () => {
+  const { w, account, deps, syncs } = afterPauseWorld()
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  await st.checkScreenTime(w.prisma, { now: TUE_0701_LA, emit: quiet, deps })
+  // An app that keeps writing it back: three tries, then SlickSync stops.
+  const before = syncs()
+  for (let m = 2; m <= 6; m++) {
+    account.addons = PAUSED
+    await st.checkScreenTime(w.prisma, { now: later(TUE_0701_LA, m), emit: quiet, deps })
+  }
+  assert.equal(syncs(), before + 3)
+  // And a fresh pause's watch is gone once its 15 minutes are up.
+  const second = afterPauseWorld()
+  await st.checkScreenTime(second.w.prisma, { now: MON_2105_LA, emit: quiet, deps: second.deps })
+  await st.checkScreenTime(second.w.prisma, { now: TUE_0701_LA, emit: quiet, deps: second.deps })
+  const n = second.syncs()
+  second.account.addons = PAUSED
+  await st.checkScreenTime(second.w.prisma, { now: later(TUE_0701_LA, 20), emit: quiet, deps: second.deps })
+  assert.equal(second.syncs(), n, 'too late to be the pause')
+  assert.equal(second.w.sync.screenTimeAfterPause?.mia, undefined)
+})
