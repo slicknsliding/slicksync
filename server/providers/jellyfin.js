@@ -260,7 +260,8 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
         positionMs: ticksToMs(s.PlayState?.PositionTicks),
         paused: s.PlayState?.IsPaused === true,
         // Which device and app - "Living room TV", "Infuse". Real Jellyfin
-        // reports these; AIOStreams and AIOMetadata have no sessions list.
+        // and AIOStreams (its /Sessions lists what its users play) report
+        // these; AIOMetadata keeps no sessions list.
         device: s.DeviceId || s.DeviceName ? { id: s.DeviceId || null, name: s.DeviceName || null, client: s.Client || null } : null,
       })
     }
@@ -500,17 +501,22 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
           title: it.Name || null,
           premiere: it.PremiereDate || null,
           played: it.UserData?.Played === true,
+          // AIOStreams marks anime filler and recap episodes (its "fillers"
+          // extension); other servers never say, so these stay false there.
+          filler: it.aiostreams?.filler === true,
+          recap: it.aiostreams?.recap === true,
         }))
     },
 
     /**
-     * AIOStreams' own "this episode and every aired one before it" - one call
-     * instead of one per episode. Only where the server says it has it
-     * (features.playedUpTo); its /AIOStreams/ routes take a sign-in, never an
-     * API key. Returns false when it isn't there, so the caller goes per episode.
+     * "This episode and every aired one before it" in one call instead of one
+     * per episode. AIOStreams has it, and so does AIOMetadata (it offers the
+     * same extensions); only where the server says so (features.playedUpTo).
+     * Its /AIOStreams/ routes take a sign-in, never an API key. Returns false
+     * when it isn't there, so the caller goes per episode.
      */
     async playedUpTo(episodeItemId) {
-      if (serverKind !== 'aiostreams') return false
+      if (serverKind === 'jellyfin') return false
       const info = await call('/System/Info/Public').catch(() => null)
       if (!info?.aiostreams?.features?.playedUpTo) return false
       await call(`/AIOStreams/PlayedUpTo/${episodeItemId}`, { method: 'POST' })

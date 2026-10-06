@@ -15,7 +15,7 @@ import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal
 import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
-import { providerLabel, providerBadgeVariant, hasAddonList } from '@/lib/providers';
+import { providerLabel, providerBadgeVariant, hasAddonList, displayEmail, isJellyfin } from '@/lib/providers';
 import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
 import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButton';
 import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
@@ -431,7 +431,7 @@ export default function UserDetailPage() {
   const handlePickMergeCandidate = (picked: User) => {
     const candidate: MergeCandidate = {
       id: picked.id,
-      username: picked.username || picked.name || picked.email || 'Unnamed user',
+      username: picked.username || picked.name || displayEmail(picked.email) || 'Unnamed user',
       providerType: (picked.providerType || 'stremio') as 'stremio' | 'nuvio' | 'jellyfin',
       avatarUrl: picked.avatarUrl,
       colorIndex: picked.colorIndex,
@@ -833,9 +833,19 @@ export default function UserDetailPage() {
   }, [params.id, router]);
 
   // Handle avatar change (color, URL, or uploaded image)
-  const handleAvatarSave = useCallback(async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+  const handleAvatarSave = useCallback(async ({ alsoOnServer, ...data }: { avatarUrl?: string | null; colorIndex?: number; alsoOnServer?: boolean }) => {
     setUser((prev: any) => prev ? { ...prev, ...data } : null);
     await api.updateUser(params.id as string, data);
+    // Their server too, when asked (server/utils/serverAvatars.js). The
+    // picture is saved here either way; only the server half can fail.
+    if (alsoOnServer) {
+      try {
+        const done = await api.pushServerPicture(params.id as string);
+        toast.success(`Set on their ${done.server} too`);
+      } catch (e) {
+        toast.error((e as Error)?.message || 'Saved here, but their server didn’t take it');
+      }
+    }
   }, [params.id]);
 
   // Handle color change
@@ -1229,6 +1239,7 @@ export default function UserDetailPage() {
                         currentAvatarUrl={user.avatarUrl}
                         currentColorIndex={user.colorIndex || 0}
                         onSave={handleAvatarSave}
+                        serverLabel={isJellyfin(user) ? providerLabel(user) : undefined}
                       />
                     </motion.div>
 
@@ -1260,7 +1271,7 @@ export default function UserDetailPage() {
                           <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
                         {/* A daily screen-time limit - any app. */}
-                        <ScreenTimeButton userId={user.id} name={user.username || user.name || 'them'} onPickGroup={() => setIsEditDetailsOpen(true)} />
+                        <ScreenTimeButton userId={user.id} name={user.username || user.name || 'them'} onPickGroup={() => setIsEditDetailsOpen(true)} onReconnect={() => setIsReconnectModalOpen(true)} />
                         {/* Mark a show watched up to an episode - here and on their server. */}
                         <CatchUpButton userId={user.id} name={user.username || user.name || 'them'} hasServer={user.providerType === 'jellyfin'} />
                         {/* What AIOStreams itself says about their configuration. */}
@@ -1324,7 +1335,7 @@ export default function UserDetailPage() {
                       </div>
                       <div className="flex items-center gap-2 mb-3 md:mb-4">
                         <p className="text-sm md:text-base text-muted truncate">
-                          {hideSensitive && !showEmail ? '••••••••' : user.email}
+                          {hideSensitive && !showEmail ? '••••••••' : displayEmail(user.email)}
                         </p>
                         {hideSensitive && (
                           <button
@@ -2394,7 +2405,7 @@ export default function UserDetailPage() {
                         {providerLabel(u)}
                       </Badge>
                     </div>
-                    {u.email && <p className="text-xs text-muted truncate">{u.email}</p>}
+                    {u.email && <p className="text-xs text-muted truncate">{displayEmail(u.email)}</p>}
                   </div>
                 </button>
               ));

@@ -2377,13 +2377,19 @@ class ApiClient {
   // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
 
   /** Sign a TV in with the Quick Connect code it shows, as this person or one of their household profiles. */
-  // Whether what someone finishes elsewhere is marked played on their real Jellyfin server.
-  async getJellyfinMarkPlayed(userId: string) {
-    return this.fetch<{ available: boolean; enabled: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`);
+  /** Their SlickSync picture on their Jellyfin, AIOStreams or AIOMetadata server too. */
+  async pushServerPicture(userId: string) {
+    return this.fetch<{ success: boolean; server: string }>(`/jellyfin/users/${encodeURIComponent(userId)}/picture`, { method: 'POST' });
   }
 
-  async setJellyfinMarkPlayed(userId: string, enabled: boolean) {
-    return this.fetch<{ available: boolean; enabled: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+  // Whether what someone finishes elsewhere is marked played on their real Jellyfin server.
+  async getJellyfinMarkPlayed(userId: string) {
+    return this.fetch<{ available: boolean; enabled: boolean; lists: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`);
+  }
+
+  /** `lists`: the household's watchlist and ratings on their server too. */
+  async setJellyfinMarkPlayed(userId: string, change: { enabled?: boolean; lists?: boolean }) {
+    return this.fetch<{ available: boolean; enabled: boolean; lists: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`, { method: 'PUT', body: JSON.stringify(change) });
   }
 
   // Opt-in: Vault key changes also update this AIOStreams person's debrid keys.
@@ -2487,7 +2493,7 @@ class ApiClient {
   }
 
   async getHousehold(userId: string) {
-    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean }>(
+    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean; canPin?: boolean }>(
       `/jellyfin/users/${encodeURIComponent(userId)}/household`
     );
   }
@@ -3528,7 +3534,8 @@ export interface CatchUpEpisodes {
   showId: string;
   name: string | null;
   poster: string | null;
-  episodes: { season: number; episode: number; title: string | null; released: string | null; watched: boolean }[];
+  /** kind: a filler or recap episode, where the server says so (AIOStreams, for anime). */
+  episodes: { season: number; episode: number; title: string | null; released: string | null; watched: boolean; kind?: 'filler' | 'recap' }[];
 }
 
 /** One "Caught up to here" run, as it goes. */
@@ -3547,23 +3554,36 @@ export interface CatchUpJob {
 }
 
 /** A person's daily screen-time limit, and today so far (server/utils/screenTime.js). */
+/** No streaming from `from` to `to` ("HH:MM", account clock), on nights starting on `days` (empty = every night). */
+export interface ScreenTimeBedtime {
+  from: string;
+  to: string;
+  days: number[];
+}
+
 export interface ScreenTimeLimit {
-  minutes: number;
+  /** Minutes a day; absent when only a bedtime is set. */
+  minutes?: number;
   days: number[];
   /** What happens at the limit; alerting when absent. */
   onReach?: 'pause';
   /** When a pause ends, "HH:MM" on the account's clock; midnight when absent. */
   resumeAt?: string;
+  bedtime?: ScreenTimeBedtime;
+  /** Real Jellyfin: also stop what's playing, after a warning on screen. */
+  stopPlaying?: boolean;
 }
 
 export interface ScreenTimeView {
   limit: ScreenTimeLimit | null;
   todayMinutes: number;
   appliesToday: boolean;
-  /** Streaming paused until the account's midnight. */
-  paused: { until: string } | null;
+  /** Streaming paused - by the limit or by bedtime - until untilLabel on the account's clock. */
+  paused: { until: string; untilLabel: string; reason: 'limit' | 'bedtime' } | null;
   /** Whether a pause can work for this person, and why not. */
-  canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'not-supported'; reason?: string };
+  canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'needs-config-password' | 'not-supported'; reason?: string };
+  /** Whether what's playing can be stopped too (a real Jellyfin server). */
+  canStopPlaying?: boolean;
 }
 
 /** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */
@@ -3649,6 +3669,8 @@ export interface HouseholdProfile {
   name: string;
   status: 'tracked' | 'own' | 'untracked' | 'needs-pin' | 'needs-sign-in';
   person: { id: string; username: string } | null;
+  /** Their picture on the server, when it has one. */
+  avatarUrl?: string | null;
 }
 
 export interface User {
@@ -4650,6 +4672,12 @@ export interface HealthStatus {
     since: string | null;
     failingCount: number;
     people: Array<{ id: string; name: string; state: 'ok' | 'issue' | 'reconnect'; error: string | null; since: string | null }>;
+    /** What the server runs, its channel (AIOStreams: stable or nightly), and the newest stable release. */
+    version?: string | null;
+    channel?: string | null;
+    commit?: string | null;
+    latest?: string | null;
+    updateAvailable?: boolean;
   }>;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };

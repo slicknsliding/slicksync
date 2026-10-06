@@ -89,6 +89,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       // is read as themselves from now on, not twice.
       await claimProfileForPerson(created, probe, login);
       const profiles = await bringHousehold(created, probe, login);
+      // Their picture on the server, and their household's, straight away.
+      require('../utils/serverAvatars').refreshAccount(prisma, decrypt, accountId).catch(() => {});
 
       res.json({
         success: true,
@@ -113,6 +115,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     await require('../utils/aiostreamsConfig').rememberConfigAccess(prisma, encrypt, person, {
       probe, typedLogin: typed.loginName || null, password: typed.password ?? null,
     });
+    // AIOMetadata's, for adding household users and their PINs (utils/aiometadataHousehold.js).
+    await require('../utils/aiometadataHousehold').rememberAccess(prisma, encrypt, person, { probe, password: typed.password ?? null });
     try {
       const found = await household.signInHousehold({
         probe,
@@ -468,6 +472,15 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // Their SlickSync picture on their server too (utils/serverAvatars.js).
+  router.post('/users/:id/picture', async (req, res) => {
+    try {
+      res.json({ success: true, ...(await require('../utils/serverAvatars').pushPicture(prisma, decrypt, getAccountId(req), String(req.params.id))) });
+    } catch (error) {
+      sendError(res, error, 'Could not set the picture on their server');
+    }
+  });
+
   // Whether what this person finishes elsewhere is marked played on their
   // real Jellyfin server (utils/jellyfinMarkPlayed.js), and switching it.
   router.get('/users/:id/mark-played', async (req, res) => {
@@ -484,7 +497,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const person = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId }, select: { id: true } });
       if (!person) return res.status(404).json({ error: 'Person not found' });
       const mp = require('../utils/jellyfinMarkPlayed');
-      await mp.setEnabled(prisma, accountId, person.id, req.body?.enabled === true);
+      if (typeof req.body?.enabled === 'boolean') await mp.setEnabled(prisma, accountId, person.id, req.body.enabled);
+      if (typeof req.body?.lists === 'boolean') await mp.setLists(prisma, accountId, person.id, req.body.lists);
       res.json(await mp.statusFor(prisma, accountId, person.id));
     } catch (error) {
       sendError(res, error, 'Could not change that setting');
@@ -577,9 +591,13 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         const owner = await prisma.user.findFirst({ where: { id: membership.ownerUserId, accountId }, select: { id: true, username: true } });
         if (owner) partOf = { profileId: membership.id, name: membership.name, owner };
       }
-      const full = await prisma.user.findFirst({ where: { id: person.id }, select: { providerType: true, jellyfinServerKind: true, aioConfigId: true, aioConfigPassword: true } });
-      // Household users can be added, and PINs changed, here (utils/aioHousehold.js).
-      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage: require('../utils/aioHousehold').canManage(full) });
+      const full = await prisma.user.findFirst({ where: { id: person.id }, select: { providerType: true, jellyfinServerKind: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true } });
+      // Household users can be added, and PINs changed, here (utils/aioHousehold.js,
+      // utils/aiometadataHousehold.js) - PINs on AIOMetadata only once it has them.
+      const aiom = require('../utils/aiometadataHousehold');
+      const canManage = require('../utils/aioHousehold').canManage(full) || aiom.canManage(full);
+      const canPin = canManage && (full.jellyfinServerKind !== 'aiometadata' || await aiom.hasPins(full));
+      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin });
     } catch (error) {
       sendError(res, error, 'Could not read the household');
     }
@@ -590,9 +608,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     try {
       const owner = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId: getAccountId(req) } });
       if (!owner) return res.status(404).json({ error: 'User not found' });
-      const result = await require('../utils/aioHousehold').addPersona(prisma, decrypt, encrypt, owner, {
-        name: req.body?.name, pin: req.body?.pin ?? null, history: req.body?.history,
-      });
+      const result = owner.jellyfinServerKind === 'aiometadata'
+        ? await require('../utils/aiometadataHousehold').addUser(prisma, decrypt, encrypt, owner, { name: req.body?.name, pin: req.body?.pin ?? null })
+        : await require('../utils/aioHousehold').addPersona(prisma, decrypt, encrypt, owner, {
+          name: req.body?.name, pin: req.body?.pin ?? null, history: req.body?.history,
+        });
       res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not add the household user');
@@ -604,7 +624,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     try {
       const found = await loadProfile(req, res);
       if (!found) return;
-      const result = await require('../utils/aioHousehold').setPersonaPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null);
+      const result = found.owner.jellyfinServerKind === 'aiometadata'
+        ? await require('../utils/aiometadataHousehold').setUserPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null)
+        : await require('../utils/aioHousehold').setPersonaPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null);
       res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not change the PIN');

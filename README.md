@@ -123,8 +123,8 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - Watch history comes in, and what's playing shows in **Now Playing** with real watch time, straight from the server's sessions.
 - Watched marks, favourites and resume points are **written back** to the server.
 - **AIOStreams watch history** — turn it on per person and viewing in AIOStreams' own apps (Odin, Infuse, Swiftfin, the desktop app) becomes history and Now Playing; watched marks, the watchlist, drops and ratings flow back the other way. One link serves the whole household.
-- **Keep Jellyfin in step** — what someone finishes in Stremio, Nuvio or AIOStreams is marked played on their Jellyfin server, and what they stop part-way picks up at the same spot there.
-- On a Jellyfin server, Now Playing names the **device and app**, and a device someone hasn't used before can raise a notification.
+- **Keep Jellyfin in step** — what someone finishes in Stremio, Nuvio or AIOStreams is marked played on their Jellyfin server, and what they stop part-way picks up at the same spot there. Switch it on per person and the household watchlist (as favourites) and ratings go there too.
+- On Jellyfin and AIOStreams, Now Playing names the **device and app**, and a device someone hasn't used before can raise a notification.
 - **Posters for anime and other titles without an IMDb id**, straight from the server's own artwork.
 
 ### Households
@@ -135,7 +135,8 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Devices** — everything signed in as someone on a Jellyfin server, with Sign out next to each.
 - **Age limit** — the highest age rating someone's Jellyfin account can play, from the server's own list, enforced in every Jellyfin app.
 - **Invites that make the account** — an invitation can create the person's Jellyfin account with a password they choose; it stays off until you accept them, and switches off again if they expire or are removed.
-- **AIOStreams household users** — add one, or set or remove their PIN, from the household card.
+- **AIOStreams and AIOMetadata household users** — add one, or set or remove their PIN, from the household card.
+- **Profile pictures both ways** — a picture changed in SlickSync can go to their Jellyfin, AIOStreams or AIOMetadata server too, and one changed on the server shows up here within minutes.
 
 ### Collections
 
@@ -152,6 +153,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - Exports and Disaster Recovery Kits carry households, their sign-ins and their collections.
 - **AIOStreams history** — every version of a configuration is kept, with what changed from the one before; **Put back** restores an earlier one, keeping today's debrid services, household users and API keys unless you untick them.
 - **AIOStreams health** on a person's page — each addon's errors, empty answers and slow responses as AIOStreams itself reports them, and a one-off test search.
+- **Server versions** — Health shows each Jellyfin, AIOStreams and AIOMetadata server's version, and whether a newer stable release is out.
 
 ---
 
@@ -172,7 +174,8 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Device claims** — on a shared login, claim a device and its activity is attributed to the right person.
 - **Leave someone out of household numbers** — a test or guest person keeps their own page but stops counting toward totals, charts, Top Viewers and the year in review.
 - **Daily limits** — so many minutes a day on the days you choose, counted across every app. At the limit you're told — or, per person, their streaming pauses until midnight or a time you pick: the addons that play streams come off on Stremio and Nuvio, and the server's own parental schedule applies on Jellyfin. **Resume now** gives the rest of the day back.
-- **Caught up to…** — mark a show watched up to an episode, in SlickSync and on their server, with **Undo** and un-ticking a single episode.
+- **Bedtime** — no streaming between two times on the nights you choose, in the same popup as the daily limit. Either one can now pause AIOStreams too (the streams come out of their addons while catalogs stay), and on a Jellyfin server put a message on screen ten minutes before, then stop what's playing.
+- **Caught up to…** — mark a show watched up to an episode, in SlickSync and on their server, with **Undo** and un-ticking a single episode. Anime episodes that are filler or recap are labelled, from AIOStreams.
 - **Last seen** on every person, a **Dormant** filter for people who stopped watching, and an automation that can switch them off after a quiet stretch.
 </details>
 
@@ -229,7 +232,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 Every type works with zero Discord setup; a webhook only adds Discord delivery on top.
 
 - Per-type toggles: activity, sync, invites, Vault, addon health, connection problems, backups, proxy connectivity, updates and monthly recap.
-- **Connection problems** — told the moment someone's sign-in needs reconnecting (after 15 minutes if their server is just unreachable), and again when it's back. One alert per outage, on by default.
+- **Connection problems** — told the moment someone's sign-in needs reconnecting (after 15 minutes if their server is just unreachable), and again when it's back. One alert per outage, on by default. Signing in again on their own page fixes it too, so you can just send them the link.
 - A whole Jellyfin, AIOStreams or AIOMetadata server going down is **one alert**, naming who's affected — not one per person.
 - Instant "started watching" ping, **unconfirmed-device alerts**, new-episode alerts and a Coming Up calendar.
 - **Monthly poster-mosaic recap**, **Recovery Kit reminders**, and **digest mode** to batch everything into one summary.

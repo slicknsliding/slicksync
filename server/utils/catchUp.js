@@ -12,11 +12,11 @@
 // that haven't aired are skipped.
 //
 // On the server:
-// - AIOStreams with features.playedUpTo: one call, with the person's own
-//   sign-in (its /AIOStreams/ routes refuse API keys).
-// - Real Jellyfin, and AIOMetadata (whose PlayedUpTo isn't confirmed): one
-//   "played" per episode not already played there, four at a time - 200
-//   episodes are 200 calls, so it runs in the background and reports progress.
+// - AIOStreams and AIOMetadata with features.playedUpTo: one call, with the
+//   person's own sign-in (their /AIOStreams/ routes refuse API keys).
+// - Real Jellyfin, or a server without it: one "played" per episode not
+//   already played there, four at a time - 200 episodes are 200 calls, so it
+//   runs in the background and reports progress.
 //
 // One run per person at a time; the page polls status().
 
@@ -120,12 +120,14 @@ async function episodesFor(prisma, decrypt, accountId, userId, showId, { createP
       episodes = meta.allEpisodes.map((e) => ({ season: e.season, episode: e.episode, title: e.title || null, released: e.released || null }))
     }
   }
-  if (!episodes) {
-    const provider = providerFor(person, decrypt, createProvider)
-    const listed = provider ? await provider.listEpisodes(id).catch(() => null) : null
-    if (listed?.length) episodes = listed.map((e) => ({ season: e.season, episode: e.episode, title: e.title, released: e.premiere }))
-  }
+  // On AIOStreams the server's own list is read too: it says which anime
+  // episodes are filler or a recap, matched to these by season and episode.
+  const provider = !episodes || person?.jellyfinServerKind === 'aiostreams' ? providerFor(person, decrypt, createProvider) : null
+  const listed = provider ? await provider.listEpisodes(id).catch(() => null) : null
+  if (!episodes && listed?.length) episodes = listed.map((e) => ({ season: e.season, episode: e.episode, title: e.title, released: e.premiere }))
   if (!episodes) throw fail('SlickSync couldn’t find that show’s episodes', 404)
+  const marks = new Map((listed || []).filter((e) => e.filler || e.recap).map((e) => [`${e.season}:${e.episode}`, e.recap ? 'recap' : 'filler']))
+  if (marks.size) episodes = episodes.map((e) => (marks.has(`${e.season}:${e.episode}`) ? { ...e, kind: marks.get(`${e.season}:${e.episode}`) } : e))
   const history = await prisma.episodeWatchHistory.findMany({ where: { accountId, userId, showId: id }, select: { season: true, episode: true, completed: true, showName: true, poster: true } })
   const done = new Set(history.filter((h) => h.completed).map((h) => `${h.season}:${h.episode}`))
   name = name || history[0]?.showName || null

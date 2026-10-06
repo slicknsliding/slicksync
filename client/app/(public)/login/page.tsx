@@ -82,7 +82,11 @@ function LoginContent() {
   // Stremio or Nuvio. Shares the same underlying nuvio*/oauth* state below
   // with the admin flows (start/poll mechanics are identical either way,
   // only the exchange step at the end differs by mode).
-  const [userLoginType, setUserLoginType] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
+  // ?app=nuvio / ?app=jellyfin opens on that app - the link a household
+  // sends someone whose sign-in needs renewing (signing in here renews it).
+  const [userLoginType, setUserLoginType] = useState<'stremio' | 'nuvio' | 'jellyfin'>(
+    searchParams.get('app') === 'nuvio' ? 'nuvio' : searchParams.get('app') === 'jellyfin' ? 'jellyfin' : 'stremio'
+  );
 
   // Jellyfin-compatible servers: the person's portal signs in through
   // /public-library, an admin on a public instance through /public-auth.

@@ -18,7 +18,7 @@ function stateOf(person) {
   return /^Reconnect needed:/i.test(error) ? 'reconnect' : 'issue'
 }
 
-async function serverStatusList(prisma, accountId) {
+async function serverStatusList(prisma, accountId, { versions = (rows) => require('./serverVersions').annotate(rows) } = {}) {
   const people = await prisma.user.findMany({
     where: { accountId, isActive: true, providerType: 'jellyfin', jellyfinServerUrl: { not: null } },
     select: { id: true, username: true, jellyfinServerUrl: true, jellyfinServerId: true, jellyfinServerKind: true, providerConnectionError: true, providerConnectionErrorAt: true },
@@ -30,7 +30,7 @@ async function serverStatusList(prisma, accountId) {
     const key = serverKeyOf(p)
     if (!key) continue
     if (!servers.has(key)) {
-      servers.set(key, { key, kind: p.jellyfinServerKind || 'jellyfin', label: KIND_LABELS[p.jellyfinServerKind] || 'Jellyfin', address: displayServer(p.jellyfinServerUrl), people: [] })
+      servers.set(key, { key, kind: p.jellyfinServerKind || 'jellyfin', label: KIND_LABELS[p.jellyfinServerKind] || 'Jellyfin', address: displayServer(p.jellyfinServerUrl), url: p.jellyfinServerUrl, people: [] })
     }
     servers.get(key).people.push({
       id: p.id,
@@ -40,13 +40,18 @@ async function serverStatusList(prisma, accountId) {
       since: p.providerConnectionErrorAt || null,
     })
   }
-  return [...servers.values()].map((s) => {
+  const rows = [...servers.values()].map((s) => {
     const failing = s.people.filter((p) => p.state !== 'ok')
     const down = s.people.length > 0 && s.people.every((p) => p.state === 'issue')
     const status = down ? 'down' : failing.length ? 'partial' : 'up'
     const since = down ? new Date(Math.min(...s.people.map((p) => new Date(p.since || Date.now()).getTime()))).toISOString() : null
     return { ...s, status, since, failingCount: failing.length }
   })
+  // The version each runs, and whether a newer one is out (utils/serverVersions.js).
+  let annotated = rows
+  try { annotated = await versions(rows) } catch { /* shown without */ }
+  // Their address with the configuration in it stays on the server.
+  return annotated.map(({ url, ...row }) => row)
 }
 
 module.exports = { serverStatusList }

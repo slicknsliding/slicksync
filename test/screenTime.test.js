@@ -248,3 +248,115 @@ test('a pause stays in force until the check lifts it, not just until its time p
   await st.checkScreenTime(w.prisma, { now: new Date('2026-10-06T07:01:00Z'), emit: quiet, deps })
   assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), false)
 })
+
+// ---------------------------------------------------------------------------
+// Bedtime: no streaming between two times, on chosen nights
+
+const at = (iso) => new Date(iso)
+// Monday 2026-10-05 in Los Angeles (UTC-7): 21:05 is 04:05Z on the 6th.
+const MON_2105_LA = at('2026-10-06T04:05:00Z')
+const TUE_0005_LA = at('2026-10-06T07:05:00Z')
+const TUE_0705_LA = at('2026-10-06T14:05:00Z')
+
+test('a bedtime is cleaned, and knows which night it belongs to', () => {
+  assert.deepEqual(st.cleanLimit({ bedtime: { from: '21:00', to: '7:00', days: [0, 1, 2, 3, 4] } }), { days: [], bedtime: { from: '21:00', to: '07:00', days: [0, 1, 2, 3, 4] } })
+  assert.equal(st.cleanLimit({ bedtime: { from: '21:00', to: '21:00' } }), null, 'no hours is no bedtime')
+  assert.equal(st.cleanLimit({ minutes: 0, bedtime: null }), null)
+  const school = { from: '21:00', to: '07:00', days: [0, 1, 2, 3, 4] }
+  assert.equal(st.bedtimeWindow(school, TZ, MON_2105_LA).night, '2026-10-05', 'Monday night, from 9 PM')
+  assert.equal(st.bedtimeWindow(school, TZ, TUE_0005_LA).night, '2026-10-05', 'still Monday night after midnight')
+  assert.equal(st.bedtimeWindow(school, TZ, TUE_0705_LA), null, 'over at 7 AM')
+  assert.equal(st.bedtimeWindow(school, TZ, MON_NOON_LA), null)
+  // Friday 2026-10-09 21:05 LA: not a school night.
+  assert.equal(st.bedtimeWindow(school, TZ, at('2026-10-10T04:05:00Z')), null)
+  // A bedtime within the day: 1 PM to 3 PM.
+  assert.ok(st.bedtimeWindow({ from: '11:30', to: '13:00', days: [] }, TZ, MON_NOON_LA))
+})
+
+test('bedtime pauses from its start to its end, without a limit or an alert', async () => {
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [] })
+  const synced = []
+  const deps = { syncPerson: async (_p, _a, id) => { synced.push(await st.isStreamingPaused(w.prisma, 'acc', id)) } }
+  assert.equal(await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps }), 0)
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), false)
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), true)
+  assert.equal(w.sync.screenTimePauses.mia.until, '2026-10-06T14:00:00.000Z', 'until 7 AM')
+  await st.checkScreenTime(w.prisma, { now: TUE_0005_LA, emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), true)
+  await st.checkScreenTime(w.prisma, { now: TUE_0705_LA, emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), false)
+  assert.deepEqual(synced, [true, false], 'one sync to pause, one to resume')
+  assert.equal(w.notes.length, 0, 'a bedtime is expected - no alert')
+})
+
+test('the limit\'s pause runs on into bedtime without lifting in between', async () => {
+  const w = world({ limits: { mia: { minutes: 90, days: [], onReach: 'pause', bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [row('mia', 95, MON_NOON_LA)] })
+  let syncs = 0
+  const deps = { syncPerson: async () => { syncs++ } }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  assert.equal(w.sync.screenTimePauses.mia.until, '2026-10-06T07:00:00.000Z', 'until midnight for the limit')
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  assert.equal(w.sync.screenTimePauses.mia.until, '2026-10-06T14:00:00.000Z', 'bedtime carries it to 7 AM')
+  await st.checkScreenTime(w.prisma, { now: TUE_0005_LA, emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), true, 'not lifted at midnight')
+  await st.checkScreenTime(w.prisma, { now: TUE_0705_LA, emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), false)
+  assert.equal(syncs, 2, 'paused once, resumed once')
+})
+
+test('"Resume now" at bedtime gives back that night only', async () => {
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [] })
+  const deps = { syncPerson: async () => {} }
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  await st.resume(w.prisma, 'acc', 'mia', deps, { now: at('2026-10-06T04:10:00Z') })
+  await st.checkScreenTime(w.prisma, { now: TUE_0005_LA, emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), false, 'not again that night')
+  await st.checkScreenTime(w.prisma, { now: at('2026-10-07T04:05:00Z'), emit: quiet, deps })
+  assert.equal(await st.isStreamingPaused(w.prisma, 'acc', 'mia'), true, 'Tuesday night is bedtime again')
+})
+
+test('AIOStreams pauses through its variant, and the same users are given back', async () => {
+  const w = world({ limits: { mia: { minutes: 90, days: [], onReach: 'pause' } }, activity: [row('mia', 95, MON_NOON_LA)] })
+  const mia = { id: 'mia', username: 'Mia', providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' }
+  w.prisma.user.findMany = async () => [mia]
+  w.prisma.user.findFirst = async () => mia
+  const calls = []
+  const deps = { setAioPaused: async (_p, _a, _person, paused, opts) => { calls.push([paused, opts.users]); return { users: ['u1', 'u2'] } } }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  assert.deepEqual(w.sync.screenTimePauses.mia.aioUsers, ['u1', 'u2'])
+  assert.match(w.notes[0].body, /paused until midnight/)
+  await st.checkScreenTime(w.prisma, { now: TUE_0005_LA, emit: quiet, deps })
+  assert.deepEqual(calls, [[true, undefined], [false, ['u1', 'u2']]])
+})
+
+test('Jellyfin with "stop what\'s playing": a warning ten minutes before, then stopped', async () => {
+  st.forgetWarningsForTests()
+  const limits = { mia: { minutes: 90, days: [], onReach: 'pause', stopPlaying: true } }
+  const activity = [row('mia', 82, MON_NOON_LA)]
+  const w = world({ limits, activity })
+  const mia = { id: 'mia', username: 'Mia', providerType: 'jellyfin', jellyfinServerKind: 'jellyfin' }
+  w.prisma.user.findMany = async () => [mia]
+  w.prisma.user.findFirst = async () => mia
+  const screens = []
+  const deps = {
+    setJellyfinBlocked: async (_p, _a, _id, blocked) => (blocked ? [] : null),
+    messageScreens: async (_p, _a, _id, opts) => { screens.push([opts.text, !!opts.stop]); return 1 },
+  }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 60000), emit: quiet, deps })
+  assert.deepEqual(screens, [['8 minutes of watching left today.', false]], 'warned once')
+  activity.push(row('mia', 10, MON_NOON_LA))
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 120000), emit: quiet, deps })
+  assert.deepEqual(screens[1], ['Streaming is paused until midnight.', true])
+})
+
+test('switching the limit off forgets a "Resume now", so switching it on again applies at once', async () => {
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [] })
+  const deps = { syncPerson: async () => {} }
+  await st.checkScreenTime(w.prisma, { now: MON_2105_LA, emit: quiet, deps })
+  await st.resume(w.prisma, 'acc', 'mia', deps, { now: at('2026-10-06T04:10:00Z') })
+  assert.ok(w.sync.screenTimePauses.mia?.skipNight, 'tonight given back')
+  await st.setLimit(w.prisma, 'acc', 'mia', null, deps)
+  assert.equal(w.sync.screenTimePauses.mia, undefined)
+})

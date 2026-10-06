@@ -9,6 +9,7 @@ import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { formatLastSync } from '@/lib/relativeTime';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { displayEmail } from '@/lib/providers';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Avatar, AvatarColorSwatches, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -1133,7 +1134,7 @@ export default function GroupDetailPage() {
                               size="sm" 
                             />
                           </div>
-                          <p className="text-sm text-muted truncate">{user.email}</p>
+                          <p className="text-sm text-muted truncate">{displayEmail(user.email)}</p>
                         </div>
 
                         <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -1587,7 +1588,7 @@ function AddMemberForm({ groupId, existingUserIds, onClose, onUsersChanged }: {
               <UserAvatar userId={user.id} name={displayName} email={user.email} src={user.avatarUrl ?? undefined} colorIndex={user.colorIndex} size="sm" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-default truncate">{displayName}</p>
-                <p className="text-sm text-muted truncate">{user.email}</p>
+                <p className="text-sm text-muted truncate">{displayEmail(user.email)}</p>
               </div>
             </motion.div>
           );

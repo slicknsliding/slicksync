@@ -193,7 +193,7 @@ export default function UserHomePage() {
   const stats = activityData?.stats;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <UserPageHeader 
         title={`Welcome back, ${userInfo?.username || 'User'}!`}
         subtitle="Here's your activity overview"
@@ -203,25 +203,28 @@ export default function UserHomePage() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="p-6 rounded-xl mb-8"
+        className="p-4 sm:p-6 rounded-xl mb-8"
         style={{ 
           background: 'var(--color-surface)',
           border: '1px solid var(--color-surface-border)'
         }}
       >
-        <div className="flex items-center gap-6">
-          <Avatar 
+        {/* Picture and name share a line; on a phone Sync goes underneath
+            rather than squeezing the picture into a pill. */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-4 sm:gap-6 flex-1 min-w-0">
+          <Avatar
             name={userInfo?.username || 'User'}
             email={userInfo?.email}
             colorIndex={userInfo?.colorIndex || 0}
             size="xl"
             showRing
-            className="w-20 h-20"
+            className="w-16 h-16 sm:w-20 sm:h-20 shrink-0"
           />
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
-              <h2 
-                className="text-xl font-bold"
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1">
+              <h2
+                className="text-xl font-bold break-words"
                 style={{ color: 'var(--color-text)' }}
               >
                 {userInfo?.username}
@@ -239,8 +242,8 @@ export default function UserHomePage() {
                 </div>
               )}
             </div>
-            <p 
-              className="text-sm"
+            <p
+              className="text-sm truncate"
               style={{ color: 'var(--color-text-muted)' }}
             >
               {userInfo?.email}
@@ -254,13 +257,14 @@ export default function UserHomePage() {
               </p>
             )}
           </div>
-          
+          </div>
+
           {/* Sync Button */}
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-row-reverse sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
               style={{ 
                 background: 'var(--color-primary)',
                 color: 'white'

@@ -46,7 +46,7 @@ import {
   EyeIcon,
   EyeSlashIcon,
 } from '@heroicons/react/24/outline';
-import { providerTypeLabel, providerBadgeVariant } from '@/lib/providers';
+import { providerTypeLabel, providerBadgeVariant, displayEmail } from '@/lib/providers';
 
 // Task action card component
 function TaskCard({
@@ -1283,7 +1283,7 @@ export default function TasksPage() {
               <div className="space-y-2">
                 {snapshots.map((snap) => {
                   const sourceName = snap.sourceType === 'user'
-                    ? (users.find(u => u.id === snap.sourceId)?.name || users.find(u => u.id === snap.sourceId)?.email || 'Unknown user')
+                    ? (users.find(u => u.id === snap.sourceId)?.name || displayEmail(users.find(u => u.id === snap.sourceId)?.email) || 'Unknown user')
                     : (groups.find(g => g.id === snap.sourceId)?.name || 'Unknown group');
                   return (
                     <div key={snap.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-default bg-subtle">
@@ -1352,7 +1352,7 @@ export default function TasksPage() {
                   <option value="">Select a user...</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name || user.email || user.id} ({providerTypeLabel(user.providerType)})
+                      {user.name || displayEmail(user.email) || user.id} ({providerTypeLabel(user.providerType)})
                     </option>
                   ))}
                 </select>
@@ -1392,9 +1392,9 @@ export default function TasksPage() {
                   <UserAvatar userId={user.id} name={user.name || user.email || 'U'} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="sm" />
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-default truncate">{user.name || user.email || user.id}</p>
+                      <p className="text-sm font-medium text-default truncate">{user.name || displayEmail(user.email) || user.id}</p>
                       {user.email && user.name && (
-                        <p className="text-xs text-muted truncate">{user.email}</p>
+                        <p className="text-xs text-muted truncate">{displayEmail(user.email)}</p>
                       )}
                     </div>
                     <Badge variant={providerBadgeVariant(user)} size="sm">
@@ -1429,7 +1429,7 @@ export default function TasksPage() {
                   <option value="all">All Users</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name || user.email || user.id} ({providerTypeLabel(user.providerType)})
+                      {user.name || displayEmail(user.email) || user.id} ({providerTypeLabel(user.providerType)})
                     </option>
                   ))}
                 </select>
@@ -1474,9 +1474,9 @@ export default function TasksPage() {
                   <UserAvatar userId={user.id} name={user.name || user.email || 'U'} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="sm" />
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-default truncate">{user.name || user.email || user.id}</p>
+                      <p className="text-sm font-medium text-default truncate">{user.name || displayEmail(user.email) || user.id}</p>
                       {user.email && user.name && (
-                        <p className="text-xs text-muted truncate">{user.email}</p>
+                        <p className="text-xs text-muted truncate">{displayEmail(user.email)}</p>
                       )}
                     </div>
                     <Badge variant={providerBadgeVariant(user)} size="sm">
@@ -2311,7 +2311,7 @@ export default function TasksPage() {
               <option value="">Select a {newSnapshotSourceType}...</option>
               {(newSnapshotSourceType === 'user' ? users : groups).map((item: any) => (
                 <option key={item.id} value={item.id}>
-                  {item.name || item.email || item.id}
+                  {item.name || displayEmail(item.email) || item.id}
                 </option>
               ))}
             </select>
@@ -2346,7 +2346,7 @@ export default function TasksPage() {
               <option value="">Select a user...</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.name || user.email || user.id} ({providerTypeLabel(user.providerType)})
+                  {user.name || displayEmail(user.email) || user.id} ({providerTypeLabel(user.providerType)})
                 </option>
               ))}
             </select>

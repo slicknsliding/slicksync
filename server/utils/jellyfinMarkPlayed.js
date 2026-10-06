@@ -21,7 +21,15 @@
 // On for everyone, switchable per person: sync.jellyfinMarkPlayed[personId]
 // === false turns it off. Where each person is up to lives in
 // sync.jellyfinMarkPlayedCursor.
+//
+// The household's watchlist and ratings too, for a person it's turned on for
+// (sync.jellyfinListsInStep[personId] === true - off unless chosen, since it
+// fills their own favourites): the watchlist becomes their favourites, each
+// rating their rating. Only what SlickSync put there is ever taken away
+// again (sync.jellyfinListsPushed) - a favourite or rating of their own stays.
+// Season ratings stay here; a film's or show's are sent.
 
+const crypto = require('crypto')
 const { jfRequest, deviceIdFor } = require('../providers/jellyfinAuth')
 const { stremioIdFromProviderIds } = require('../providers/jellyfin')
 const { hasReachedEnd } = require('./sessionTracker')
@@ -175,12 +183,73 @@ async function markFor(prisma, accountId, signIn, token, since) {
   return { marked, resumed }
 }
 
+/**
+ * The household's watchlist as favourites and its ratings as ratings on one
+ * sign-in's server. `pushed` is what an earlier pass put there; returns the
+ * new one, or null when the lists haven't changed since (nothing is read
+ * from the server then).
+ */
+async function pushLists(prisma, accountId, signIn, token, pushed = {}) {
+  const [watchlist, ratings] = await Promise.all([
+    prisma.watchlistItem.findMany({ where: { accountId }, select: { itemId: true } }),
+    prisma.titleRating.findMany({ where: { accountId, season: 0 }, select: { itemId: true, rating: true } }),
+  ])
+  const fav = new Set(watchlist.map((w) => w.itemId).filter((id) => /^tt\d+$/.test(id)))
+  const rate = new Map(ratings.filter((r) => /^tt\d+$/.test(r.itemId)).map((r) => [r.itemId, Number(r.rating)]))
+  const hash = crypto.createHash('sha1').update(JSON.stringify([[...fav].sort(), [...rate].sort()])).digest('hex')
+  if (pushed.hash === hash) return null
+
+  const jfUser = signIn.jellyfinUserId
+  const deviceId = deviceIdFor(signIn.serverUrl, jfUser)
+  const call = (path, opts = {}) => jfRequest(signIn.serverUrl, path, { token, deviceId, ...opts })
+  const q = new URLSearchParams({ userId: jfUser })
+  const setUserData = async (itemId, body) => {
+    try {
+      await call(`/UserItems/${itemId}/UserData?${q}`, { method: 'POST', body })
+    } catch (e) {
+      if (e?.status !== 404) throw e
+      await call(`/Users/${jfUser}/Items/${itemId}/UserData`, { method: 'POST', body })
+    }
+  }
+  const ourFav = new Set(pushed.fav || [])
+  const ourRated = new Set(pushed.rated || [])
+  let favourited = 0
+  let rated = 0
+  const all = await items(call, { userId: jfUser, Recursive: 'true', IncludeItemTypes: 'Movie,Series', Fields: 'ProviderIds', EnableUserData: 'true', Limit: '20000' })
+  for (const it of all) {
+    const id = stremioIdFromProviderIds(it.ProviderIds)
+    if (!id) continue
+    const ud = it.UserData || {}
+    if (fav.has(id) && !ud.IsFavorite) {
+      await call(`/UserFavoriteItems/${it.Id}?${q}`, { method: 'POST' })
+      ourFav.add(id)
+      favourited++
+    } else if (!fav.has(id) && ourFav.has(id)) {
+      if (ud.IsFavorite) await call(`/UserFavoriteItems/${it.Id}?${q}`, { method: 'DELETE' })
+      ourFav.delete(id)
+    }
+    const r = rate.get(id)
+    if (r && Math.abs((Number(ud.Rating) || 0) - r) > 0.01) {
+      await setUserData(it.Id, { Rating: r })
+      ourRated.add(id)
+      rated++
+    } else if (!r && ourRated.has(id)) {
+      await call(`/UserItems/${it.Id}/Rating?${q}`, { method: 'DELETE' }).catch(() => {})
+      ourRated.delete(id)
+    }
+  }
+  return { hash, fav: [...ourFav], rated: [...ourRated], favourited, ratedNow: rated }
+}
+
 async function runAccount(prisma, decrypt, accountId) {
   const signIns = await signInsFor(prisma, accountId)
   if (!signIns.length) return
   const { cfg } = await readSync(prisma, accountId)
   const off = cfg.jellyfinMarkPlayed && typeof cfg.jellyfinMarkPlayed === 'object' ? cfg.jellyfinMarkPlayed : {}
   const cursors = cfg.jellyfinMarkPlayedCursor && typeof cfg.jellyfinMarkPlayedCursor === 'object' ? cfg.jellyfinMarkPlayedCursor : {}
+  const listsOn = cfg.jellyfinListsInStep && typeof cfg.jellyfinListsInStep === 'object' ? cfg.jellyfinListsInStep : {}
+  const pushedAll = cfg.jellyfinListsPushed && typeof cfg.jellyfinListsPushed === 'object' ? cfg.jellyfinListsPushed : {}
+  const nextPushed = {}
   const nextCursors = {}
   const startedAt = new Date()
   for (const signIn of signIns) {
@@ -192,12 +261,21 @@ async function runAccount(prisma, decrypt, accountId) {
       const { marked, resumed } = await markFor(prisma, accountId, signIn, token, since)
       if (marked || resumed) console.log(`[JellyfinMarkPlayed] ${signIn.person.username}: ${marked} marked played, ${resumed} resume point(s) set`)
       nextCursors[key] = startedAt.toISOString()
+      if (listsOn[signIn.person.id] === true) {
+        const lists = await pushLists(prisma, accountId, signIn, token, pushedAll[key] || {})
+        if (lists) {
+          const { favourited, ratedNow, ...keep } = lists
+          nextPushed[key] = keep
+          if (favourited || ratedNow) console.log(`[JellyfinMarkPlayed] ${signIn.person.username}: ${favourited} favourited, ${ratedNow} rated`)
+        }
+      }
     } catch (e) {
       // Left where it was, so the next pass tries the same stretch again.
       console.warn(`[JellyfinMarkPlayed] ${signIn.person.username}:`, e?.message)
     }
   }
   if (Object.keys(nextCursors).length) await patchSync(prisma, accountId, { jellyfinMarkPlayedCursor: nextCursors })
+  if (Object.keys(nextPushed).length) await patchSync(prisma, accountId, { jellyfinListsPushed: nextPushed })
 }
 
 async function runAll(prisma, decrypt) {
@@ -220,11 +298,16 @@ function scheduleMarkPlayed(prisma, decrypt) {
 async function statusFor(prisma, accountId, userId) {
   const available = (await signInsFor(prisma, accountId)).some((s) => s.person.id === userId)
   const { cfg } = await readSync(prisma, accountId)
-  return { available, enabled: cfg.jellyfinMarkPlayed?.[userId] !== false }
+  return { available, enabled: cfg.jellyfinMarkPlayed?.[userId] !== false, lists: cfg.jellyfinListsInStep?.[userId] === true }
 }
 
 async function setEnabled(prisma, accountId, userId, enabled) {
   await patchSync(prisma, accountId, { jellyfinMarkPlayed: { [userId]: enabled === true } })
 }
 
-module.exports = { scheduleMarkPlayed, runAccount, markFor, signInsFor, statusFor, setEnabled }
+/** The household's watchlist and ratings on their server too - off unless turned on. */
+async function setLists(prisma, accountId, userId, on) {
+  await patchSync(prisma, accountId, { jellyfinListsInStep: { [userId]: on === true } })
+}
+
+module.exports = { scheduleMarkPlayed, runAccount, markFor, pushLists, signInsFor, statusFor, setEnabled, setLists }

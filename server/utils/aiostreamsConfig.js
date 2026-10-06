@@ -273,7 +273,8 @@ async function alert(prisma, accountId, { title, body, url, dedupeKey }) {
 /** One look at every watched configuration; tells the household about any change. */
 async function checkConfigs(prisma, decrypt) {
   const people = await prisma.user.findMany({
-    where: { providerType: 'jellyfin', aioConfigPassword: { not: null } },
+    // AIOStreams only: an AIOMetadata password kept for its household users isn't one of these.
+    where: { providerType: 'jellyfin', jellyfinServerKind: 'aiostreams', aioConfigPassword: { not: null } },
     select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true, aioConfigStateJson: true },
   })
   // One configuration can be behind several people; look once per account.

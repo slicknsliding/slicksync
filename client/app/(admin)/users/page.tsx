@@ -17,7 +17,7 @@ import { api, User, Group, MetricsData } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
-import { providerLabel, providerBadgeVariant, providerTypeLabel, hasAddonList } from '@/lib/providers';
+import { providerLabel, providerBadgeVariant, providerTypeLabel, hasAddonList, displayEmail } from '@/lib/providers';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
@@ -786,7 +786,7 @@ export default function UsersPage() {
                                       )}
                                     </div>
                                     <p className="text-sm text-subtle">
-                                      {hideSensitive ? '••••••••' : user.email}
+                                      {hideSensitive ? '••••••••' : displayEmail(user.email)}
                                     </p>
                                   </div>
                                 </TVLink>

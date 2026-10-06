@@ -190,6 +190,7 @@ model JellyfinProfile {
   token          String? // Encrypted; null until it can be signed in (a PIN, or a Quick Connect add)
   needsPin       Boolean  @default(false)
   ownUserId      String? // Separated into this person, who reads it with their own sign-in
+  avatarUrl      String? // Their picture on the server, kept here (utils/serverAvatars.js)
   skip           Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

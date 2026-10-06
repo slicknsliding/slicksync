@@ -655,7 +655,7 @@ export default function UserActivityPage() {
   }, []);
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <UserPageHeader
         title="Activity"
         subtitle="Your watch history and statistics"

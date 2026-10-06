@@ -19,6 +19,8 @@ const REASON: Record<string, string> = {
   seen: 'Seen',
   slicksync: 'Changed by SlickSync',
   restore: 'Put back',
+  pause: 'Streaming paused by SlickSync',
+  unpause: 'Streaming back on',
 };
 
 export function AioHistoryButton({ userId, name }: { userId: string; name: string }) {

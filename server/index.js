@@ -752,11 +752,18 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize automation scheduler:', err)
     }
 
-    // Daily screen-time limits (every 5m, only for accounts that set one)
+    // Daily screen-time limits and bedtimes (every minute, only for accounts that set one)
     try {
       require('./utils/screenTime').scheduleScreenTime(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize screen-time limits:', err)
+    }
+
+    // Profile pictures from people's own Jellyfin, AIOStreams and AIOMetadata servers
+    try {
+      require('./utils/serverAvatars').scheduleServerAvatars(prisma, require('./utils/encryption').decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize server profile pictures:', err)
     }
 
     // Schedule auto-generated themed catalogs (daily, only for accounts

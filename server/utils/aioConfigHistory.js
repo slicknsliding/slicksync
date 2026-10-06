@@ -121,7 +121,36 @@ function merge(old, current, { keepServices = true, keepPersonas = true, keepApi
       else next.jellyfin.apiKeys = cur.apiKeys
     }
   }
+  keepOwnVariants(next, current)
   return next
+}
+
+// SlickSync's own variants - a daily-limit pause (aioPause.js), a profile's
+// collections (aioProfileVariants.js) - stay as they are now. Putting back an
+// old version must not lift a pause that is on, or bring back one that ended.
+const OWN_VARIANT = /^slicksync-/
+function keepOwnVariants(next, current) {
+  const ownNow = (Array.isArray(current.variants) ? current.variants : []).filter((v) => OWN_VARIANT.test(String(v?.id || '')))
+  const theirs = (Array.isArray(next.variants) ? next.variants : []).filter((v) => !OWN_VARIANT.test(String(v?.id || '')))
+  const all = [...theirs, ...ownNow]
+  if (all.length) next.variants = all
+  else delete next.variants
+  // Each user's references to them, too, when the old version's users were kept.
+  const refsNow = new Map()
+  const cur = current.jellyfin || {}
+  if (cur.primary) refsNow.set('primary', cur.primary.variants)
+  for (const p of Array.isArray(cur.personas) ? cur.personas : []) refsNow.set(`p:${p.id}`, p.variants)
+  const fix = (user, key) => {
+    if (!user || typeof user !== 'object') return
+    const own = (Array.isArray(refsNow.get(key)) ? refsNow.get(key) : []).filter((id) => OWN_VARIANT.test(id))
+    const refs = [...(Array.isArray(user.variants) ? user.variants : []).filter((id) => !OWN_VARIANT.test(id)), ...own]
+    if (refs.length) user.variants = refs
+    else delete user.variants
+  }
+  if (next.jellyfin && typeof next.jellyfin === 'object') {
+    fix(next.jellyfin.primary, 'primary')
+    for (const p of Array.isArray(next.jellyfin.personas) ? next.jellyfin.personas : []) fix(p, `p:${p.id}`)
+  }
 }
 
 async function restore(prisma, decrypt, accountId, userId, snapshotId, options = {}) {

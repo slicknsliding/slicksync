@@ -673,6 +673,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         data: updateData
       })
 
+      // Invitations name their group rather than point at it, so a rename
+      // carries over to them and to requests still waiting - otherwise the
+      // next person to join lands in no group at all.
+      if (updateData.name !== group.name) {
+        const accountId = getAccountId(req)
+        try {
+          await prisma.invitation.updateMany({ where: { accountId, groupName: group.name }, data: { groupName: updateData.name } })
+          await prisma.inviteRequest.updateMany({ where: { accountId, groupName: group.name, status: 'pending' }, data: { groupName: updateData.name } })
+        } catch (e) {
+          console.warn('[groups] invitations kept the old group name:', e?.message)
+        }
+      }
+
       // Sync users only if userIds is explicitly provided (SQLite approach)
       if (userIds !== undefined) {
         const desiredUserIds = Array.isArray(userIds) ? userIds : []

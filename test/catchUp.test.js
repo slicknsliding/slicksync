@@ -206,3 +206,17 @@ test('Done clears a finished run and its Undo; a run still going is left alone',
   assert.equal(catchUp.status('mia'), null, 'gone at the next opening too')
   await assert.rejects(catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', { createProvider: p.createProvider }), /Nothing to undo/)
 })
+
+test('on AIOStreams, filler and recap episodes are marked as such in the list', async () => {
+  const w = world()
+  const base = w.prisma.user.findFirst
+  w.prisma.user.findFirst = async (args) => ({ ...(await base(args)), jellyfinServerKind: 'aiostreams' })
+  const server = [
+    { itemId: 'e1', season: 1, episode: 1, played: false },
+    { itemId: 'e2', season: 1, episode: 2, played: false, filler: true },
+    { itemId: 'e3', season: 1, episode: 3, played: false, recap: true },
+  ]
+  const list = await catchUp.episodesFor(w.prisma, () => 'tok', 'acc', 'mia', 'tt1', { fetchMeta: meta, createProvider: () => ({ listEpisodes: async () => server }) })
+  assert.deepEqual(list.episodes.map((e) => e.kind || null), [null, 'filler', 'recap', null])
+  assert.equal(list.episodes[0].title, 'One', 'Cinemeta still gives the titles')
+})

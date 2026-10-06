@@ -73,12 +73,21 @@ async function rememberSignIn(prisma, encrypt, probe, login) {
   const where = { jellyfinUserId: login.userId, OR: servers }
   const sealed = (accountId) => encrypt(login.token, { appAccountId: accountId || 'default' })
   try {
-    const users = await prisma.user.findMany({ where: { providerType: 'jellyfin', ...where }, select: { id: true, accountId: true } })
+    const users = await prisma.user.findMany({
+      where: { providerType: 'jellyfin', ...where },
+      select: { id: true, accountId: true, username: true, providerType: true, jellyfinServerUrl: true, jellyfinServerKind: true, providerConnectionError: true, providerConnectionErrorAt: true },
+    })
     for (const u of users) {
       await prisma.user.update({
         where: { id: u.id },
         data: { jellyfinToken: sealed(u.accountId), providerConnectionError: null, providerConnectionErrorAt: null },
       })
+      // A sign-in that had stopped working is fixed by this one - from a
+      // Reconnect, or the person signing in on their own page. Say so, as
+      // the activity monitor would once it read them again.
+      if (u.providerConnectionErrorAt) {
+        await require('./connectionAlerts').onConnectionRecovered(prisma, u.accountId || 'default', u).catch(() => {})
+      }
     }
     const credentials = await prisma.userProviderCredential.findMany({ where: { providerType: 'jellyfin', ...where }, select: { id: true, userId: true } })
     for (const c of credentials) {

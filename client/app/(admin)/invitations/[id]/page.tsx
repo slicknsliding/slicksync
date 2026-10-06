@@ -7,9 +7,13 @@ import Link from 'next/link';
 import { api, Invitation, Group, InviteRequest } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { Button, Card, Badge, ConfirmModal, UserAvatar } from '@/components/ui';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
+import { Button, Card, Badge, ConfirmModal, Modal, UserAvatar } from '@/components/ui';
+import { EditInvitationForm } from '@/components/invitations/EditInvitationForm';
+import { displayEmail } from '@/lib/providers';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { toast, showToast } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import {
   EnvelopeIcon,
   ClipboardIcon,
@@ -24,6 +28,8 @@ import {
   ArrowTopRightOnSquareIcon,
   LinkIcon,
   ChartPieIcon,
+  ArrowLeftIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 
@@ -47,6 +53,9 @@ export default function InvitationDetailPage() {
     request: InviteRequest | null;
   }>({ open: false, request: null });
   const [copiedLink, setCopiedLink] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const { layoutMode } = useLayoutMode();
+  const isNebula = layoutMode === 'nebula';
 
   // Fetch invitation data
   useEffect(() => {
@@ -164,7 +173,7 @@ export default function InvitationDetailPage() {
   if (isLoading) {
     return (
       <>
-        <Header title={<Breadcrumbs items={[{ label: 'Invitations', href: '/invitations' }, { label: 'Loading...' }]} />} />
+        {!isNebula && <Header title={<Breadcrumbs items={[{ label: 'Invitations', href: '/invitations' }, { label: 'Loading...' }]} />} />}
         <div className="p-8">
           <div className="flex items-center justify-center py-20">
             <div className="flex items-center gap-3 text-muted">
@@ -180,7 +189,7 @@ export default function InvitationDetailPage() {
   if (error || !invitation) {
     return (
       <>
-        <Header title={<Breadcrumbs items={[{ label: 'Invitations', href: '/invitations' }, { label: 'Error' }]} />} />
+        {!isNebula && <Header title={<Breadcrumbs items={[{ label: 'Invitations', href: '/invitations' }, { label: 'Error' }]} />} />}
         <div className="p-8">
           <Card padding="lg" className="text-center py-16">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center bg-error-muted">
@@ -200,41 +209,58 @@ export default function InvitationDetailPage() {
   const code = invitation.code || invitation.inviteCode || '';
   const group = groups.find(g => g.name === invitation.groupName);
 
+  const detailActions = (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={<PencilIcon className="w-4 h-4" />}
+        onClick={() => setEditOpen(true)}
+      >
+        Edit
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={<TrashIcon className="w-4 h-4" />}
+        onClick={() => setDeleteConfirmOpen(true)}
+      >
+        Delete
+      </Button>
+    </div>
+  );
+
   return (
     <>
-      <Header
-        title={
-          <Breadcrumbs
-            items={[
-              { label: 'Invitations', href: '/invitations' },
-              { label: code },
-            ]}
-            className="text-xl font-semibold"
-          />
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              leftIcon={<PencilIcon className="w-4 h-4" />}
-              onClick={() => showToast.info('Edit functionality coming soon')}
-            >
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              leftIcon={<TrashIcon className="w-4 h-4" />}
-              onClick={() => setDeleteConfirmOpen(true)}
-            >
-              Delete
-            </Button>
-          </div>
-        }
-      />
+      {!isNebula && (
+        <Header
+          title={
+            <Breadcrumbs
+              items={[
+                { label: 'Invitations', href: '/invitations' },
+                { label: code },
+              ]}
+              className="text-xl font-semibold"
+            />
+          }
+          actions={detailActions}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={isNebula ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={isNebula ? 'mx-auto' : ''} style={isNebula ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
+        {isNebula && (
+          <NebulaPageHeading
+            title={invitation.name || code}
+            subtitle="Invitations"
+            leading={
+              <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
+                Back
+              </Button>
+            }
+            actions={detailActions}
+          />
+        )}
         {/* Hero Section - Invitation Info */}
         <PageSection className="mb-8">
           <Card padding="lg">
@@ -257,9 +283,19 @@ export default function InvitationDetailPage() {
                   )}
                 </div>
 
-                <p className="text-muted mb-4">
-                  {invitation.groupName || 'No group assigned'}
-                </p>
+                {invitation.groupName && !group ? (
+                  <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-warning">
+                    <span className="inline-flex items-start gap-1.5">
+                      <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{invitation.groupName} was deleted, so people who join won&apos;t be put in a group.</span>
+                    </span>
+                    <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Pick a group</Button>
+                  </div>
+                ) : (
+                  <p className="text-muted mb-4">
+                    {invitation.groupName || 'No group assigned'}
+                  </p>
+                )}
 
                 {/* Stats Row */}
                 <div className="flex flex-wrap items-center gap-6 text-sm">
@@ -411,7 +447,7 @@ export default function InvitationDetailPage() {
                     >
                       <UserAvatar 
                         userId={request.id} 
-                        name={request.username || request.email} 
+                        name={request.username || displayEmail(request.email)} 
                         email={request.email}
                         size="md" 
                       />
@@ -419,7 +455,7 @@ export default function InvitationDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-default">
-                            {request.username || request.email}
+                            {request.username || displayEmail(request.email)}
                           </span>
                           <Badge 
                             variant={
@@ -438,7 +474,7 @@ export default function InvitationDetailPage() {
                         </div>
                         <p className="text-xs text-muted mt-0.5">
                           {request.email && request.username !== request.email && (
-                            <>{request.email} • </>
+                            <>{displayEmail(request.email)} • </>
                           )}
                           Requested {format(new Date(request.createdAt), 'MMM d, yyyy')}
                           {request.respondedAt && (
@@ -523,6 +559,34 @@ export default function InvitationDetailPage() {
           </Card>
         </PageSection>
       </div>
+      </div>
+
+      <Modal
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Invitation"
+        description={`Update settings for invitation ${code}`}
+        size="md"
+      >
+        {editOpen && (
+          <EditInvitationForm
+            invitation={{
+              id: invitation.id,
+              name: invitation.name,
+              code,
+              groupId: invitation.groupId || group?.id,
+              groupName: invitation.groupName,
+              maxUses: typeof invitation.maxUses === 'number' ? invitation.maxUses : undefined,
+              uses: invitation.currentUses || invitation.uses || 0,
+              membershipDuration: invitation.membershipDuration ?? invitation.membershipDurationDays ?? undefined,
+              syncOnJoin: invitation.syncOnJoin === true,
+              jellyfinServerKey: (invitation as { jellyfinServerKey?: string | null }).jellyfinServerKey || null,
+            }}
+            groups={groups}
+            onClose={() => setEditOpen(false)}
+          />
+        )}
+      </Modal>
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal
@@ -547,7 +611,7 @@ export default function InvitationDetailPage() {
           setDeleteUserConfirm({ open: false, request: null });
         }}
         title="Remove User"
-        description={`Are you sure you want to remove ${deleteUserConfirm.request?.username || deleteUserConfirm.request?.email} from this invitation?`}
+        description={`Are you sure you want to remove ${deleteUserConfirm.request?.username || displayEmail(deleteUserConfirm.request?.email)} from this invitation?`}
         confirmText="Remove User"
         variant="danger"
       />

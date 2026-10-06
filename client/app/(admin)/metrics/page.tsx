@@ -1344,7 +1344,10 @@ export default function MetricsPage() {
                           <div className="min-w-0">
                             <p className="text-sm text-default truncate">{s.address}</p>
                             <p className="text-subtle">
-                              {s.label} · {s.people.length} {s.people.length === 1 ? 'person' : 'people'}
+                              {s.label}
+                              {s.version ? ` ${s.channel === 'nightly' ? `nightly${s.commit ? ` ${s.commit.slice(0, 7)}` : ''}` : s.version}` : ''}
+                              {s.updateAvailable && s.latest ? <span className="text-warning"> · {s.latest} is out</span> : null}
+                              {' · '}{s.people.length} {s.people.length === 1 ? 'person' : 'people'}
                               {s.status === 'down' && s.since ? ` · down since ${healthTimeAgo(s.since)}` : ''}
                               {s.status === 'partial'
                                 ? ` · ${s.people.filter((p) => p.state !== 'ok').map((p) => `${p.name} ${p.state === 'reconnect' ? 'needs to reconnect' : 'failing'}`).join(', ')}`

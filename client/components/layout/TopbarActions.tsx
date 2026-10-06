@@ -29,11 +29,11 @@ const FLOAT_GAP = 8;
 // Fallback pin position for layouts with no `data-nebula-topbar` bar to
 // measure against (the sidebar Header, which has its own fixed chrome).
 const FALLBACK_FLOAT_TOP = 12;
-// Below this width (Tailwind's md), the cluster docks INSIDE the top bar's
-// logo row rather than floating under it: on a phone the floating pair sat
-// over the page's own controls - a person's pills, the Users Add button -
-// and taps meant for them hit the bell instead.
-const DOCK_BELOW_WIDTH = 768;
+// Wherever there is a Nebula bar, the cluster docks INSIDE its logo row,
+// at the far end from the hamburger, rather than floating under it: the
+// floating pair sat over the page's own controls - a person's pills, the
+// Users Add button, Discover's Show and Sort - and clicks meant for them hit
+// the bell instead. Phones first, then the PC too, in the same spot.
 // Docked, how far the cluster sits in from the bar card's right edge: into
 // the card's padding, so it isn't crowding the centred logo.
 const DOCK_EDGE_INSET = 8;
@@ -49,9 +49,9 @@ const DOCK_EDGE_INSET = 8;
 // one cluster in one place, so there's no per-platform variant to keep in
 // sync.
 //
-// The cluster sits inline in the page heading at rest, then pins itself
-// just under the sticky nav once that spot scrolls past - or, on a phone,
-// docks inside the nav's logo row (see DOCK_BELOW_WIDTH). Without this it
+// The cluster sits inline in the page heading at rest, then docks inside
+// the sticky nav's logo row once that spot scrolls past (or, in the sidebar
+// layout, which has no such row, pins itself near the top). Without this it
 // scrolled away entirely, which mattered most on mobile: there's no Ctrl+K
 // on a phone, so this button is the only way into the command palette, and
 // on a long page (Discover's infinite scroll especially) it was unreachable
@@ -130,8 +130,8 @@ export function TopbarActions({
     // would re-render the whole cluster (and the bell's subtree) for the
     // entire length of a scroll even when nothing moved.
     if (natural.top < floatTop) {
-      // On a phone, centred on the logo row, near the bar card's right edge.
-      const row = window.innerWidth < DOCK_BELOW_WIDTH ? document.querySelector('[data-nebula-logo-row]') : null;
+      // Centred on the logo row, near the bar card's right edge.
+      const row = document.querySelector('[data-nebula-logo-row]');
       const rr = row?.getBoundingClientRect();
       const card = row?.parentElement?.getBoundingClientRect();
       const edge = card ? card.right - DOCK_EDGE_INSET : rr?.right ?? 0;

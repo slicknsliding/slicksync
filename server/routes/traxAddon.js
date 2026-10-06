@@ -224,6 +224,20 @@ module.exports = ({ prisma }) => {
     next()
   })
 
+  // Pictures uploaded to SlickSync, for the AIOStreams and AIOMetadata apps
+  // that show someone's picture from a web address (utils/serverAvatars.js
+  // pushPicture). Under /trax/ because a login gate in front of SlickSync
+  // lets this path through; each file's random name is the only way to it,
+  // as it is at /uploads/avatars.
+  router.get('/pictures/:file', (req, res) => {
+    const m = /^([a-f0-9-]{36})\.(jpg|png|gif|webp)$/i.exec(String(req.params.file || ''))
+    if (!m) return res.status(404).json({ error: 'Not found' })
+    const file = require('path').join(require('../utils/serverAvatars').AVATAR_DIR, `${m[1]}.${m[2]}`)
+    if (!require('fs').existsSync(file)) return res.status(404).json({ error: 'Not found' })
+    res.type(m[2].toLowerCase() === 'jpg' ? 'image/jpeg' : `image/${m[2].toLowerCase()}`)
+    res.sendFile(file)
+  })
+
   async function resolveUser(token) {
     if (!token || typeof token !== 'string' || token.length < 16) return null
     const user = await prisma.user.findFirst({ where: { traxToken: token, traxAddonEnabled: true } })

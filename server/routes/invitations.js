@@ -12,6 +12,23 @@ function generateInviteCode() {
   return crypto.randomBytes(4).toString('base64url').substring(0, 8).toUpperCase()
 }
 
+// An invitation names its group rather than pointing at it. If that group has
+// since been deleted the person still joins, just in no group - so say so,
+// rather than leave them there unnoticed.
+async function tellGroupMissing(prisma, accountId, { username, userId, groupName, inviteCode }) {
+  const who = username || 'Someone'
+  const title = `${who} joined without a group`
+  const body = `Invitation ${inviteCode} puts people in "${groupName}", which no longer exists. Add ${who} to a group, and pick a new group for the invitation.`
+  try {
+    const { createNotification } = require('../utils/notificationStore')
+    await createNotification(prisma, accountId, { type: 'invite', title, body, url: userId ? `/users/${userId}` : '/invitations', dedupeKey: `invite-group-missing:${userId || inviteCode}` })
+    const { isPushEnabled, sendPushToAccount } = require('../utils/pushNotifications')
+    if (isPushEnabled()) await sendPushToAccount(prisma, accountId, { title, body, icon: '/android-chrome-192x192.png', url: userId ? `/users/${userId}` : '/invitations' })
+  } catch (e) {
+    console.warn('[invitations] could not tell about a missing group:', e?.message)
+  }
+}
+
 module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assignUserToGroup }) => {
   const router = express.Router()
 
@@ -505,6 +522,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
                   console.error('❌ Error syncing user on join:', syncError)
                 }
               }
+            } else {
+              await tellGroupMissing(prisma, request.invitation.accountId, { username: newUser.username, userId: newUser.id, groupName: finalGroupName, inviteCode: request.invitation.inviteCode })
             }
           } catch (error) {
             console.error('Error assigning user to group:', error)
@@ -1748,6 +1767,8 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
                 // Don't fail the whole thing if sync fails
               }
             }
+          } else {
+            await tellGroupMissing(prisma, invitation.accountId, { username: newUser.username, userId: newUser.id, groupName: finalGroupName, inviteCode: invitation.inviteCode })
           }
         } catch (error) {
           console.error('Error assigning user to group:', error)
