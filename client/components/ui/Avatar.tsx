@@ -227,7 +227,13 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
 
   return (
     <div className={clsx("relative inline-flex rounded-full", sizes[size], className)}>
+      {/* Keyed on what it draws, so a new colour is a new element. A page
+          first shows the copy of a group or person it saw last, then the
+          fresh one; page-recolouring browser extensions keep the inline
+          background they already rewrote on an element, so a group set to
+          red stayed purple on its own page while the list showed red. */}
       <motion.div
+        key={finalSrc && !imageError ? 'picture' : style.gradient}
         whileHover={{ scale: 1.05 }}
         className={clsx(
           'relative rounded-full overflow-hidden flex items-center justify-center font-semibold w-full h-full',

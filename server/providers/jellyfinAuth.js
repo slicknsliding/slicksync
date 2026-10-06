@@ -93,27 +93,32 @@ async function jfRequest(baseUrl, path, { method = 'GET', token, deviceId, body,
 }
 
 /**
- * Which kind of server answers here, before anyone signs in. AIOMetadata
- * names itself; AIOStreams and AIOMetadata both carry the `aiostreams`
- * extension block (AIOMetadata offers it so the AIOStreams apps work against
- * it), so the name is checked first. Only a first guess: AIOStreams already
- * names each configuration after its owner, and if AIOMetadata does the same
- * its servers would read as AIOStreams here - signing in settles it
- * (signedInKind).
+ * Which kind of server answers here, before anyone signs in. AIOStreams and
+ * AIOMetadata both carry the `aiostreams` extension block (AIOMetadata offers
+ * it so the AIOStreams apps work against it). AIOMetadata names itself; when
+ * a setup is named after its owner instead - AIOStreams already does that,
+ * AIOMetadata may follow - where its settings page lives still tells them
+ * apart: AIOStreams' is part of its Stremio addon (`…/stremio/…/configure`),
+ * AIOMetadata's sits at the root (`…/configure`). Still a guess; signing in
+ * settles it (signedInKind).
  */
 function serverKindOf(info) {
   if (!info || typeof info !== 'object') return 'jellyfin'
   if (String(info.ServerName || '').toLowerCase() === 'aiometadata') return 'aiometadata'
-  if (info.aiostreams && typeof info.aiostreams === 'object') return 'aiostreams'
-  return 'jellyfin'
+  const ext = info.aiostreams
+  if (!ext || typeof ext !== 'object') return 'jellyfin'
+  const configure = String(ext.configureUrl || '')
+  if (configure && !/\/stremio\//i.test(configure) && /\/configure\/?$/i.test(configure)) return 'aiometadata'
+  return 'aiostreams'
 }
 
 /**
  * Which software answers, once signed in. AIOStreams and AIOMetadata each put
  * their own name in /System/Info's PackageName, which - unlike ServerName -
  * no configuration renames, and any signed-in user may read it there. A real
- * Jellyfin keeps that page for administrators, or names its own package, so
- * null means "go by the public answer".
+ * Jellyfin (12.x) answers it with no PackageName, and an older one may refuse
+ * the page to someone who isn't an administrator; null means "go by the
+ * public answer".
  */
 async function signedInKind(baseUrl, token, { deviceId } = {}) {
   try {
