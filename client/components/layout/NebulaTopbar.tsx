@@ -217,8 +217,8 @@ export function NebulaTopbar() {
         stays visible through the padding gaps around it instead of being
         hidden behind a solid block. */}
     {/* data-nebula-topbar: TopbarActions measures this element's bottom edge
-        to know where "just under the nav" is, so its cluster can pin itself
-        there once the page heading scrolls past. Read at scroll time rather
+        to know when the page heading has scrolled under the nav, which is
+        when its cluster docks in the logo row. Read at scroll time rather
         than hardcoded because this bar's height changes - it collapses its
         nav links into a hamburger once scrolled. */}
     <div
@@ -266,9 +266,10 @@ export function NebulaTopbar() {
             TV-only and independent of the D-pad reachability fix (scroll-
             padding-top in TVPageProvider) - this is purely about how much
             screen real estate the bar eats, not whether focus can reach it. */}
-        {/* data-nebula-logo-row: on a phone, TopbarActions docks the command
-            palette and bell inside this row once the page heading scrolls
-            past, instead of floating them over the page under the bar. */}
+        {/* data-nebula-logo-row: TopbarActions docks the command palette and
+            bell inside this row, at the far end from the hamburger, once the
+            page heading scrolls past, instead of floating them over the page
+            under the bar. */}
         <div data-nebula-logo-row className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4 mb-4'}>
           {/* Hamburger - never on TV (nav is always shown inline there
               instead, see navVisible below); on mobile AND desktop alike,

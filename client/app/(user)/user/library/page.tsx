@@ -457,7 +457,7 @@ export default function UserLibraryPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <UserPageHeader
         title="My Library"
         subtitle={`${filteredLibrary.length} items in your library`}

@@ -7,6 +7,18 @@ const { validateStremioCredentials, sanitizeUrl } = require('../utils/helpers');
 module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }) => {
   const router = express.Router();
 
+  // A name nobody in this account has yet: the one asked for, else the
+  // account's own, with a number on the end when someone already has it.
+  const freeUsername = async (accountId, wanted) => {
+    const base = String(wanted || '').trim() || `user_${Math.random().toString(36).slice(2, 8)}`
+    let name = base
+    for (let n = 1; await prisma.user.findFirst({ where: { accountId, username: name }, select: { id: true } }); n++) {
+      if (n > 100) throw Object.assign(new Error('Could not pick a free name - type one in'), { status: 409 })
+      name = `${base}${n}`
+    }
+    return name
+  }
+
   // Validate Stremio credentials
   router.post('/validate', async (req, res) => {
     try {
@@ -116,7 +128,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
 
           // Encrypt
           const encryptedAuthKey = encrypt(authKey, req)
-          const finalUsername = (username && String(username).trim()) || email.split('@')[0]
+          const finalUsername = await freeUsername(accId, (username && String(username).trim()) || email.split('@')[0])
           // Create user in current account
           const newUser = await prisma.user.create({
             data: {
@@ -193,8 +205,6 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
     try {
       const { email, password, username, groupName } = req.body;
       console.log(`🔍 POST /api/stremio/connect called with:`, { email, username, groupName })
-      console.log(`🔍 Password length:`, password ? password.length : 'undefined')
-      console.log(`🔍 Full request body:`, req.body)
       // Redact any sensitive fields from logs
       try {
         const { password: _pw, authKey: _ak, ...rest } = (req.body || {})
@@ -208,9 +218,6 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
         return res.status(400).json({ message: 'Password must be at least 4 characters' })
       }
 
-      // Use provided username, or fallback to email prefix (Stremio username will be set later)
-      const finalUsername = username || email.split('@')[0];
-
       const accountId = getAccountId(req)
       if (!accountId) {
         return res.status(401).json({ message: 'Authentication required' })
@@ -220,21 +227,18 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
       const { ensureEmailUniqueness } = require('../utils/helpers/database')
       await ensureEmailUniqueness(prisma, email, accountId)
 
-      // Check if user with this email already exists in this account.
-      // Email conflicts are scoped to the same provider type (a Stremio user and
-      // a Nuvio user are allowed to share an email — that's by design, see the
-      // composite email+providerType uniqueness constraint). Username conflicts
-      // are NOT provider-scoped, since usernames should stay unique across the
-      // whole account regardless of which provider a user connects through.
+      // Check if this Stremio account is already someone here. Scoped to the
+      // provider type (a Stremio user and a Nuvio user are allowed to share an
+      // email — see the composite email+providerType uniqueness constraint).
+      // Only the email says it is the same account: a name match is a
+      // different person, and matching on it once handed that person's entry
+      // (even a Nuvio or Jellyfin one) to this sign-in. Names just get a
+      // number on the end instead.
       let existingUser = null
       try {
-        const emailConflict = await prisma.user.findFirst({
+        existingUser = await prisma.user.findFirst({
           where: { accountId, email, providerType: 'stremio' }
         });
-        const usernameConflict = emailConflict ? null : await prisma.user.findFirst({
-          where: { accountId, username: finalUsername }
-        });
-        existingUser = emailConflict || usernameConflict
       } catch (e) {
         // Gracefully handle missing appAccountId
         return res.status(401).json({ message: 'Authentication required' })
@@ -262,14 +266,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
               error: 'Email already exists in this account'
             })
           }
-          
-          // Determine which field caused the conflict
-          if (existingUser.username === finalUsername) {
-            return res.status(409).json({ 
-              message: 'Username already exists',
-              error: 'Please choose a different username'
-            });
-          }
+
           if (existingUser.email === email) {
             return res.status(409).json({ 
               message: 'User with this email already exists',
@@ -284,6 +281,12 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
         // We'll update the existing user instead of creating a new one
         console.log(`🔄 User exists with invalid Stremio connection, allowing reconnection: ${existingUser.id}`)
       }
+
+      // Someone reconnected keeps their name; someone new gets the one typed
+      // in, else the start of their email.
+      const finalUsername = existingUser
+        ? existingUser.username
+        : await freeUsername(accountId, (username && String(username).trim()) || email.split('@')[0])
 
       // Create a temporary storage object for this authentication session
       const tempStorage = {};
@@ -567,15 +570,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
         }
       }
 
-      // Check username uniqueness and append number if needed
-      let finalUsername = userInfo.username
-      let baseUsername = finalUsername
-      let attempt = 0
-      while (await prisma.user.findFirst({ where: { accountId, username: finalUsername } })) {
-        attempt += 1
-        finalUsername = `${baseUsername}${attempt}`
-        if (attempt > 50) break
-      }
+      const finalUsername = await freeUsername(accountId, userInfo.username)
 
       const encryptedAuthKey = encrypt(authKey, req)
 

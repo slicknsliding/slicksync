@@ -42,7 +42,7 @@ export function CreateUserModal({
   // A Nuvio person signs in to Nuvio again - never offered Stremio's options.
   const isNuvioReconnect = isReconnect && providerType === 'nuvio';
   const isTV = useIsTV();
-  const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success' | 'nuvio-details' | 'nuvio-oauth'>('tabs');
+  const [step, setStep] = useState<'tabs' | 'oauth' | 'success' | 'nuvio-oauth'>('tabs');
   const [provider, setProvider] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
   // Jellyfin: the name the person gets here (their server name if left
   // empty), and the server last used, so a household can be added one
@@ -72,7 +72,6 @@ export function CreateUserModal({
   const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null);
   const [oauthStatus, setOauthStatus] = useState<'idle' | 'connecting' | 'waiting' | 'completed' | 'error'>('idle');
   const [oauthError, setOauthError] = useState<string | null>(null);
-  const [oauthAuthKey, setOauthAuthKey] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(0);
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -93,8 +92,6 @@ export function CreateUserModal({
   const [nuvioAnonToken, setNuvioAnonToken] = useState<string | null>(null);
   const [nuvioExpiresAt, setNuvioExpiresAt] = useState<string | null>(null);
   const [nuvioCountdown, setNuvioCountdown] = useState<number>(0);
-  const [nuvioResolvedUser, setNuvioResolvedUser] = useState<{ id: string; email: string } | null>(null);
-  const [nuvioRefreshToken, setNuvioRefreshToken] = useState<string | null>(null);
   const nuvioPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nuvioCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -115,7 +112,6 @@ export function CreateUserModal({
         setOauthExpiresAt(null);
         setOauthStatus('idle');
         setOauthError(null);
-        setOauthAuthKey(null);
         setCountdown(0);
         stopPolling();
         if (countdownRef.current) clearInterval(countdownRef.current);
@@ -135,8 +131,6 @@ export function CreateUserModal({
         setNuvioAnonToken(null);
         setNuvioExpiresAt(null);
         setNuvioCountdown(0);
-        setNuvioResolvedUser(null);
-        setNuvioRefreshToken(null);
         if (nuvioPollRef.current) clearInterval(nuvioPollRef.current);
         if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
       }, 300);
@@ -152,6 +146,20 @@ export function CreateUserModal({
       if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
     };
   }, []);
+
+  // Every way of adding someone ends here: a moment on the success step,
+  // then their page.
+  const finishAdding = (created: any) => {
+    setStep('success');
+    setTimeout(() => {
+      onClose();
+      if (created?.id) {
+        window.location.href = `/users/${created.id}`;
+      } else {
+        window.location.reload();
+      }
+    }, 800);
+  };
 
   const stopPolling = () => {
     if (pollIntervalRef.current) {
@@ -194,7 +202,6 @@ export function CreateUserModal({
         if (!result.success || !result.authKey) return;
 
         stopPolling();
-        setOauthAuthKey(result.authKey);
         setOauthStatus('completed');
         setOauthError(null);
 
@@ -212,18 +219,15 @@ export function CreateUserModal({
             setOauthError(err.message || 'Failed to reconnect');
           }
         } else {
-          // For create mode, verify and get user info
+          // Added straight away: the server names them after their Stremio
+          // account (a number on the end if someone here has it already),
+          // and the name can be changed later on their page.
           try {
-            const verification = await api.verifyStremioAuthKey({ authKey: result.authKey });
-            const vUser = verification.user || {};
-            if (vUser.username) setUsername((prev) => prev || vUser.username || '');
-            if (vUser.email) setEmail((prev) => prev || vUser.email || '');
-          } catch (err) {
-            console.error('Failed to verify Stremio auth key:', err);
+            finishAdding(await api.createUserWithStremio({ authKey: result.authKey, username: '', email: '' }));
+          } catch (err: any) {
+            setOauthStatus('error');
+            setOauthError(err.message || 'Could not add them');
           }
-
-          // Auto-advance to details step
-          setTimeout(() => setStep('details'), 800);
         }
       } catch (err: any) {
         console.error('Error while polling Stremio OAuth:', err);
@@ -308,23 +312,11 @@ export function CreateUserModal({
       return;
     }
 
-    // Create mode - validate username
-    if (!username.trim()) {
-      toast.error('Username is required');
-      return;
-    }
-
+    // Create mode. An empty name is fine: the server takes the account's own.
     setIsSubmitting(true);
     try {
       let created: any;
-      if (authMethod === 'oauth' && oauthAuthKey) {
-        // OAuth method
-        created = await api.createUserWithStremio({
-          authKey: oauthAuthKey,
-          username: username.trim(),
-          email: (email || '').trim(),
-        });
-      } else if (authMethod === 'authKey') {
+      if (authMethod === 'authKey') {
         // Auth Key method
         if (!authKey.trim()) {
           toast.error('Auth key is required');
@@ -350,15 +342,7 @@ export function CreateUserModal({
           registerNew: registerNew,
         });
       }
-      setStep('success');
-      setTimeout(() => {
-        onClose();
-        if (created?.id) {
-          window.location.href = `/users/${created.id}`;
-        } else {
-          window.location.reload();
-        }
-      }, 800);
+      finishAdding(created);
     } catch (err: any) {
       toast.error(err.message || 'Failed to create user');
     } finally {
@@ -429,11 +413,6 @@ export function CreateUserModal({
             deviceNonce: result.deviceNonce,
             anonToken: result.anonToken,
           });
-          setNuvioResolvedUser(exchanged.user);
-          setNuvioRefreshToken(exchanged.refreshToken);
-          if (!username.trim() && exchanged.user?.email) {
-            setUsername(exchanged.user.email.split('@')[0]);
-          }
           setNuvioOauthStatus('completed');
           if (isNuvioReconnect && userId) {
             await api.reconnectUserNuvio(userId, { providerUserId: exchanged.user.id, refreshToken: exchanged.refreshToken, email: exchanged.user.email });
@@ -441,7 +420,13 @@ export function CreateUserModal({
             onReconnectSuccess?.();
             return;
           }
-          setStep('nuvio-details');
+          // Added straight away, named after the start of their email.
+          finishAdding(await api.createUserWithNuvioOAuth({
+            providerUserId: exchanged.user.id,
+            refreshToken: exchanged.refreshToken,
+            username: '',
+            email: exchanged.user.email,
+          }));
         } catch (err: any) {
           stopNuvioPolling();
           if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
@@ -455,47 +440,20 @@ export function CreateUserModal({
     }
   };
 
+  // Email and password; the approval-code sign-in adds them as soon as it is
+  // approved. An empty name is fine: the server takes the start of the email.
   const handleNuvioSubmit = async () => {
-    if (!username.trim()) {
-      toast.error('Username is required');
+    if (!nuvioEmail.trim() || !nuvioPassword) {
+      toast.error('Email and password are required');
       return;
     }
     setIsSubmitting(true);
     try {
-      let created: any;
-      if (nuvioAuthMethod === 'oauth') {
-        if (!nuvioResolvedUser || !nuvioRefreshToken) {
-          toast.error('Nuvio login not completed yet');
-          setIsSubmitting(false);
-          return;
-        }
-        created = await api.createUserWithNuvioOAuth({
-          providerUserId: nuvioResolvedUser.id,
-          refreshToken: nuvioRefreshToken,
-          username: username.trim(),
-          email: nuvioResolvedUser.email,
-        });
-      } else {
-        if (!nuvioEmail.trim() || !nuvioPassword) {
-          toast.error('Email and password are required');
-          setIsSubmitting(false);
-          return;
-        }
-        created = await api.createUserWithNuvioCredentials({
-          email: nuvioEmail.trim(),
-          password: nuvioPassword,
-          username: username.trim(),
-        });
-      }
-      setStep('success');
-      setTimeout(() => {
-        onClose();
-        if (created?.id) {
-          window.location.href = `/users/${created.id}`;
-        } else {
-          window.location.reload();
-        }
-      }, 800);
+      finishAdding(await api.createUserWithNuvioCredentials({
+        email: nuvioEmail.trim(),
+        password: nuvioPassword,
+        username: username.trim(),
+      }));
     } catch (err: any) {
       toast.error(err.message || 'Failed to create Nuvio user');
     } finally {
@@ -887,11 +845,11 @@ export function CreateUserModal({
                             {!isReconnect && (
                               <div>
                                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                                  Username <span style={{ color: 'var(--color-error)' }}>*</span>
+                                  Name in SlickSync
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="Enter a unique username"
+                                  placeholder="The start of their email, if left empty"
                                   value={username}
                                   onChange={(e) => setUsername(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
@@ -1072,11 +1030,11 @@ export function CreateUserModal({
                               {!isNuvioReconnect && (
                               <div>
                                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                                  Username <span style={{ color: 'var(--color-error)' }}>*</span>
+                                  Name in SlickSync
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="Enter a unique username"
+                                  placeholder="The start of their email, if left empty"
                                   value={username}
                                   onChange={(e) => setUsername(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
@@ -1227,7 +1185,7 @@ export function CreateUserModal({
                         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {oauthStatus === 'connecting' && 'Opening Stremio...'}
                           {oauthStatus === 'waiting' && 'Complete the authorization in the Stremio tab'}
-                          {oauthStatus === 'completed' && (isReconnect ? 'Stremio account reconnected successfully' : 'Stremio account linked successfully')}
+                          {oauthStatus === 'completed' && (isReconnect ? 'Stremio account reconnected successfully' : 'Adding them to SlickSync...')}
                           {oauthStatus === 'error' && (oauthError || 'Please try again')}
                         </p>
                       </motion.div>
@@ -1331,7 +1289,7 @@ export function CreateUserModal({
                         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {nuvioOauthStatus === 'connecting' && 'Starting Nuvio login...'}
                           {nuvioOauthStatus === 'waiting' && 'Open the link below and approve this login on your device'}
-                          {nuvioOauthStatus === 'completed' && 'Nuvio account linked successfully'}
+                          {nuvioOauthStatus === 'completed' && 'Adding them to SlickSync...'}
                           {nuvioOauthStatus === 'error' && (nuvioOauthError || 'Please try again')}
                         </p>
                       </div>
@@ -1392,130 +1350,6 @@ export function CreateUserModal({
                             Try Again
                           </Button>
                         )}
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* Step: Nuvio details (confirm username after OAuth resolves identity) */}
-                  {step === 'nuvio-details' && (
-                    <motion.div
-                      key="nuvio-details"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <div className="text-center mb-6">
-                        <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>Almost done</h2>
-                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                          {nuvioResolvedUser?.email ? `Connected as ${nuvioResolvedUser.email}` : 'Choose a username for this SlickSync user'}
-                        </p>
-                      </div>
-                      <div className="p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                          Username <span style={{ color: 'var(--color-error)' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Enter a unique username"
-                          value={username}
-                          onChange={(e) => setUsername(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                          style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                        />
-                        <div className="flex gap-3 mt-6">
-                          <button
-                            type="button"
-                            onClick={() => setStep('tabs')}
-                            className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
-                            style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}
-                          >
-                            Back
-                          </button>
-                          <Button variant="primary" className="flex-1" onClick={handleNuvioSubmit} isLoading={isSubmitting}>
-                            Add User
-                          </Button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  
-
-                  {/* Step: Details (after OAuth) - only for create mode */}
-                  {!isReconnect && step === 'details' && (
-                    <motion.div
-                      key="details"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {/* Success indicator */}
-                      <div className="flex items-center gap-3 mb-6 p-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--color-secondary) 15%, transparent)' }}>
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center"
-                          style={{ background: 'var(--color-secondary)' }}
-                        >
-                          <CheckIcon className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                            Stremio Connected
-                          </p>
-                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                            {email || 'Account linked successfully'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
-                        Finish Setup
-                      </h2>
-                      <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>
-                        Confirm the details for this user
-                      </p>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                            Username <span style={{ color: 'var(--color-error)' }}>*</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Choose a display name"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
-                            style={{
-                              background: 'var(--color-subtle)',
-                              border: '1px solid var(--color-surface-border)',
-                              color: 'var(--color-text)'
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3 mt-8">
-                        <button
-                          type="button"
-                          onClick={onClose}
-                          className="flex-1 py-3.5 text-sm font-medium rounded-xl transition-colors"
-                          style={{
-                            background: 'var(--color-subtle)',
-                            color: 'var(--color-text)'
-                          }}
-                        >
-                          Cancel
-                        </button>
-                        <Button
-                          variant="primary"
-                          className="flex-1"
-                          onClick={handleSubmit}
-                          isLoading={isSubmitting}
-                        >
-                          Add User
-                        </Button>
                       </div>
                     </motion.div>
                   )}

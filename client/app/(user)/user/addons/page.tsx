@@ -113,7 +113,7 @@ export default function UserAddonsPage() {
   // A Jellyfin-compatible server keeps no addon list SlickSync can manage.
   if (provider === 'jellyfin') {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <UserPageHeader title="Addons" subtitle="Your server has no addon list for SlickSync to manage" />
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
           What you watch on your server still shows up in your activity, library and stats.
@@ -123,7 +123,7 @@ export default function UserAddonsPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <UserPageHeader
         title="Addons"
         subtitle={`Manage your ${providerLabel} addons`}

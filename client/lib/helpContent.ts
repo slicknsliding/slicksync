@@ -661,6 +661,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Go to Users → New User.',
       'Choose Nuvio as the provider.',
       'Either sign in with email/password, or use the OAuth device-code flow and approve it on another device by scanning the QR.',
+      'They are added straight away, named after the start of their email (a number on the end if someone here already has that name) - rename them on their page whenever you like.',
       'Once connected, every profile on that Nuvio account syncs - not just the primary one - each with its own label.',
     ],
     details: [
