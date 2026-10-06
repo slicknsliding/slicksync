@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.93.0",
+    "date": "2026-10-06",
+    "title": "1.93.0 - Bedtime, profile pictures both ways, and adding people in one step",
+    "features": [
+      "Bedtime, in the Daily limit popup: no streaming between two times on the nights you choose - every night, school nights, weekends or your own. It pauses on its own, carries straight on from a daily limit's pause, and Resume now gives back that night only.",
+      "A daily limit or bedtime can now pause AIOStreams: the streams come out of every addon for that person's users in the configuration while their catalogs stay, and go back when the pause ends. Putting back an older version of the configuration keeps the pause as it is.",
+      "Stop what's playing, for a daily limit or bedtime on a Jellyfin server: a message appears on their screen ten minutes before, then playback stops.",
+      "Profile pictures both ways: changing someone's picture in SlickSync can set it on their Jellyfin, AIOStreams or AIOMetadata server too (Also use it on their server, in the picture picker), and a picture changed on the server shows up in SlickSync within a couple of minutes - AIOStreams can take up to five. Household users' pictures come in as well, and a picture you chose with the box unticked is never replaced.",
+      "Keep Jellyfin in step can also carry the household watchlist (as favourites) and ratings to their Jellyfin server - per person, off by default. Only what SlickSync added there is ever taken away.",
+      "Add User: signing in with Stremio or Nuvio adds the person straight away, named after their account. The name boxes for email and password or an auth key are optional, and a person can be renamed on their page any time.",
+      "A person signing in on their own page fixes a sign-in that stopped working, and you get the \"connected again\" notice. Reconnect offers the link to send them.",
+      "Now Playing names the device for AIOStreams people, and new-device notifications cover them too.",
+      "Health -> Servers shows each Jellyfin, AIOStreams and AIOMetadata server's version, and whether a newer stable release is out.",
+      "Caught up to... shows which anime episodes are filler or recap, from AIOStreams, and marks a whole run in one step on AIOStreams and AIOMetadata servers that support it.",
+      "AIOMetadata household users can be added from the household card, with PINs on AIOMetadata releases newer than 3.4.1.",
+      "Invitations open with one click, and an invitation's own page keeps the top navigation, with Back beside its heading and an Edit that works. Renaming a group carries over to its invitations, an invitation whose group was deleted says so, and you're told when someone joins without a group.",
+      "The bell and command palette move up into the top bar on the PC too once you scroll, as they already did on phones."
+    ],
+    "bugFixes": [
+      "Adding someone with a Stremio email and password no longer writes the password to the server log.",
+      "Adding someone with a Stremio email and password whose name matched another person - a Nuvio or Jellyfin one, say - no longer took over that person; they are added as someone new.",
+      "A person's own pages fit a phone: the header keeps their picture and name together, with Sync underneath.",
+      "People signed in through a Jellyfin, AIOStreams or AIOMetadata server show their server instead of a made-up email."
+    ]
+  },
+  {
     "version": "1.92.0",
     "date": "2026-10-05",
     "title": "1.92.0 - Daily limits that can pause streaming, Caught up to, and AIOStreams history",
