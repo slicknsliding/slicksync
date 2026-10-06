@@ -2377,6 +2377,11 @@ class ApiClient {
   // --- A Jellyfin sign-in's household (AIOStreams / AIOMetadata users as profiles) ---
 
   /** Sign a TV in with the Quick Connect code it shows, as this person or one of their household profiles. */
+  /** Their SlickSync picture on their Jellyfin, AIOStreams or AIOMetadata server too. */
+  async pushServerPicture(userId: string) {
+    return this.fetch<{ success: boolean; server: string }>(`/jellyfin/users/${encodeURIComponent(userId)}/picture`, { method: 'POST' });
+  }
+
   // Whether what someone finishes elsewhere is marked played on their real Jellyfin server.
   async getJellyfinMarkPlayed(userId: string) {
     return this.fetch<{ available: boolean; enabled: boolean; lists: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/mark-played`);

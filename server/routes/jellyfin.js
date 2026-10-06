@@ -472,6 +472,15 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // Their SlickSync picture on their server too (utils/serverAvatars.js).
+  router.post('/users/:id/picture', async (req, res) => {
+    try {
+      res.json({ success: true, ...(await require('../utils/serverAvatars').pushPicture(prisma, decrypt, getAccountId(req), String(req.params.id))) });
+    } catch (error) {
+      sendError(res, error, 'Could not set the picture on their server');
+    }
+  });
+
   // Whether what this person finishes elsewhere is marked played on their
   // real Jellyfin server (utils/jellyfinMarkPlayed.js), and switching it.
   router.get('/users/:id/mark-played', async (req, res) => {

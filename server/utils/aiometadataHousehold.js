@@ -171,4 +171,4 @@ async function setUserPin(prisma, decrypt, encrypt, owner, profile, pin) {
   return { tracked }
 }
 
-module.exports = { rememberAccess, canManage, hasPins, addUser, setUserPin, userIdFor, configOf }
+module.exports = { rememberAccess, canManage, hasPins, addUser, setUserPin, userIdFor, configOf, accessFor, readConfig, writeConfig }

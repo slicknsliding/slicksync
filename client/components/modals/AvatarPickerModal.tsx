@@ -15,7 +15,11 @@ interface AvatarPickerModalProps {
   name: string;
   currentAvatarUrl?: string | null;
   currentColorIndex?: number;
-  onSave: (data: { avatarUrl?: string | null; colorIndex?: number }) => Promise<void>;
+  onSave: (data: { avatarUrl?: string | null; colorIndex?: number; alsoOnServer?: boolean }) => Promise<void>;
+  // For someone signed in to a Jellyfin, AIOStreams or AIOMetadata server:
+  // its name, which adds "Also use it on their <server>" - the picture is
+  // set there too, and the two stay in step (server/utils/serverAvatars.js).
+  serverLabel?: string;
   // Optional - when given a SlickSync-managed Nuvio user's id, an extra
   // "Nuvio Covers" tab appears, browsing nuvio.tv's own public Community
   // Covers gallery (GIFs/JPG/PNG) and letting a pick fill the Image URL tab
@@ -53,7 +57,10 @@ export function AvatarPickerModal({
   title = 'Change Avatar',
   previewShape = 'circle',
   size = 'md',
+  serverLabel,
 }: AvatarPickerModalProps) {
+  const [alsoOnServer, setAlsoOnServer] = useState(true);
+  const serverPart = serverLabel ? { alsoOnServer } : {};
   // nuvioCoversUserId is only ever passed for the Nuvio folder/collection
   // cover picker - most people picking a cover there are browsing the
   // gallery, not pasting a URL, so it wins the default tab even when a
@@ -206,7 +213,7 @@ export function AvatarPickerModal({
   const handleSaveColor = async () => {
     setIsSaving(true);
     try {
-      await onSave({ colorIndex: selectedColor, avatarUrl: null });
+      await onSave({ colorIndex: selectedColor, avatarUrl: null, ...serverPart });
       toast.success('Avatar updated');
       onClose();
     } catch (err: any) {
@@ -223,7 +230,7 @@ export function AvatarPickerModal({
     }
     setIsSaving(true);
     try {
-      await onSave({ avatarUrl: urlInput.trim() });
+      await onSave({ avatarUrl: urlInput.trim(), ...serverPart });
       toast.success('Avatar updated');
       onClose();
     } catch (err: any) {
@@ -236,7 +243,7 @@ export function AvatarPickerModal({
   const handleRemoveImage = async () => {
     setIsSaving(true);
     try {
-      await onSave({ avatarUrl: null });
+      await onSave({ avatarUrl: null, ...serverPart });
       toast.success('Reverted to default avatar');
       onClose();
     } catch (err: any) {
@@ -405,6 +412,16 @@ export function AvatarPickerModal({
           )}
         </AnimatePresence>
         </div>
+
+        {serverLabel && tab !== 'nuvio' && (
+          <label className="flex items-start gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer" style={{ background: 'var(--color-surface-hover)' }}>
+            <input type="checkbox" className="mt-0.5 accent-primary" checked={alsoOnServer} onChange={(e) => setAlsoOnServer(e.target.checked)} />
+            <span className="min-w-0">
+              <span className="block text-sm text-default">Also use it on their {serverLabel}</span>
+              <span className="block text-xs text-muted">{tab === 'color' ? `Their picture there is taken away, so the apps show their name.` : `Their ${serverLabel} apps show it too, and a picture changed there later comes back here.`}</span>
+            </span>
+          </label>
+        )}
 
         {tab === 'color' && (
           <div>

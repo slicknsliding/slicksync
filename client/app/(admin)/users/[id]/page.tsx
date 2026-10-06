@@ -15,7 +15,7 @@ import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal
 import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
-import { providerLabel, providerBadgeVariant, hasAddonList, displayEmail } from '@/lib/providers';
+import { providerLabel, providerBadgeVariant, hasAddonList, displayEmail, isJellyfin } from '@/lib/providers';
 import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
 import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButton';
 import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
@@ -833,9 +833,19 @@ export default function UserDetailPage() {
   }, [params.id, router]);
 
   // Handle avatar change (color, URL, or uploaded image)
-  const handleAvatarSave = useCallback(async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+  const handleAvatarSave = useCallback(async ({ alsoOnServer, ...data }: { avatarUrl?: string | null; colorIndex?: number; alsoOnServer?: boolean }) => {
     setUser((prev: any) => prev ? { ...prev, ...data } : null);
     await api.updateUser(params.id as string, data);
+    // Their server too, when asked (server/utils/serverAvatars.js). The
+    // picture is saved here either way; only the server half can fail.
+    if (alsoOnServer) {
+      try {
+        const done = await api.pushServerPicture(params.id as string);
+        toast.success(`Set on their ${done.server} too`);
+      } catch (e) {
+        toast.error((e as Error)?.message || 'Saved here, but their server didn’t take it');
+      }
+    }
   }, [params.id]);
 
   // Handle color change
@@ -1229,6 +1239,7 @@ export default function UserDetailPage() {
                         currentAvatarUrl={user.avatarUrl}
                         currentColorIndex={user.colorIndex || 0}
                         onSave={handleAvatarSave}
+                        serverLabel={isJellyfin(user) ? providerLabel(user) : undefined}
                       />
                     </motion.div>
 
