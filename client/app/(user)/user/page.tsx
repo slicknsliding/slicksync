@@ -348,6 +348,69 @@ export default function UserHomePage() {
       {/* Stats Grid */}
       {!loading && !error && stats && (
         <>
+          {/* Now Playing - first, above today's numbers: what is on right now is
+              what someone opens this page to see, and at the bottom it sat
+              below a phone's whole screen of stat cards. Only there while
+              something plays. */}
+          {activityData?.nowPlaying && activityData.nowPlaying.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="mb-8 p-5 rounded-xl"
+              style={{ 
+                background: 'var(--color-surface)',
+                border: '2px solid var(--color-secondary)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                  Now Playing
+                </h3>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {activityData.nowPlaying.map((np, index) => (
+                  <div 
+                    key={index} 
+                    className="flex items-center gap-3 p-3 rounded-lg"
+                    style={{ background: 'var(--color-surface-elevated)' }}
+                  >
+                    {np.item.poster ? (
+                      <img 
+                        src={np.item.poster} 
+                        alt={np.item.name}
+                        className="w-10 h-14 rounded object-cover"
+                      />
+                    ) : (
+                      <div 
+                        className="w-10 h-14 rounded flex items-center justify-center"
+                        style={{ background: 'var(--color-surface)' }}
+                      >
+                        {np.item.type === 'movie' ? (
+                          <FilmIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
+                        ) : (
+                          <TvIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
+                        )}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
+                        {np.item.name}
+                      </p>
+                      {np.item.type === 'series' && np.item.episode && (
+                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                          {np.item.season ? `S${np.item.season}E${np.item.episode}` : `E${np.item.episode}`}
+                        </p>
+                      )}
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           <motion.h3
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -534,65 +597,6 @@ export default function UserHomePage() {
             )}
           </div>
 
-          {/* Now Playing */}
-          {activityData?.nowPlaying && activityData.nowPlaying.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 }}
-              className="mt-6 p-5 rounded-xl"
-              style={{ 
-                background: 'var(--color-surface)',
-                border: '2px solid var(--color-secondary)',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                  Now Playing
-                </h3>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {activityData.nowPlaying.map((np, index) => (
-                  <div 
-                    key={index} 
-                    className="flex items-center gap-3 p-3 rounded-lg"
-                    style={{ background: 'var(--color-surface-elevated)' }}
-                  >
-                    {np.item.poster ? (
-                      <img 
-                        src={np.item.poster} 
-                        alt={np.item.name}
-                        className="w-10 h-14 rounded object-cover"
-                      />
-                    ) : (
-                      <div 
-                        className="w-10 h-14 rounded flex items-center justify-center"
-                        style={{ background: 'var(--color-surface)' }}
-                      >
-                        {np.item.type === 'movie' ? (
-                          <FilmIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
-                        ) : (
-                          <TvIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
-                        )}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
-                        {np.item.name}
-                      </p>
-                      {np.item.type === 'series' && np.item.episode && (
-                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          {np.item.season ? `S${np.item.season}E${np.item.episode}` : `E${np.item.episode}`}
-                        </p>
-                      )}
-                    </div>
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
         </>
       )}
 
