@@ -2,7 +2,7 @@
 
 // Referral badge next to the admin panel switcher (NebulaTopbar + Sidebar) -
 // admin-only by design, not shown in the managed-user self-service panel
-// (UserSidebar), since a referral code has no business being shown to every
+// (PersonTopbar), since a referral code has no business being shown to every
 // family member logging into their own account.
 export function TorBoxBadge({ size = 36 }: { size?: number }) {
   return (

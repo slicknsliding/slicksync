@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { UserAuthProvider } from '@/lib/hooks/useUserAuth';
 import { UserAuthGate } from '@/components/user/UserAuthGate';
-import { UserSidebar } from '@/components/user/UserSidebar';
+import { PersonTopbar } from '@/components/user/PersonTopbar';
 import { UserPageContainer } from '@/components/user/UserPageContainer';
 import { UserMobileMenuContext } from '@/lib/hooks/useUserMobileMenu';
 
 /**
- * User panel layout with sidebar navigation
+ * User panel layout: the same top bar as the admin pages (PersonTopbar)
  *
  * All user pages (home, library, activity, etc.) use this layout.
  * Requires Stremio OAuth authentication.
@@ -42,17 +42,16 @@ export default function UserLayout({
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // Prevent body scroll when mobile menu is open
+  // globals.css gives the body overflow-x: hidden, which makes it the box a
+  // sticky element measures against - and the top bar would scroll away with
+  // the page. Unset while these pages are open, as AdminClientLayout does, so
+  // the bar stays pinned.
   useEffect(() => {
-    if (isMobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    document.body.style.overflow = 'unset';
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
-  }, [isMobileMenuOpen]);
+  }, []);
 
   const handleOpen = () => setIsMobileMenuOpen(true);
   const handleClose = () => setIsMobileMenuOpen(false);
@@ -62,7 +61,9 @@ export default function UserLayout({
       <UserAuthGate>
         <UserMobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
           <div className="relative min-h-screen">
-            <UserSidebar isOpen={isMobileMenuOpen} onClose={handleClose} />
+            {/* The collapsed nav opens inside the bar, so nothing locks the page
+                behind it the way the old side drawer did. */}
+            <PersonTopbar />
             <UserPageContainer>
               {children}
             </UserPageContainer>
