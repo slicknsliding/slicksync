@@ -31,7 +31,7 @@ test('in step: a picture changed on the server comes back here; an unchanged one
   let first
   try { first = await refreshOne(source, null, undefined); made.push(first.url) } finally { restore() }
   restore = serving('one')
-  try { assert.equal(await refreshOne(source, first.url, first), first, 'same picture: nothing changes') } finally { restore() }
+  try { assert.equal((await refreshOne(source, first.url, first)).url, first.url, 'same picture: nothing changes') } finally { restore() }
   restore = serving('two')
   try {
     const next = await refreshOne(source, first.url, first)
@@ -78,4 +78,20 @@ test('just sent from here: nothing is taken back while the server may still show
     const sent = { url: '/uploads/avatars/new.png', hash: 'sent', sentAt: new Date().toISOString() }
     assert.equal(await refreshOne(source, '/uploads/avatars/new.png', sent), sent)
   } finally { restore() }
+})
+
+test('the same picture tag as last time: nothing is downloaded', async () => {
+  let downloads = 0
+  const real = global.fetch
+  global.fetch = async () => { downloads++; return { ok: true, headers: { get: () => 'image/png' }, arrayBuffer: async () => Buffer.from('x') } }
+  try {
+    const taken = { url: '/uploads/avatars/a.png', hash: 'h', tag: 'abc' }
+    const same = await refreshOne(source, taken.url, taken, { tagOf: async () => 'abc' })
+    assert.equal(same, taken)
+    assert.equal(downloads, 0)
+    const changed = await refreshOne(source, taken.url, taken, { tagOf: async () => 'def' })
+    made.push(changed.url)
+    assert.ok(downloads > 0, 'a new tag means a new picture to fetch')
+    assert.equal(changed.tag, 'def')
+  } finally { global.fetch = real; tidy() }
 })

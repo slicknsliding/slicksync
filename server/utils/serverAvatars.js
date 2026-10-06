@@ -4,7 +4,7 @@
 // server usually has a picture there. When they have none of their own in
 // SlickSync it is taken from the server - downloaded and kept with the
 // uploaded pictures (data/avatars), so it shows wherever SlickSync does,
-// whether or not the browser can reach their server. Checked hourly. Household users
+// whether or not the browser can reach their server. Household users
 // (profiles) get theirs the same way.
 //
 // To the server: changing someone's picture in SlickSync can also set it on
@@ -35,8 +35,11 @@ const AVATAR_DIR = path.join(process.cwd(), 'data', 'avatars')
 const MAX_BYTES = 3 * 1024 * 1024
 const EXT_BY_TYPE = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' }
 const TYPE_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }
-// Hourly, so a picture changed on the server shows here within the hour.
-const INTERVAL_MS = 60 * 60 * 1000
+// Every 2 minutes, so a picture changed on the server shows here within a
+// couple of minutes. Cheap: each look is one small read of the person's
+// picture tag (Jellyfin's PrimaryImageTag, which AIOStreams and AIOMetadata
+// give too); the picture itself is only downloaded when the tag changes.
+const INTERVAL_MS = 2 * 60 * 1000
 const UPLOAD = /^\/uploads\/avatars\/([a-f0-9-]+\.(jpg|png|gif|webp))$/i
 // AIOStreams keeps a configuration cached for 5 minutes, so straight after a
 // picture is sent its apps can still show the old one. Nothing is taken back
@@ -129,18 +132,36 @@ function forget(url) {
  * shown now, `taken` the record from last time. Returns the new record, the
  * old one when nothing changed, or null when it isn't the server's to set.
  */
-async function refreshOne(source, current, taken) {
+/**
+ * The server's tag for their picture - it changes whenever the picture does -
+ * or '' for none, or null when the server didn't say (then the picture
+ * itself is compared).
+ */
+async function pictureTag({ serverUrl, token, userId }) {
+  try {
+    const user = await jfRequest(serverUrl, `/Users/${encodeURIComponent(userId)}`, { token, deviceId: deviceIdFor(serverUrl, userId), timeoutMs: 8000 })
+    if (!user || typeof user !== 'object') return null
+    return typeof user.PrimaryImageTag === 'string' ? user.PrimaryImageTag : ''
+  } catch {
+    return null
+  }
+}
+
+async function refreshOne(source, current, taken, { tagOf = pictureTag } = {}) {
   // Chosen here and not sent to the server: theirs, so left alone.
   if (current && current !== taken?.url) return null
   // Just sent from here: the server may not show it yet.
   if (taken?.sentAt && Date.now() - Date.parse(taken.sentAt) < SETTLE_MS) return taken
+  // Same tag as last time: the same picture, so nothing to download.
+  const tag = await tagOf(source)
+  if (tag !== null && taken && taken.tag === tag && current === taken.url) return taken
   const img = await pictureFor(source)
-  if (!img) return taken || null
+  if (!img) return taken ? { ...taken, tag } : null
   const hash = hashOf(img.buf)
-  if (taken?.hash === hash && current === taken.url) return taken
+  if (taken?.hash === hash && current === taken.url) return { ...taken, tag }
   const url = save(img)
   if (taken?.own && taken.url) forget(taken.url)
-  return { url, hash, own: true }
+  return { url, hash, own: true, tag }
 }
 
 async function refreshAccount(prisma, decrypt, accountId) {
@@ -164,7 +185,7 @@ async function refreshAccount(prisma, decrypt, accountId) {
     try {
       const rec = await refreshOne({ serverUrl: p.jellyfinServerUrl, kind: p.jellyfinServerKind, token: tokenOf(p.jellyfinToken), userId: p.jellyfinUserId }, p.avatarUrl, taken[p.id])
       if (!rec) continue
-      next[p.id] = rec
+      if (JSON.stringify(rec) !== JSON.stringify(taken[p.id])) next[p.id] = rec
       if (rec.url !== p.avatarUrl) { await prisma.user.update({ where: { id: p.id }, data: { avatarUrl: rec.url } }); changed++ }
     } catch (e) {
       console.warn(`[ServerAvatars] ${p.id}:`, e?.message)
@@ -178,7 +199,7 @@ async function refreshAccount(prisma, decrypt, accountId) {
     try {
       const rec = await refreshOne({ serverUrl: owner.jellyfinServerUrl, kind: owner.jellyfinServerKind, token: tokenOf(pr.token), userId: pr.jellyfinUserId }, pr.avatarUrl, taken[key])
       if (!rec) continue
-      next[key] = rec
+      if (JSON.stringify(rec) !== JSON.stringify(taken[key])) next[key] = rec
       if (rec.url !== pr.avatarUrl) { await prisma.jellyfinProfile.update({ where: { id: pr.id }, data: { avatarUrl: rec.url } }); changed++ }
     } catch (e) {
       console.warn(`[ServerAvatars] profile ${pr.id}:`, e?.message)
@@ -334,11 +355,14 @@ async function pushPicture(prisma, decrypt, accountId, userId) {
   // its own copy; AIOStreams and AIOMetadata load it from the address they
   // were given, so remember what was sent, and when.
   let hash = img ? hashOf(img.buf) : null
+  let tag
   if (kind === 'jellyfin') {
-    const now = await pictureFor({ serverUrl: person.jellyfinServerUrl, kind, token: decrypt(person.jellyfinToken, { appAccountId: accountId }), userId: person.jellyfinUserId }).catch(() => null)
+    const source = { serverUrl: person.jellyfinServerUrl, kind, token: decrypt(person.jellyfinToken, { appAccountId: accountId }), userId: person.jellyfinUserId }
+    const now = await pictureFor(source).catch(() => null)
     hash = now ? hashOf(now.buf) : null
+    tag = (await pictureTag(source)) ?? undefined
   }
-  await remember(prisma, accountId, { [person.id]: { url: person.avatarUrl || null, hash, sentAt: new Date().toISOString() } })
+  await remember(prisma, accountId, { [person.id]: { url: person.avatarUrl || null, hash, sentAt: new Date().toISOString(), ...(tag !== undefined ? { tag } : {}) } })
   const labels = { jellyfin: 'Jellyfin', aiostreams: 'AIOStreams', aiometadata: 'AIOMetadata' }
   return { server: labels[kind] || 'server' }
 }
@@ -363,4 +387,4 @@ function scheduleServerAvatars(prisma, decrypt) {
   timer = setInterval(run, INTERVAL_MS)
 }
 
-module.exports = { scheduleServerAvatars, refreshAccount, refreshOne, pictureFor, pushPicture, publicBase, AVATAR_DIR }
+module.exports = { scheduleServerAvatars, refreshAccount, refreshOne, pictureFor, pictureTag, pushPicture, publicBase, AVATAR_DIR }
