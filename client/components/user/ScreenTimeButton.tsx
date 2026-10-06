@@ -8,10 +8,11 @@
 // streaming until midnight or a chosen time; bedtime always pauses. Same
 // anchored popup as Devices and Age limit.
 //
-// The switch at the top is the whole state: on means a limit is saved and
-// being watched, off means none is. Every change saves as it is made, so
-// there is no separate "Set" step to forget, and the pill on the page says
-// which it is at a glance.
+// The daily limit and the bedtime each have their own switch, and either
+// works without the other; with both off, nothing is saved. (Bedtime used
+// to sit inside the daily limit, so it read as needing one.) Every change
+// saves as it is made, so there is no separate "Set" step to forget, and
+// the pill on the page says which is on at a glance.
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -28,7 +29,7 @@ const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const MINUTE_PRESETS = [30, 60, 90, 120, 180];
 const STEP = 15;
 const MAX_MINUTES = 24 * 60;
-const DEFAULT_LIMIT = { minutes: 90, days: [] as number[] };
+const DEFAULT_MINUTES = 90;
 const DEFAULT_BEDTIME: ScreenTimeBedtime = { from: '21:00', to: '07:00', days: [] };
 const DAY_PRESETS: { label: string; days: number[] }[] = [
   { label: 'Every day', days: [] },
@@ -84,13 +85,13 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
   const panel = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
   const [state, setState] = useState<ScreenTimeView | null>(null);
-  // What the controls show. Kept while the limit is off, so switching it
-  // back on restores the last settings rather than starting over; the
-  // controls themselves only show while it is on.
-  const [draft, setDraft] = useState<Limit>(DEFAULT_LIMIT);
+  // What the controls show: minutes while the daily limit is on, a bedtime
+  // while that is on. The rest (days, what happens at the limit) is kept
+  // while they're off, so switching back on restores the last settings.
+  const [draft, setDraft] = useState<Limit>({ days: [] });
   // The last bedtime and minutes, so switching either back on restores them.
   const lastBedtime = useRef<ScreenTimeBedtime>(DEFAULT_BEDTIME);
-  const lastMinutes = useRef<number>(DEFAULT_LIMIT.minutes);
+  const lastMinutes = useRef<number>(DEFAULT_MINUTES);
   const [saving, setSaving] = useState(false);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -152,24 +153,20 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
     }
   };
 
-  const on = !!state?.limit;
+  // Neither a limit nor a bedtime is no limit at all.
+  const saved = (next: Limit): Limit | null => (next.minutes || next.bedtime ? next : null);
 
-  const turn = (next: boolean) => {
-    if (pending.current) { clearTimeout(pending.current); pending.current = null; }
-    // Shown straight away; the save confirms it.
-    setState((s) => (s ? { ...s, limit: next ? draft : null, appliesToday: next ? s.appliesToday : false } : s));
-    save(next ? draft : null);
-  };
-
-  // Changes save after a short pause.
-  const change = (next: Limit) => {
+  // Shown straight away; the save confirms it. Switches save at once,
+  // everything else after a short pause.
+  const change = (next: Limit, now = false) => {
     setDraft(next);
     if (next.bedtime) lastBedtime.current = next.bedtime;
     if (next.minutes) lastMinutes.current = next.minutes;
-    if (!on) return;
-    setState((s) => (s ? { ...s, limit: next } : s));
-    if (pending.current) clearTimeout(pending.current);
-    pending.current = setTimeout(() => { pending.current = null; save(next); }, SAVE_DELAY_MS);
+    const limit = saved(next);
+    setState((s) => (s ? { ...s, limit, appliesToday: next.minutes ? s.appliesToday : false } : s));
+    if (pending.current) { clearTimeout(pending.current); pending.current = null; }
+    if (now) { save(limit); return; }
+    pending.current = setTimeout(() => { pending.current = null; save(limit); }, SAVE_DELAY_MS);
   };
 
   const setMinutes = (m: number) => change({ ...draft, minutes: Math.max(STEP, Math.min(MAX_MINUTES, m)) });
@@ -180,14 +177,11 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
     change({ ...draft, days: normaliseDays(next) });
   };
 
-  // A minutes limit, a bedtime, or both - never neither while it's on.
+  // A minutes limit, a bedtime, both, or neither.
   const hasMinutes = !!draft.minutes;
   const bedtime = draft.bedtime;
-  const setNoMinutes = () => { if (bedtime) change({ ...draft, minutes: undefined }); };
-  const turnBedtime = (next: boolean) => {
-    if (next) change({ ...draft, bedtime: lastBedtime.current });
-    else change({ ...draft, bedtime: undefined, minutes: draft.minutes || lastMinutes.current });
-  };
+  const turnMinutes = (next: boolean) => change({ ...draft, minutes: next ? lastMinutes.current : undefined }, true);
+  const turnBedtime = (next: boolean) => change({ ...draft, bedtime: next ? lastBedtime.current : undefined }, true);
   const setBedtime = (patch: Partial<ScreenTimeBedtime>) => {
     const next = { ...(bedtime || DEFAULT_BEDTIME), ...patch };
     if (next.from === next.to) return;
@@ -207,7 +201,7 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
   const share = limitMinutes ? Math.min(1, today / limitMinutes) : 0;
 
   const paused = state?.paused || null;
-  const pausing = limit?.onReach === 'pause';
+  const pausing = !!limitMinutes && limit?.onReach === 'pause';
   const pillLabel = !state ? 'Daily limit'
     : !limit ? 'Daily limit: off'
     : paused ? `Paused until ${paused.untilLabel}`
@@ -288,28 +282,15 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
           <div
             ref={panel}
             role="dialog"
-            aria-label={`Daily limit for ${name}`}
+            aria-label={`Daily limit and bedtime for ${name}`}
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-4"
             style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-default">Daily limit</p>
-                <p className="text-xs text-muted mt-0.5">
-                  {limit ? <>On - {summary}.</> : <>Off - {name} has no limit.</>}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label={on ? 'Turn the daily limit off' : 'Turn the daily limit on'}
-                disabled={!state}
-                onClick={() => turn(!on)}
-                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-primary' : 'bg-surface-hover border border-default'}`}
-              >
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
-              </button>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-default">Daily limit and bedtime</p>
+              <p className="text-xs text-muted mt-0.5">
+                {limit ? <>On - {summary}.</> : <>Off - {name} has no daily limit or bedtime.</>}
+              </p>
             </div>
 
             {/* Paused right now - with the way back. */}
@@ -352,8 +333,21 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
               )}
             </div>
 
-            {on && (
-            <div className="space-y-4">
+            <div className="space-y-3">
+              {/* Daily limit: so many minutes a day, on chosen days. */}
+              <div className="rounded-xl border border-default p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <ClockIcon className={`w-4 h-4 mt-0.5 shrink-0 ${hasMinutes ? 'text-primary' : 'text-subtle'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-default">Daily limit</p>
+                      <p className="text-[10px] text-subtle leading-tight">
+                        {hasMinutes ? `${formatMinutes(draft.minutes || 0)} a day` : 'So much watching a day'}
+                      </p>
+                    </div>
+                  </div>
+                  {miniSwitch(hasMinutes, turnMinutes, hasMinutes ? 'Turn the daily limit off' : 'Turn the daily limit on', !state)}
+                </div>
               {hasMinutes && (
               <div>
                 <p className="text-xs font-medium text-muted mb-1.5">When they reach it</p>
@@ -430,26 +424,16 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
                 </div>
               )}
 
+              {hasMinutes && (
               <div>
                 <p className="text-xs font-medium text-muted mb-1.5">How long</p>
                 <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={setNoMinutes}
-                    disabled={!bedtime}
-                    title={bedtime ? 'Only the bedtime' : 'Turn on a bedtime first - or switch the whole limit off'}
-                    aria-pressed={!hasMinutes}
-                    className={`${chip(!hasMinutes)} disabled:opacity-40 disabled:cursor-not-allowed`}
-                  >
-                    No limit
-                  </button>
                   {MINUTE_PRESETS.map((m) => (
                     <button key={m} type="button" onClick={() => setMinutes(m)} aria-pressed={draft.minutes === m} className={chip(draft.minutes === m)}>
                       {formatMinutes(m)}
                     </button>
                   ))}
                 </div>
-                {hasMinutes && (
                 <div className="mt-2 inline-flex items-center rounded-full border border-default">
                   <button type="button" onClick={() => setMinutes((draft.minutes || 0) - STEP)} aria-label={`${STEP} minutes less`} className="p-1.5 rounded-l-full text-subtle hover:text-default hover:bg-surface-hover">
                     <MinusIcon className="w-3.5 h-3.5" />
@@ -459,8 +443,8 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
                     <PlusIcon className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                )}
               </div>
+              )}
 
               {hasMinutes && (
               <div>
@@ -492,6 +476,7 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
                 </div>
               </div>
               )}
+              </div>
 
               {/* Bedtime: no streaming between two times, on chosen nights. Always a pause. */}
               <div className="rounded-xl border border-default p-3 space-y-3">
@@ -505,7 +490,7 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
                       </p>
                     </div>
                   </div>
-                  {miniSwitch(!!bedtime, turnBedtime, bedtime ? 'Turn bedtime off' : 'Turn bedtime on', !!bedtime && !hasMinutes)}
+                  {miniSwitch(!!bedtime, turnBedtime, bedtime ? 'Turn bedtime off' : 'Turn bedtime on', !state)}
                 </div>
                 {bedtime && locked && (
                   <button type="button" onClick={unlock} className={`w-full text-left text-[10px] leading-tight text-warning ${locked.action ? 'hover:underline' : 'cursor-default'}`}>
@@ -569,11 +554,10 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
                 </div>
               )}
             </div>
-            )}
 
             <p className="text-[11px] text-subtle">
               {saving ? 'Saving…'
-                : !on ? 'Turn it on to hear when they pass a set time each day, pause their streaming then, or set a bedtime.'
+                : !limit ? 'A daily limit tells you when they pass a set time each day, or pauses their streaming then. A bedtime switches streaming off overnight. Use either, or both.'
                 : pausesSomething
                   ? `Counted in every app. When it pauses, what plays streams is switched off${draft.stopPlaying && state?.canStopPlaying ? ' and what’s playing stops' : '; what’s already playing carries on'}. Changes save as you make them.`
                   : 'Bell and push alert when they reach it, in any app. Nothing is stopped. Changes save as you make them.'}

@@ -1211,10 +1211,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'A daily screen-time limit or bedtime for someone',
     category: 'Users & Groups',
     keywords: ['screen time', 'daily limit', 'time limit', 'watch limit', 'kids limit', 'too much tv', 'budget', 'minutes a day', 'school days', 'parental', 'pause streaming', 'block streaming', 'stop watching', 'turn off addons', 'bedtime', 'night', 'school nights', 'no tv at night', 'stop what is playing', 'warning before'],
-    answer: 'On the person’s page, press Daily limit and switch it on. Set minutes a day, a bedtime, or both. At the limit you get a bell and push notification - or, with Pause streaming, their streaming also stops until midnight or a time you pick. A bedtime switches streaming off between two times on the nights you choose.',
+    answer: 'On the person’s page, press Daily limit and switch on a daily limit, a bedtime, or both - each works on its own. At the limit you get a bell and push notification - or, with Pause streaming, their streaming also stops until midnight or a time you pick. A bedtime switches streaming off between two times on the nights you choose.',
     steps: [
-      'Open the person on the Users page and press Daily limit, then switch it on. Changes save as you make them.',
-      'Under How long, pick the minutes and which days - every day, school days, weekends or your own. No limit leaves just the bedtime.',
+      'Open the person on the Users page and press Daily limit. The popup has two switches, Daily limit and Bedtime; changes save as you make them.',
+      'Switch on Daily limit, then under How long pick the minutes and which days - every day, school days, weekends or your own.',
       'Under When they reach it, choose Tell me (an alert) or Pause streaming (an alert, and nothing new plays until Back on at - midnight, 6, 7 or 8 AM, or any time).',
       'Switch on Bedtime to set when streaming goes off and comes back (9 PM to 7 AM, say) and on which nights - every night, school nights (Sunday to Thursday) or your own.',
       'While they are paused the popup says so, with Resume now: the rest of the day back, or tonight if it’s bedtime.',
