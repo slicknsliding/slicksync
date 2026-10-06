@@ -13,6 +13,8 @@ export interface EditableInvitation {
   name?: string;
   code: string;
   groupId?: string;
+  /** The group it names - shown when that group no longer exists. */
+  groupName?: string;
   maxUses?: number;
   uses: number;
   membershipDuration?: number;
@@ -89,6 +91,11 @@ export function EditInvitationForm({
         value={formData.groupId}
         onChange={(value) => setFormData({ ...formData, groupId: value })}
       />
+      {invitation.groupName && !invitation.groupId && !formData.groupId && (
+        <p className="-mt-4 text-xs text-warning">
+          Its group, {invitation.groupName}, was deleted. Pick another so people who join are put in one.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input

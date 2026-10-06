@@ -2,9 +2,11 @@
 
 // "Daily limit": a screen-time budget for one person - so many minutes a
 // day, on the days chosen - with a bell and push alert when they reach it
-// (server/utils/screenTime.js). Counted across every app, like Watch Time.
-// At the limit it either just alerts, or - chosen per person - also pauses
-// their streaming until midnight. Same anchored popup as Devices and Age limit.
+// (server/utils/screenTime.js), and/or a bedtime: no streaming between two
+// times on chosen nights. Counted across every app, like Watch Time. At the
+// limit it either just alerts, or - chosen per person - also pauses their
+// streaming until midnight or a chosen time; bedtime always pauses. Same
+// anchored popup as Devices and Age limit.
 //
 // The switch at the top is the whole state: on means a limit is saved and
 // being watched, off means none is. Every change saves as it is made, so
@@ -14,9 +16,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { ClockIcon, MinusIcon, PlusIcon, BellAlertIcon, PauseCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import { ClockIcon, MinusIcon, PlusIcon, BellAlertIcon, PauseCircleIcon, LockClosedIcon, MoonIcon, StopCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
-import { api, type ScreenTimeView, type ScreenTimeLimit } from '@/lib/api';
+import { api, type ScreenTimeView, type ScreenTimeLimit, type ScreenTimeBedtime } from '@/lib/api';
 import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
 import { ActionPill } from '@/components/user/ActionPill';
 
@@ -27,11 +29,20 @@ const MINUTE_PRESETS = [30, 60, 90, 120, 180];
 const STEP = 15;
 const MAX_MINUTES = 24 * 60;
 const DEFAULT_LIMIT = { minutes: 90, days: [] as number[] };
+const DEFAULT_BEDTIME: ScreenTimeBedtime = { from: '21:00', to: '07:00', days: [] };
 const DAY_PRESETS: { label: string; days: number[] }[] = [
   { label: 'Every day', days: [] },
   { label: 'School days', days: [1, 2, 3, 4, 5] },
   { label: 'Weekends', days: [0, 6] },
 ];
+// A bedtime's days are the nights it starts on: Sunday night is a school night.
+const NIGHT_PRESETS: { label: string; days: number[] }[] = [
+  { label: 'Every night', days: [] },
+  { label: 'School nights', days: [0, 1, 2, 3, 4] },
+  { label: 'Weekends', days: [5, 6] },
+];
+const BEDTIME_FROM = ['20:00', '21:00', '22:00'];
+const BEDTIME_TO = ['06:00', '07:00', '08:00'];
 // Long enough that tapping + four times saves once, not four times.
 const SAVE_DELAY_MS = 500;
 
@@ -42,8 +53,8 @@ function formatMinutes(m: number): string {
   return m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function describeDays(days: number[]): string {
-  const preset = DAY_PRESETS.find((p) => p.days.join() === days.join());
+function describeDays(days: number[], presets = DAY_PRESETS): string {
+  const preset = presets.find((p) => p.days.join() === days.join());
   if (preset) return preset.label.toLowerCase();
   return days.map((d) => WEEKDAY_NAMES[d].slice(0, 3)).join(', ');
 }
@@ -58,10 +69,16 @@ function backOnLabel(resumeAt?: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+/** "9 PM" or "9:30 PM" - a bedtime's ends, short. */
+function clock(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
 // All seven picked is stored as "every day" - one meaning, one shape.
 const normaliseDays = (days: number[]) => (days.length === 7 ? [] : [...days].sort());
 
-export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string; name: string; onPickGroup?: () => void }) {
+export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { userId: string; name: string; onPickGroup?: () => void; onReconnect?: () => void }) {
   const router = useRouter();
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -71,14 +88,24 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
   // back on restores the last settings rather than starting over; the
   // controls themselves only show while it is on.
   const [draft, setDraft] = useState<Limit>(DEFAULT_LIMIT);
+  // The last bedtime and minutes, so switching either back on restores them.
+  const lastBedtime = useRef<ScreenTimeBedtime>(DEFAULT_BEDTIME);
+  const lastMinutes = useRef<number>(DEFAULT_LIMIT.minutes);
   const [saving, setSaving] = useState(false);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const adopt = (limit: Limit | null) => {
+    if (!limit) return;
+    setDraft(limit);
+    if (limit.bedtime) lastBedtime.current = limit.bedtime;
+    if (limit.minutes) lastMinutes.current = limit.minutes;
+  };
 
   // Read once up front so the pill can show the limit.
   useEffect(() => {
     api.getScreenTime(userId).then((s) => {
       setState(s);
-      if (s.limit) setDraft(s.limit);
+      adopt(s.limit);
     }).catch(() => {});
   }, [userId]);
   useEffect(() => () => { if (pending.current) clearTimeout(pending.current); }, []);
@@ -137,6 +164,8 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
   // Changes save after a short pause.
   const change = (next: Limit) => {
     setDraft(next);
+    if (next.bedtime) lastBedtime.current = next.bedtime;
+    if (next.minutes) lastMinutes.current = next.minutes;
     if (!on) return;
     setState((s) => (s ? { ...s, limit: next } : s));
     if (pending.current) clearTimeout(pending.current);
@@ -151,33 +180,63 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
     change({ ...draft, days: normaliseDays(next) });
   };
 
+  // A minutes limit, a bedtime, or both - never neither while it's on.
+  const hasMinutes = !!draft.minutes;
+  const bedtime = draft.bedtime;
+  const setNoMinutes = () => { if (bedtime) change({ ...draft, minutes: undefined }); };
+  const turnBedtime = (next: boolean) => {
+    if (next) change({ ...draft, bedtime: lastBedtime.current });
+    else change({ ...draft, bedtime: undefined, minutes: draft.minutes || lastMinutes.current });
+  };
+  const setBedtime = (patch: Partial<ScreenTimeBedtime>) => {
+    const next = { ...(bedtime || DEFAULT_BEDTIME), ...patch };
+    if (next.from === next.to) return;
+    change({ ...draft, bedtime: next });
+  };
+  const pickedNights = bedtime?.days.length ? bedtime.days : ALL_DAYS;
+  const toggleNight = (d: number) => {
+    const next = pickedNights.includes(d) ? pickedNights.filter((x) => x !== d) : [...pickedNights, d];
+    if (!next.length) return;
+    setBedtime({ days: normaliseDays(next) });
+  };
+
   const today = state?.todayMinutes ?? 0;
   const limit = state?.limit;
-  const reached = !!limit && state!.appliesToday && today >= limit.minutes;
-  const share = limit ? Math.min(1, today / limit.minutes) : 0;
+  const limitMinutes = limit?.minutes || 0;
+  const reached = !!limitMinutes && !!state?.appliesToday && today >= limitMinutes;
+  const share = limitMinutes ? Math.min(1, today / limitMinutes) : 0;
 
-  const paused = !!state?.paused;
+  const paused = state?.paused || null;
   const pausing = limit?.onReach === 'pause';
-  const pillLabel = !state ? 'Daily limit' : !limit ? 'Daily limit: off' : paused ? `Paused until ${backOnLabel(limit?.resumeAt)}` : reached ? 'Limit reached today' : `${formatMinutes(limit.minutes)} a day`;
+  const pillLabel = !state ? 'Daily limit'
+    : !limit ? 'Daily limit: off'
+    : paused ? `Paused until ${paused.untilLabel}`
+    : reached ? 'Limit reached today'
+    : limitMinutes ? `${formatMinutes(limitMinutes)} a day`
+    : limit.bedtime ? `Bedtime ${clock(limit.bedtime.from)}`
+    : 'Daily limit';
 
-  // Why "Pause streaming" can't be picked for them, as the tile shows it.
+  // Why a pause can't work for them, as the tile shows it.
   const locked = state?.canPause && !state.canPause.ok
     ? state.canPause.code === 'no-group'
       ? { badge: 'Needs a group', hint: 'Put them in a group first', action: onPickGroup ? 'group' as const : null }
       : state.canPause.code === 'needs-admin'
         ? { badge: 'Needs admin sign-in', hint: 'Add their server’s admin here', action: 'guide' as const }
-        : { badge: 'Alert only', hint: 'AIOStreams can’t pause one person', action: null }
+        : state.canPause.code === 'needs-config-password'
+          ? { badge: 'Needs config password', hint: 'Reconnect them with it', action: onReconnect ? 'reconnect' as const : null }
+          : { badge: 'Alert only', hint: 'AIOMetadata can’t pause one person', action: null }
     : null;
   const unlock = () => {
     if (locked?.action === 'group' && onPickGroup) { close(); onPickGroup(); }
     if (locked?.action === 'guide') { close(); router.push('/guides/add-jellyfin-account'); }
+    if (locked?.action === 'reconnect' && onReconnect) { close(); onReconnect(); }
   };
 
   const resumeNow = async () => {
     setSaving(true);
     try {
       setState(await api.resumeScreenTime(userId));
-      toast.success(`${name} can stream again today`);
+      toast.success(paused?.reason === 'bedtime' ? `${name} can stream again tonight` : `${name} can stream again today`);
     } catch (e) {
       toast.error((e as Error)?.message || 'Could not resume them');
     } finally {
@@ -187,6 +246,36 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
 
   const chip = (active: boolean) =>
     `px-2.5 py-1 rounded-full border text-xs transition-colors ${active ? 'border-primary bg-primary/15 text-default' : 'border-default text-subtle hover:text-default hover:bg-surface-hover'}`;
+  const miniSwitch = (checked: boolean, onChange: (v: boolean) => void, label: string, disabled = false) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative shrink-0 w-9 h-5 rounded-full transition-colors disabled:opacity-50 ${checked ? 'bg-primary' : 'bg-surface-hover border border-default'}`}
+    >
+      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+    </button>
+  );
+  const timeChips = (presets: string[], value: string, set: (v: string) => void, label: string) => (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {presets.map((t) => (
+        <button key={t} type="button" onClick={() => set(t)} aria-pressed={value === t} className={chip(value === t)}>{clock(t)}</button>
+      ))}
+      <label className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs cursor-pointer ${presets.includes(value) ? 'border-default text-subtle' : 'border-primary bg-primary/15 text-default'}`}>
+        <span className="sr-only">{label}</span>
+        <input type="time" value={value} onChange={(e) => { if (e.target.value) set(e.target.value); }} className="bg-transparent text-xs text-inherit outline-none cursor-pointer" aria-label={label} />
+      </label>
+    </div>
+  );
+
+  const summary = limit ? [
+    limitMinutes ? `${pausing ? 'pauses streaming' : 'alerts you'} when ${name} passes ${formatMinutes(limitMinutes)} ${limit.days.length ? `on ${describeDays(limit.days)}` : 'on any day'}` : null,
+    limit.bedtime ? `no streaming ${clock(limit.bedtime.from)}–${clock(limit.bedtime.to)} ${limit.bedtime.days.length ? `on ${describeDays(limit.bedtime.days, NIGHT_PRESETS)}` : 'every night'}` : null,
+  ].filter(Boolean).join(', and ') : '';
+  const pausesSomething = pausing || !!bedtime;
 
   return (
     <>
@@ -207,9 +296,7 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-default">Daily limit</p>
                 <p className="text-xs text-muted mt-0.5">
-                  {limit
-                    ? <>On - {pausing ? 'pauses streaming' : 'alerts you'} when {name} passes {formatMinutes(limit.minutes)} {limit.days.length ? `on ${describeDays(limit.days)}` : 'on any day'}.</>
-                    : <>Off - {name} has no limit.</>}
+                  {limit ? <>On - {summary}.</> : <>Off - {name} has no limit.</>}
                 </p>
               </div>
               <button
@@ -229,7 +316,7 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
             {paused && (
               <div className="rounded-xl px-3 py-2.5 flex items-center justify-between gap-3 border border-warning/40" style={{ background: 'var(--color-warning-muted)' }}>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-warning">Paused until {backOnLabel(limit?.resumeAt)}</p>
+                  <p className="text-xs font-medium text-warning">{paused.reason === 'bedtime' ? 'Bedtime' : 'Paused'} until {paused.untilLabel}</p>
                   <p className="text-[11px] text-muted mt-0.5">Nothing new will play for {name} until then.</p>
                 </div>
                 <button
@@ -249,10 +336,10 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
                 <span className="text-muted">Watched today</span>
                 <span className={reached ? 'text-warning font-medium' : 'text-default font-medium'}>
                   {formatMinutes(today)}
-                  {limit && state?.appliesToday ? <span className="text-subtle font-normal"> of {formatMinutes(limit.minutes)}</span> : null}
+                  {limitMinutes && state?.appliesToday ? <span className="text-subtle font-normal"> of {formatMinutes(limitMinutes)}</span> : null}
                 </span>
               </div>
-              {limit && state?.appliesToday && (
+              {limitMinutes > 0 && state?.appliesToday && (
                 <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-subtle)' }}>
                   <div
                     className="h-full rounded-full transition-all"
@@ -260,13 +347,14 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
                   />
                 </div>
               )}
-              {limit && state && !state.appliesToday && (
+              {limitMinutes > 0 && state && !state.appliesToday && (
                 <p className="text-[11px] text-subtle mt-1">No limit today.</p>
               )}
             </div>
 
             {on && (
             <div className="space-y-4">
+              {hasMinutes && (
               <div>
                 <p className="text-xs font-medium text-muted mb-1.5">When they reach it</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -315,10 +403,11 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
                   )}
                 </div>
               </div>
+              )}
 
               {/* When a pause ends - midnight unless they'd rather it stayed off
                   until the morning (or came back sooner). */}
-              {pausing && (
+              {hasMinutes && pausing && (
                 <div>
                   <p className="text-xs font-medium text-muted mb-1.5">Back on at</p>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -344,23 +433,36 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
               <div>
                 <p className="text-xs font-medium text-muted mb-1.5">How long</p>
                 <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={setNoMinutes}
+                    disabled={!bedtime}
+                    title={bedtime ? 'Only the bedtime' : 'Turn on a bedtime first - or switch the whole limit off'}
+                    aria-pressed={!hasMinutes}
+                    className={`${chip(!hasMinutes)} disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    No limit
+                  </button>
                   {MINUTE_PRESETS.map((m) => (
                     <button key={m} type="button" onClick={() => setMinutes(m)} aria-pressed={draft.minutes === m} className={chip(draft.minutes === m)}>
                       {formatMinutes(m)}
                     </button>
                   ))}
                 </div>
+                {hasMinutes && (
                 <div className="mt-2 inline-flex items-center rounded-full border border-default">
-                  <button type="button" onClick={() => setMinutes(draft.minutes - STEP)} aria-label={`${STEP} minutes less`} className="p-1.5 rounded-l-full text-subtle hover:text-default hover:bg-surface-hover">
+                  <button type="button" onClick={() => setMinutes((draft.minutes || 0) - STEP)} aria-label={`${STEP} minutes less`} className="p-1.5 rounded-l-full text-subtle hover:text-default hover:bg-surface-hover">
                     <MinusIcon className="w-3.5 h-3.5" />
                   </button>
-                  <span className="px-3 text-xs font-medium text-default tabular-nums min-w-[64px] text-center">{formatMinutes(draft.minutes)}</span>
-                  <button type="button" onClick={() => setMinutes(draft.minutes + STEP)} aria-label={`${STEP} minutes more`} className="p-1.5 rounded-r-full text-subtle hover:text-default hover:bg-surface-hover">
+                  <span className="px-3 text-xs font-medium text-default tabular-nums min-w-[64px] text-center">{formatMinutes(draft.minutes || 0)}</span>
+                  <button type="button" onClick={() => setMinutes((draft.minutes || 0) + STEP)} aria-label={`${STEP} minutes more`} className="p-1.5 rounded-r-full text-subtle hover:text-default hover:bg-surface-hover">
                     <PlusIcon className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                )}
               </div>
 
+              {hasMinutes && (
               <div>
                 <p className="text-xs font-medium text-muted mb-1.5">Which days</p>
                 <div className="flex justify-between gap-1">
@@ -389,14 +491,92 @@ export function ScreenTimeButton({ userId, name, onPickGroup }: { userId: string
                   ))}
                 </div>
               </div>
+              )}
+
+              {/* Bedtime: no streaming between two times, on chosen nights. Always a pause. */}
+              <div className="rounded-xl border border-default p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <MoonIcon className={`w-4 h-4 mt-0.5 shrink-0 ${bedtime ? 'text-primary' : 'text-subtle'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-default">Bedtime</p>
+                      <p className="text-[10px] text-subtle leading-tight">
+                        {bedtime ? `No streaming ${clock(bedtime.from)}–${clock(bedtime.to)}` : 'Streaming off overnight'}
+                      </p>
+                    </div>
+                  </div>
+                  {miniSwitch(!!bedtime, turnBedtime, bedtime ? 'Turn bedtime off' : 'Turn bedtime on', !!bedtime && !hasMinutes)}
+                </div>
+                {bedtime && locked && (
+                  <button type="button" onClick={unlock} className={`w-full text-left text-[10px] leading-tight text-warning ${locked.action ? 'hover:underline' : 'cursor-default'}`}>
+                    <LockClosedIcon className="inline w-2.5 h-2.5 mr-0.5 -mt-0.5" />
+                    Bedtime needs a pause - {locked.hint.toLowerCase()}{locked.action ? ' →' : ''}
+                  </button>
+                )}
+                {bedtime && (
+                  <>
+                    <div>
+                      <p className="text-[11px] text-muted mb-1">From</p>
+                      {timeChips(BEDTIME_FROM, bedtime.from, (v) => setBedtime({ from: v }), 'Bedtime starts at another time')}
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted mb-1">Until</p>
+                      {timeChips(BEDTIME_TO, bedtime.to, (v) => setBedtime({ to: v }), 'Bedtime ends at another time')}
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted mb-1">Which nights</p>
+                      <div className="flex justify-between gap-1">
+                        {WEEKDAY_LETTERS.map((letter, d) => {
+                          const picked = pickedNights.includes(d);
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => toggleNight(d)}
+                              aria-pressed={picked}
+                              aria-label={`${WEEKDAY_NAMES[d]} night`}
+                              title={`${WEEKDAY_NAMES[d]} night`}
+                              className={`w-8 h-8 rounded-full border text-[11px] font-medium transition-colors ${picked ? 'border-primary bg-primary/15 text-default' : 'border-default text-subtle hover:bg-surface-hover'}`}
+                            >
+                              {letter}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {NIGHT_PRESETS.map((p) => (
+                          <button key={p.label} type="button" onClick={() => setBedtime({ days: p.days })} aria-pressed={bedtime.days.join() === p.days.join()} className={chip(bedtime.days.join() === p.days.join())}>
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* A real Jellyfin server can stop what's on, not just what's next. */}
+              {state?.canStopPlaying && pausesSomething && !locked && (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <StopCircleIcon className={`w-4 h-4 mt-0.5 shrink-0 ${draft.stopPlaying ? 'text-primary' : 'text-subtle'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-default">Stop what’s playing</p>
+                      <p className="text-[10px] text-subtle leading-tight">A message on their screen 10 minutes before, then it stops</p>
+                    </div>
+                  </div>
+                  {miniSwitch(!!draft.stopPlaying, (v) => change({ ...draft, stopPlaying: v || undefined }), draft.stopPlaying ? 'Let what’s playing finish' : 'Stop what’s playing')}
+                </div>
+              )}
             </div>
             )}
 
             <p className="text-[11px] text-subtle">
               {saving ? 'Saving…'
-                : !on ? 'Turn it on to hear when they pass a set time each day - or to pause their streaming then.'
-                : pausing ? `Counted in every app. At the limit, what plays streams is switched off until ${backOnLabel(draft.resumeAt)}; what’s already playing carries on. Changes save as you make them.`
-                : 'Bell and push alert when they reach it, in any app. Nothing is stopped. Changes save as you make them.'}
+                : !on ? 'Turn it on to hear when they pass a set time each day, pause their streaming then, or set a bedtime.'
+                : pausesSomething
+                  ? `Counted in every app. When it pauses, what plays streams is switched off${draft.stopPlaying && state?.canStopPlaying ? ' and what’s playing stops' : '; what’s already playing carries on'}. Changes save as you make them.`
+                  : 'Bell and push alert when they reach it, in any app. Nothing is stopped. Changes save as you make them.'}
             </p>
           </div>
         </>,

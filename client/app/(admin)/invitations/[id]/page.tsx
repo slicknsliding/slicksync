@@ -11,6 +11,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Badge, ConfirmModal, Modal, UserAvatar } from '@/components/ui';
 import { EditInvitationForm } from '@/components/invitations/EditInvitationForm';
+import { displayEmail } from '@/lib/providers';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -28,6 +29,7 @@ import {
   LinkIcon,
   ChartPieIcon,
   ArrowLeftIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 
@@ -281,9 +283,19 @@ export default function InvitationDetailPage() {
                   )}
                 </div>
 
-                <p className="text-muted mb-4">
-                  {invitation.groupName || 'No group assigned'}
-                </p>
+                {invitation.groupName && !group ? (
+                  <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-warning">
+                    <span className="inline-flex items-start gap-1.5">
+                      <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{invitation.groupName} was deleted, so people who join won&apos;t be put in a group.</span>
+                    </span>
+                    <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Pick a group</Button>
+                  </div>
+                ) : (
+                  <p className="text-muted mb-4">
+                    {invitation.groupName || 'No group assigned'}
+                  </p>
+                )}
 
                 {/* Stats Row */}
                 <div className="flex flex-wrap items-center gap-6 text-sm">
@@ -435,7 +447,7 @@ export default function InvitationDetailPage() {
                     >
                       <UserAvatar 
                         userId={request.id} 
-                        name={request.username || request.email} 
+                        name={request.username || displayEmail(request.email)} 
                         email={request.email}
                         size="md" 
                       />
@@ -443,7 +455,7 @@ export default function InvitationDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-default">
-                            {request.username || request.email}
+                            {request.username || displayEmail(request.email)}
                           </span>
                           <Badge 
                             variant={
@@ -462,7 +474,7 @@ export default function InvitationDetailPage() {
                         </div>
                         <p className="text-xs text-muted mt-0.5">
                           {request.email && request.username !== request.email && (
-                            <>{request.email} • </>
+                            <>{displayEmail(request.email)} • </>
                           )}
                           Requested {format(new Date(request.createdAt), 'MMM d, yyyy')}
                           {request.respondedAt && (
@@ -563,6 +575,7 @@ export default function InvitationDetailPage() {
               name: invitation.name,
               code,
               groupId: invitation.groupId || group?.id,
+              groupName: invitation.groupName,
               maxUses: typeof invitation.maxUses === 'number' ? invitation.maxUses : undefined,
               uses: invitation.currentUses || invitation.uses || 0,
               membershipDuration: invitation.membershipDuration ?? invitation.membershipDurationDays ?? undefined,
@@ -598,7 +611,7 @@ export default function InvitationDetailPage() {
           setDeleteUserConfirm({ open: false, request: null });
         }}
         title="Remove User"
-        description={`Are you sure you want to remove ${deleteUserConfirm.request?.username || deleteUserConfirm.request?.email} from this invitation?`}
+        description={`Are you sure you want to remove ${deleteUserConfirm.request?.username || displayEmail(deleteUserConfirm.request?.email)} from this invitation?`}
         confirmText="Remove User"
         variant="danger"
       />

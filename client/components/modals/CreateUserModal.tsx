@@ -13,7 +13,9 @@ import {
   ArrowPathIcon,
   ClockIcon,
   CheckIcon,
+  ClipboardIcon,
 } from '@heroicons/react/24/outline';
+import { copyToClipboard } from '@/lib/clipboard';
 
 // Create User Modal - Redesigned with premium aesthetic
 // Can also be used for reconnecting existing users
@@ -627,6 +629,22 @@ export function CreateUserModal({
                             ? `Choose how you'd like to reconnect ${userName}'s Stremio account`
                             : "Choose how you'd like to add this user"}
                         </p>
+                        {/* Without their password: signing in on their own page renews
+                            the sign-in SlickSync holds (server/routes/publicLibrary.js). */}
+                        {isReconnect && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const app = providerType === 'nuvio' ? 'nuvio' : providerType === 'jellyfin' ? 'jellyfin' : 'stremio';
+                              copyToClipboard(`${window.location.origin}/login?app=${app}`);
+                              toast.success(`Link copied - when ${userName} signs in there, they're reconnected`);
+                            }}
+                            className="mt-3 inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                          >
+                            <ClipboardIcon className="w-3.5 h-3.5" />
+                            Or copy a link for {userName} to sign in themselves
+                          </button>
+                        )}
                       </div>
 
                       {/* The selected tab's colour is a class, never an inline style:

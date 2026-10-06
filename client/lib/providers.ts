@@ -47,6 +47,20 @@ export function providerBadgeVariant(user: ProviderLike): 'stremio' | 'nuvio' | 
   return 'stremio';
 }
 
+// A Jellyfin, AIOStreams or AIOMetadata login has no email, so SlickSync makes
+// one from the person's id on that server - "<32 hex>@<server host>" (see
+// identityEmail in server/providers/jellyfinAuth.js). It keeps people apart,
+// but on screen it is just a long id, so wherever an email would show, the
+// server they sign in to shows instead.
+const SERVER_IDENTITY_EMAIL = /^[0-9a-f]{32}@(.+)$/i;
+
+/** The address to show for a person: their email, or for a server login, that server. */
+export function displayEmail(email?: string | null): string {
+  if (!email) return '';
+  const m = SERVER_IDENTITY_EMAIL.exec(email);
+  return m ? m[1] : email;
+}
+
 /** The same, for a bare providerType (merged-in logins carry only that). */
 export function providerTypeLabel(type?: string | null): string {
   return type === 'nuvio' ? 'Nuvio' : type === 'jellyfin' ? 'Jellyfin' : 'Stremio';

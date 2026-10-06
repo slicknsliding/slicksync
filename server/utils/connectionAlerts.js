@@ -188,7 +188,7 @@ async function onConnectionFailed(prisma, accountId, user, message, since, now =
     await send(prisma, accountId, needsReconnect
       ? {
           title: `${name} needs to reconnect ${label}`,
-          body: `Their ${label} sign-in stopped working, so their watching isn't being tracked. Reconnect them from Users.`,
+          body: `Their ${label} sign-in stopped working, so their watching isn't being tracked. Reconnect them from Users - or they can sign in on their own SlickSync page, which reconnects them too.`,
           dedupeKey,
         }
       : {

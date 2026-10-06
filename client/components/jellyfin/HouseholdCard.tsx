@@ -15,6 +15,7 @@ import {
   QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon, PlusIcon, LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import { api, type HouseholdProfile } from '@/lib/api';
+import { avatarThumbUrl } from '@/lib/posterUrl';
 import { Badge, Button, Card, ConfirmModal, Modal } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { MENU_ITEM, POPOVER_WIDTH, placeUnder, type Placement } from '@/components/user/ProfilesCard';
@@ -37,6 +38,21 @@ const STATUS_TEXT: Record<HouseholdProfile['status'], string> = {
 
 function Mark({ profile, size }: { profile: HouseholdProfile; size: number }) {
   const dim = profile.status === 'untracked' || profile.status === 'needs-pin' || profile.status === 'needs-sign-in';
+  // Their picture on the server, where it has one (server/utils/serverAvatars.js).
+  if (profile.avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarThumbUrl(profile.avatarUrl, size > 48 ? 'lg' : 'sm')}
+        alt=""
+        width={size}
+        height={size}
+        className={`shrink-0 rounded-full object-cover ${dim ? 'opacity-40 grayscale' : ''}`}
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
   return (
     <span
       className={`shrink-0 rounded-full flex items-center justify-center font-semibold ${dim ? 'opacity-40 grayscale' : ''}`}
@@ -80,9 +96,12 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
   const [signingIn, setSigningIn] = useState<HouseholdProfile | null>(null);
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
-  // Adding household users and changing PINs (server/utils/aioHousehold.js):
-  // only for someone added with their AIOStreams configuration password.
+  // Adding household users and changing PINs (server/utils/aioHousehold.js,
+  // aiometadataHousehold.js): only for someone added with their configuration
+  // password - and PINs on AIOMetadata only once it has them.
   const [canManage, setCanManage] = useState(false);
+  const [canPin, setCanPin] = useState(false);
+  const [serverKind, setServerKind] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -97,6 +116,8 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
       const h = await api.getHousehold(userId);
       setProfiles(h.profiles);
       setCanManage(!!h.canManage);
+      setCanPin(!!h.canPin);
+      setServerKind(h.kind);
     } catch {
       setProfiles(null);
     }
@@ -361,7 +382,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               <KeyIcon className="w-4 h-4 text-muted" /> Sign in
             </button>
           )}
-          {canManage && (
+          {canPin && (
             <button className={MENU_ITEM} onClick={() => { closeMenu(); setPinFor(sel); }}>
               <LockClosedIcon className="w-4 h-4 text-muted" /> Change PIN
             </button>
@@ -386,19 +407,22 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
         isLoading={busy}
       />
 
-      <Modal isOpen={adding} onClose={() => { if (!busy) setAdding(false); }} title={`Add someone to ${personName}'s AIOStreams`}>
+      <Modal isOpen={adding} onClose={() => { if (!busy) setAdding(false); }} title={`Add someone to ${personName}'s ${kindLabel}`}>
         <form onSubmit={(e) => { e.preventDefault(); submitAdd(); }} className="space-y-4">
-          <p className="text-sm text-muted">They show up in every AIOStreams and Jellyfin app signed in to this configuration, and are tracked here with {personName} straight away.</p>
+          <p className="text-sm text-muted">They show up in every {kindLabel} and Jellyfin app signed in to this configuration, and are tracked here with {personName} straight away.</p>
           <div>
             <label htmlFor="household-new-name" className="block text-sm font-medium mb-2 text-default">Name</label>
             <input id="household-new-name" value={newName} maxLength={32} onChange={(e) => setNewName(e.target.value)}
               className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
           </div>
+          {canPin && (
           <div>
             <label htmlFor="household-new-pin" className="block text-sm font-medium mb-2 text-default">PIN <span className="text-muted font-normal">(optional, 4 to 12 digits)</span></label>
             <input id="household-new-pin" type="password" inputMode="numeric" autoComplete="new-password" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
               className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
           </div>
+          )}
+          {serverKind !== 'aiometadata' && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-default">History</p>
             {([['own', 'Their own', 'Their own Continue Watching and watched marks, and their own trackers.'], ['shared', `Shared with ${personName}`, `One history with ${personName}, using ${personName}'s trackers.`]] as const).map(([value, label, hint]) => (
@@ -408,6 +432,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               </label>
             ))}
           </div>
+          )}
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" type="button" onClick={() => setAdding(false)} disabled={busy}>Cancel</Button>
             <Button variant="primary" type="submit" isLoading={busy} disabled={!newName.trim()}>Add</Button>

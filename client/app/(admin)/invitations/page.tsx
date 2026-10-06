@@ -19,6 +19,7 @@ import { toast } from '@/components/ui/Toast';
 import { api, Invitation, Group } from '@/lib/api';
 import { InviteJellyfinAccountPicker } from '@/components/jellyfin/InviteJellyfinAccountPicker';
 import { EditInvitationForm } from '@/components/invitations/EditInvitationForm';
+import { displayEmail } from '@/lib/providers';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import {
@@ -38,6 +39,7 @@ import {
   ArrowPathIcon,
   ArrowUturnLeftIcon,
   LinkIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
 // Invitation display type
@@ -48,6 +50,8 @@ interface InvitationDisplay {
   groupId?: string;
   groupName?: string;
   groupColor?: string;
+  /** Its group was deleted (or renamed before renames carried over): joiners land in no group. */
+  groupMissing?: boolean;
   maxUses?: number;
   uses: number;
   expiresAt?: string;
@@ -84,13 +88,15 @@ export default function InvitationsPage() {
   // Data state
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  // Only once the groups are known can an invitation's group be called missing.
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [requests, setRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Instant navigation: last-known invitations and groups shown at once
   // while the fetch below refreshes them - see useLastKnown's comment.
   useLastKnown<Invitation[]>('/invitations', (cached) => { setInvitations(cached); setIsLoading(false); });
-  useLastKnown<Group[]>('/groups', (cached) => setGroups(cached));
+  useLastKnown<Group[]>('/groups', (cached) => { setGroups(cached); setGroupsLoaded(true); });
   const [error, setError] = useState<Error | null>(null);
 
   // Multi-select state - NO isSelectMode, just selectedIds
@@ -119,6 +125,7 @@ export default function InvitationsPage() {
         ]);
         setInvitations(invitationsData);
         setGroups(groupsData);
+        setGroupsLoaded(true);
 
         // Extract requests from invitations (they may be embedded)
         const allRequests: any[] = [];
@@ -207,6 +214,7 @@ export default function InvitationsPage() {
         groupId: group?.id,
         groupName: rawGroupName || group?.name,
         groupColor: group?.color,
+        groupMissing: groupsLoaded && !!rawGroupName && !group,
         maxUses,
         uses,
         expiresAt: inv.expiresAt || undefined,
@@ -217,7 +225,7 @@ export default function InvitationsPage() {
         jellyfinServerKey: (inv as { jellyfinServerKey?: string | null }).jellyfinServerKey || null,
       };
     });
-  }, [invitations, groups, requests]);
+  }, [invitations, groups, groupsLoaded, requests]);
 
   // Transform requests for display
   const requestsDisplay = useMemo<RequestDisplay[]>(() => {
@@ -476,8 +484,8 @@ export default function InvitationsPage() {
                                       <p className="text-sm text-muted font-mono">{invite.code}</p>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 text-muted">
-                                    {invite.groupName || 'No group'}
+                                  <td className={`px-6 py-4 ${invite.groupMissing ? 'text-warning' : 'text-muted'}`}>
+                                    {invite.groupName || 'No group'}{invite.groupMissing ? ' (deleted)' : ''}
                                   </td>
                                   <td className="px-6 py-4 text-muted">
                                     {invite.uses}/{invite.maxUses || '∞'}
@@ -899,9 +907,16 @@ function InvitationCard({
                     return null;
                   })()}
                 </div>
-                <p className="text-xs text-muted mb-2">
-                  {invitation.groupName || 'No group'}
-                </p>
+                {invitation.groupMissing ? (
+                  <p className="text-xs mb-2 flex items-center gap-1 text-warning" title="People who join with this invitation won't be put in a group. Edit it to pick one.">
+                    <ExclamationTriangleIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{invitation.groupName} was deleted</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted mb-2">
+                    {invitation.groupName || 'No group'}
+                  </p>
+                )}
 
                 {/* Progress bar for uses - Industrial Precision Design */}
                 {invitation.maxUses && (
@@ -1140,10 +1155,10 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
     try {
       if (action === 'accept') {
         await api.acceptInviteRequest(request.id);
-        toast.success(`${request.username || request.email} accepted`);
+        toast.success(`${request.username || displayEmail(request.email)} accepted`);
       } else {
         await api.rejectInviteRequest(request.id);
-        toast.success(`${request.username || request.email} rejected`);
+        toast.success(`${request.username || displayEmail(request.email)} rejected`);
       }
       // Refresh data
       if (onUpdate) {
@@ -1162,7 +1177,7 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
     try {
       // Re-accept a rejected request (undo rejection)
       await api.acceptInviteRequest(request.id);
-      toast.success(`${request.username || request.email} rejection undone`);
+      toast.success(`${request.username || displayEmail(request.email)} rejection undone`);
       if (onUpdate) {
         onUpdate();
       }
@@ -1242,7 +1257,7 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
               {request.status}
             </Badge>
           </div>
-          <p className="text-sm text-muted">{request.email}</p>
+          <p className="text-sm text-muted">{displayEmail(request.email)}</p>
           <p className="text-xs mt-1 text-subtle">
             Requested {new Date(request.createdAt).toLocaleDateString()} at{' '}
             {new Date(request.createdAt).toLocaleTimeString()}

@@ -12,7 +12,7 @@ import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 
 export function MarkPlayedRow({ userId }: { userId: string }) {
-  const [state, setState] = useState<{ available: boolean; enabled: boolean } | null>(null);
+  const [state, setState] = useState<{ available: boolean; enabled: boolean; lists: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -21,12 +21,12 @@ export function MarkPlayedRow({ userId }: { userId: string }) {
 
   if (!state?.available) return null;
 
-  const toggle = async (enabled: boolean) => {
+  const toggle = async (change: { enabled?: boolean; lists?: boolean }) => {
     setSaving(true);
     try {
-      setState(await api.setJellyfinMarkPlayed(userId, enabled));
-    } catch (e: any) {
-      toast.error(e?.message || 'Could not change that');
+      setState(await api.setJellyfinMarkPlayed(userId, change));
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Could not change that');
     } finally {
       setSaving(false);
     }
@@ -47,8 +47,20 @@ export function MarkPlayedRow({ userId }: { userId: string }) {
             </p>
           </div>
         </div>
-        <ToggleSwitch checked={state.enabled} onChange={() => toggle(!state.enabled)} disabled={saving} title="Keep Jellyfin in step" />
+        <ToggleSwitch checked={state.enabled} onChange={() => toggle({ enabled: !state.enabled })} disabled={saving} title="Keep Jellyfin in step" />
       </div>
+      {/* Their own favourites are filled from it, so it's off unless chosen. */}
+      {state.enabled && (
+        <div className="flex items-center justify-between gap-4 pb-3 pl-[52px]">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-default">Watchlist and ratings too</p>
+            <p className="text-xs text-muted">
+              The household watchlist becomes their Jellyfin favourites, and ratings their ratings. Only what SlickSync adds is ever taken away again.
+            </p>
+          </div>
+          <ToggleSwitch checked={state.lists} onChange={() => toggle({ lists: !state.lists })} disabled={saving} title="Watchlist and ratings too" />
+        </div>
+      )}
     </>
   );
 }

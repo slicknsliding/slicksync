@@ -437,11 +437,17 @@ export function CatchUpButton({ userId, name, hasServer }: { userId: string; nam
                             type="button"
                             disabled={!aired}
                             onClick={() => setTarget({ season: e.season, episode: e.episode })}
-                            title={`E${e.episode}${e.title ? ` · ${e.title}` : ''}${!aired ? ' - not out yet' : e.watched ? ' - watched' : ''}`}
-                            aria-label={`Episode ${e.episode}${e.watched ? ', watched' : ''}${!aired ? ', not out yet' : ''}`}
+                            title={`E${e.episode}${e.title ? ` · ${e.title}` : ''}${e.kind === 'filler' ? ' - filler' : e.kind === 'recap' ? ' - recap' : ''}${!aired ? ' - not out yet' : e.watched ? ' - watched' : ''}`}
+                            aria-label={`Episode ${e.episode}${e.kind ? `, ${e.kind}` : ''}${e.watched ? ', watched' : ''}${!aired ? ', not out yet' : ''}`}
                             className={`relative aspect-square rounded-lg border text-xs tabular-nums transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${episodeStyle(e)}`}
                           >
                             {e.watched ? <CheckIcon className="w-3.5 h-3.5 mx-auto" /> : e.episode}
+                            {/* Filler and recap episodes, where the server says so. */}
+                            {e.kind && (
+                              <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] leading-none font-semibold uppercase text-warning" aria-hidden>
+                                {e.kind === 'filler' ? 'F' : 'R'}
+                              </span>
+                            )}
                           </button>
                         );
                       })}

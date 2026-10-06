@@ -20,6 +20,24 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   const router = express.Router();
 
   // Helper to get existing user from Stremio auth (does NOT create new users)
+  // Signing in on their own page with a login that works fixes a sign-in
+  // SlickSync held that had stopped working - the same as a Reconnect, without
+  // the household needing their password. Clear the problem at once and say
+  // they're connected again, as the activity monitor would a minute later.
+  async function healedBySignIn(userId) {
+    try {
+      const before = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, username: true, accountId: true, providerType: true, jellyfinServerUrl: true, jellyfinServerKind: true, providerConnectionError: true, providerConnectionErrorAt: true },
+      });
+      if (!before?.providerConnectionErrorAt) return;
+      await prisma.user.update({ where: { id: userId }, data: { providerConnectionError: null, providerConnectionErrorAt: null } });
+      await require('../utils/connectionAlerts').onConnectionRecovered(prisma, before.accountId || DEFAULT_ACCOUNT_ID, before);
+    } catch (e) {
+      console.warn('[publicLibrary] could not clear a fixed sign-in:', e?.message);
+    }
+  }
+
   async function getPublicUser(authKey, req) {
     try {
       // Validate auth key
@@ -137,6 +155,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           protectedAddons: true
         }
       });
+      await healedBySignIn(user.id);
       return user;
     } catch (error) {
       console.error('Error in getPublicUser:', error);
@@ -208,6 +227,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             data: { nuvioRefreshToken: encryptedRefreshToken, isActive: true },
             select: { id: true, username: true, email: true, nuvioRefreshToken: true, isActive: true, protectedAddons: true }
           });
+          await healedBySignIn(user.id);
         }
       }
 
@@ -294,6 +314,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     if (!inGroup) throw new Error('USER_NOT_IN_GROUP');
     if (user.viaProfile) return user;
     const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
+    await healedBySignIn(user.id);
     await prisma.user.update({
       where: { id: user.id },
       data: {
