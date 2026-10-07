@@ -10,9 +10,12 @@ const TZ = 'America/Los_Angeles'
 const MON_NOON_LA = new Date('2026-10-05T19:00:00Z')
 const SUN_EVENING_LA = new Date('2026-10-05T06:00:00Z')
 
-function world({ limits, activity, now }) {
+// gateSettled: anyone whose limit can pause already has their stream addons
+// through the gate (its own tests below start without it).
+function world({ limits, activity, now, gateSettled = true }) {
   const notes = []
-  let sync = { accountTimezone: TZ, screenTime: limits }
+  const gate = Object.fromEntries(Object.entries(limits || {}).filter(([, l]) => l?.onReach === 'pause' || l?.bedtime).map(([id]) => [id, { on: true, at: '2026-10-01T00:00:00.000Z' }]))
+  let sync = { accountTimezone: TZ, screenTime: limits, ...(gateSettled && Object.keys(gate).length ? { screenTimeGate: gate } : {}) }
   const prisma = {
     appAccount: {
       findMany: async () => [{ id: 'acc', sync: JSON.stringify(sync) }],
@@ -464,4 +467,36 @@ test('after a pause: the watch ends after a while, and after a few tries', async
   await st.checkScreenTime(second.w.prisma, { now: later(TUE_0701_LA, 20), emit: quiet, deps: second.deps })
   assert.equal(second.syncs(), n, 'too late to be the pause')
   assert.equal(second.w.sync.screenTimeAfterPause?.mia, undefined)
+})
+
+test('the gate: one sync when someone\'s pause set-up starts, and one when it stops', async () => {
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } }, leo: { minutes: 90, days: [] } }, activity: [], gateSettled: false })
+  const synced = []
+  const deps = { syncPerson: async (_p, _a, id) => { synced.push(id) } }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  assert.deepEqual(synced, ['mia'], 'Mia (a bedtime) gets the gate; Leo\'s limit only alerts')
+  assert.equal(w.sync.screenTimeGate.mia.on, true)
+  await st.checkScreenTime(w.prisma, { now: later(MON_NOON_LA, 1), emit: quiet, deps })
+  assert.deepEqual(synced, ['mia'], 'once')
+  await st.setLimit(w.prisma, 'acc', 'mia', null, deps)
+  const before = synced.length
+  await st.checkScreenTime(w.prisma, { now: later(MON_NOON_LA, 2), emit: quiet, deps })
+  assert.deepEqual(synced.slice(before), ['mia'], 'bedtime off: synced back to the real addresses')
+  assert.equal(w.sync.screenTimeGate.mia, undefined)
+})
+
+test('the gate: a sync that fails is tried again in a while, not every minute', async () => {
+  const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [], gateSettled: false })
+  let tries = 0
+  let fail = true
+  const deps = { syncPerson: async () => { tries++; if (fail) throw new Error('Nuvio said no') } }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  assert.equal(tries, 1)
+  assert.ok(w.sync.screenTimeGate.mia.retryAt)
+  await st.checkScreenTime(w.prisma, { now: later(MON_NOON_LA, 5), emit: quiet, deps })
+  assert.equal(tries, 1)
+  fail = false
+  await st.checkScreenTime(w.prisma, { now: later(MON_NOON_LA, 16), emit: quiet, deps })
+  assert.equal(tries, 2)
+  assert.deepEqual(Object.keys(w.sync.screenTimeGate.mia).sort(), ['at', 'on'])
 })

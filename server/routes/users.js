@@ -6856,6 +6856,20 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           return id.startsWith('vip.slicksync.trax') || /\/trax\/[^/]+\/(?:v[\d.]+\/)?(?:aio\/)?manifest\.json$/i.test(url)
         }
         req.body.addons = req.body.addons.filter((a) => !isSlickTrax(a))
+        // A stream addon on someone with a pause set up is installed through
+        // their gate (utils/streamGate.js) - it is one of SlickSync's own
+        // addons, so it comes in at its real address, never their gate's.
+        const { parseGateUrl } = require('../utils/streamGate')
+        const listed = req.body.addons
+        const kept = (await Promise.all(listed.map(async (a) => {
+          const gated = parseGateUrl(a?.manifestUrl || a?.transportUrl || a?.url)
+          if (!gated) return a
+          const row = await prisma.addon.findFirst({ where: { id: gated.addonId, accountId: getAccountId(req) }, select: { manifestUrl: true } })
+          let real = null
+          try { real = row?.manifestUrl ? decrypt(row.manifestUrl, req) : null } catch { real = null }
+          return real && !real.includes('{{vault:') ? { ...a, url: real, manifestUrl: real, transportUrl: real } : null
+        }))).filter(Boolean)
+        Object.assign(req.body, { addons: kept })
         if (req.body.addons.length === 0) {
           return res.status(400).json({ message: 'Nothing to import - their only addon is SlickTrax, which SlickSync adds to each person itself' })
         }

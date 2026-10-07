@@ -2201,8 +2201,11 @@ export default function UserDetailPage() {
                           // string equality (http vs https, trailing /manifest.json,
                           // query strings, case). No match ⇒ not a SlickSync-managed
                           // addon, stays unlinked rather than guessing.
+                          // A stream addon installed through their pause gate
+                          // (/trax/gate/<token>/<addon id>/...) names its addon.
                           const canonicalTransportUrl = canonicalizeManifestUrl(addon.transportUrl);
-                          const matchedAddon = groupAddons.find((ga) => canonicalizeManifestUrl((ga as any).transportUrl) === canonicalTransportUrl);
+                          const gatedId = /\/trax\/gate\/[a-f0-9]+\/([^/?#]+)\//i.exec(addon.transportUrl || '')?.[1];
+                          const matchedAddon = groupAddons.find((ga) => (gatedId ? (ga as any).id === gatedId : canonicalizeManifestUrl((ga as any).transportUrl) === canonicalTransportUrl));
                           const content = (
                             <>
                               <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">

@@ -253,6 +253,30 @@ module.exports = ({ prisma }) => {
     res.json({ streams: [] })
   })
 
+  // The gate a person's stream addons go through while they have a pause set
+  // up (utils/streamGate.js): the manifest from here, streams empty while
+  // they're paused, everything else redirected to the real addon. Never
+  // cached - a remembered redirect would carry on past the start of a pause.
+  router.use('/gate/:token/:addonId/:hash', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
+    if (req.method === 'OPTIONS') return res.status(204).end()
+    try {
+      const { resolveGate } = require('../utils/streamGate')
+      const found = await resolveGate(prisma, req.params.token, req.params.addonId)
+      if (!found) return res.status(404).json({ error: 'Not found' })
+      const rest = req.path.replace(/^\/+/, '')
+      if (!rest || rest === 'manifest.json') return res.json(found.manifest)
+      if (rest.startsWith('stream/') && await require('../utils/screenTime').isStreamingPaused(prisma, found.accountId, found.personId)) {
+        return res.json({ streams: [] })
+      }
+      const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+      res.redirect(302, `${found.upstreamBase}/${rest}${query}`)
+    } catch (e) {
+      console.error('[TraxAddon] gate failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
   async function resolveUser(token) {
     if (!token || typeof token !== 'string' || token.length < 16) return null
     const user = await prisma.user.findFirst({ where: { traxToken: token, traxAddonEnabled: true } })

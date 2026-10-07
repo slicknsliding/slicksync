@@ -395,6 +395,33 @@ async function readAccountAddons(prisma, accountId, userId) {
   return addons
 }
 
+// Stremio and Nuvio people with a pause set up have their stream addons go
+// through SlickSync's gate (utils/streamGate.js), which every sync arranges.
+// When someone's set-up starts or stops, one sync right away puts that on
+// their account - noted here, so it happens once - instead of whenever the
+// next sync comes round.
+const GATE = 'screenTimeGate'
+const GATE_RETRY_MS = 15 * 60 * 1000
+
+async function settleGate(prisma, accountId, person, limit, entry, { now }, deps) {
+  const d = { ...defaultDeps, ...deps }
+  const want = pauseKind(person) === 'addons' && require('./streamGate').wantsGate(limit)
+  const has = !!entry?.on
+  const settled = has ? { on: true, at: entry.at } : null
+  if (want === has) {
+    if (entry?.retryAt) await patchEntry(prisma, accountId, GATE, person.id, settled)
+    return
+  }
+  if (entry?.retryAt && Date.parse(entry.retryAt) > now.getTime()) return
+  try {
+    await d.syncPerson(prisma, accountId, person.id)
+    await patchEntry(prisma, accountId, GATE, person.id, want ? { on: true, at: now.toISOString() } : null)
+  } catch (e) {
+    console.warn(`[ScreenTime] syncing ${person.id} for the gate:`, e?.message)
+    await patchEntry(prisma, accountId, GATE, person.id, { ...settled, retryAt: new Date(now.getTime() + GATE_RETRY_MS).toISOString() })
+  }
+}
+
 const setAioPaused = (...args) => require('./aioPause').setAioPaused(...args)
 const setAiomPaused = (...args) => require('./aiomPause').setAiomPaused(...args)
 
@@ -730,7 +757,7 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
     const pauses = cfg?.[PAUSES] || {}
     // Also anyone whose Jellyfin server still has a bedtime SlickSync wrote,
     // so one switched off is always taken away.
-    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {}), ...Object.keys(cfg?.[AFTER_PAUSE] || {})])]
+    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {}), ...Object.keys(cfg?.[AFTER_PAUSE] || {}), ...Object.keys(cfg?.[GATE] || {})])]
     if (!ids.length) continue
     try {
       const timezone = await resolveAccountTimezone(prisma, account.id)
@@ -743,7 +770,11 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
         const person = byId.get(userId)
         // Read each time: a change for one person rewrites the whole settings.
         const entry = (await readSync(prisma, account.id)).cfg[PAUSES]?.[userId]
-        if (!person) { if (entry) await patchEntry(prisma, account.id, PAUSES, userId, null); continue }
+        if (!person) {
+          if (entry) await patchEntry(prisma, account.id, PAUSES, userId, null)
+          if (cfg?.[GATE]?.[userId]) await patchEntry(prisma, account.id, GATE, userId, null)
+          continue
+        }
         // An inactive person's limit waits; a pause they're under still ends.
         const limit = person.isActive === false ? null : limits.get(userId) || null
         const watched = Math.floor((seconds.get(userId) || 0) / 60)
@@ -754,6 +785,10 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
           await patchEntry(prisma, account.id, PAUSES, userId, null)
           ctx.entry = undefined
         }
+
+        // The gate follows the limit as set, active or not, so pausing someone
+        // inactive doesn't change their addons back and forth.
+        await settleGate(prisma, account.id, person, limits.get(userId) || null, (await readSync(prisma, account.id)).cfg[GATE]?.[userId], { now }, deps)
 
         let pausedNow = false
         let want = null
