@@ -3602,6 +3602,8 @@ export interface ScreenTimeView {
   canStopPlaying?: boolean;
   /** Stremio and Nuvio: whether a pause takes hold without reopening the app (false: devices can't reach SlickSync's gate). */
   instant?: boolean | null;
+  /** Why devices can't reach the gate, in words. */
+  gateProblem?: string | null;
   /** A profile or household user merged into someone: whose it is. */
   profileOf?: { name: string | null; kind: 'nuvio-profile' | 'household' } | null;
 }
@@ -3621,6 +3623,8 @@ export interface AgeLimitView extends JellyfinAgeLimit {
   needsKey?: boolean;
   /** Devices can't reach SlickSync's gate, so it can't be held to yet. */
   needsAddress?: boolean;
+  /** Why, in words. */
+  addressProblem?: string | null;
 }
 
 /** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */

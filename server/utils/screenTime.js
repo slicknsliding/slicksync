@@ -490,7 +490,7 @@ async function canPause(prisma, accountId, person, deps = {}) {
     const name = person.username || 'This profile'
     if (person.subject.sharesPrimary) return { ok: false, code: 'shares-addons', reason: `${name} uses the main profile’s addons in Nuvio, so it can’t be paused on its own - a limit here can only alert you. Give it its own addons in Nuvio to pause it.` }
     const usable = await (deps.gateUsable || defaultDeps.gateUsable)(prisma, accountId).catch(() => null)
-    if (!usable?.ok) return { ok: false, code: 'needs-address', reason: 'Pausing one Nuvio profile needs this instance’s public address, reachable from the internet without a login (Settings -> Integrations).' }
+    if (!usable?.ok) return { ok: false, code: 'needs-address', reason: require('./streamGate').gateProblem(usable) || 'Phones and TVs can’t reach this instance yet.' }
     return { ok: true }
   }
   if (kind === 'addons') {
@@ -671,7 +671,11 @@ async function getLimit(prisma, accountId, userId, deps = {}) {
     canStopPlaying: kind === 'jellyfin',
     // Whether a pause on Stremio or Nuvio takes hold without reopening the
     // app (utils/streamGate.js) - false when devices can't reach the gate.
-    instant: kind === 'addons' ? !!(await (deps.gateUsable || defaultDeps.gateUsable)(prisma, accountId).catch(() => null))?.ok : null,
+    ...(await (async () => {
+      if (kind !== 'addons') return { instant: null }
+      const usable = await (deps.gateUsable || defaultDeps.gateUsable)(prisma, accountId).catch(() => null)
+      return { instant: !!usable?.ok, gateProblem: require('./streamGate').gateProblem(usable) }
+    })()),
     // A merged profile or household user: whose it is.
     profileOf: person.subject ? { name: person.subject.ownerName || null, kind: person.subject.kind } : null,
   }

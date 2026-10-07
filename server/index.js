@@ -340,6 +340,11 @@ if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) {
   })
 }
 
+// The address devices reach this instance at, learned from an admin's own
+// visits (utils/ownAddress.js) - so SlickTrax, pictures and the stream gate
+// need nothing typed into Settings.
+app.use('/api', require('./utils/ownAddress').learnOwnAddress(prisma))
+
 // Per-account rate limiter, public multi-tenant mode only - private mode's
 // single shared DEFAULT_ACCOUNT_ID makes this redundant with (and strictly
 // worse than) the per-IP limiter above, since every request in private mode

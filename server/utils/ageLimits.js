@@ -113,6 +113,8 @@ async function getAgeLimit(prisma, decrypt, accountId, id) {
     needsKey: !key,
     // Without a gate devices can reach, it can't be held to.
     needsAddress: !usable?.ok,
+    // Why, in words.
+    addressProblem: require('./streamGate').gateProblem(usable),
   }
 }
 

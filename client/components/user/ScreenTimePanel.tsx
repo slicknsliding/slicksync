@@ -216,7 +216,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
           : state.canPause.code === 'shares-addons'
             ? { badge: 'Alert only', hint: 'It uses the main profile’s addons', action: null }
             : state.canPause.code === 'needs-address'
-              ? { badge: 'Needs an address', hint: 'Set this instance’s public address', action: 'settings' as const }
+              ? { badge: 'Can’t reach it', hint: 'Phones can’t reach SlickSync yet', detail: state.canPause.reason, action: 'settings' as const }
               : { badge: 'Alert only', hint: 'This server can’t pause one person', action: null }
     : null;
   const unlock = () => {
@@ -474,9 +474,11 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
             {miniSwitch(!!bedtime, turnBedtime, bedtime ? 'Turn bedtime off' : 'Turn bedtime on', !state)}
           </div>
           {bedtime && locked && (
-            <button type="button" onClick={unlock} className={`w-full text-left text-xs leading-tight text-warning ${locked.action ? 'hover:underline' : 'cursor-default'}`}>
+            <button type="button" onClick={unlock} className={`w-full text-left text-xs leading-snug text-warning ${locked.action ? 'hover:underline' : 'cursor-default'}`}>
               <LockClosedIcon className="inline w-2.5 h-2.5 mr-0.5 -mt-0.5" />
-              Bedtime needs a pause - {locked.hint.toLowerCase()}{locked.action ? ' →' : ''}
+              {'detail' in locked && locked.detail
+                ? <>Bedtime can’t pause yet. {locked.detail}{locked.action ? ' →' : ''}</>
+                : <>Bedtime needs a pause - {locked.hint.toLowerCase()}{locked.action ? ' →' : ''}</>}
             </button>
           )}
           {bedtime && (
@@ -543,7 +545,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
           their app reopened. */}
       {state?.instant === false && pausesSomething && !locked && (
         <p className="text-xs text-warning">
-          A pause takes hold when their app is next reopened: this instance’s public address can’t be reached without a login, so it can’t pause them at once.
+          A pause takes hold when their app is next reopened, not at once. {state.gateProblem || 'Phones and TVs can’t reach this instance yet.'}
         </p>
       )}
       <p className="text-xs text-muted leading-relaxed">

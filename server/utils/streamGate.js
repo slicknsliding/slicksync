@@ -116,6 +116,17 @@ async function gateUsable(prisma, accountId, { now = Date.now(), fetchImpl = fet
   return next
 }
 
+/** Why devices can't reach the gate, in words for the Limits popup - or null when they can. */
+function gateProblem(usable) {
+  if (!usable || usable.ok) return null
+  let host = ''
+  try { host = usable.base ? new URL(usable.base).host : '' } catch { host = '' }
+  if (usable.reason === 'no-address') return 'SlickSync doesn’t know the address your devices reach it at yet. Open SlickSync once from that address and it learns it - or set it in Settings -> Integrations.'
+  if (usable.reason === 'internal-address') return `SlickSync only knows itself as ${host}, which works inside its own server but not for phones and TVs. Open SlickSync once from the address your devices use and it learns that one - or set it in Settings -> Integrations.`
+  if (usable.reason === 'login') return `A sign-in page answers at ${host}/trax/. Let /trax/ through without a login (as SlickTrax needs too), and it works.`
+  return `SlickSync can’t reach itself at ${host}/trax/ - check the address in Settings -> Integrations.`
+}
+
 /** Whether someone's stream addons belong behind the gate: a pause set up, a pause in force, or an age limit. */
 function wantsGateFor(cfg, id) {
   const { cleanLimit, pauseInForce } = require('./screenTime')
@@ -382,7 +393,7 @@ async function streamVerdict(prisma, found, resourcePath, deps = {}) {
 }
 
 module.exports = {
-  GATE_PATH, PING_REPLY, wantsGate, wantsGateFor, publicBase, gateUrl, parseGateUrl, gateFor, gateUsable, deviceReachable,
+  GATE_PATH, PING_REPLY, wantsGate, wantsGateFor, publicBase, gateUrl, parseGateUrl, gateFor, gateUsable, deviceReachable, gateProblem,
   wrapProfile, gateAiom, wrapFor, resolveGate, streamVerdict,
   forgetResolvedForTests: () => resolved.clear(),
 }

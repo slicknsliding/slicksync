@@ -120,7 +120,7 @@ export function AgeLimitCard({ userId, name, onChange, onClose }: {
           )}
           {streams && state?.needsAddress && (
             <p className="text-xs text-warning leading-snug">
-              It takes hold once this instance’s public address can be reached without a login.{' '}
+              It takes hold once phones and TVs can reach this instance. {state?.addressProblem || ''}{' '}
               <Link href="/settings?highlight=Public%20address%20of%20this%20instance" onClick={onClose} className="underline">Settings</Link>
             </p>
           )}
