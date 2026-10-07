@@ -131,9 +131,10 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 
 - AIOStreams and AIOMetadata **household users become profiles** of the person who signed in, all on one card on the Users page.
 - **Separate** a profile into its own person, **Merge it back**, or **Stop tracking** it. PIN users sign in with their PIN.
+- **Limits of their own** — a household user, or a Nuvio profile, merged into someone can have its own daily limit, bedtime and age limit: only its own watching counts, and only it is paused.
 - **Sign in a new device with its code** — pick who it's for, type the Quick Connect code the device shows, and the server signs it in as them.
 - **Devices** — everything signed in as someone on a Jellyfin server, with Sign out next to each.
-- **Age limit** — the highest age rating someone's Jellyfin account can play, from the server's own list, enforced in every Jellyfin app.
+- **Age limit** — the highest rating someone may play. On a Jellyfin server it's the server's own age limit, enforced in every Jellyfin app; on Stremio, Nuvio and AIOMetadata SlickSync holds them to it - a title rated above it has nothing to play, while catalogs stay.
 - **Invites that make the account** — an invitation can create the person's Jellyfin account with a password they choose; it stays off until you accept them, and switches off again if they expire or are removed.
 - **AIOStreams and AIOMetadata household users** — add one, or set or remove their PIN, from the household card.
 - **Profile pictures both ways** — a picture changed in SlickSync can go to their Jellyfin, AIOStreams or AIOMetadata server too, and one changed on the server shows up here within minutes.
@@ -173,6 +174,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Watching Together** — an alert the moment someone starts an episode past the shared frontier.
 - **Device claims** — on a shared login, claim a device and its activity is attributed to the right person.
 - **Leave someone out of household numbers** — a test or guest person keeps their own page but stops counting toward totals, charts, Top Viewers and the year in review.
+- **Limits** — one button on each person's card, profile and household user for their daily limit, bedtime and age limit, each with its own switch.
 - **Daily limits** — so many minutes a day on the days you choose, counted across every app. At the limit you're told — or, per person, their streaming pauses until midnight or a time you pick, on Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata. On Stremio and Nuvio a pause starts and ends the next time they open a title, with no app restart. **Resume now** gives the rest of the day back.
 - **Bedtime** — no streaming between two times on the nights you choose, with its own switch next to the daily limit - use either, or both. It pauses every kind of account the same way a daily limit does. On a Jellyfin server it is also written into their own parental schedule, so the server holds it even while SlickSync is down, and it can put a message on screen ten minutes before, then stop what's playing.
 - **Caught up to…** — mark a show watched up to an episode, in SlickSync and on their server, with **Undo** and un-ticking a single episode. Anime episodes that are filler or recap are labelled, from AIOStreams.
@@ -347,7 +349,7 @@ Frontend and API are both served through `:3000` — only that port needs a mapp
 
 **Verify it's up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (matching the latest on the [Releases page](https://github.com/slicknsliding/slicksync/releases)), and `https://your-domain/` should load the login page.
 
-**One setting worth doing straight away**: Settings → Sync → **Public address**. SlickTrax installs itself onto devices during a sync, and a sync has no browser request to learn a hostname from — without it, SlickTrax can't be installed automatically.
+**Open it from the address your devices use**: SlickSync learns the address phones and TVs reach it at the first time you open it from there — SlickTrax, pictures on a server and instant pauses use it. If devices reach it on a different address, set it under Settings → Integrations → **Public address of this instance**.
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed.
 
@@ -410,7 +412,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `PUBLIC_APP_URL` | The address devices reach this instance on, used to install SlickTrax (also settable in Settings → Sync) | — |
+| `PUBLIC_APP_URL` | The address devices reach this instance on, for SlickTrax, pictures on a server and instant pauses. Otherwise learned when you open it, or set in Settings → Integrations | — |
 | `NUVIO_SUPABASE_URL` / `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's backend endpoint (also settable per account in Settings) | `https://api.nuvio.tv` / — |
 | `SIMKL_CLIENT_ID` | Instance-wide SIMKL app registration (each account can bring its own) | — |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | Enable "Continue with..." SSO login (all four required) | — |
@@ -429,7 +431,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 
 - **Decryption errors after an update** (`Unsupported state or unable to authenticate data`): the running code is deriving a different key than what encrypted your data — check `data/server_secret.key` wasn't lost, and don't modify the key-derivation constants on a fork.
 - **"credentials may be invalid" on Sync, but library/history still updates fine**: a decrypt-key rotation split your data across key generations. Every read path falls back to the previous key automatically, but some secrets stay encrypted under the old one. Fix it permanently: `docker exec -it -e DATABASE_URL="file:///app/data/sqlite.db" <container> node scripts/consolidate-encryption-keys.js` (dry-run; add `--apply --sync-keyfile` to re-encrypt everything onto the current key).
-- **SlickTrax is enabled but never appears on the device**: set Settings → Sync → Public address (or `PUBLIC_APP_URL`). A sync has no browser request to learn the hostname from.
+- **SlickTrax is enabled but never appears on the device, or a pause needs the app reopened**: open SlickSync once from the address your devices use so it learns it, or set Settings → Integrations → Public address (or `PUBLIC_APP_URL`). If a login gate sits in front of the instance, let `/trax/` through without a login. The Limits popup says which one it is.
 - **A Jellyfin or AIOStreams server on your home network won't sign in on a shared instance**: a public-mode SlickSync (like slicksync.vip) never connects to private-network addresses. Use the server's public address, or run your own instance.
 - **Jellyfin collections aren't renamed or don't get a cover**: Jellyfin only lets administrators do that. Without an administrator's sign-in, a renamed catalog's collection is made again under the new name instead.
 - **"Detected additional lockfiles" during build**: delete any stray `package-lock.json` — this project runs on `bun`.
