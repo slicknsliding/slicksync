@@ -173,8 +173,8 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Watching Together** — an alert the moment someone starts an episode past the shared frontier.
 - **Device claims** — on a shared login, claim a device and its activity is attributed to the right person.
 - **Leave someone out of household numbers** — a test or guest person keeps their own page but stops counting toward totals, charts, Top Viewers and the year in review.
-- **Daily limits** — so many minutes a day on the days you choose, counted across every app. At the limit you're told — or, per person, their streaming pauses until midnight or a time you pick: the addons that play streams come off on Stremio and Nuvio, and the server's own parental schedule applies on Jellyfin. **Resume now** gives the rest of the day back.
-- **Bedtime** — no streaming between two times on the nights you choose, with its own switch next to the daily limit - use either, or both. It pauses the same way on Stremio, Nuvio and Jellyfin; either one can now pause AIOStreams too (the streams come out of their addons while catalogs stay), and on a Jellyfin server put a message on screen ten minutes before, then stop what's playing.
+- **Daily limits** — so many minutes a day on the days you choose, counted across every app. At the limit you're told — or, per person, their streaming pauses until midnight or a time you pick, on Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata. On Stremio and Nuvio a pause starts and ends the next time they open a title, with no app restart. **Resume now** gives the rest of the day back.
+- **Bedtime** — no streaming between two times on the nights you choose, with its own switch next to the daily limit - use either, or both. It pauses every kind of account the same way a daily limit does. On a Jellyfin server it is also written into their own parental schedule, so the server holds it even while SlickSync is down, and it can put a message on screen ten minutes before, then stop what's playing.
 - **Caught up to…** — mark a show watched up to an episode, in SlickSync and on their server, with **Undo** and un-ticking a single episode. Anime episodes that are filler or recap are labelled, from AIOStreams.
 - **Last seen** on every person, a **Dormant** filter for people who stopped watching, and an automation that can switch them off after a quiet stretch.
 </details>
@@ -233,6 +233,7 @@ Every type works with zero Discord setup; a webhook only adds Discord delivery o
 
 - Per-type toggles: activity, sync, invites, Vault, addon health, connection problems, backups, proxy connectivity, updates and monthly recap.
 - **Connection problems** — told the moment someone's sign-in needs reconnecting (after 15 minutes if their server is just unreachable), and again when it's back. One alert per outage, on by default. Signing in again on their own page fixes it too, so you can just send them the link.
+- **On people's own phones** — anyone can turn on notifications from their own page: told when they need to sign in again, ten minutes before a daily limit or bedtime pauses them, and when it starts.
 - A whole Jellyfin, AIOStreams or AIOMetadata server going down is **one alert**, naming who's affected — not one per person.
 - Instant "started watching" ping, **unconfirmed-device alerts**, new-episode alerts and a Coming Up calendar.
 - **Monthly poster-mosaic recap**, **Recovery Kit reminders**, and **digest mode** to batch everything into one summary.
