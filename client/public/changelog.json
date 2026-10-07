@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.94.0",
+    "date": "2026-10-07",
+    "title": "1.94.0 - Instant pauses, bedtime held by the server, and notifications on everyone's phone",
+    "features": [
+      "Pauses on Stremio and Nuvio now take hold straight away: a daily limit's pause or a bedtime starts the next time they open a title, and ends the same way - no restarting the app at either end. Anyone with a limit that pauses or a bedtime has their stream addons reached through SlickSync, which says there's nothing to play while they're paused and passes everything else straight on; catalogs and Continue Watching keep working, and video never goes through SlickSync. Their app needs reopening once, when their first limit or bedtime is set. This uses your instance's public address (Settings -> Integrations); while it's on for someone, their stream addons need SlickSync to be running.",
+      "Daily limits and bedtime can pause every kind of account: Stremio and Nuvio (as above), Jellyfin (its own parental schedule), AIOStreams (the streams come out of their addons) and now AIOMetadata.",
+      "AIOMetadata can be paused: during a daily limit's pause or a bedtime the person is pointed at a stream source with nothing to play, so their catalogs stay and nothing new starts. It takes hold within a minute, needs the configuration password, and anyone else in that household keeps playing.",
+      "Bedtime on a Jellyfin server is held by the server itself: it is written into the person's own parental schedule on the server's clock, so the server refuses at bedtime even while SlickSync is restarting or down. Resume now opens tonight there too, switching bedtime off takes it away, and a schedule an administrator set on the server is left as it is.",
+      "Notifications on people's own phones: in Settings on their own page, anyone can turn on Notifications on this device. They're told when they need to sign in again (with a link straight to it), ten minutes before a daily limit or bedtime pauses them, and when it starts - on every kind of account.",
+      "People's own pages have the same top bar as yours: every section in one place, pinned while scrolling, folding into a menu on a phone.",
+      "Now Playing comes first on a person's home page, above today's numbers.",
+      "A smaller image that's quicker to pull and start: the web app now runs as a standalone build."
+    ],
+    "bugFixes": [
+      "An app left open through a Stremio or Nuvio pause could save its paused addon list back once the pause ended, leaving the person without streams until someone pressed Sync. With the instant pause that can't happen; on an instance without a public address, SlickSync now watches for it for 15 minutes after a pause and puts the full list back, with a bell notice."
+    ]
+  },
+  {
     "version": "1.93.0",
     "date": "2026-10-06",
     "title": "1.93.0 - Bedtime, profile pictures both ways, and adding people in one step",

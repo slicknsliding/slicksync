@@ -218,7 +218,7 @@ export function ScreenTimeButton({ userId, name, onPickGroup, onReconnect }: { u
         ? { badge: 'Needs admin sign-in', hint: 'Add their server’s admin here', action: 'guide' as const }
         : state.canPause.code === 'needs-config-password'
           ? { badge: 'Needs config password', hint: 'Reconnect them with it', action: onReconnect ? 'reconnect' as const : null }
-          : { badge: 'Alert only', hint: 'AIOMetadata can’t pause one person', action: null }
+          : { badge: 'Alert only', hint: 'This server can’t pause one person', action: null }
     : null;
   const unlock = () => {
     if (locked?.action === 'group' && onPickGroup) { close(); onPickGroup(); }

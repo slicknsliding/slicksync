@@ -111,16 +111,23 @@ RUN if [ "$INSTANCE" = "public" ]; then \
         cp prisma/schema.sqlite.prisma prisma/schema.prisma; \
     fi
 COPY --from=builder --chown=appuser:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+# The frontend runs as Next's standalone server (output: 'standalone' in
+# next.config.ts), which carries the few packages it uses inside
+# .next/standalone - so the client's own node_modules (about 760 MB) is no
+# longer copied in. The rest of .next stays for the build stamp the health
+# route reads.
 COPY --from=builder --chown=appuser:nodejs /app/client/.next ./client/.next
 COPY --from=builder --chown=appuser:nodejs /app/client/package*.json ./client/
-COPY --from=builder --chown=appuser:nodejs /app/client/node_modules ./client/node_modules
 COPY --from=builder --chown=appuser:nodejs /app/client/public ./client/public
 COPY --from=builder --chown=appuser:nodejs /app/client/next.config.ts ./client/
 
-# Ensure standalone server can serve static and public assets correctly
-RUN mkdir -p /app/client/.next/standalone/public/_next/static && \
-    cp -r /app/client/public/* /app/client/.next/standalone/public/ 2>/dev/null || true && \
-    cp -r /app/client/.next/static/* /app/client/.next/standalone/public/_next/static/ 2>/dev/null || true
+# The standalone server serves its static assets from .next/static and the
+# public folder from public, both beside its own server.js - Next leaves
+# copying them there to the deployment.
+RUN test -f /app/client/.next/standalone/server.js && \
+    cp -r /app/client/.next/static /app/client/.next/standalone/.next/static && \
+    cp -r /app/client/public /app/client/.next/standalone/public && \
+    chown -R appuser:nodejs /app/client/.next/standalone
 
 # Use maintained startup script that selects Prisma schema based on DATABASE_URL
 COPY --from=builder --chown=appuser:nodejs /app/scripts/start.sh /app/start.sh

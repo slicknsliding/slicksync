@@ -104,14 +104,26 @@ export NODE_OPTIONS="--dns-result-order=ipv4first"
 echo "🌐 Starting frontend server on port ${FRONTEND_PORT:-3000}..."
 
 # Check if we should run in development mode (non-minified React errors)
+WANT_DEV=false
 if [ "${NEXT_DEV:-false}" = "true" ] || [ "${NODE_ENV:-production}" = "development" ]; then
+  # Development mode needs the client's full node_modules, which the image no
+  # longer ships (it runs the slim standalone server) - only a source
+  # checkout has it.
+  if [ -d "/app/client/node_modules/next" ]; then
+    WANT_DEV=true
+  else
+    echo "⚠️  Development mode needs a source checkout; this image runs production mode"
+  fi
+fi
+if [ "$WANT_DEV" = "true" ]; then
   echo "🔧 Running Next.js in DEVELOPMENT mode (non-minified errors enabled)"
   cd /app/client && npx next dev -H 0.0.0.0 -p ${FRONTEND_PORT:-3000} &
 else
   echo "🚀 Running Next.js in PRODUCTION mode"
-  # Use Next.js standalone output if available
+  # The standalone server (output: 'standalone') reads its port from PORT,
+  # not a -p flag, and finds its files beside itself.
   if [ -f "/app/client/.next/standalone/server.js" ]; then
-    cd /app/client && HOSTNAME=0.0.0.0 bun .next/standalone/server.js -p ${FRONTEND_PORT:-3000} &
+    cd /app/client/.next/standalone && HOSTNAME=0.0.0.0 PORT=${FRONTEND_PORT:-3000} bun server.js &
   else
     cd /app/client && HOSTNAME=0.0.0.0 PORT=${FRONTEND_PORT:-3000} bun run start &
   fi

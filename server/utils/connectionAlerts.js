@@ -185,6 +185,17 @@ async function onConnectionFailed(prisma, accountId, user, message, since, now =
     const name = user.username || 'Someone'
     const label = providerLabel(user)
     const detail = String(message || '').replace(/^(Reconnect needed|Connection issue):\s*/i, '').slice(0, 200)
+    // The person too, on any device they turned notifications on for from
+    // their own page: signing in there is the fix, so the tap opens it.
+    if (needsReconnect) {
+      const app = user.providerType === 'nuvio' ? 'nuvio' : user.providerType === 'jellyfin' ? 'jellyfin' : 'stremio'
+      await require('./pushNotifications').sendPushToPerson(prisma, accountId, user.id, {
+        title: 'Sign in to SlickSync again',
+        body: `Your ${label} sign-in stopped working, so your watching isn't being tracked. Tap to sign in again.`,
+        icon: ICON,
+        url: `/login?app=${app}`,
+      }).catch(() => {})
+    }
     await send(prisma, accountId, needsReconnect
       ? {
           title: `${name} needs to reconnect ${label}`,

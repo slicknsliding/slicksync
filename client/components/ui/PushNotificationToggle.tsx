@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/Toast';
 // it as a BufferSource. Backing the Uint8Array with an explicit ArrayBuffer
 // (rather than the default ArrayBufferLike) keeps its type assignable to
 // applicationServerKey under strict lib.dom.
-function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(base64);

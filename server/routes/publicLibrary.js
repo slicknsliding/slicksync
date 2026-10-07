@@ -3157,6 +3157,75 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
+  // ---- Notifications on the person's own devices ----
+  // Turned on from their own Settings page, off by default; sent by
+  // utils/pushNotifications.sendPushToPerson - when their sign-in stops
+  // working, and before a daily limit or bedtime pauses them. Kept apart from
+  // the admin's devices (PersonPushSubscription), so the admin's push is never
+  // reached or removed through here.
+
+  /** The signed-in person asking - their app sign-in must be theirs. */
+  async function personAsking(req, userId) {
+    const user = userId ? await prisma.user.findUnique({
+      where: { id: String(userId) },
+      select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true },
+    }) : null;
+    if (!user || !user.isActive) throw Object.assign(new Error('User not found'), { status: 404 });
+    const who = await verifyProviderIdentity(user, getAuthKey(req), req).catch(() => null);
+    // A Stremio key resolves to whoever it belongs to; that has to be them.
+    if (!who || (who.id && who.id !== user.id)) throw Object.assign(new Error('Authentication required'), { status: 401 });
+    return user;
+  }
+  const pushError = (res, error, fallback) => {
+    const message = error?.status ? error.message : fallback;
+    res.status(error?.status || 500).json({ error: message, message });
+  };
+
+  router.get('/push/status', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId);
+      const { isPushEnabled, getPublicKey } = require('../utils/pushNotifications');
+      const endpoint = String(req.query.endpoint || '');
+      const subscribed = endpoint
+        ? !!(await prisma.personPushSubscription.findFirst({ where: { userId: user.id, endpoint }, select: { id: true } }))
+        : false;
+      res.json({ enabled: isPushEnabled(), publicKey: getPublicKey(), subscribed });
+    } catch (error) {
+      pushError(res, error, 'Could not read notifications');
+    }
+  });
+
+  router.post('/push/subscribe', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const { endpoint, keys } = req.body?.subscription || {};
+      if (!endpoint || !keys?.p256dh || !keys?.auth || !/^https:\/\//i.test(String(endpoint))) {
+        return res.status(400).json({ error: 'Invalid subscription' });
+      }
+      const userAgent = req.body?.userAgent ? String(req.body.userAgent).slice(0, 300) : null;
+      await prisma.personPushSubscription.upsert({
+        where: { userId_endpoint: { userId: user.id, endpoint } },
+        create: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, userId: user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth, userAgent },
+        update: { p256dh: keys.p256dh, auth: keys.auth, userAgent },
+      });
+      res.json({ success: true });
+    } catch (error) {
+      pushError(res, error, 'Could not turn notifications on');
+    }
+  });
+
+  router.post('/push/unsubscribe', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const endpoint = String(req.body?.endpoint || '');
+      if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+      await prisma.personPushSubscription.deleteMany({ where: { userId: user.id, endpoint } });
+      res.json({ success: true });
+    } catch (error) {
+      pushError(res, error, 'Could not turn notifications off');
+    }
+  });
+
   return router;
 };
 

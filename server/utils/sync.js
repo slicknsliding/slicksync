@@ -199,6 +199,24 @@ async function appendTraxAddon(user, addons, prisma) {
   }
 }
 
+/**
+ * A group addon as it goes onto an account: database fields stripped, and
+ * with useCustomFields the name and description set in SlickSync. A custom
+ * logo always applies (only the logo field, like the original manifest).
+ */
+function presentGroupAddon(addon, useCustomFields = true) {
+  const manifestObj = (addon && addon.manifest && typeof addon.manifest === 'object')
+    ? { ...addon.manifest }
+    : addon?.manifest ? addon.manifest : {}
+  if (addon && manifestObj && typeof manifestObj === 'object') {
+    if (useCustomFields && typeof addon.name === 'string') manifestObj.name = addon.name
+    // Even an empty description is kept.
+    if (useCustomFields && addon.description !== undefined && addon.description !== null) manifestObj.description = addon.description
+    if (addon.customLogo && addon.customLogo.trim()) manifestObj.logo = addon.customLogo.trim()
+  }
+  return { transportUrl: addon.transportUrl, transportName: addon.transportName, manifest: manifestObj }
+}
+
 async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, parseAddonIds, parseProtectedAddons, canonicalizeManifestUrl, StremioAPIClient, createProvider, unsafeMode = false, useCustomFields = true, _prefetchedUserAddons = null }) {
   try {
     // Get group addons
@@ -289,46 +307,27 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     const excludedAddonIds = (excludedAddons || []).map(id => String(id).trim()).filter(Boolean)
     const excludedAddonIdSet = new Set(excludedAddonIds)
     
-    // A daily limit set to pause streaming (utils/screenTime.js) takes the
-    // group's stream addons away until the account's midnight. Here rather
-    // than in the pause itself, so every sync - scheduled, Sync All, the
-    // guardian - agrees with it instead of putting them straight back.
+    // A pause (utils/screenTime.js) is decided here rather than in the pause
+    // itself, so every sync - scheduled, Sync All, the guardian - agrees with
+    // it. Someone with a pause set up has their stream addons go through
+    // SlickSync's gate (utils/streamGate.js): the pause happens there, so the
+    // list stays the same and their app needs no restart. Only when the gate
+    // can't be used (no public address) are the addons taken off instead.
     const { isStreamingPaused, servesStreams } = require('./screenTime')
     const paused = await isStreamingPaused(prisma, getAccountId(req), user.id).catch(() => false)
+    const { gateFor, gateUrl } = require('./streamGate')
+    const gate = await gateFor(prisma, getAccountId(req), user).catch(() => null)
 
     const groupAddonsFiltered = groupAddons.filter(groupAddon => {
       const addonId = groupAddon?.id
       const isExcluded = addonId && excludedAddonIdSet.has(addonId)
-      return !isExcluded && !(paused && servesStreams(groupAddon))
+      return !isExcluded && !(paused && !gate && servesStreams(groupAddon))
     })
-    
-    // Strip database fields from filtered group addons for clean JSON
-    // Ensure manifest.name and manifest.description match the addon name and description from DB
-    const cleanGroupAddons = groupAddonsFiltered.map((addon, index) => {
-      const manifestObj = (addon && addon.manifest && typeof addon.manifest === 'object')
-        ? { ...addon.manifest }
-        : addon?.manifest ? addon.manifest : {}
-      
-      if (addon && manifestObj && typeof manifestObj === 'object') {
-        // Use custom name and description from DB if useCustomFields is enabled
-        if (useCustomFields && typeof addon.name === 'string') {
-          manifestObj.name = addon.name
-        }
-        // Update description if useCustomFields is enabled and it exists (even if empty string, preserve it)
-        if (useCustomFields && addon.description !== undefined && addon.description !== null) {
-          manifestObj.description = addon.description
-        }
-        // Apply custom logo if it exists (only set logo field, like the original manifest)
-        if (addon.customLogo && addon.customLogo.trim()) {
-          manifestObj.logo = addon.customLogo.trim()
-        }
-      }
-      
-      return {
-        transportUrl: addon.transportUrl,
-        transportName: addon.transportName,
-        manifest: manifestObj
-      }
+
+    const cleanGroupAddons = groupAddonsFiltered.map((addon) => {
+      const clean = presentGroupAddon(addon, useCustomFields)
+      if (gate && addon?.id && servesStreams(addon)) clean.transportUrl = gateUrl(gate, addon.id, addon.transportUrl)
+      return clean
     })
 
     // 2) Keep only protected addons from userAddons
@@ -725,6 +724,7 @@ module.exports = {
   appendTraxAddon,
   getUserAddons,
   getDesiredAddons,
+  presentGroupAddon,
   createGetUserSyncStatus,
   createGetGroupSyncStatus,
   computeUserSyncPlan,
