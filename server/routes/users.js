@@ -1082,7 +1082,35 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // Who has a limit or a pause, for the Limits pills on the Users page.
+  router.get('/screen-time/overview', async (req, res) => {
+    try {
+      res.json(await require('../utils/screenTime').overview(prisma, getAccountId(req)))
+    } catch (error) {
+      res.status(500).json({ message: 'Could not read the limits' })
+    }
+  })
+
+  // An age limit (utils/ageLimits.js): a real Jellyfin server's own, or the
+  // one SlickSync holds Stremio, Nuvio, a Nuvio profile and AIOMetadata to.
+  router.get('/:id/age-limit', async (req, res) => {
+    try {
+      res.json(await require('../utils/ageLimits').getAgeLimit(prisma, decrypt, getAccountId(req), String(req.params.id)))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not read the age limit' })
+    }
+  })
+
+  router.put('/:id/age-limit', async (req, res) => {
+    try {
+      res.json(await require('../utils/ageLimits').setAgeLimit(prisma, decrypt, getAccountId(req), String(req.params.id), { value: req.body?.value ?? null, blockUnrated: req.body?.blockUnrated }))
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not set the age limit' })
+    }
+  })
+
   // A daily screen-time limit (utils/screenTime.js) - counted across every app.
+  // The id can be a person's, or a merged profile's (utils/screenSubjects.js).
   router.get('/:id/screen-time', async (req, res) => {
     try {
       res.json(await require('../utils/screenTime').getLimit(prisma, getAccountId(req), String(req.params.id), { decrypt }))
@@ -3946,6 +3974,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         skipped: !own && !!routes.get(p.index)?.skip,
         titles: ownerId && p.name ? await historyCount({ userId: ownerId, profileLabel: p.name }) : { movies: 0, episodes: 0 },
         merged: merge ? { id: merge.id, donorUsername: merge.donorUsername, createdAt: merge.createdAt } : null,
+        // Whose limits its Limits pill opens: its own person's, or its own as a
+        // profile merged into someone (utils/screenSubjects.js).
+        limitId: own ? own.id : require('../utils/screenSubjects').nuvioProfileSubject(user.nuvioUserId, p.index),
       }
     }))
     const misplaced = await np.findMisplaced(prisma, accountId, siblings, routes, profiles.map((p) => ({ profile_index: p.index, name: p.name })))

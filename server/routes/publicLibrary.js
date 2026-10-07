@@ -3181,6 +3181,17 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     res.status(error?.status || 500).json({ error: message, message });
   };
 
+  // Whether they're paused right now (a daily limit or bedtime), for the note
+  // on their own home page.
+  router.get('/screen-time', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId);
+      res.json(await require('../utils/screenTime').ownStatus(prisma, user.accountId || 'default', user.id));
+    } catch (error) {
+      pushError(res, error, 'Could not read the daily limit');
+    }
+  });
+
   router.get('/push/status', async (req, res) => {
     try {
       const user = await personAsking(req, req.query.userId);

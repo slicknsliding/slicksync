@@ -8,7 +8,8 @@ import {
   ChevronDownIcon, UserPlusIcon, ArrowUturnLeftIcon, SparklesIcon, EyeSlashIcon, EyeIcon,
   QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon,
 } from '@heroicons/react/24/outline';
-import { api, type ProfilesView } from '@/lib/api';
+import { api, type ProfilesView, type LimitsSummary } from '@/lib/api';
+import { LimitsButton } from '@/components/user/LimitsButton';
 import { Button, Card, ConfirmModal, UserAvatar } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 
@@ -84,13 +85,15 @@ export function placeUnder(circle: DOMRect, menuHeight: number): Placement {
  * one opens what can be done with it right underneath. Only shown for a login
  * with more than one profile. The rules live in server/utils/nuvioProfiles.js.
  */
-export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
+export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
   /** Any person on the Nuvio login - normally its main profile's person. */
   userId: string;
   /** Shown when the account has more than one Nuvio login, to tell them apart. */
   loginLabel?: string | null;
   /** People were added, merged away or brought back. */
   onPeopleChanged?: () => void;
+  /** The Users page's overview of who has limits, for each tile's Limits pill. */
+  limits?: Record<string, LimitsSummary>;
 }) {
   // What this browser last saw, so the card is there with the page instead of
   // popping in after it; the load below refreshes it in place.
@@ -304,14 +307,16 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
               let caption = count(n);
               if (profile.index !== 1) caption = profile.ownPersonId ? `Separated · ${caption}` : `Merged · ${caption}`;
               return (
+                // The tile, and its Limits pill under it - beside it rather
+                // than inside, since the tile is a button itself.
+                <div key={profile.index} className="flex flex-col items-center gap-1.5 min-w-0 pb-2">
                 <button
-                  key={profile.index}
                   type="button"
                   data-profile-tile
                   onClick={(e) => openMenu(profile.index, e.currentTarget)}
                   aria-haspopup="menu"
                   aria-expanded={isSelected}
-                  className={`group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isSelected ? 'bg-surface-hover ring-1 ring-primary/50' : 'hover:bg-surface-hover'
                   }`}
                 >
@@ -337,8 +342,12 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
                   ) : (
                     <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted">Not tracked</span>
                   )}
-                  {tracked && <span className="text-[11px] text-subtle">{caption}</span>}
+                  {tracked && <span className="text-[11px] text-subtle max-w-full truncate">{caption}</span>}
                 </button>
+                {profile.limitId && (
+                  <LimitsButton id={profile.limitId} name={profileName(profile)} summary={limits?.[profile.limitId] || null} />
+                )}
+                </div>
               );
             })}
           </div>

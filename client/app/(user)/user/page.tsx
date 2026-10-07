@@ -17,7 +17,8 @@ import {
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { Avatar } from '@/components/ui';
-import { userActivity, userSync, UserActivityData, AtRiskStatus } from '@/lib/user-api';
+import { userActivity, userSync, UserActivityData, AtRiskStatus, getOwnScreenTime } from '@/lib/user-api';
+import { MoonIcon as PausedMoonIcon, PauseCircleIcon as PausedIcon } from '@heroicons/react/24/outline';
 import { providerTypeLabel } from '@/lib/providers';
 
 // Format watch time from seconds to human-readable
@@ -92,6 +93,17 @@ export default function UserHomePage() {
   const { userId, userInfo, provider } = useUserAuth();
   const providerLabel = providerTypeLabel(provider);
   const { authKey, isReady } = useUserAuthHeaders();
+  // Paused by a daily limit or bedtime: said at the top, so an empty stream
+  // list in their app has its reason here. Looked at again every minute.
+  const [paused, setPaused] = useState<{ untilLabel: string; reason: 'limit' | 'bedtime' } | null>(null);
+  useEffect(() => {
+    if (!isReady || !userId || !authKey) return;
+    let stopped = false;
+    const look = () => getOwnScreenTime(userId, authKey).then((r) => { if (!stopped) setPaused(r.paused); }).catch(() => {});
+    look();
+    const timer = setInterval(look, 60 * 1000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [userId, authKey, isReady]);
   
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);
   const [atRiskStatus, setAtRiskStatus] = useState<AtRiskStatus | null>(null);
@@ -343,6 +355,23 @@ export default function UserHomePage() {
             Try Again
           </button>
         </motion.div>
+      )}
+
+      {paused && (
+        <div
+          role="status"
+          className="mb-6 rounded-xl px-4 py-3 flex items-center gap-3 border border-warning/40"
+          style={{ background: 'var(--color-warning-muted)' }}
+        >
+          {paused.reason === 'bedtime'
+            ? <PausedMoonIcon className="w-5 h-5 shrink-0 text-warning" />
+            : <PausedIcon className="w-5 h-5 shrink-0 text-warning" />}
+          <p className="text-sm text-warning min-w-0">
+            {paused.reason === 'bedtime'
+              ? `Bedtime - streaming is back at ${paused.untilLabel}.`
+              : `That's today's watching - streaming is back at ${paused.untilLabel}.`}
+          </p>
+        </div>
       )}
 
       {/* Stats Grid */}

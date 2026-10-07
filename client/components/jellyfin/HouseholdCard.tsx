@@ -14,7 +14,8 @@ import {
   ChevronDownIcon, UserPlusIcon, EyeSlashIcon, EyeIcon, KeyIcon,
   QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon, PlusIcon, LockClosedIcon,
 } from '@heroicons/react/24/outline';
-import { api, type HouseholdProfile } from '@/lib/api';
+import { api, type HouseholdProfile, type LimitsSummary } from '@/lib/api';
+import { LimitsButton } from '@/components/user/LimitsButton';
 import { avatarThumbUrl } from '@/lib/posterUrl';
 import { Badge, Button, Card, ConfirmModal, Modal } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
@@ -71,7 +72,7 @@ function Mark({ profile, size }: { profile: HouseholdProfile; size: number }) {
   );
 }
 
-export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, embedded = false, onProfilesChanged }: {
+export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, embedded = false, onProfilesChanged, limits }: {
   /** The person whose sign-in the household was found on. */
   userId: string;
   personName: string;
@@ -80,6 +81,8 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
   onPeopleChanged?: () => void;
   /** Inside HouseholdsCard: no card or collapse of its own, just this person's section. */
   embedded?: boolean;
+  /** The Users page's overview of who has limits, for each tile's Limits pill. */
+  limits?: Record<string, LimitsSummary>;
   /** Told whenever this household's profiles change, so HouseholdsCard's summary keeps up. */
   onProfilesChanged?: (profiles: HouseholdProfile[]) => void;
 }) {
@@ -294,14 +297,16 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               : p.status === 'untracked' ? 'Not tracked'
               : p.status === 'needs-pin' ? 'Needs its PIN' : 'Needs the password';
             return (
+              // The tile, and its Limits pill under it - beside it rather than
+              // inside, since the tile is a button itself.
+              <div key={p.id} className="flex flex-col items-center gap-1.5 min-w-0 pb-2">
               <button
-                key={p.id}
                 type="button"
                 data-household-tile
                 onClick={(e) => openMenu(p.id, e.currentTarget)}
                 aria-haspopup="menu"
                 aria-expanded={isSelected}
-                className={`group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isSelected ? 'bg-surface-hover ring-1 ring-primary/50' : 'hover:bg-surface-hover'
                 }`}
               >
@@ -317,6 +322,10 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
                 <span className="text-sm font-medium max-w-full truncate text-default">{p.name}</span>
                 <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted max-w-full truncate">{caption}</span>
               </button>
+              {p.limitId && (
+                <LimitsButton id={p.limitId} name={p.name} summary={limits?.[p.limitId] || null} />
+              )}
+              </div>
             );
           })}
           {canManage && (
@@ -494,9 +503,10 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
  * way "Nuvio profiles" is one card: collapsed by default, each person's
  * household its own section inside. Shows only when someone has a household.
  */
-export function HouseholdsCard({ owners, onPeopleChanged }: {
+export function HouseholdsCard({ owners, onPeopleChanged, limits }: {
   owners: { id: string; name: string; kindLabel: string }[];
   onPeopleChanged?: () => void;
+  limits?: Record<string, LimitsSummary>;
 }) {
   const [open, setOpen] = useState(false);
   const [manageable, setManageable] = useState<Record<string, boolean>>({});
@@ -561,6 +571,7 @@ export function HouseholdsCard({ owners, onPeopleChanged }: {
               kindLabel={o.kindLabel}
               onPeopleChanged={onPeopleChanged}
               onProfilesChanged={(p) => update(o.id, p)}
+              limits={limits}
             />
           ))}
         </div>

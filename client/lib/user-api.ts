@@ -840,6 +840,11 @@ export const userShares = {
  * Notifications on the person's own devices (PersonPushSubscription on the
  * server) - off until they turn them on, and never the admin's devices.
  */
+/** Whether this person is paused right now by a daily limit or bedtime. */
+export async function getOwnScreenTime(userId: string, authKey: string): Promise<{ paused: { untilLabel: string; reason: 'limit' | 'bedtime' } | null }> {
+  return request(`/public-library/screen-time?${new URLSearchParams({ userId })}`, { authKey });
+}
+
 export const userPush = {
   async status(userId: string, authKey: string, endpoint?: string): Promise<{ enabled: boolean; publicKey: string | null; subscribed: boolean }> {
     const q = new URLSearchParams({ userId, ...(endpoint ? { endpoint } : {}) });

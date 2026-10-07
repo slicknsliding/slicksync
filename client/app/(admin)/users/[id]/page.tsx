@@ -19,11 +19,10 @@ import { providerLabel, providerBadgeVariant, hasAddonList, displayEmail, isJell
 import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
 import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButton';
 import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
-import { AgeLimitButton } from '@/components/jellyfin/AgeLimitButton';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
-import { ScreenTimeButton } from '@/components/user/ScreenTimeButton';
+import { LimitsButton } from '@/components/user/LimitsButton';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
@@ -1270,8 +1269,8 @@ export default function UserDetailPage() {
                         {user.providerType === 'jellyfin' && (
                           <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
-                        {/* A daily screen-time limit - any app. */}
-                        <ScreenTimeButton userId={user.id} name={user.username || user.name || 'them'} onPickGroup={() => setIsEditDetailsOpen(true)} onReconnect={() => setIsReconnectModalOpen(true)} />
+                        {/* Daily limit, bedtime and age limit, in one popup. */}
+                        <LimitsButton id={user.id} name={user.username || user.name || 'them'} size="md" onPickGroup={() => setIsEditDetailsOpen(true)} onReconnect={() => setIsReconnectModalOpen(true)} />
                         {/* Mark a show watched up to an episode - here and on their server. */}
                         <CatchUpButton userId={user.id} name={user.username || user.name || 'them'} hasServer={user.providerType === 'jellyfin'} />
                         {/* What AIOStreams itself says about their configuration. */}
@@ -1285,7 +1284,6 @@ export default function UserDetailPage() {
                         {user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin' && (
                           <>
                             <JellyfinDevicesButton userId={user.id} name={user.username || user.name || 'them'} />
-                            <AgeLimitButton userId={user.id} name={user.username || user.name || 'them'} />
                           </>
                         )}
                         {/* Only worth saying when it is not the primary - a

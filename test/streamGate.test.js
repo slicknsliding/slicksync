@@ -12,10 +12,12 @@ const STREAMS = { id: 'a2', name: 'My Streams', transportUrl: 'https://streams.e
 
 // One person (Mia, on Nuvio) in one group holding CATALOGS and STREAMS; `cfg`
 // is the account's settings, read live.
+const REACHED = { streamGateCheck: { state: { base: BASE, ok: true, fails: 0, at: 0, next: 8e15 } } }
+
 function fakeAccount(cfg) {
   const updates = []
   const prisma = {
-    appAccount: { findUnique: async () => ({ sync: JSON.stringify(cfg()) }) },
+    appAccount: { findUnique: async () => ({ sync: JSON.stringify({ ...REACHED, ...cfg() }) }), findFirst: async () => ({ sync: JSON.stringify({ ...REACHED, ...cfg() }) }), update: async () => ({}) },
     group: { findMany: async () => [{ id: 'g1' }] },
     user: {
       findUnique: async ({ where }) => (where.id === 'mia' ? { providerType: 'nuvio', traxToken: null } : null),
@@ -56,7 +58,7 @@ test('the gate is for Stremio and Nuvio people with a pause set up, on an instan
   assert.equal(await gate.gateFor(prisma, 'default', mia), null, 'a limit that only alerts never pauses')
   cfg = { publicBaseUrl: BASE, screenTime: { mia: { minutes: 90, days: [], onReach: 'pause' } } }
   assert.ok(await gate.gateFor(prisma, 'default', mia), 'a limit that pauses')
-  cfg = { screenTime: { mia: { minutes: 90, days: [], onReach: 'pause' } } }
+  cfg = { screenTime: { mia: { minutes: 90, days: [], onReach: 'pause' } }, streamGateCheck: null }
   assert.equal(await gate.gateFor(prisma, 'default', mia), null, 'no public address: nothing a device could reach')
 })
 
@@ -120,4 +122,79 @@ test('the gate: the manifest, streams sent on to the addon, and nothing to play 
       await srv.close()
     }
   })
+})
+
+test('reaching the gate: worked stays worked through one failure, never-worked fails at once, a login page is caught', async () => {
+  let cfg = {}
+  const prisma = {
+    appAccount: {
+      findUnique: async () => ({ sync: JSON.stringify({ publicBaseUrl: BASE, ...cfg }) }),
+      findFirst: async () => ({ sync: JSON.stringify({ publicBaseUrl: BASE, ...cfg }) }),
+      update: async ({ data }) => { const all = JSON.parse(data.sync); delete all.publicBaseUrl; cfg = all },
+    },
+  }
+  const answer = (reply) => async () => reply
+  const ok = { status: 200, ok: true, json: async () => ({ slicksync: 'gate' }) }
+  const down = async () => { throw new Error('ECONNREFUSED') }
+  const login = { status: 302, ok: false, json: async () => null }
+  const H = 60 * 60 * 1000
+
+  assert.equal((await gate.gateUsable(prisma, 'acc', { now: 0, fetchImpl: down })).ok, false, 'never worked: no')
+  cfg = {}
+  assert.equal((await gate.gateUsable(prisma, 'acc', { now: 0, fetchImpl: answer(ok) })).ok, true)
+  assert.equal((await gate.gateUsable(prisma, 'acc', { now: H, fetchImpl: down })).ok, true, 'kept: not looked at again for six hours')
+  assert.equal((await gate.gateUsable(prisma, 'acc', { now: 7 * H, fetchImpl: down })).ok, true, 'one failure after working: still on')
+  assert.equal((await gate.gateUsable(prisma, 'acc', { now: 7 * H + 31 * 60000, fetchImpl: down })).ok, false, 'a second, half an hour on: off')
+  cfg = {}
+  const r = await gate.gateUsable(prisma, 'acc', { now: 0, fetchImpl: answer(login) })
+  assert.equal(r.ok, false)
+  assert.equal(r.reason, 'login')
+})
+
+test('a merged profile\'s own stream addon, wrapped: its manifest, sent on, nothing while paused, nothing above its age limit', async () => {
+  const { encrypt } = require('../server/utils/encryption')
+  const real = 'https://kids-streams.example.com/xyz/manifest.json'
+  const KID = 'np-nuv1-3'
+  let cfg = { screenTime: { [KID]: { bedtime: { from: '21:00', to: '07:00', days: [] } } } }
+  const wrap = { id: 'w1', accountId: 'default', userId: 'mia', subjectId: KID, realUrl: encrypt(real, { appAccountId: 'default' }) }
+  const prisma = {
+    appAccount: { findUnique: async () => ({ sync: JSON.stringify(cfg) }), findFirst: async () => ({ sync: JSON.stringify(cfg) }) },
+    user: { findFirst: async ({ where }) => (where.traxToken === TOKEN ? { id: 'mia', accountId: 'default' } : null) },
+    streamGateWrap: { findFirst: async ({ where }) => (where.id === 'w1' && where.userId === 'mia' ? wrap : null) },
+  }
+  const app = express()
+  app.use('/trax', require('../server/routes/traxAddon')({ prisma }))
+  const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)) })
+  const at = `http://127.0.0.1:${server.address().port}/trax/gate/${TOKEN}/w-w1/0123456789`
+  try {
+    const sent = await fetch(`${at}/stream/movie/tt0111161.json`, { redirect: 'manual' })
+    assert.equal(sent.status, 302)
+    assert.equal(sent.headers.get('location'), 'https://kids-streams.example.com/xyz/stream/movie/tt0111161.json')
+
+    cfg = { screenTime: { [KID]: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, screenTimePauses: { [KID]: { until: '2999-01-01T00:00:00.000Z' } } }
+    gate.forgetResolvedForTests()
+    assert.deepEqual(await (await fetch(`${at}/stream/movie/tt0111161.json`)).json(), { streams: [] }, 'paused: only the profile')
+
+    cfg = { ageLimits: { [KID]: { maxAge: 10, blockUnrated: true } } }
+    const verdict = (path) => gate.streamVerdict(prisma, { subjectId: KID, accountId: 'default' }, path, { ratingOf: async (id) => ({ tt1: 'PG', tt2: 'R' }[id] || null) })
+    assert.equal(await verdict('stream/movie/tt1.json'), 'pass')
+    assert.equal(await verdict('stream/movie/tt2.json'), 'age')
+    assert.equal(await verdict('stream/movie/tt9.json'), 'age', 'unrated, and unrated ones are blocked')
+  } finally {
+    await new Promise((r) => server.close(r))
+  }
+})
+
+test('an address only the server itself can reach is never used for the gate', async () => {
+  for (const base of ['http://slicksync-betatest-slicksync-1:3000', 'http://localhost:3000', 'http://127.0.0.1:4000', 'http://host.docker.internal:3000', 'http://[::1]:3000']) {
+    assert.equal(gate.deviceReachable(base), false, base)
+  }
+  for (const base of ['https://slicksync.example.com', 'http://192.168.1.20:3000', 'http://nas.local:3000']) {
+    assert.equal(gate.deviceReachable(base), true, base)
+  }
+  // Even with a check on record that passed, an internal address is refused before anything is asked.
+  const prisma = { appAccount: { findUnique: async () => ({ sync: JSON.stringify({ publicBaseUrl: 'http://slicksync-1:3000', streamGateCheck: { state: { base: 'http://slicksync-1:3000', ok: true, next: 8e15 } } }) }), findFirst: async () => ({ sync: '{}' }) } }
+  const r = await gate.gateUsable(prisma, 'acc', { fetchImpl: async () => { throw new Error('should not be asked') } })
+  assert.equal(r.ok, false)
+  assert.equal(r.reason, 'internal-address')
 })
