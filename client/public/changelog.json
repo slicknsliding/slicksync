@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.95.0",
+    "date": "2026-10-07",
+    "title": "1.95.0 - Limits for everyone, profiles included, and age limits",
+    "features": [
+      "One Limits button for each person - on their card on the Users page (just before Synced), under each Nuvio profile and household user there, and on their own page. It holds their daily limit, bedtime and age limit, each with its own switch.",
+      "Limits for profiles: a Nuvio profile, or an AIOStreams or AIOMetadata household user, merged into someone can have its own daily limit, bedtime and age limit. Only its own watching counts and only it is paused - the person it's merged into stops counting its minutes, and their own pause leaves it alone. A Nuvio profile set to use the main profile's addons can only alert, since it has no addons of its own.",
+      "Age limits on Stremio, Nuvio, Nuvio profiles and AIOMetadata: a title rated above the limit has nothing to play, while catalogs stay - optionally unrated titles too. Ratings come from OMDb, so it needs an OMDb key. On a Jellyfin server it is the server's own age limit, now under Limits too; AIOStreams has no way to limit one person by age, and says so.",
+      "SlickSync learns its own address - the one phones and TVs reach it at - when you open it, so SlickTrax, pictures on a server and instant pauses work without typing anything into Settings. An address only the server itself can reach is never used, and when phones can't reach SlickSync the Limits popup says why.",
+      "A person's own home page says when a daily limit or bedtime has paused them, and until when."
+    ],
+    "bugFixes": [
+      "The Vault's tab names no longer run into each other at tablet width - with many tabs it keeps its drop-down until there's room.",
+      "On a phone, the Catalogs page's buttons wrap instead of running off the edge of the screen.",
+      "Right-clicking while a popup on a person's card is open no longer opens the card's own menu behind it.",
+      "The limits popup's text is larger and easier to read."
+    ]
+  },
+  {
     "version": "1.94.0",
     "date": "2026-10-07",
     "title": "1.94.0 - Instant pauses, bedtime held by the server, and notifications on everyone's phone",

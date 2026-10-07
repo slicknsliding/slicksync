@@ -11,8 +11,9 @@ const MON_NOON_LA = new Date('2026-10-05T19:00:00Z')
 const SUN_EVENING_LA = new Date('2026-10-05T06:00:00Z')
 
 // gateSettled: anyone whose limit can pause already has their stream addons
-// through the gate (its own tests below start without it).
-function world({ limits, activity, now, gateSettled = true }) {
+// through the gate. Off by default: without a public address the gate can't
+// be reached, so it stays off (the gate's own tests say it can).
+function world({ limits, activity, now, gateSettled = false }) {
   const notes = []
   const gate = Object.fromEntries(Object.entries(limits || {}).filter(([, l]) => l?.onReach === 'pause' || l?.bedtime).map(([id]) => [id, { on: true, at: '2026-10-01T00:00:00.000Z' }]))
   let sync = { accountTimezone: TZ, screenTime: limits, ...(gateSettled && Object.keys(gate).length ? { screenTimeGate: gate } : {}) }
@@ -472,7 +473,7 @@ test('after a pause: the watch ends after a while, and after a few tries', async
 test('the gate: one sync when someone\'s pause set-up starts, and one when it stops', async () => {
   const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } }, leo: { minutes: 90, days: [] } }, activity: [], gateSettled: false })
   const synced = []
-  const deps = { syncPerson: async (_p, _a, id) => { synced.push(id) } }
+  const deps = { syncPerson: async (_p, _a, id) => { synced.push(id) }, gateUsable: async () => ({ ok: true }) }
   await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
   assert.deepEqual(synced, ['mia'], 'Mia (a bedtime) gets the gate; Leo\'s limit only alerts')
   assert.equal(w.sync.screenTimeGate.mia.on, true)
@@ -489,7 +490,7 @@ test('the gate: a sync that fails is tried again in a while, not every minute', 
   const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [], gateSettled: false })
   let tries = 0
   let fail = true
-  const deps = { syncPerson: async () => { tries++; if (fail) throw new Error('Nuvio said no') } }
+  const deps = { syncPerson: async () => { tries++; if (fail) throw new Error('Nuvio said no') }, gateUsable: async () => ({ ok: true }) }
   await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
   assert.equal(tries, 1)
   assert.ok(w.sync.screenTimeGate.mia.retryAt)
@@ -498,5 +499,5 @@ test('the gate: a sync that fails is tried again in a while, not every minute', 
   fail = false
   await st.checkScreenTime(w.prisma, { now: later(MON_NOON_LA, 16), emit: quiet, deps })
   assert.equal(tries, 2)
-  assert.deepEqual(Object.keys(w.sync.screenTimeGate.mia).sort(), ['at', 'on'])
+  assert.deepEqual(Object.keys(w.sync.screenTimeGate.mia).sort(), ['at', 'checkedAt', 'on'])
 })

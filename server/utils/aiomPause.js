@@ -40,11 +40,22 @@ const plainId = (id) => String(id || '').replace(/-/g, '').toLowerCase()
  * can't write to it.
  */
 async function pauseAccess(prisma, accountId, person) {
+  // A household user merged into a person, with limits of their own
+  // (screenSubjects.js): just them, on their person's configuration.
+  if (person.subject?.kind === 'household') {
+    const owner = await prisma.user.findFirst({ where: { id: person.subject.ownerId, accountId }, select: OWNER_SELECT })
+    if (!owner || owner.jellyfinServerKind !== 'aiometadata' || !owner.aioConfigId || !owner.aioConfigPassword && configOf(owner.jellyfinServerUrl)) return null
+    return { owner, users: [plainId(person.subject.jellyfinUserId)] }
+  }
   const me = await prisma.user.findFirst({ where: { id: person.id, accountId }, select: OWNER_SELECT })
   if (!me || me.providerType !== 'jellyfin' || me.jellyfinServerKind !== 'aiometadata') return null
   if (me.aioConfigId && me.aioConfigPassword && configOf(me.jellyfinServerUrl)) {
-    const merged = await prisma.jellyfinProfile.findMany({ where: { ownerUserId: me.id, ownUserId: null, skip: false }, select: { jellyfinUserId: true } })
-    return { owner: me, users: [...new Set([me.jellyfinUserId, ...merged.map((p) => p.jellyfinUserId)].filter(Boolean).map(plainId))] }
+    // Household users merged into them watch as them, so they pause with them -
+    // except those with limits of their own, who follow their own.
+    const merged = await prisma.jellyfinProfile.findMany({ where: { ownerUserId: me.id, ownUserId: null, skip: false }, select: { id: true, jellyfinUserId: true } })
+    const { cfg } = await require('./screenTime').readSync(prisma, accountId).catch(() => ({ cfg: {} }))
+    const own = (p) => !!cfg.screenTime?.[require('./screenSubjects').householdSubject(p.id)]
+    return { owner: me, users: [...new Set([me.jellyfinUserId, ...merged.filter((p) => !own(p)).map((p) => p.jellyfinUserId)].filter(Boolean).map(plainId))] }
   }
   const profile = await prisma.jellyfinProfile.findFirst({ where: { ownUserId: me.id }, select: { ownerUserId: true, jellyfinUserId: true } })
   if (!profile) return null

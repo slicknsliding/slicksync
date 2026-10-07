@@ -30,20 +30,25 @@ export const ActionPill = forwardRef<HTMLButtonElement, {
   open: boolean;
   onClick: () => void;
   children: ReactNode;
-}>(function ActionPill({ icon: Icon, tone = 'neutral', open, onClick, children }, ref) {
+  /** 'sm' sits beside the small status badges on a card or tile. */
+  size?: 'md' | 'sm';
+  title?: string;
+}>(function ActionPill({ icon: Icon, tone = 'neutral', open, onClick, children, size = 'md', title }, ref) {
+  const sm = size === 'sm';
   return (
     <button
       ref={ref}
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className={`inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border text-xs font-medium shadow-sm transition-colors ${FACE[tone]}`}
+      title={title}
+      className={`inline-flex items-center max-w-full min-w-0 rounded-full border font-medium shadow-sm transition-colors ${sm ? 'gap-1 pl-0.5 pr-1.5 py-0.5 text-[11px]' : 'gap-1.5 pl-1 pr-2 py-1 text-xs'} ${FACE[tone]}`}
     >
-      <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${DISC[tone]}`}>
-        <Icon className="w-3 h-3" />
+      <span className={`rounded-full flex items-center justify-center shrink-0 ${sm ? 'w-4 h-4' : 'w-5 h-5'} ${DISC[tone]}`}>
+        <Icon className={sm ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
       </span>
-      {children}
-      <ChevronDownIcon className={`w-3 h-3 opacity-60 transition-transform ${open ? 'rotate-180' : ''}`} />
+      <span className="truncate">{children}</span>
+      <ChevronDownIcon className={`w-3 h-3 shrink-0 opacity-60 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
   );
 });

@@ -181,6 +181,9 @@ async function describeHousehold(prisma, userId) {
     status: r.ownUserId && byId.has(r.ownUserId) ? 'own' : r.skip ? 'untracked' : !r.token ? (r.needsPin ? 'needs-pin' : 'needs-sign-in') : 'tracked',
     person: r.ownUserId && byId.has(r.ownUserId) ? { id: r.ownUserId, username: byId.get(r.ownUserId).username } : null,
     avatarUrl: r.avatarUrl || null,
+    // Whose limits its Limits pill opens: its own person's, or its own as a
+    // household user merged into this one (screenSubjects.js).
+    limitId: r.ownUserId && byId.has(r.ownUserId) ? r.ownUserId : require('./screenSubjects').householdSubject(r.id),
   }))
 }
 

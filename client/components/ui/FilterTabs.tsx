@@ -188,12 +188,13 @@ export function FilterTabs({
                 </span>
               )}
 
-              {/* Label */}
-              <span>{option.label}</span>
+              {/* Label - shortened with an ellipsis when the tab is too
+                  narrow for it, never spilling into the next tab. */}
+              <span className="truncate min-w-0" title={typeof option.label === 'string' ? option.label : undefined}>{option.label}</span>
 
               {/* Count (inline, muted) */}
               {option.count !== undefined && (
-                <span className={`text-xs tabular-nums ${isActive ? 'text-primary/60' : 'text-subtle'}`}>
+                <span className={`shrink-0 text-xs tabular-nums ${isActive ? 'text-primary/60' : 'text-subtle'}`}>
                   ({option.count})
                 </span>
               )}
@@ -344,13 +345,15 @@ export function FilterTabsResponsive({
   };
 
   const styles = sizeClasses[size];
+  // More than five tabs: the drop-down until a laptop's width, not a tablet's.
+  const many = options.length > 5;
 
   return (
-    <div ref={dropdownRef} className={`relative md:w-auto ${className}`}>
+    <div ref={dropdownRef} className={`relative ${many ? 'lg:w-auto' : 'md:w-auto'} ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          md:hidden w-full h-9 flex items-center justify-between
+          ${many ? 'lg:hidden' : 'md:hidden'} w-full h-9 flex items-center justify-between
           ${styles.trigger} rounded-lg font-medium
           bg-surface border border-default
           text-default transition-colors duration-150
@@ -383,7 +386,7 @@ export function FilterTabsResponsive({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-40 md:hidden"
+              className={`fixed inset-0 bg-black/60 z-40 ${many ? 'lg:hidden' : 'md:hidden'}`}
               onClick={() => setIsOpen(false)}
             />
             
@@ -393,7 +396,7 @@ export function FilterTabsResponsive({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="fixed left-4 right-4 top-1/2 -translate-y-1/2 z-50 md:hidden"
+              className={`fixed left-4 right-4 top-1/2 -translate-y-1/2 z-50 ${many ? 'lg:hidden' : 'md:hidden'}`}
             >
               <div className="bg-surface border border-default rounded-xl overflow-hidden shadow-xl max-h-[70vh] overflow-y-auto">
                 {options.map((option) => {
@@ -443,7 +446,7 @@ export function FilterTabsResponsive({
         )}
       </AnimatePresence>
 
-      <div className="hidden md:block">
+      <div className={many ? 'hidden lg:block' : 'hidden md:block'}>
         <FilterTabs
           options={options}
           activeKey={activeKey}

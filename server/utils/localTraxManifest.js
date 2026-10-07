@@ -26,6 +26,20 @@ const TRAX_URL = /\/trax\/([A-Za-z0-9]{16,})(?:\/|$)/
 
 async function localTraxManifest(prisma, transportUrl) {
   if (!prisma || !transportUrl) return null
+  // A stream addon behind SlickSync's gate (streamGate.js): the manifest the
+  // gate would hand a device, found here rather than over the network.
+  const { parseGateUrl, resolveGate } = require('./streamGate')
+  const gated = parseGateUrl(transportUrl)
+  if (gated) {
+    try {
+      const found = await resolveGate(prisma, gated.token, gated.addonId)
+      if (!found) return null
+      if (found.manifest) return found.manifest
+      return await require('./nuvioHomeLayout').fetchManifest(found.manifestUrl)
+    } catch {
+      return null
+    }
+  }
   const match = TRAX_URL.exec(String(transportUrl))
   if (!match) return null
   try {

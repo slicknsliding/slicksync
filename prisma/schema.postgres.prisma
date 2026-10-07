@@ -1027,6 +1027,25 @@ model PersonPushSubscription {
   @@map("person_push_subscriptions")
 }
 
+// An addon SlickSync doesn't manage, reached through a person's stream gate
+// (utils/streamGate.js): a merged Nuvio profile's own stream addon, or the
+// stream source of someone on AIOMetadata with an age limit. The gate's
+// address names this row (/trax/gate/<token>/w-<id>/...), and the row the
+// addon's own address, so a daily limit, bedtime or age limit can act on it.
+model StreamGateWrap {
+  id           String   @id @default(cuid())
+  accountId    String   @default("default")
+  userId       String // Whose gate token serves it: the person, or a merged profile's owner
+  subjectId    String // Whose limits apply: that person, or the profile (utils/screenSubjects.js)
+  realUrl      String // Encrypted: the addon's own address
+  urlHash      String // sha256 of the address, to find this row again
+  createdAt    DateTime @default(now())
+
+  @@index([userId, subjectId])
+  @@index([accountId])
+  @@map("stream_gate_wraps")
+}
+
 // Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
 // built-in proxy (which sees every stream request passing through it in real
 // time, regardless of provider - Stremio, Nuvio, anything using the proxy).

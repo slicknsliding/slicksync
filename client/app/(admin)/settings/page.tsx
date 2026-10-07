@@ -2441,9 +2441,9 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <label className="block text-sm font-medium text-default mb-1.5">Public address of this instance <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
-                  The address your devices reach SlickSync on, e.g. <span className="font-mono">https://slicksync.example.com</span>. Only SlickTrax needs it:
-                  it installs itself into Stremio/Nuvio during a sync, and a sync has no browser request to borrow a hostname from. Leave blank if the
-                  PUBLIC_APP_URL environment variable is already set - that wins either way.
+                  The address your devices reach SlickSync on, e.g. <span className="font-mono">https://slicksync.example.com</span>. SlickSync learns it
+                  by itself when you open it from that address, so this is only for when it should use a different one. SlickTrax, pictures on a server and
+                  instant pauses use it. The PUBLIC_APP_URL environment variable wins over both.
                 </p>
                 <input
                   type="text"

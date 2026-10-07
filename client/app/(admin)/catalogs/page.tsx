@@ -326,14 +326,15 @@ export default function ListsPage() {
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
+          {/* Wraps on a phone: the three buttons are wider than one line there. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2 shrink-0">
               <RectangleStackIcon className="w-5 h-5 text-primary" />
               <h3 className="text-base font-semibold font-display text-default">
                 {loaded ? `${lists.length} catalog${lists.length !== 1 ? 's' : ''}` : 'Catalogs'}
               </h3>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
               <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
                 Import
               </Button>

@@ -9,11 +9,12 @@ import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, Sy
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { ProfilesCard } from '@/components/user/ProfilesCard';
+import { LimitsButton } from '@/components/user/LimitsButton';
 import { HouseholdsCard } from '@/components/jellyfin/HouseholdCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, User, Group, MetricsData } from '@/lib/api';
+import { api, User, Group, MetricsData, type LimitsSummary } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
@@ -106,12 +107,19 @@ export default function UsersPage() {
 
   // Data state
   const [users, setUsers] = useState<User[]>([]);
+  // Who has a daily limit, bedtime, age limit or pause - one read for every
+  // Limits pill on the page (people, profiles and household users).
+  const [limits, setLimits] = useState<Record<string, LimitsSummary>>({});
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   // Live nowPlaying feed, for the "Active" stat below - see its own comment
   // for why this is a separate fetch from users/groups.
   const [nowPlaying, setNowPlaying] = useState<MetricsData['nowPlaying']>([]);
+  useEffect(() => {
+    if (!users.length) return;
+    api.getLimitsOverview().then(setLimits).catch(() => {});
+  }, [users.length]);
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -681,6 +689,7 @@ export default function UsersPage() {
                             onSyncEnd={handleSyncEnd}
                             focusable={isTV}
                             dragHandleProps={dragHandleProps}
+                            limits={limits[user.id] || null}
                           />
                         </StaggerItem>
                           )}
@@ -814,6 +823,8 @@ export default function UsersPage() {
                                 {user.lastSync}
                               </td>
                               <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                <LimitsButton id={user.id} name={user.name} summary={limits[user.id] || null} />
                                 <Button
                                   variant="secondary"
                                   size="sm"
@@ -830,6 +841,7 @@ export default function UsersPage() {
                                 >
                                   Sync
                                 </Button>
+                                </div>
                               </td>
                             </SortableUserRow>
                           ))}
@@ -880,6 +892,7 @@ export default function UsersPage() {
               userId={login.anchorId}
               loginLabel={nuvioLogins.length > 1 ? login.label : null}
               onPeopleChanged={refreshUsersQuietly}
+              limits={limits}
             />
           ))}
         </div>
@@ -897,6 +910,7 @@ export default function UsersPage() {
               kindLabel: owner.jellyfinServerLabel || (owner.jellyfinServerKind === 'aiometadata' ? 'AIOMetadata' : 'AIOStreams'),
             }))}
             onPeopleChanged={refreshUsersQuietly}
+            limits={limits}
           />
         </div>
       )}
@@ -1066,6 +1080,7 @@ function UserCard({
   onSyncEnd,
   focusable = false,
   dragHandleProps,
+  limits = null,
 }: {
   user: UserDisplay;
   isSelected: boolean;
@@ -1081,6 +1096,8 @@ function UserCard({
   focusable?: boolean;
   /** Dedicated grab handle (top-left), same pattern as Addons' AddonCard. */
   dragHandleProps?: Record<string, unknown>;
+  /** Their Limits pill's state, from the page's overview. */
+  limits?: LimitsSummary | null;
 }) {
   const { hideSensitive } = useTheme();
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1246,6 +1263,12 @@ function UserCard({
                   title={user.providerConnectionError}
                 />
               )}
+              <LimitsButton
+                id={user.id}
+                name={user.name}
+                summary={limits}
+                onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
+              />
               <SyncBadge
                 key={`sync-badge-${user.id}`}
                 userId={user.id}

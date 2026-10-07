@@ -253,20 +253,34 @@ module.exports = ({ prisma }) => {
     res.json({ streams: [] })
   })
 
-  // The gate a person's stream addons go through while they have a pause set
-  // up (utils/streamGate.js): the manifest from here, streams empty while
-  // they're paused, everything else redirected to the real addon. Never
-  // cached - a remembered redirect would carry on past the start of a pause.
+  // SlickSync asking itself at its public address whether devices can reach
+  // the gate (streamGate.gateUsable): a login page in front answers instead.
+  router.get('/gate/ping', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res.json(require('../utils/streamGate').PING_REPLY)
+  })
+
+  // The gate stream addons go through for anyone with a pause set up or an
+  // age limit (utils/streamGate.js): the manifest from here, streams empty
+  // while they're paused or for a title above their age limit, everything
+  // else redirected to the real addon. Never cached - a remembered redirect
+  // would carry on past the start of a pause.
   router.use('/gate/:token/:addonId/:hash', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store')
     if (req.method === 'OPTIONS') return res.status(204).end()
     try {
-      const { resolveGate } = require('../utils/streamGate')
-      const found = await resolveGate(prisma, req.params.token, req.params.addonId)
+      const gate = require('../utils/streamGate')
+      const found = await gate.resolveGate(prisma, req.params.token, req.params.addonId)
       if (!found) return res.status(404).json({ error: 'Not found' })
       const rest = req.path.replace(/^\/+/, '')
-      if (!rest || rest === 'manifest.json') return res.json(found.manifest)
-      if (rest.startsWith('stream/') && await require('../utils/screenTime').isStreamingPaused(prisma, found.accountId, found.personId)) {
+      if (!rest || rest === 'manifest.json') {
+        if (found.manifest) return res.json(found.manifest)
+        // A wrapped addon's own manifest (cached by fetchManifest).
+        const manifest = await require('../utils/nuvioHomeLayout').fetchManifest(found.manifestUrl).catch(() => null)
+        if (!manifest) return res.status(502).json({ error: 'The addon did not answer' })
+        return res.json(manifest)
+      }
+      if (rest.startsWith('stream/') && (await gate.streamVerdict(prisma, found, rest)) !== 'pass') {
         return res.json({ streams: [] })
       }
       const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''

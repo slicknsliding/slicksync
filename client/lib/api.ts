@@ -29,6 +29,8 @@ export interface ProfilesView {
     skipped: boolean;
     titles: { movies: number; episodes: number };
     merged: { id: string; donorUsername: string; createdAt: string } | null;
+    /** Whose limits its Limits pill opens: its own person's id, or its own as a merged profile. */
+    limitId?: string;
   }>;
   misplaced: { titles: number } | null;
   removedUserId?: string | null;
@@ -2462,6 +2464,20 @@ class ApiClient {
     return this.fetch<ScreenTimeView>(`/users/${encodeURIComponent(userId)}/screen-time/resume`, { method: 'POST' });
   }
 
+  /** Who has a limit or a pause, for the Limits pills on the Users page (by person or profile id). */
+  async getLimitsOverview() {
+    return this.fetch<Record<string, LimitsSummary>>('/users/screen-time/overview');
+  }
+
+  /** An age limit for anyone: a real Jellyfin server's own, or SlickSync's (server/utils/ageLimits.js). */
+  async getAgeLimit(id: string) {
+    return this.fetch<AgeLimitView>(`/users/${encodeURIComponent(id)}/age-limit`);
+  }
+
+  async setAgeLimit(id: string, value: number | null, blockUnrated?: boolean) {
+    return this.fetch<AgeLimitView>(`/users/${encodeURIComponent(id)}/age-limit`, { method: 'PUT', body: JSON.stringify({ value, ...(blockUnrated === undefined ? {} : { blockUnrated }) }) });
+  }
+
   // A real Jellyfin person's age limit on their server.
   async getJellyfinAgeLimit(userId: string) {
     return this.fetch<JellyfinAgeLimit>(`/jellyfin/users/${encodeURIComponent(userId)}/age-limit`);
@@ -3581,9 +3597,34 @@ export interface ScreenTimeView {
   /** Streaming paused - by the limit or by bedtime - until untilLabel on the account's clock. */
   paused: { until: string; untilLabel: string; reason: 'limit' | 'bedtime' } | null;
   /** Whether a pause can work for this person, and why not. */
-  canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'needs-config-password' | 'not-supported'; reason?: string };
+  canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'needs-config-password' | 'not-supported' | 'shares-addons' | 'needs-address'; reason?: string };
   /** Whether what's playing can be stopped too (a real Jellyfin server). */
   canStopPlaying?: boolean;
+  /** Stremio and Nuvio: whether a pause takes hold without reopening the app (false: devices can't reach SlickSync's gate). */
+  instant?: boolean | null;
+  /** Why devices can't reach the gate, in words. */
+  gateProblem?: string | null;
+  /** A profile or household user merged into someone: whose it is. */
+  profileOf?: { name: string | null; kind: 'nuvio-profile' | 'household' } | null;
+}
+
+/** One row of the Users page's Limits overview. */
+export interface LimitsSummary {
+  on: boolean;
+  paused: { untilLabel: string } | null;
+}
+
+/** An age limit, from a real Jellyfin server ('jellyfin') or kept by SlickSync ('streams'). */
+export interface AgeLimitView extends JellyfinAgeLimit {
+  source?: 'jellyfin' | 'streams' | null;
+  /** Unavailable: why. */
+  reason?: string;
+  /** No OMDb key: no title has a rating, so everything counts as unrated. */
+  needsKey?: boolean;
+  /** Devices can't reach SlickSync's gate, so it can't be held to yet. */
+  needsAddress?: boolean;
+  /** Why, in words. */
+  addressProblem?: string | null;
 }
 
 /** AIOStreams' own view of a person's configuration (server/utils/aioHealth.js). */
@@ -3671,6 +3712,8 @@ export interface HouseholdProfile {
   person: { id: string; username: string } | null;
   /** Their picture on the server, when it has one. */
   avatarUrl?: string | null;
+  /** Whose limits its Limits pill opens: its own person's id, or its own as a merged household user. */
+  limitId?: string;
 }
 
 export interface User {

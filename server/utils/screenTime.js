@@ -205,14 +205,51 @@ function minutesToBedtime(bedtime, timezone, now, within) {
 }
 
 /** Seconds watched today (the account's day), per person - Watch Time's own numbers. */
-async function secondsToday(prisma, accountId, userIds, timezone, now = new Date()) {
+/**
+ * Seconds watched today, by id. A merged profile or household user
+ * (utils/screenSubjects.js) counts what its person recorded under its name;
+ * `carveOut` (person id -> those names) leaves theirs out of the person's own
+ * count when they have limits of their own.
+ */
+async function secondsToday(prisma, accountId, userIds, timezone, now = new Date(), { subjects = null, carveOut = null } = {}) {
   const dayStart = new Date(getAccountDateString(now, timezone))
-  const rows = await prisma.watchActivity.groupBy({
-    by: ['userId'],
-    where: { accountId, userId: { in: userIds }, date: { gte: dayStart } },
-    _sum: { watchTimeSeconds: true },
-  })
-  return new Map(rows.map((r) => [r.userId, Number(r._sum?.watchTimeSeconds) || 0]))
+  const labelled = subjects ? userIds.map((id) => subjects.get(id)).filter((s) => s?.subject) : []
+  const people = userIds.filter((id) => !labelled.some((s) => s.id === id))
+  const out = new Map()
+  if (people.length) {
+    const rows = await prisma.watchActivity.groupBy({
+      by: ['userId'],
+      where: { accountId, userId: { in: people }, date: { gte: dayStart } },
+      _sum: { watchTimeSeconds: true },
+    })
+    for (const r of rows) out.set(r.userId, Number(r._sum?.watchTimeSeconds) || 0)
+  }
+  const owners = new Set([...labelled.map((s) => s.subject.ownerId), ...(carveOut ? carveOut.keys() : [])])
+  if (owners.size) {
+    const rows = await prisma.watchActivity.groupBy({
+      by: ['userId', 'profileLabel'],
+      where: { accountId, userId: { in: [...owners] }, date: { gte: dayStart }, profileLabel: { not: null } },
+      _sum: { watchTimeSeconds: true },
+    })
+    const sumOf = (ownerId, name) => rows
+      .filter((r) => r.userId === ownerId && name && r.profileLabel === name)
+      .reduce((n, r) => n + (Number(r._sum?.watchTimeSeconds) || 0), 0)
+    for (const s of labelled) out.set(s.id, s.subject.tracked === false ? 0 : sumOf(s.subject.ownerId, s.subject.name))
+    for (const [ownerId, names] of carveOut || []) {
+      if (out.has(ownerId)) out.set(ownerId, Math.max(0, out.get(ownerId) - names.reduce((n, name) => n + sumOf(ownerId, name), 0)))
+    }
+  }
+  return out
+}
+
+/** Person id -> the names of their merged profiles that have limits of their own. */
+function carveOutOf(subjects, limitIds) {
+  const out = new Map()
+  for (const s of subjects) {
+    if (!s?.subject || !limitIds.has(s.id) || !s.subject.name) continue
+    out.set(s.subject.ownerId, [...(out.get(s.subject.ownerId) || []), s.subject.name])
+  }
+  return out
 }
 
 function appliesToday(limit, weekday) {
@@ -284,6 +321,9 @@ function wantedPause(limit, { watched, today, now, timezone, entry }) {
 // What a pause does for each kind of person
 
 function pauseKind(person) {
+  // A merged Nuvio profile: SlickSync doesn't sync its list, so it is paused
+  // only through its stream gate (utils/streamGate.js).
+  if (person.subject?.kind === 'nuvio-profile') return 'profile'
   if (person.providerType !== 'jellyfin') return 'addons'
   if (!person.jellyfinServerKind || person.jellyfinServerKind === 'jellyfin') return 'jellyfin'
   if (person.jellyfinServerKind === 'aiostreams') return 'aiostreams'
@@ -395,29 +435,39 @@ async function readAccountAddons(prisma, accountId, userId) {
   return addons
 }
 
-// Stremio and Nuvio people with a pause set up have their stream addons go
-// through SlickSync's gate (utils/streamGate.js), which every sync arranges.
-// When someone's set-up starts or stops, one sync right away puts that on
-// their account - noted here, so it happens once - instead of whenever the
-// next sync comes round.
+// Who goes through SlickSync's stream gate (utils/streamGate.js): Stremio and
+// Nuvio people and merged Nuvio profiles with a pause set up or an age limit,
+// and AIOMetadata people with an age limit - while devices can reach the
+// gate. When that starts or stops, their account is changed over once, right
+// away (a sync for a person, the stream addons wrapped for a profile, the
+// stream source for AIOMetadata), noted here so it happens once rather than at
+// the next sync. A profile's list is looked over again every few hours, for a
+// stream addon added to it since.
 const GATE = 'screenTimeGate'
 const GATE_RETRY_MS = 15 * 60 * 1000
+const GATE_RECHECK_MS = 6 * 60 * 60 * 1000
 
-async function settleGate(prisma, accountId, person, limit, entry, { now }, deps) {
+async function settleGate(prisma, accountId, person, limit, entry, { now, age = null }, deps) {
   const d = { ...defaultDeps, ...deps }
-  const want = pauseKind(person) === 'addons' && require('./streamGate').wantsGate(limit)
+  const kind = pauseKind(person)
+  const wanted = kind === 'addons' || kind === 'profile' ? require('./streamGate').wantsGate(limit) || !!age
+    : kind === 'aiometadata' ? !!age : false
+  const want = wanted && !!(await d.gateUsable(prisma, accountId).catch(() => null))?.ok
   const has = !!entry?.on
-  const settled = has ? { on: true, at: entry.at } : null
-  if (want === has) {
+  const settled = has ? { on: true, at: entry.at, ...(entry.checkedAt ? { checkedAt: entry.checkedAt } : {}) } : null
+  const recheck = want && has && kind === 'profile' && Date.parse(entry.checkedAt || entry.at || 0) + GATE_RECHECK_MS <= now.getTime()
+  if (want === has && !recheck) {
     if (entry?.retryAt) await patchEntry(prisma, accountId, GATE, person.id, settled)
     return
   }
   if (entry?.retryAt && Date.parse(entry.retryAt) > now.getTime()) return
   try {
-    await d.syncPerson(prisma, accountId, person.id)
-    await patchEntry(prisma, accountId, GATE, person.id, want ? { on: true, at: now.toISOString() } : null)
+    if (kind === 'profile') await d.wrapProfile(prisma, accountId, person, want, { decrypt: deps.decrypt })
+    else if (kind === 'aiometadata') await d.gateAiom(prisma, accountId, person, want, { decrypt: deps.decrypt })
+    else await d.syncPerson(prisma, accountId, person.id)
+    await patchEntry(prisma, accountId, GATE, person.id, want ? { on: true, at: has ? entry.at : now.toISOString(), checkedAt: now.toISOString() } : null)
   } catch (e) {
-    console.warn(`[ScreenTime] syncing ${person.id} for the gate:`, e?.message)
+    console.warn(`[ScreenTime] changing ${person.id} over for the gate:`, e?.message)
     await patchEntry(prisma, accountId, GATE, person.id, { ...settled, retryAt: new Date(now.getTime() + GATE_RETRY_MS).toISOString() })
   }
 }
@@ -425,12 +475,24 @@ async function settleGate(prisma, accountId, person, limit, entry, { now }, deps
 const setAioPaused = (...args) => require('./aioPause').setAioPaused(...args)
 const setAiomPaused = (...args) => require('./aiomPause').setAiomPaused(...args)
 
-const defaultDeps = { syncPerson, setJellyfinBlocked, setAioPaused, setAiomPaused, messageScreens: messageJellyfinScreens, readAddons: readAccountAddons }
+const defaultDeps = {
+  syncPerson, setJellyfinBlocked, setAioPaused, setAiomPaused, messageScreens: messageJellyfinScreens, readAddons: readAccountAddons,
+  gateUsable: (...args) => require('./streamGate').gateUsable(...args),
+  wrapProfile: (...args) => require('./streamGate').wrapProfile(...args),
+  gateAiom: (...args) => require('./streamGate').gateAiom(...args),
+}
 
 /** Whether a pause can work for them, and why not. */
 async function canPause(prisma, accountId, person, deps = {}) {
   const kind = pauseKind(person)
   if (!kind) return { ok: false, code: 'not-supported', reason: 'This server can’t switch one person off, so here a limit can only alert.' }
+  if (kind === 'profile') {
+    const name = person.username || 'This profile'
+    if (person.subject.sharesPrimary) return { ok: false, code: 'shares-addons', reason: `${name} uses the main profile’s addons in Nuvio, so it can’t be paused on its own - a limit here can only alert you. Give it its own addons in Nuvio to pause it.` }
+    const usable = await (deps.gateUsable || defaultDeps.gateUsable)(prisma, accountId).catch(() => null)
+    if (!usable?.ok) return { ok: false, code: 'needs-address', reason: require('./streamGate').gateProblem(usable) || 'Phones and TVs can’t reach this instance yet.' }
+    return { ok: true }
+  }
   if (kind === 'addons') {
     let groups = 1
     try { groups = await prisma.group.count({ where: { accountId, userIds: { contains: person.id } } }) } catch { /* offer it; the sync will say */ }
@@ -461,6 +523,9 @@ async function pausePerson(prisma, accountId, person, want, deps = {}, { day = n
       : 1
     if (!groups) return false
   }
+  // A merged profile pauses only through the gate: on the main profile's
+  // addons, or with no gate devices can reach, there's nothing to pause.
+  if (kind === 'profile' && !(await canPause(prisma, accountId, person, deps)).ok) return false
   // day: the account day it began on.
   const entry = { until: want.until.toISOString(), at: now.toISOString(), day }
   if (want.budgetDay) { entry.budgetDay = want.budgetDay; entry.budgetAt = want.budgetAt }
@@ -522,7 +587,6 @@ async function reshapePause(prisma, accountId, person, entry, want) {
   if (JSON.stringify(next) !== JSON.stringify(entry)) await patchEntry(prisma, accountId, PAUSES, person.id, next)
 }
 
-const PERSON_SELECT = { id: true, username: true, providerType: true, jellyfinServerKind: true, isActive: true }
 
 /** "7:00 AM" (or "midnight") for when a pause ends, on the account's clock. */
 function untilLabelFor(timezone, until) {
@@ -564,17 +628,37 @@ async function reconcile(prisma, accountId, person, limit, ctx, deps, { settings
 // The person page
 
 /** The person page's view: their limit, today so far, and any pause. */
-async function getLimit(prisma, accountId, userId, deps = {}) {
-  const person = await prisma.user.findFirst({ where: { id: userId, accountId }, select: PERSON_SELECT })
+/**
+ * The person - or merged profile or household user (utils/screenSubjects.js) -
+ * a limit is for, or a 404. A Nuvio profile's name and whether it shares the
+ * main profile's addons are read from Nuvio when the copy kept is over an
+ * hour old.
+ */
+async function subjectFor(prisma, accountId, id, deps = {}) {
+  const { loadSubjectFresh, refreshNuvioProfile } = require('./screenSubjects')
+  const { person, cfg } = await loadSubjectFresh(prisma, accountId, id, { refresh: deps.refreshProfile || refreshNuvioProfile })
   if (!person) throw fail('User not found', 404)
-  const { cfg } = await readSync(prisma, accountId)
+  return { person, cfg }
+}
+
+/** Their seconds today, leaving out merged profiles that have limits of their own. */
+async function theirSecondsToday(prisma, accountId, person, cfg, timezone, now = new Date()) {
+  const { ownLimitedSubjects } = require('./screenSubjects')
+  const subjects = new Map([[person.id, person]])
+  const carveOut = person.subject ? null : carveOutOf(await ownLimitedSubjects(prisma, accountId, person.id, cfg), new Set(Object.keys(cfg.screenTime || {})))
+  return (await secondsToday(prisma, accountId, [person.id], timezone, now, { subjects, carveOut })).get(person.id) || 0
+}
+
+async function getLimit(prisma, accountId, userId, deps = {}) {
+  const { person, cfg } = await subjectFor(prisma, accountId, userId, deps)
   const limit = cleanLimit(cfg.screenTime?.[userId])
   const timezone = await resolveAccountTimezone(prisma, accountId)
   const now = new Date()
   const today = accountToday(timezone, now)
-  const seconds = (await secondsToday(prisma, accountId, [userId], timezone)).get(userId) || 0
+  const seconds = await theirSecondsToday(prisma, accountId, person, cfg, timezone, now)
   const pause = cfg[PAUSES]?.[userId]
   const bed = limit?.bedtime ? bedtimeWindow(limit.bedtime, timezone, now) : null
+  const kind = pauseKind(person)
   return {
     limit,
     todayMinutes: Math.floor(seconds / 60),
@@ -584,13 +668,21 @@ async function getLimit(prisma, accountId, userId, deps = {}) {
       : null,
     canPause: await canPause(prisma, accountId, person, deps),
     // Stopping what's playing works on a real Jellyfin server only.
-    canStopPlaying: pauseKind(person) === 'jellyfin',
+    canStopPlaying: kind === 'jellyfin',
+    // Whether a pause on Stremio or Nuvio takes hold without reopening the
+    // app (utils/streamGate.js) - false when devices can't reach the gate.
+    ...(await (async () => {
+      if (kind !== 'addons') return { instant: null }
+      const usable = await (deps.gateUsable || defaultDeps.gateUsable)(prisma, accountId).catch(() => null)
+      return { instant: !!usable?.ok, gateProblem: require('./streamGate').gateProblem(usable) }
+    })()),
+    // A merged profile or household user: whose it is.
+    profileOf: person.subject ? { name: person.subject.ownerName || null, kind: person.subject.kind } : null,
   }
 }
 
 async function setLimit(prisma, accountId, userId, raw, deps = {}) {
-  const person = await prisma.user.findFirst({ where: { id: userId, accountId }, select: PERSON_SELECT })
-  if (!person) throw fail('User not found', 404)
+  const { person } = await subjectFor(prisma, accountId, userId, deps)
   const limit = raw == null ? null : cleanLimit(raw)
   if (raw != null && !limit) throw fail(`A limit is between 1 and ${MAX_MINUTES} minutes, or a bedtime with different start and end times`)
   await patchEntry(prisma, accountId, 'screenTime', userId, limit)
@@ -603,7 +695,7 @@ async function setLimit(prisma, accountId, userId, raw, deps = {}) {
   const timezone = await resolveAccountTimezone(prisma, accountId)
   const now = new Date()
   const today = accountToday(timezone, now)
-  const watched = Math.floor(((await secondsToday(prisma, accountId, [userId], timezone, now)).get(userId) || 0) / 60)
+  const watched = Math.floor((await theirSecondsToday(prisma, accountId, person, cfg, timezone, now)) / 60)
   const ok = !limit || pauseInForce(entry) || (await canPause(prisma, accountId, person, deps)).ok
   if (ok) {
     await reconcile(prisma, accountId, person, limit, { entry, today, now, timezone, watched }, deps, { settings: true })
@@ -630,9 +722,7 @@ async function syncServerBedtime(prisma, accountId, person, limit, { timezone, n
 
 /** "Resume now": streaming back for the rest of today - and tonight, if it's bedtime. */
 async function resume(prisma, accountId, userId, deps = {}, { now = new Date() } = {}) {
-  const person = await prisma.user.findFirst({ where: { id: userId, accountId }, select: PERSON_SELECT })
-  if (!person) throw fail('User not found', 404)
-  const { cfg } = await readSync(prisma, accountId)
+  const { person, cfg } = await subjectFor(prisma, accountId, userId, deps)
   const pause = cfg[PAUSES]?.[userId]
   if (!pauseInForce(pause)) throw fail('They aren’t paused')
   const timezone = await resolveAccountTimezone(prisma, accountId)
@@ -691,7 +781,8 @@ async function warnScreens(prisma, accountId, person, limit, { watched, today, n
  * who didn't ask hears anything; and only when a pause will really happen.
  */
 async function warnPerson(prisma, accountId, person, limit, { watched, today, now, timezone, entry }, deps) {
-  if (pauseInForce(entry) || !pauseKind(person)) return
+  // A merged profile has no phones of its own here.
+  if (person.subject || pauseInForce(entry) || !pauseKind(person)) return
   const notes = []
   if (limit.minutes && limit.onReach === 'pause' && appliesToday(limit, today.weekday) && entry?.resumedOn !== today.date) {
     const left = limit.minutes - watched
@@ -711,6 +802,7 @@ async function warnPerson(prisma, accountId, person, limit, { watched, today, no
 
 /** The person's own phone, when a pause starts. */
 async function tellPersonPaused(prisma, accountId, person, want, timezone, deps) {
+  if (person.subject) return
   const sendTo = deps.sendPushToPerson || require('./pushNotifications').sendPushToPerson
   const until = untilLabelFor(timezone, want.until)
   await sendTo(prisma, accountId, person.id, want.night && !want.budgetDay
@@ -757,14 +849,17 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
     const pauses = cfg?.[PAUSES] || {}
     // Also anyone whose Jellyfin server still has a bedtime SlickSync wrote,
     // so one switched off is always taken away.
-    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {}), ...Object.keys(cfg?.[AFTER_PAUSE] || {}), ...Object.keys(cfg?.[GATE] || {})])]
+    const ids = [...new Set([...limits.keys(), ...Object.keys(pauses), ...Object.keys(cfg?.jellyfinBedtime || {}), ...Object.keys(cfg?.[AFTER_PAUSE] || {}), ...Object.keys(cfg?.[GATE] || {}), ...Object.keys(cfg?.ageLimits || {})])]
     if (!ids.length) continue
     try {
       const timezone = await resolveAccountTimezone(prisma, account.id)
       const today = accountToday(timezone, now)
-      const people = await prisma.user.findMany({ where: { accountId: account.id, id: { in: ids } }, select: PERSON_SELECT })
-      const byId = new Map(people.map((p) => [p.id, p]))
-      const seconds = await secondsToday(prisma, account.id, people.map((p) => p.id), timezone, now)
+      // People, and merged profiles and household users with limits of their own.
+      const byId = await require('./screenSubjects').loadSubjects(prisma, account.id, ids, cfg)
+      const seconds = await secondsToday(prisma, account.id, [...byId.keys()], timezone, now, {
+        subjects: byId,
+        carveOut: carveOutOf([...byId.values()], new Set(limits.keys())),
+      })
 
       for (const userId of ids) {
         const person = byId.get(userId)
@@ -788,7 +883,9 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
 
         // The gate follows the limit as set, active or not, so pausing someone
         // inactive doesn't change their addons back and forth.
-        await settleGate(prisma, account.id, person, limits.get(userId) || null, (await readSync(prisma, account.id)).cfg[GATE]?.[userId], { now }, deps)
+        await settleGate(prisma, account.id, person, limits.get(userId) || null, (await readSync(prisma, account.id)).cfg[GATE]?.[userId], {
+          now, age: require('./ageLimits').cleanAgeLimit(cfg?.ageLimits?.[userId]),
+        }, deps)
 
         let pausedNow = false
         let want = null
@@ -818,7 +915,7 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
           await send(prisma, account.id, {
             title: `${name} reached today's ${limit.minutes}-minute limit`,
             body: `${name} has watched ${watched} minutes today.${pausedForLimit ? ` Streaming is paused until ${untilLabelFor(timezone, want.until)}.` : ''}`,
-            url: `/users/${userId}`,
+            url: `/users/${person.subject?.ownerId || userId}`,
             dedupeKey,
           })
           await fire(prisma, account.id, 'watch.budget_exceeded', {
@@ -830,7 +927,7 @@ async function checkScreenTime(prisma, { now = new Date(), emit, deps = {} } = {
           await send(prisma, account.id, {
             title: `${name}'s streaming is paused until ${untilLabelFor(timezone, want.until)}`,
             body: `${name} is past today's ${limit.minutes}-minute limit.`,
-            url: `/users/${userId}`,
+            url: `/users/${person.subject?.ownerId || userId}`,
             dedupeKey: `screentime-pause:${userId}:${today.date}`,
           })
         }
@@ -850,7 +947,40 @@ function scheduleScreenTime(prisma) {
   timer = setInterval(run, CHECK_INTERVAL_MS)
 }
 
+/**
+ * Everyone with a daily limit, bedtime, age limit or pause, for the Limits
+ * pills on the Users page - read from the settings alone, nothing is asked of
+ * any server. id -> { on, paused: { untilLabel } | null }. An age limit kept
+ * on a real Jellyfin server isn't here; its pill shows it once opened.
+ */
+async function overview(prisma, accountId) {
+  const { cfg } = await readSync(prisma, accountId)
+  const { cleanAgeLimit } = require('./ageLimits')
+  const timezone = await resolveAccountTimezone(prisma, accountId)
+  const out = {}
+  const ids = new Set([...Object.keys(cfg.screenTime || {}), ...Object.keys(cfg[PAUSES] || {}), ...Object.keys(cfg.ageLimits || {})])
+  for (const id of ids) {
+    const on = !!(cleanLimit(cfg.screenTime?.[id]) || cleanAgeLimit(cfg.ageLimits?.[id]))
+    const pause = cfg[PAUSES]?.[id]
+    const paused = pauseInForce(pause) ? { untilLabel: untilLabelFor(timezone, pause.until) } : null
+    if (on || paused) out[id] = { on, paused }
+  }
+  return out
+}
+
+/** For a person's own page: whether they're paused right now, and until when. */
+async function ownStatus(prisma, accountId, userId) {
+  const { cfg } = await readSync(prisma, accountId)
+  const pause = cfg[PAUSES]?.[userId]
+  if (!pauseInForce(pause)) return { paused: null }
+  const timezone = await resolveAccountTimezone(prisma, accountId)
+  const limit = cleanLimit(cfg.screenTime?.[userId])
+  const bed = limit?.bedtime ? bedtimeWindow(limit.bedtime, timezone, new Date()) : null
+  return { paused: { untilLabel: untilLabelFor(timezone, pause.until), reason: pause.night && bed && bed.night === pause.night ? 'bedtime' : 'limit' } }
+}
+
 module.exports = {
+  overview, ownStatus,
   getLimit, setLimit, resume, checkScreenTime, scheduleScreenTime, cleanLimit, cleanBedtime, accountToday, nextAccountMidnight, nextAccountTime,
   bedtimeWindow, isStreamingPaused, servesStreams, CHECK_INTERVAL_MS,
   // For jellyfinBedtime.js, which keeps its state beside the pauses.
