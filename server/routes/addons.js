@@ -2521,27 +2521,15 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       // one, sync would push an unfetchable placeholder URL. Refuse up
       // front rather than create that state. The toggle route for the
       // SlickTrax addon records observedBaseUrl on the same reasoning.
-      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+      // The admin reaching this route opened SlickSync from the address their
+      // devices use - learned, like on any admin visit (utils/ownAddress.js) -
+      // but never one only this server knows (a container's name, localhost).
+      const own = require('../utils/ownAddress');
+      const reqBase = own.requestBase(req);
+      if (require('../utils/streamGate').deviceReachable(reqBase)) await own.learn(prisma, accountId, reqBase).catch(() => {});
+      const base = await own.publicBase(prisma, accountId);
       if (!base) {
-        const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
-        let cfg = acct?.sync;
-        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
-        base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '');
-        if (!base) {
-          // The admin reaching this route proves a working base right now -
-          // but never a loopback one: a script running on the server itself
-          // would poison the stored base sync hands to real devices
-          // (confirmed live when a localhost test persisted localhost:4000).
-          const reqBase = `${req.protocol}://${req.get('host')}`;
-          if (/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) {
-            return res.status(400).json({ error: 'No reachable base URL known for this instance. Open this page from the address your devices use (not localhost), or set PUBLIC_APP_URL.' });
-          }
-          base = reqBase;
-          try {
-            const nextCfg = { ...(cfg && typeof cfg === 'object' ? cfg : {}), observedBaseUrl: base };
-            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } });
-          } catch { /* best-effort */ }
-        }
+        return res.status(400).json({ error: 'SlickSync doesn’t know the address your devices reach it at yet. Open this page from that address (not localhost), or set PUBLIC_APP_URL.' });
       }
 
       const url = getDecryptedManifestUrl(addon, req);

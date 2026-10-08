@@ -349,7 +349,7 @@ Frontend and API are both served through `:3000` — only that port needs a mapp
 
 **Verify it's up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (matching the latest on the [Releases page](https://github.com/slicknsliding/slicksync/releases)), and `https://your-domain/` should load the login page.
 
-**Open it from the address your devices use**: SlickSync learns the address phones and TVs reach it at the first time you open it from there — SlickTrax, pictures on a server and instant pauses use it. If devices reach it on a different address, set it under Settings → Integrations → **Public address of this instance**.
+**Open it from the address your devices use**: SlickSync learns the address phones and TVs reach it at when you open it from there — SlickTrax, pictures on a server and instant pauses use it — and follows you to a new domain the first time you open it there. Nothing to type in. For a setup only ever opened through some other address (a tunnel, say), set `PUBLIC_APP_URL`.
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed.
 
@@ -412,7 +412,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `PUBLIC_APP_URL` | The address devices reach this instance on, for SlickTrax, pictures on a server and instant pauses. Otherwise learned when you open it, or set in Settings → Integrations | — |
+| `PUBLIC_APP_URL` | The address devices reach this instance on, for SlickTrax, pictures on a server and instant pauses. Normally learned when you open it - only needed when it's only ever opened through some other address | — |
 | `NUVIO_SUPABASE_URL` / `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's backend endpoint (also settable per account in Settings) | `https://api.nuvio.tv` / — |
 | `SIMKL_CLIENT_ID` | Instance-wide SIMKL app registration (each account can bring its own) | — |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | Enable "Continue with..." SSO login (all four required) | — |
@@ -431,7 +431,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 
 - **Decryption errors after an update** (`Unsupported state or unable to authenticate data`): the running code is deriving a different key than what encrypted your data — check `data/server_secret.key` wasn't lost, and don't modify the key-derivation constants on a fork.
 - **"credentials may be invalid" on Sync, but library/history still updates fine**: a decrypt-key rotation split your data across key generations. Every read path falls back to the previous key automatically, but some secrets stay encrypted under the old one. Fix it permanently: `docker exec -it -e DATABASE_URL="file:///app/data/sqlite.db" <container> node scripts/consolidate-encryption-keys.js` (dry-run; add `--apply --sync-keyfile` to re-encrypt everything onto the current key).
-- **SlickTrax is enabled but never appears on the device, or a pause needs the app reopened**: open SlickSync once from the address your devices use so it learns it, or set Settings → Integrations → Public address (or `PUBLIC_APP_URL`). If a login gate sits in front of the instance, let `/trax/` through without a login. The Limits popup says which one it is.
+- **SlickTrax is enabled but never appears on the device, or a pause needs the app reopened**: open SlickSync once from the address your devices use so it learns it (or set `PUBLIC_APP_URL`). If a login gate sits in front of the instance, let `/trax/` through without a login. The Limits popup says which one it is.
 - **A Jellyfin or AIOStreams server on your home network won't sign in on a shared instance**: a public-mode SlickSync (like slicksync.vip) never connects to private-network addresses. Use the server's public address, or run your own instance.
 - **Jellyfin collections aren't renamed or don't get a cover**: Jellyfin only lets administrators do that. Without an administrator's sign-in, a renamed catalog's collection is made again under the new name instead.
 - **"Detected additional lockfiles" during build**: delete any stray `package-lock.json` — this project runs on `bun`.

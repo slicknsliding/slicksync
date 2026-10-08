@@ -121,10 +121,10 @@ function gateProblem(usable) {
   if (!usable || usable.ok) return null
   let host = ''
   try { host = usable.base ? new URL(usable.base).host : '' } catch { host = '' }
-  if (usable.reason === 'no-address') return 'SlickSync doesn’t know the address your devices reach it at yet. Open SlickSync once from that address and it learns it - or set it in Settings -> Integrations.'
-  if (usable.reason === 'internal-address') return `SlickSync only knows itself as ${host}, which works inside its own server but not for phones and TVs. Open SlickSync once from the address your devices use and it learns that one - or set it in Settings -> Integrations.`
+  if (usable.reason === 'no-address') return 'SlickSync doesn’t know the address your devices reach it at yet. Open SlickSync once from that address and it learns it.'
+  if (usable.reason === 'internal-address') return `SlickSync only knows itself as ${host}, which works inside its own server but not for phones and TVs. Open SlickSync once from the address your devices use and it learns that one.`
   if (usable.reason === 'login') return `A sign-in page answers at ${host}/trax/. Let /trax/ through without a login (as SlickTrax needs too), and it works.`
-  return `SlickSync can’t reach itself at ${host}/trax/ - check the address in Settings -> Integrations.`
+  return `SlickSync can’t reach itself at ${host}/trax/ - open SlickSync from the address your devices use, so it learns the right one.`
 }
 
 /** Whether someone's stream addons belong behind the gate: a pause set up, a pause in force, or an age limit. */

@@ -766,43 +766,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // from, so if PUBLIC_APP_URL is unset the auto-install genuinely will
       // not happen and the UI should say so instead of showing a URL that
       // only works from this browser's vantage point.
-      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
-      let baseSource = base ? 'env' : null
-      if (!base) {
-        try {
-          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-          let cfg = acct?.sync
-          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-          const configured = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
-          const observed = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
-          if (configured) { base = configured; baseSource = 'settings' }
-          else if (observed) { base = observed; baseSource = 'observed' }
-        } catch { /* falls through to the request-derived base below */ }
-      }
-      // The admin reaching this route just proved a working public URL for
-      // this instance - the one in their address bar. Persisted so sync can
-      // auto-install without PUBLIC_APP_URL being set; the env var, when
-      // present, stays the explicit override. Recorded only here, from an
-      // authenticated admin request (behind trust proxy = 1, so req.protocol
-      // is honest behind Traefik) - never from unauthenticated traffic,
-      // where a spoofed Host header could poison the stored base.
-      const reqBase = `${req.protocol}://${req.get('host')}`
-      // Never learn a loopback base: an API call made on the server itself
-      // (scripts, health probes) would otherwise poison the stored base
-      // that sync hands to real devices - confirmed live when a localhost
-      // test persisted http://localhost:4000.
-      const reqBaseUsable = !/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)
-      if (enabled && !base && reqBaseUsable) {
-        try {
-          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-          let cfg = acct?.sync
-          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
-          if (!cfg || typeof cfg !== 'object') cfg = {}
-          if (cfg.observedBaseUrl !== reqBase) {
-            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify({ ...cfg, observedBaseUrl: reqBase }) } })
-          }
-        } catch { /* best-effort - manual install still works */ }
-      }
+      // The admin reaching this route opened SlickSync from the address their
+      // devices use - learned, like on any admin visit (utils/ownAddress.js);
+      // never one only this server knows (a container's name, localhost).
+      const own = require('../utils/ownAddress')
+      const reqBase = own.requestBase(req)
+      const reqBaseUsable = require('../utils/streamGate').deviceReachable(reqBase)
+      if (enabled && reqBaseUsable) await own.learn(prisma, accountId, reqBase).catch(() => {})
+      const base = await own.publicBase(prisma, accountId).catch(() => '')
+      const baseSource = base ? (process.env.PUBLIC_APP_URL ? 'env' : 'observed') : null
       // baseKnown is the honest bit: with no address configured, sync cannot
       // install this on anyone's device no matter what the toggle says, and
       // the url below only works from the browser that asked for it.
@@ -812,7 +784,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         manifestUrl: effectiveBase ? `${effectiveBase}/trax/${traxToken}/v${require('./traxAddon').traxPathVersion(user)}/manifest.json` : null,
         autoInstall: !!base,
         baseKnown: !!base,
-        baseSource: baseSource || (base ? 'observed' : null),
+        baseSource,
       })
     } catch (error) {
       console.error('Error toggling SlickTrax addon:', error)
@@ -908,18 +880,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // linked here to the SlickSync user it really is.
 
   async function watchStateBase(req, accountId) {
-    let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+    const own = require('../utils/ownAddress')
+    let base = await own.publicBase(prisma, accountId).catch(() => '')
     if (!base) {
-      try {
-        const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-        let cfg = acct?.sync
-        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-        base = ((cfg && (cfg.publicBaseUrl || cfg.observedBaseUrl)) || '').trim().replace(/\/+$/, '')
-      } catch { /* falls back to the request below */ }
-    }
-    if (!base) {
-      const reqBase = `${req.protocol}://${req.get('host')}`
-      if (!/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) base = reqBase
+      const reqBase = own.requestBase(req)
+      if (require('../utils/streamGate').deviceReachable(reqBase)) base = reqBase
     }
     return base
   }
@@ -2929,18 +2894,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Transform for frontend
-      // Same precedence sync itself uses: an explicit env var, then the
-      // address set in Settings, then one an admin request revealed.
-      let traxBase = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
-      if (!traxBase) {
-        try {
-          const acct = await prisma.appAccount.findUnique({ where: { id: getAccountId(req) }, select: { sync: true } })
-          let cfg = acct?.sync
-          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-          traxBase = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
-          if (!traxBase) traxBase = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
-        } catch { traxBase = '' }
-      }
+      // The address sync itself uses (utils/ownAddress.js).
+      const traxBase = await require('../utils/ownAddress').publicBase(prisma, getAccountId(req)).catch(() => '')
 
       const transformedUser = {
         id: user.id,

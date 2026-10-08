@@ -551,7 +551,7 @@ export default function UserDetailPage() {
       if (r.enabled) {
         toast.success(r.autoInstall
           ? 'SlickTrax Addon enabled - it installs on the next sync'
-          : 'Enabled, but this instance has no public address set, so sync cannot install it. Settings -> Sync -> Public address.');
+          : 'Enabled, but SlickSync doesn’t know the address devices reach it at yet. Open SlickSync once from that address, then sync.');
       } else {
         toast.success('SlickTrax Addon disabled - the next sync removes it');
       }

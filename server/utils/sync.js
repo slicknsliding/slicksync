@@ -146,19 +146,14 @@ async function appendTraxAddon(user, addons, prisma) {
     // and finally the one an authenticated admin request revealed. Sync has
     // no request of its own to borrow a hostname from, so without one of
     // these it genuinely cannot build an installable url.
-    let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
-    if (!base) {
-      const acct = await prisma.appAccount.findUnique({ where: { id: user.accountId }, select: { sync: true } })
-      let cfg = acct?.sync
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-      base = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
-      if (!base) base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
-    }
+    // utils/ownAddress.js: PUBLIC_APP_URL, else the address learned from an
+    // admin's visits.
+    const base = await require('./ownAddress').publicBase(prisma, user.accountId)
     if (!base) {
       // Loud on purpose. This is the one failure mode where SlickTrax looks
       // switched on in the UI and simply never appears on the device, with
       // nothing anywhere saying why - reported exactly that way.
-      console.warn(`[SlickTrax] ${user.username || user.id}: enabled, but this instance has no public address configured, so it cannot be installed. Set it in Settings -> Sync (or the PUBLIC_APP_URL env var).`)
+      console.warn(`[SlickTrax] ${user.username || user.id}: enabled, but this instance does not know the address devices reach it at yet, so it cannot be installed. Open SlickSync once from that address (or set the PUBLIC_APP_URL env var).`)
       return addons
     }
     const { buildTraxManifest, getListsForAccount, traxPathVersion } = require('../routes/traxAddon')

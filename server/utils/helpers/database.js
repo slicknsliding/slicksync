@@ -251,15 +251,8 @@ async function getGroupAddons(prisma, groupId, req) {
     // unchanged and the vaultify endpoint refuses to create this state in
     // the first place (it requires a resolvable base).
     if (typeof transportUrl === 'string' && transportUrl.includes('{{vault:') && bestAddon.proxyEnabled && bestAddon.proxyUuid) {
-      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
-      if (!base) {
-        try {
-          const acct = await prisma.appAccount.findUnique({ where: { id: bestAddon.accountId }, select: { sync: true } })
-          let cfg = acct?.sync
-          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-          base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
-        } catch { base = '' }
-      }
+      // The same address SlickTrax uses (utils/ownAddress.js).
+      const base = await require('../ownAddress').publicBase(prisma, bestAddon.accountId).catch(() => '')
       if (base) transportUrl = `${base}/proxy/${bestAddon.proxyUuid}/manifest.json`
     }
 
