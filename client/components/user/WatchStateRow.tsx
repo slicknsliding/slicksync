@@ -161,7 +161,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
             )}
             {enabled && view && !view.baseKnown && (
               <p className="mt-2 text-xs text-warning">
-                Fill in “Public address of this instance” under Settings → Integrations first - AIOStreams has to be able to reach this link.
+                SlickSync doesn’t know the address AIOStreams can reach it at yet. Open SlickSync once from the address your devices use, then turn this off and on again.
               </p>
             )}
           </div>

@@ -216,14 +216,13 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
           : state.canPause.code === 'shares-addons'
             ? { badge: 'Alert only', hint: 'It uses the main profile’s addons', action: null }
             : state.canPause.code === 'needs-address'
-              ? { badge: 'Can’t reach it', hint: 'Phones can’t reach SlickSync yet', detail: state.canPause.reason, action: 'settings' as const }
+              ? { badge: 'Can’t reach it', hint: 'Phones can’t reach SlickSync yet', detail: state.canPause.reason, action: null }
               : { badge: 'Alert only', hint: 'This server can’t pause one person', action: null }
     : null;
   const unlock = () => {
     if (locked?.action === 'group' && onPickGroup) { onClose?.(); onPickGroup(); }
     if (locked?.action === 'guide') { onClose?.(); router.push('/guides/add-jellyfin-account'); }
     if (locked?.action === 'reconnect' && onReconnect) { onClose?.(); onReconnect(); }
-    if (locked?.action === 'settings') { onClose?.(); router.push('/settings?highlight=Public%20address%20of%20this%20instance'); }
   };
 
   const resumeNow = async () => {

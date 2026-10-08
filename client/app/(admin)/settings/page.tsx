@@ -2433,30 +2433,6 @@ export default function SettingsPage() {
                 />
               </div>
 
-              {/* Public address of this instance. SlickTrax installs itself
-                  through sync, and sync has no incoming request to learn a
-                  hostname from - so without this (or PUBLIC_APP_URL) it
-                  cannot build an address a phone or TV could reach, and
-                  silently installs nothing. */}
-              <div className="pt-1">
-                <label className="block text-sm font-medium text-default mb-1.5">Public address of this instance <span className="text-subtle font-normal">(optional)</span></label>
-                <p className="text-xs text-muted mb-2">
-                  The address your devices reach SlickSync on, e.g. <span className="font-mono">https://slicksync.example.com</span>. SlickSync learns it
-                  by itself when you open it from that address, so this is only for when it should use a different one. SlickTrax, pictures on a server and
-                  instant pauses use it. The PUBLIC_APP_URL environment variable wins over both.
-                </p>
-                <input
-                  type="text"
-                  value={syncSettings.publicBaseUrl || ''}
-                  onChange={(e) => setSyncSettings(prev => ({ ...prev, publicBaseUrl: e.target.value }))}
-                  onBlur={() => handleSaveSetting('publicBaseUrl' as keyof SyncSettings, syncSettings.publicBaseUrl)}
-                  placeholder="https://slicksync.example.com"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="input-base w-full px-3 py-2 text-sm"
-                />
-              </div>
-
               {/* Trakt Client ID - public LISTS only, which is all a client id
                   can read. Deliberately not an account bridge: Trakt limits a
                   free account to one connected app, so connecting SlickSync
@@ -2659,7 +2635,7 @@ export default function SettingsPage() {
             </div>
           </Card>
           <div className="mt-6">
-            <ShortcutRecipes baseUrl={syncSettings.publicBaseUrl} apiKey={apiKey} />
+            <ShortcutRecipes baseUrl={syncSettings.ownAddress || syncSettings.publicBaseUrl} apiKey={apiKey} />
           </div>
         </PageSection>
         )}

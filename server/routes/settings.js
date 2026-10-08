@@ -447,16 +447,11 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     router.post('/migration/offer', async (req, res) => {
       try {
         const accountId = getAccountId(req) || 'default'
-        let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+        const own = require('../utils/ownAddress')
+        let base = await own.publicBase(prisma, accountId)
         if (!base) {
-          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-          let cfg = acc?.sync
-          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-          base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
-        }
-        if (!base) {
-          const reqBase = `${req.protocol}://${req.get('host')}`
-          if (!/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) base = reqBase
+          const reqBase = own.requestBase(req)
+          if (require('../utils/streamGate').deviceReachable(reqBase)) base = reqBase
         }
         if (!base) return res.status(400).json({ message: 'No reachable address known for this instance - the new server must be able to fetch from this one. Set PUBLIC_APP_URL, or open this page via the address your devices use.' })
         const { mintOffer, encodeCode } = require('./migration')
@@ -940,6 +935,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const enabled = syncCfg && typeof syncCfg === 'object'
           ? syncCfg.enabled !== false
           : minutes > 0
+        // The address devices reach this instance at, learned (utils/ownAddress.js).
+        const ownAddress = await require('../utils/ownAddress').publicBase(prisma, account?.id || 'default').catch(() => '')
 
         const response = {
           enabled,
@@ -1009,6 +1006,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           traktClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.traktClientId === 'string') ? syncCfg.traktClientId : '',
           malClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.malClientId === 'string') ? syncCfg.malClientId : '',
           publicBaseUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.publicBaseUrl === 'string') ? syncCfg.publicBaseUrl : '',
+          ownAddress,
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
           // Was only in the OTHER branch's response below, so private-mode
@@ -1043,6 +1041,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const frequency = (typeof syncCfg.frequency === 'string' && syncCfg.frequency.trim())
           ? syncCfg.frequency.trim()
           : '0'
+        const ownAddress = await require('../utils/ownAddress').publicBase(prisma, req.appAccountId).catch(() => '')
         const resp = {
           enabled: syncCfg.enabled !== false, safe, mode, frequency, lastRunAt: syncCfg.lastRunAt,
           webhookUrl: syncCfg.webhookUrl || '',
@@ -1099,6 +1098,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           traktClientId: typeof syncCfg.traktClientId === 'string' ? syncCfg.traktClientId : '',
           malClientId: typeof syncCfg.malClientId === 'string' ? syncCfg.malClientId : '',
           publicBaseUrl: typeof syncCfg.publicBaseUrl === 'string' ? syncCfg.publicBaseUrl : '',
+          ownAddress,
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
         }

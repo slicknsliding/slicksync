@@ -213,14 +213,9 @@ async function refreshAccount(prisma, decrypt, accountId) {
 // ---------------------------------------------------------------------------
 // Sending a picture chosen here to their server
 
-/** The address SlickSync is reached at from outside - the one SlickTrax links use. */
-async function publicBase(prisma, accountId) {
-  let base = (process.env.PUBLIC_APP_URL || '').trim()
-  if (!base) {
-    const { cfg } = await readSync(prisma, accountId)
-    base = (typeof cfg.publicBaseUrl === 'string' && cfg.publicBaseUrl.trim()) || (typeof cfg.observedBaseUrl === 'string' && cfg.observedBaseUrl.trim()) || ''
-  }
-  return base.replace(/\/+$/, '')
+/** The address SlickSync is reached at from outside - the one SlickTrax links use (utils/ownAddress.js). */
+function publicBase(prisma, accountId) {
+  return require('./ownAddress').publicBase(prisma, accountId)
 }
 
 /** The picture's bytes: one of SlickSync's uploads, or an image address. */

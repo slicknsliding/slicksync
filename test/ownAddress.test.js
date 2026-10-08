@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { learnOwnAddress } = require('../server/utils/ownAddress')
+const { learnOwnAddress, publicBase } = require('../server/utils/ownAddress')
 const { gateProblem } = require('../server/utils/streamGate')
 
 // An account's settings, read and written the way accountSync does.
@@ -31,16 +31,21 @@ test('SlickSync learns the address an admin opens it from - never an internal on
   await visit(mw, 'slicksync.example.com')
   assert.equal(a.sync.observedBaseUrl, 'https://slicksync.example.com', 'a real address replaces the internal one')
   await visit(mw, '192.168.1.20:3000')
-  assert.equal(a.sync.observedBaseUrl, 'https://slicksync.example.com', 'and stays, rather than flipping to another')
+  assert.equal(a.sync.observedBaseUrl, 'https://slicksync.example.com', 'opening it at home by its network address doesn\'t replace the name')
+  await visit(mw, 'new-domain.example.org')
+  assert.equal(a.sync.observedBaseUrl, 'https://new-domain.example.org', 'a new domain is picked up on the first visit there')
 })
 
-test('an address typed into Settings wins, and a person\'s own pages teach nothing', async () => {
+test('an address typed in before learning existed is used until it has learned one; person pages teach nothing', async () => {
   const typed = account({ publicBaseUrl: 'https://typed.example.com' })
-  await visit(learnOwnAddress(typed.prisma), 'other.example.com', { accountId: 'acc2' })
-  assert.equal(typed.sync.observedBaseUrl, undefined)
+  assert.equal(await publicBase(typed.prisma, 'acc2'), 'https://typed.example.com')
+  await visit(learnOwnAddress(typed.prisma), 'slicksync.example.com', { accountId: 'acc2' })
+  assert.equal(await publicBase(typed.prisma, 'acc2'), 'https://slicksync.example.com')
   const fresh = account()
   await visit(learnOwnAddress(fresh.prisma), 'slicksync.example.com', { accountId: 'acc3', path: '/public-library/screen-time' })
   assert.equal(fresh.sync.observedBaseUrl, undefined)
+  const internalOnly = account({ observedBaseUrl: 'http://slicksync-1:3000', publicBaseUrl: 'https://typed.example.com' })
+  assert.equal(await publicBase(internalOnly.prisma, 'acc4'), 'https://typed.example.com', 'an internal learned address never wins over a usable typed one')
 })
 
 test('the Limits popup is told why the gate can\'t be used, in words', () => {

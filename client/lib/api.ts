@@ -4220,7 +4220,10 @@ export interface SyncSettings {
   /** Public Trakt list import (client id only - not an account connection). */
   traktClientId?: string;
   malClientId?: string;
+  /** An address typed in before SlickSync learned its own; no longer set from the page. */
   publicBaseUrl?: string;
+  /** The address phones and TVs reach this instance at, as SlickSync uses it (server/utils/ownAddress.js). */
+  ownAddress?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;
   /** Anon key for that backend. Only takes effect alongside nuvioServerUrl. */
