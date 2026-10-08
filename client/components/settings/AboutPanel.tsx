@@ -54,7 +54,7 @@ export function AboutPanel({ lumiere }: { lumiere: boolean }) {
         <h4 className="text-sm font-semibold text-default mt-5 mb-2">Privacy</h4>
         <p className="text-sm text-muted">
           Everything SlickSync keeps - accounts, watch history, keys - stays in this instance&apos;s own database.
-          There are no analytics, and nothing is sent back to the SlickSync project or its developer. It only talks to the services you connect
+          SlickSync collects no data about you or your household, and nothing is sent back to the SlickSync project or its developer. It only talks to the services you connect
           (Stremio, Nuvio, Jellyfin, TMDB and the rest) and to GitHub, to check for new versions.
         </p>
 
