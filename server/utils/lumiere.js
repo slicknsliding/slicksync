@@ -6,9 +6,8 @@
 // address set, every one of those keeps working the way it did before.
 //
 // IMDb's datasets are for personal, non-commercial use, and their terms
-// forbid running a movie database for other people. So the address is each
-// account's own: a public instance never falls back to an operator's
-// LUMIERE_DB_URL, which would put one database in front of strangers.
+// forbid running a movie database for other people. So it's for
+// self-hosted instances only: on a public instance it's off entirely.
 
 const { INSTANCE_TYPE } = require('./config')
 
@@ -46,12 +45,12 @@ async function readCfg(prisma, accountId) {
   return cfg && typeof cfg === 'object' ? cfg : {}
 }
 
-/** The LumiereDB this account uses: its own, else (not on a public instance) the server's. */
+/** The LumiereDB this account uses: its own, else the server's. None on a public instance. */
 async function lumiereAddress(prisma, accountId) {
+  if (isPublic()) return ''
   let own = ''
   try { own = normalizeAddress((await readCfg(prisma, accountId)).lumiereDbUrl) } catch {}
   if (own) return own
-  if (isPublic()) return ''
   return normalizeAddress(process.env.LUMIERE_DB_URL || '')
 }
 

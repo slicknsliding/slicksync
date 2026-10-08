@@ -42,7 +42,7 @@ test('a user name and password in the address become a sign-in header, never par
   assert.equal(headers.Authorization, `Basic ${Buffer.from('me:p@ss').toString('base64')}`)
 })
 
-test('a public instance never uses the server-wide LumiereDB - only an account’s own', async () => {
+test('a public instance has no LumiereDB at all; a self-hosted one uses its own, then the server’s', async () => {
   process.env.LUMIERE_DB_URL = 'http://shared-lumiere:8000'
   const config = require('../server/utils/config')
   const was = config.INSTANCE_TYPE
@@ -50,10 +50,11 @@ test('a public instance never uses the server-wide LumiereDB - only an account�
     config.INSTANCE_TYPE = 'public'
     let lumiere = fresh()
     assert.equal(await lumiere.lumiereAddress(accountWith({}), 'acc'), '')
-    assert.equal(await lumiere.lumiereAddress(accountWith({ lumiereDbUrl: 'https://mine.example.com' }), 'acc'), 'https://mine.example.com')
+    assert.equal(await lumiere.lumiereAddress(accountWith({ lumiereDbUrl: 'https://mine.example.com' }), 'acc'), '')
     config.INSTANCE_TYPE = 'private'
     lumiere = fresh()
     assert.equal(await lumiere.lumiereAddress(accountWith({}), 'acc'), 'http://shared-lumiere:8000')
+    assert.equal(await lumiere.lumiereAddress(accountWith({ lumiereDbUrl: 'https://mine.example.com' }), 'acc'), 'https://mine.example.com')
   } finally {
     config.INSTANCE_TYPE = was
     delete process.env.LUMIERE_DB_URL

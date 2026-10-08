@@ -2276,13 +2276,14 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['lumiere', 'lumieredb', 'lumiere db', 'imdb data', 'imdb dataset', 'trending', 'typo search', 'people search without tmdb', 'imdb rating catalog'],
     answer: 'LumiereDB is a small service you run next to SlickSync that downloads IMDb\'s data and answers from it. Put its address in Settings → External API Keys → LumiereDB address, and Discover search forgives typos, Discover gets Trending and IMDb\'s Popular, Smart Catalogs get IMDb\'s ratings, votes and a trending order, people search works without a TMDb key, and history imports match more titles.',
     steps: [
-      'Run the ghcr.io/0xconstant1/lumiere-db image beside SlickSync (about 5 GB of disk), with its /data folder on a volume.',
+      'Run the ghcr.io/0xconstant1/lumiere-db image beside SlickSync (about 5 GB of disk, around 1.2 GB of memory while it builds its index), with its /data folder on a volume - or use the one your AIOMetadata already has.',
       'In Settings → External API Keys, put its address in LumiereDB address - the container\'s name works when both share a Docker network, such as http://lumiere-db:8000.',
       'The badge says Building its index for about ten minutes on the first start, while it downloads IMDb\'s data, then Ready. It checks again by itself.',
     ],
     details: [
       'Leave the address blank and everything works exactly as it does without it.',
-      'IMDb\'s data is for personal, non-commercial use, and IMDb\'s terms don\'t allow running a database of it for other people. So the address belongs to each account: on a shared instance, everyone points SlickSync at their own LumiereDB, and the server\'s own LUMIERE_DB_URL is never used for them.',
+      'IMDb\'s data is for personal, non-commercial use, and IMDb\'s terms don\'t allow running a database of it for other people. So LumiereDB is for self-hosted SlickSync only - a public instance that serves other households doesn\'t offer it. IMDb\'s credit line is in Settings → About.',
+      'Already run LumiereDB for AIOMetadata? Point SlickSync at the same one - one copy serves both.',
       'If you put LumiereDB behind a login, include the user name and password in the address (https://name:password@host). SlickSync turns them into a sign-in and never shows them back.',
       'Its updates are automatic: it checks IMDb hourly and swaps in the new data when it\'s ready. Trending fills in once it has watched IMDb\'s numbers change for a few days.',
     ],

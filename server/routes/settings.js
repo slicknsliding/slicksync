@@ -2158,6 +2158,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     try {
       const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      if (INSTANCE_TYPE === 'public') return res.json({ state: 'off', message: 'LumiereDB is for self-hosted instances', address: '' })
       const { lumiereAddress, lumiereStatus } = require('../utils/lumiere')
       const base = await lumiereAddress(prisma, accountId)
       const status = await lumiereStatus(base, { fresh: req.query.fresh === '1' })

@@ -416,7 +416,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 | `PUBLIC_APP_URL` | The address devices reach this instance on, for SlickTrax, pictures on a server and instant pauses. Normally learned when you open it - only needed when it's only ever opened through some other address | — |
 | `NUVIO_SUPABASE_URL` / `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's backend endpoint (also settable per account in Settings) | `https://api.nuvio.tv` / — |
 | `SIMKL_CLIENT_ID` | Instance-wide SIMKL app registration (each account can bring its own) | — |
-| `LUMIERE_DB_URL` | A [LumiereDB](https://github.com/cedya77/aiometadata/blob/dev/docs/lumiere-db.md) for accounts that haven't set their own in Settings → External API Keys (e.g. `http://lumiere-db:8000`). Ignored in public mode — IMDb's data is for personal use, so each account brings its own | — |
+| `LUMIERE_DB_URL` | A [LumiereDB](https://github.com/cedya77/aiometadata/blob/dev/docs/lumiere-db.md) to use when none is set in Settings → External API Keys (e.g. `http://lumiere-db:8000` — the same one your AIOMetadata uses works). Self-hosted only: public mode doesn't offer LumiereDB, as IMDb's data is for personal use | — |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | Enable "Continue with..." SSO login (all four required) | — |
 | `AUTH_RATE_LIMIT_WINDOW_MS` / `AUTH_RATE_LIMIT_MAX_REQUESTS` | Credential-endpoint rate limit | 20 / 15 min |
 | `POLL_RATE_LIMIT_MAX_REQUESTS` | OAuth device-flow poll limit | 60/min |
@@ -447,6 +447,9 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 - **[iamneur0](https://github.com/iamneur0)** — creator of [Syncio](https://github.com/iamneur0/syncio) (MIT), the engine SlickSync is built on.
 - **[Avangelista](https://github.com/Avangelista)** — Nuvio provider integration concepts (OAuth device-code flow, credential auth).
 - **[Sonicx161](https://github.com/Sonicx161/AIOManager)** — creator of AIOManager, direct inspiration for the Vault feature.
+- **[0xConstant1](https://github.com/0xConstant1)** — creator of LumiereDB; **[cedya77](https://github.com/cedya77/aiometadata)** — creator of AIOMetadata, whose LumiereDB guide SlickSync follows.
+
+Information courtesy of IMDb (https://www.imdb.com). Used with permission. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 See [`README.upstream.md`](./README.upstream.md) for the original project's own README.
 

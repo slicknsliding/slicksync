@@ -45,9 +45,11 @@ import {
   XMarkIcon,
   Squares2X2Icon,
   ArrowTopRightOnSquareIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { LumiereDbField } from '@/components/settings/LumiereDbField';
+import { AboutPanel } from '@/components/settings/AboutPanel';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
 // ('timeZone') - a fairly recent addition (Baseline 2023), not guaranteed
@@ -452,6 +454,7 @@ const SETTINGS_TABS = [
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
   { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
   { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
+  { key: 'about', label: 'About', icon: InformationCircleIcon, blurb: 'Credits and data sources' },
 ] as const;
 type SettingsTab = typeof SETTINGS_TABS[number]['key'];
 
@@ -1361,6 +1364,8 @@ export default function SettingsPage() {
 
 
         {activeTab === 'themes' && <ThemesPanel embedded />}
+
+        {activeTab === 'about' && <AboutPanel lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} />}
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
@@ -2413,12 +2418,13 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* LumiereDB - this account's own IMDb data (utils/lumiere.js). */}
-              <LumiereDbField
+              {/* LumiereDB - IMDb's data, self-hosted (utils/lumiere.js).
+                  Self-hosted instances only: IMDb's data is for personal use. */}
+              {!isPublicInstance && <LumiereDbField
                 value={syncSettings.lumiereDbUrl || ''}
                 onChange={(v) => setSyncSettings((prev) => ({ ...prev, lumiereDbUrl: v }))}
                 onSave={(v) => handleSaveSetting('lumiereDbUrl' as keyof SyncSettings, v)}
-              />
+              />}
 
               {/* SIMKL Client ID - powers the "Link SIMKL" flow on a user's
                   own page (watch-history pull/push). Account-scoped like the

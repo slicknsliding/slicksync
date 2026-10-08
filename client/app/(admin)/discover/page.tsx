@@ -155,8 +155,8 @@ export default function DiscoverPage() {
   // the current type - from TMDb, or from LumiereDB when there's no TMDb key.
   // Null when there's neither, no query, or no person match.
   const [personSearch, setPersonSearch] = useState<{ person: { name: string; profile: string | null } | null; results: PersonSearchResult[]; source?: 'lumiere' } | null>(null);
-  // LumiereDB: Trending, IMDb's Popular and typo-proof search, plus the
-  // credit line IMDb asks for wherever their data shows.
+  // LumiereDB: Trending, IMDb's Popular and typo-proof search (its credit
+  // line lives in Settings -> About).
   const [lumiere, setLumiere] = useState<{ ready: boolean; attribution: string }>({ ready: false, attribution: '' });
   useEffect(() => {
     let cancelled = false;
@@ -1474,9 +1474,6 @@ export default function DiscoverPage() {
             </>
           )}
           </>
-          )}
-          {lumiere.ready && source === 'discover' && lumiere.attribution && (
-            <p className="mt-6 text-center text-[11px] text-subtle">{lumiere.attribution}</p>
           )}
         </PageSection>
         )}
