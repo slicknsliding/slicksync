@@ -76,6 +76,11 @@ export function AboutPanel({ lumiere, shared }: { lumiere: boolean; shared: bool
                 <li>The server&apos;s logs note what SlickSync is doing, such as failed syncs - some lines name a person or a title. Email addresses are left out of them.</li>
               </ul>
               <p>Nothing else is collected, and nothing goes to the SlickSync project. Use a shared instance run by someone you trust.</p>
+              <p>
+                To cut off access at any time, delete your account here (Settings → Security → Delete Account). Then sign
+                SlickSync out from your Stremio, Nuvio or Jellyfin account, or change that account&apos;s password, so its
+                old sign-in stops working.
+              </p>
             </div>
           )}
         </div>
