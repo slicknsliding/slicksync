@@ -25,7 +25,7 @@ export function AboutPanel({ lumiere }: { lumiere: boolean }) {
           </div>
           <div>
             <h3 className="text-base font-semibold font-display text-default">About</h3>
-            <p className="text-xs text-muted">The people and data SlickSync is built on.</p>
+            <p className="text-xs text-muted">Credits, data sources and privacy.</p>
           </div>
         </div>
 
@@ -41,11 +41,27 @@ export function AboutPanel({ lumiere }: { lumiere: boolean }) {
         <h4 className="text-sm font-semibold text-default mb-2">Data</h4>
         <ul className="space-y-1.5 text-sm text-muted">
           {lumiere && (
-            <li>Information courtesy of IMDb (<a className={link} href="https://www.imdb.com" target="_blank" rel="noreferrer">https://www.imdb.com</a>). Used with permission.</li>
+            <li>
+              Titles from LumiereDB come from IMDb&apos;s public datasets, under IMDb&apos;s terms for personal,
+              non-commercial use - which ask for this exact line: &ldquo;Information courtesy of IMDb
+              (<a className={link} href="https://www.imdb.com" target="_blank" rel="noreferrer">https://www.imdb.com</a>). Used with permission.&rdquo;
+            </li>
           )}
           <li>This product uses the TMDB API but is not endorsed or certified by TMDB.</li>
           <li>Titles and posters also come from Cinemeta and, with your own keys, OMDb, MDBList and RPDB.</li>
         </ul>
+
+        <h4 className="text-sm font-semibold text-default mt-5 mb-2">Privacy</h4>
+        <p className="text-sm text-muted">
+          Everything SlickSync keeps - accounts, watch history, keys - stays in this instance&apos;s own database.
+          It has no analytics and sends nothing to its authors. It only talks to the services you connect
+          (Stremio, Nuvio, Jellyfin, TMDB and the rest) and to GitHub, to check for new versions.
+        </p>
+
+        <div className="mt-5 pt-4 border-t border-default text-xs text-subtle space-y-1">
+          <p>© 2025-present slicknsliding. SlickSync is free software under the MIT licence, built on Syncio © 2025 neur0.</p>
+          <p>SlickSync isn&apos;t affiliated with or endorsed by Stremio, Nuvio, Jellyfin, IMDb or TMDB.</p>
+        </div>
       </Card>
     </PageSection>
   );

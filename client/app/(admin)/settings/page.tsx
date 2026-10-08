@@ -454,7 +454,7 @@ const SETTINGS_TABS = [
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
   { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
   { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
-  { key: 'about', label: 'About', icon: InformationCircleIcon, blurb: 'Credits and data sources' },
+  { key: 'about', label: 'About', icon: InformationCircleIcon, blurb: 'Credits, data, privacy' },
 ] as const;
 type SettingsTab = typeof SETTINGS_TABS[number]['key'];
 
