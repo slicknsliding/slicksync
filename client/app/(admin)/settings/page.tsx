@@ -1365,7 +1365,7 @@ export default function SettingsPage() {
 
         {activeTab === 'themes' && <ThemesPanel embedded />}
 
-        {activeTab === 'about' && <AboutPanel lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} />}
+        {activeTab === 'about' && <AboutPanel lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} shared={isPublicInstance} />}
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}

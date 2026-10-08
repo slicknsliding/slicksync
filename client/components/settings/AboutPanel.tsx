@@ -15,7 +15,7 @@ const PEOPLE = [
 ];
 
 /** Settings -> About: who SlickSync is built on, and where its data comes from. */
-export function AboutPanel({ lumiere }: { lumiere: boolean }) {
+export function AboutPanel({ lumiere, shared }: { lumiere: boolean; shared: boolean }) {
   return (
     <PageSection className="mb-6">
       <Card padding="lg">
@@ -52,11 +52,20 @@ export function AboutPanel({ lumiere }: { lumiere: boolean }) {
         </ul>
 
         <h4 className="text-sm font-semibold text-default mt-5 mb-2">Privacy</h4>
-        <p className="text-sm text-muted">
-          Everything SlickSync keeps - accounts, watch history, keys - stays in this instance&apos;s own database.
-          SlickSync collects no data about you or your household, and nothing is sent back to the SlickSync project or its developer. It only talks to the services you connect
-          (Stremio, Nuvio, Jellyfin, TMDB and the rest) and to GitHub, to check for new versions.
-        </p>
+        <div className="space-y-2 text-sm text-muted">
+          <p>
+            Everything SlickSync keeps - accounts, watch history, keys - is stored in this instance&apos;s own database,
+            on the server it runs on. Nothing is sent back to the SlickSync project or its developer. It only talks to
+            the services you connect (Stremio, Nuvio, Jellyfin, TMDB and the rest) and to GitHub, to check for new versions.
+          </p>
+          {shared && (
+            <p>
+              This is a shared instance. Whoever runs it sees a list of the accounts on it: each one&apos;s id, when it
+              was made and last signed in to, and how many people, groups and addons it has. They can switch an
+              account off, delete it, or send every account a notice.
+            </p>
+          )}
+        </div>
 
         <div className="mt-5 pt-4 border-t border-default text-xs text-subtle space-y-1">
           <p>© 2025-present slicknsliding. SlickSync is free software under the MIT licence, built on Syncio © 2025 neur0.</p>
