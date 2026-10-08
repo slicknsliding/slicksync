@@ -59,11 +59,24 @@ export function AboutPanel({ lumiere, shared }: { lumiere: boolean; shared: bool
             the services you connect (Stremio, Nuvio, Jellyfin, TMDB and the rest) and to GitHub, to check for new versions.
           </p>
           {shared && (
-            <p>
-              This is a shared instance. Whoever runs it sees a list of the accounts on it: each one&apos;s id, when it
-              was made and last signed in to, and how many people, groups and addons it has. They can switch an
-              account off, delete it, or send every account a notice.
-            </p>
+            <div className="rounded-xl border border-default p-3 space-y-2">
+              <p className="text-default font-medium">This is a shared instance, run by someone else</p>
+              <p>They run the server, so they can reach what&apos;s stored on it - not only what SlickSync shows them:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  Their admin page lists every account: its id and name, when it was made and last signed in to, and how
+                  many people, groups, addons and records it has. From there they can switch an account off, delete it,
+                  or send every account a notice.
+                </li>
+                <li>
+                  The database holds what you add here: your sign-ins to Stremio, Nuvio and the rest, addons, watch
+                  history, catalogs, settings and keys. Sign-ins and keys are encrypted, but with this server&apos;s own
+                  key, so whoever runs the server could read them.
+                </li>
+                <li>The server&apos;s logs note what SlickSync is doing, such as failed syncs - some lines name a person or a title. Email addresses are left out of them.</li>
+              </ul>
+              <p>Nothing else is collected, and nothing goes to the SlickSync project. Use a shared instance run by someone you trust.</p>
+            </div>
           )}
         </div>
 

@@ -114,7 +114,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       if (userGroups.length === 0) {
         const userAccountId = user.accountId || DEFAULT_ACCOUNT_ID;
-        console.error(`[getPublicUser] User ${user.id} (${user.email}) not found in any active group. User accountId: ${userAccountId}, Total groups checked: ${groups.length}`)
+        console.error(`[getPublicUser] User ${user.id} not found in any active group. User accountId: ${userAccountId}, Total groups checked: ${groups.length}`)
         throw new Error('USER_NOT_IN_GROUP');
       }
 

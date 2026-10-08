@@ -204,7 +204,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
   router.post('/connect', async (req, res) => {
     try {
       const { email, password, username, groupName } = req.body;
-      console.log(`🔍 POST /api/stremio/connect called with:`, { email, username, groupName })
+      console.log('🔍 POST /api/stremio/connect', { hasEmail: !!email, hasUsername: !!username, hasGroup: !!groupName })
       // Redact any sensitive fields from logs
       try {
         const { password: _pw, authKey: _ak, ...rest } = (req.body || {})

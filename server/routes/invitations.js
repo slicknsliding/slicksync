@@ -1042,7 +1042,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         const { StremioAPIClient } = require('stremio-api-client')
         // Use the authKey from OAuth (current valid session) to clear addons
         // The authKey from OAuth is already plain text, no decryption needed
-        console.log(`🔄 Attempting to clear Stremio addons for email: ${stremioEmail}`)
+        console.log('🔄 Attempting to clear Stremio addons for an opted-out user')
         const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKey })
 
         // Clear all addons
@@ -1054,7 +1054,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         const remainingAddons = verifyResult?.addons || []
         if (Array.isArray(remainingAddons) && remainingAddons.length === 0) {
           addonsCleared = true
-          console.log(`✅ Successfully cleared Stremio addons for email: ${stremioEmail}`)
+          console.log('✅ Cleared Stremio addons for an opted-out user')
         } else {
           console.warn(`⚠️  Addons may not have been fully cleared. Remaining: ${remainingAddons.length}`)
         }
@@ -1090,7 +1090,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       const { deleteUserCascade } = require('../utils/accountDeletion')
       for (const user of users) {
         await deleteUserCascade(prisma, user.id)
-        console.log(`✅ Deleted user via opt-out: ${user.email} (${user.id})`)
+        console.log(`✅ Deleted user via opt-out: ${user.id}`)
       }
 
       res.setHeader('Content-Type', 'application/json')

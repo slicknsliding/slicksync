@@ -4831,7 +4831,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             }
           } catch (error) {
             errors.push(`${user.username || user.email}: ${error.message}`)
-            console.error(`❌ Error syncing user ${user.username || user.email}:`, error)
+            console.error(`❌ Error syncing user ${user.id}:`, error)
           }
         }
       }
