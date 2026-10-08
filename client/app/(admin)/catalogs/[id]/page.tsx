@@ -21,6 +21,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry, SmartCatalogRule } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
+import { SmartRuleForm } from '@/components/catalogs/SmartRuleForm';
 import { encodeCatalogShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog } from '@/components/ui/ShareCodeDialog';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -350,6 +351,15 @@ export default function ListDetailPage() {
   const [smartOpen, setSmartOpen] = useState(false);
   const [smartSaving, setSmartSaving] = useState(false);
   const [smartDraft, setSmartDraft] = useState<Partial<SmartCatalogRule>>({});
+  // LumiereDB changes what the rule can do (IMDb ratings, Trending) - read
+  // when the editor opens.
+  const [lumiereReady, setLumiereReady] = useState(false);
+  useEffect(() => {
+    if (!smartOpen) return;
+    let cancelled = false;
+    api.getDiscoverLumiere().then((r) => { if (!cancelled) setLumiereReady(r.ready); });
+    return () => { cancelled = true; };
+  }, [smartOpen]);
   useEffect(() => {
     if (!smartOpen) return;
     try {
@@ -1535,53 +1545,14 @@ export default function ListDetailPage() {
         )}
       </Modal>
 
-      <Modal isOpen={smartOpen} onClose={() => setSmartOpen(false)} title="Smart rule" size="sm">
+      <Modal isOpen={smartOpen} onClose={() => setSmartOpen(false)} title="Smart rule" size="md">
         <div className="space-y-4">
           <p className="text-xs text-muted">
             A Smart Catalog keeps its criteria instead of a fixed list, and re-evaluates them daily. Leave a field
             blank to not filter on it.
           </p>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">Type</label>
-              <select
-                value={smartDraft.type || ''}
-                onChange={(e) => setSmartDraft((d) => ({ ...d, type: (e.target.value || null) as 'movie' | 'series' | null }))}
-                className="input-base w-full px-3 py-2 text-sm"
-              >
-                <option value="">Movies and series</option>
-                <option value="movie">Movies only</option>
-                <option value="series">Series only</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">Genres <span className="text-subtle">(comma separated)</span></label>
-              <input
-                type="text"
-                defaultValue={(smartDraft.genres || []).join(', ')}
-                onBlur={(e) => setSmartDraft((d) => ({ ...d, genres: e.target.value.split(',').map((g) => g.trim()).filter(Boolean) }))}
-                placeholder="Horror, Thriller"
-                className="input-base w-full px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">From year</label>
-              <input type="number" defaultValue={smartDraft.yearFrom ?? ''} onBlur={(e) => setSmartDraft((d) => ({ ...d, yearFrom: e.target.value ? Number(e.target.value) : null }))} className="input-base w-full px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">To year</label>
-              <input type="number" defaultValue={smartDraft.yearTo ?? ''} onBlur={(e) => setSmartDraft((d) => ({ ...d, yearTo: e.target.value ? Number(e.target.value) : null }))} className="input-base w-full px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">Minimum rating</label>
-              <input type="number" step="0.5" min="0" max="10" defaultValue={smartDraft.minRating ?? ''} onBlur={(e) => setSmartDraft((d) => ({ ...d, minRating: e.target.value ? Number(e.target.value) : null }))} className="input-base w-full px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">How many titles</label>
-              <input type="number" min="5" max="100" defaultValue={smartDraft.limit ?? 40} onBlur={(e) => setSmartDraft((d) => ({ ...d, limit: Number(e.target.value) || 40 }))} className="input-base w-full px-3 py-2 text-sm" />
-            </div>
-          </div>
+          <SmartRuleForm draft={smartDraft} setDraft={setSmartDraft} lumiereReady={lumiereReady} />
 
           <label className="flex items-start gap-2 text-xs text-muted cursor-pointer">
             <input
@@ -1590,12 +1561,14 @@ export default function ListDetailPage() {
               onChange={(e) => setSmartDraft((d) => ({ ...d, unwatchedOnly: e.target.checked }))}
               className="mt-0.5"
             />
-            <span>Only titles nobody in the household has watched. This one is applied by SlickSync against your own history - TMDb cannot answer it.</span>
+            <span>Only titles nobody in the household has watched. Answered from your own history{lumiereReady ? ', and left out before counting, so the catalog still fills up' : ''}.</span>
           </label>
 
           <p className="text-[11px] text-subtle">
-            Needs a TMDb key. If the rule ever cannot be evaluated, the catalog keeps the titles it already has
-            rather than being emptied.
+            {lumiereReady
+              ? 'Uses your LumiereDB (IMDb’s data) - or TMDb, for a rule about keywords.'
+              : 'Needs a TMDb key, or a LumiereDB address in Settings → External API Keys.'}{' '}
+            If the rule ever cannot be evaluated, the catalog keeps the titles it already has rather than being emptied.
           </p>
 
           <div className="flex justify-between gap-2 pt-1">

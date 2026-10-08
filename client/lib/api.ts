@@ -1871,6 +1871,11 @@ class ApiClient {
 
   /** No argument checks all four keys; a provider name checks just that one
    * (the save-time verification for a single edited field). */
+  /** Whether this account's LumiereDB is up - `fresh` skips the minute-long cache. */
+  async getLumiereStatus(fresh = false) {
+    return this.fetch<LumiereStatus>(`/settings/lumiere-status${fresh ? '?fresh=1' : ''}`);
+  }
+
   async checkProviderKeys(provider?: 'tmdb' | 'omdb' | 'mdblist' | 'rpdb'): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
     const res = await this.fetch<{ data?: { keyHealth: SyncSettings['keyHealth'] } } & Partial<{ keyHealth: SyncSettings['keyHealth'] }>>(
       '/settings/check-keys',
@@ -3252,7 +3257,7 @@ class ApiClient {
   // the feature. Results carry tmdbId/mediaType for click-through resolution.
   async searchPerson(query: string, type: 'movie' | 'series') {
     try {
-      return await this.fetch<{ person: { id: number; name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> }>(`/discover/search-person?query=${encodeURIComponent(query)}&type=${type}`);
+      return await this.fetch<{ person: { id: number | null; name: string; profile: string | null } | null; results: PersonSearchResult[]; source?: 'lumiere' }>(`/discover/search-person?query=${encodeURIComponent(query)}&type=${type}`);
     } catch {
       return null;
     }
@@ -3427,6 +3432,15 @@ class ApiClient {
   }
 
   // Discover - browse/search Cinemeta's real catalogs (Popular/New/Featured).
+  /** Whether Discover has a LumiereDB to use, and IMDb's credit line for it. */
+  async getDiscoverLumiere() {
+    try {
+      return await this.fetch<{ ready: boolean; attribution: string }>('/discover/lumiere');
+    } catch {
+      return { ready: false, attribution: '' };
+    }
+  }
+
   async discoverBrowse(type: 'movie' | 'series', options?: { catalog?: string; genre?: string; skip?: number }) {
     const params = new URLSearchParams({ type });
     if (options?.catalog) params.set('catalog', options.catalog);
@@ -4228,6 +4242,8 @@ export interface SyncSettings {
   nuvioServerUrl?: string;
   /** Anon key for that backend. Only takes effect alongside nuvioServerUrl. */
   nuvioAnonKey?: string;
+  /** This account's own LumiereDB (Settings -> External API Keys). */
+  lumiereDbUrl?: string;
 }
 
 export interface ThemePref {
@@ -4348,6 +4364,11 @@ export interface DescribedCatalogPreview {
   // leaving a configured-looking key silently unused with no explanation.
   aiError: string | null;
   mediaType: 'movie' | 'tv';
+  /** What was understood, in words ("Crime, movies, directed by Martin Scorsese"). */
+  summary?: string;
+  engine?: 'lumiere' | 'tmdb';
+  /** Parts of the request this search couldn't use ('keywords' with LumiereDB alone). */
+  ignored?: string[];
 }
 
 export interface CatalogSuggestion {
@@ -4580,14 +4601,47 @@ export interface SeriesSeason {
 export interface SmartCatalogRule {
   type: 'movie' | 'series' | null;
   genres: string[];
+  /** Genres it must not have ("comedy but not romance"). */
+  excludeGenres?: string[];
   yearFrom: number | null;
   yearTo: number | null;
+  minRuntimeMinutes?: number | null;
   maxRuntimeMinutes: number | null;
   keywords: string[];
   minRating: number | null;
+  /** Votes on IMDb's scale - keeps a 9.8 with twelve votes out. */
+  minVotes?: number | null;
+  sort?: SmartCatalogSort | null;
+  /** Series only. */
+  seriesStatus?: 'airing' | 'ended' | null;
+  lastAiredFrom?: number | null;
+  /** Actors by name; castMatch says whether all must be in it or any. */
+  cast?: string[];
+  castMatch?: 'all' | 'any';
+  directors?: string[];
   /** Excludes anything anyone in the household has already watched. */
   unwatchedOnly: boolean;
   limit: number;
+}
+
+export type SmartCatalogSort = 'popular' | 'trending' | 'top_rated' | 'votes' | 'newest' | 'oldest';
+
+export interface LumiereStatus {
+  state: 'off' | 'ready' | 'building' | 'unreachable' | 'login' | 'wrong';
+  message: string;
+  /** The address in use, without any user name or password. */
+  address: string;
+}
+
+export interface PersonSearchResult {
+  /** null when the result came from LumiereDB, which gives the IMDb id instead. */
+  tmdbId: number | null;
+  imdbId?: string;
+  mediaType: 'movie' | 'tv';
+  title: string;
+  year: string | null;
+  poster: string | null;
+  role: string | null;
 }
 
 export interface FollowedSubject {
@@ -4709,6 +4763,8 @@ export interface HealthStatus {
   // Settings field, so there's nothing real to report for a given tenant.
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean; healthIgnored: boolean } | null;
   /** Jellyfin, AIOStreams and AIOMetadata servers, from each person's last read (server/utils/serverStatus.js). */
+  /** The account's LumiereDB, when one is set. */
+  lumiere?: (LumiereStatus & { address: string }) | null;
   servers?: Array<{
     key: string;
     kind: 'jellyfin' | 'aiostreams' | 'aiometadata';

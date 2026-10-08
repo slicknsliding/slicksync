@@ -57,15 +57,42 @@ async function fetchOut(url, options = {}) {
 module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
   const router = express.Router();
 
-  // GET /api/discover/browse?type=movie|series&catalog=top|year|imdbRating&genre=X&skip=N
+  // The account's LumiereDB, when one is set and ready - '' otherwise.
+  const lumiereFor = (req) => require('../utils/lumiere').readyLumiere(prisma, (getAccountId && getAccountId(req)) || 'default').catch(() => '')
+
+  // GET /api/discover/lumiere - whether Discover has LumiereDB to offer
+  // (Trending, IMDb's Popular, typo-proof search), and the credit line
+  // IMDb's terms ask for wherever their data is shown.
+  router.get('/lumiere', async (req, res) => {
+    const { ATTRIBUTION } = require('../utils/lumiere')
+    res.json({ ready: !!(await lumiereFor(req)), attribution: ATTRIBUTION })
+  })
+
+  // GET /api/discover/browse?type=movie|series&catalog=top|trending|year|imdbRating&genre=X&skip=N
   router.get('/browse', async (req, res) => {
     try {
       const { type = 'movie', catalog = 'top', genre, skip } = req.query
       if (type !== 'movie' && type !== 'series') {
         return res.status(400).json({ error: 'type must be movie or series' })
       }
+      // Popular and Trending come from IMDb's own numbers when there's a
+      // LumiereDB: Popular 500 deep, Trending 100, both leaving out titles
+      // few people have voted on. Paged here, as Cinemeta's are.
+      if (catalog === 'top' || catalog === 'trending') {
+        const base = await lumiereFor(req)
+        if (base) {
+          try {
+            const lumiere = require('../utils/lumiere')
+            const all = await lumiere.listIds(base, catalog === 'trending' ? 'trending' : 'popular', type, genre ? lumiere.genreSlug(genre) : '')
+            const from = Math.max(0, Number(skip) || 0)
+            return res.json(all.slice(from, from + 100))
+          } catch (e) {
+            console.warn('[Discover] LumiereDB list failed, using Cinemeta:', e?.message || e)
+          }
+        }
+      }
       const items = await fetchCatalog(type, {
-        catalog,
+        catalog: catalog === 'trending' ? 'top' : catalog,
         genre: genre || undefined,
         skip: skip ? Number(skip) : undefined
       })
@@ -87,6 +114,19 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       }
       if (!query || !query.trim()) {
         return res.json([])
+      }
+      // LumiereDB reads what was meant: typos ("intersteller"), words run
+      // together ("spiderman"), a sequel number or a year on the end, a
+      // nickname ("lotr") and the title in another language. Cinemeta's
+      // search only matches what's typed.
+      const base = await lumiereFor(req)
+      if (base) {
+        try {
+          const found = await require('../utils/lumiere').searchTitles(base, type, query, { limit: 40 })
+          if (found.length > 0) return res.json(found)
+        } catch (e) {
+          console.warn('[Discover] LumiereDB search failed, using Cinemeta:', e?.message || e)
+        }
       }
       const items = await fetchCatalog(type, { catalog: 'top', search: query.trim() })
       res.json(items)
@@ -1157,10 +1197,31 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
   router.get('/search-person', async (req, res) => {
     try {
       const key = await resolveTmdbKey(req)
-      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
       const query = String(req.query.query || '').trim()
       const wantTv = req.query.type === 'series'
       if (!query) return res.json({ person: null, results: [] })
+
+      // Without a TMDb key, LumiereDB answers: a full name, and the titles
+      // that person is best known for, already carrying their IMDb ids.
+      if (!key) {
+        const base = await lumiereFor(req)
+        if (!base) return res.status(503).json({ error: 'TMDb key not configured' })
+        const found = await require('../utils/lumiere').searchPeople(base, wantTv ? 'series' : 'movie', query)
+        if (!found) return res.json({ person: null, results: [] })
+        return res.json({
+          person: { id: null, name: found.person.name, profile: null },
+          results: found.items.map((i) => ({
+            tmdbId: null,
+            imdbId: i.id,
+            mediaType: wantTv ? 'tv' : 'movie',
+            title: i.name,
+            year: i.year ? String(i.year) : null,
+            poster: i.poster,
+            role: i.roles?.length ? i.roles.join(', ') : null,
+          })),
+          source: 'lumiere',
+        })
+      }
 
       const sr = await fetchOut(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}`)
       if (!sr.ok) return res.status(502).json({ error: 'TMDb request failed' })

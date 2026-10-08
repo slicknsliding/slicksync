@@ -784,7 +784,9 @@ function DescribeCatalogModal({
   };
 
   const queryParts: string[] = [];
-  if (preview) {
+  if (preview?.summary) {
+    queryParts.push(preview.summary);
+  } else if (preview) {
     if (preview.query.genres.length) queryParts.push(preview.query.genres.join('/'));
     if (preview.query.yearFrom && preview.query.yearTo && preview.query.yearFrom !== preview.query.yearTo) {
       queryParts.push(`${preview.query.yearFrom}-${preview.query.yearTo}`);
@@ -810,7 +812,7 @@ function DescribeCatalogModal({
             className="w-full px-4 py-3 rounded-xl focus:outline-none resize-none"
             style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
           />
-          <p className="text-xs text-muted mt-1.5">Genre, decade, runtime, movie or series - whatever you mention gets used. Already-watched titles are always excluded.</p>
+          <p className="text-xs text-muted mt-1.5">Genre, decade, runtime, actors, directors, movie or series - whatever you mention gets used. Already-watched titles are always excluded.</p>
         </div>
 
         {!preview && (

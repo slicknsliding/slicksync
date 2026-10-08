@@ -6,7 +6,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, DropdownSelect } from '@/components/ui';
-import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime } from '@/lib/api';
+import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime, PersonSearchResult } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
@@ -17,12 +17,20 @@ import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 // Only "top" (Popular) supports search per Cinemeta's own manifest - "year"
 // and "imdbRating" only support genre/skip. Browse-mode catalog picker is
 // hidden entirely once a search is active, since it wouldn't apply anyway.
 const CATALOGS = [
   { key: 'top', label: 'Popular' },
+  { key: 'year', label: 'New' },
+  { key: 'imdbRating', label: 'Top Rated' },
+];
+// With a LumiereDB, Popular and Trending come from IMDb's own numbers.
+const LUMIERE_CATALOGS = [
+  { key: 'top', label: 'Popular' },
+  { key: 'trending', label: 'Trending' },
   { key: 'year', label: 'New' },
   { key: 'imdbRating', label: 'Top Rated' },
 ];
@@ -143,10 +151,19 @@ export default function DiscoverPage() {
   // also what PosterCard's onOpenDetails hands back (see its own comment on
   // why it doesn't carry the full DiscoverItem shape).
   const [detailItem, setDetailItem] = useState<PosterCardItem | null>(null);
-  // Person search (TMDb): typing an actor/director's name surfaces their
-  // titles of the current type. Null when there's no key, no query, or no
-  // person match.
-  const [personSearch, setPersonSearch] = useState<{ person: { name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> } | null>(null);
+  // Person search: typing an actor/director's name surfaces their titles of
+  // the current type - from TMDb, or from LumiereDB when there's no TMDb key.
+  // Null when there's neither, no query, or no person match.
+  const [personSearch, setPersonSearch] = useState<{ person: { name: string; profile: string | null } | null; results: PersonSearchResult[]; source?: 'lumiere' } | null>(null);
+  // LumiereDB: Trending, IMDb's Popular and typo-proof search, plus the
+  // credit line IMDb asks for wherever their data shows.
+  const [lumiere, setLumiere] = useState<{ ready: boolean; attribution: string }>({ ready: false, attribution: '' });
+  useEffect(() => {
+    let cancelled = false;
+    api.getDiscoverLumiere().then((r) => { if (!cancelled) setLumiere(r); });
+    return () => { cancelled = true; };
+  }, []);
+  const catalogs = lumiere.ready ? LUMIERE_CATALOGS : CATALOGS;
   // Titles vs People search mode. These used to run in parallel and render
   // together (a person's filmography row ABOVE the normal title-search grid)
   // - for a query that also loosely matched unrelated title names, that read
@@ -464,7 +481,13 @@ export default function DiscoverPage() {
 
   // Open a person-search result: TMDb titles have no tt id, so resolve the
   // IMDb id first, then open the normal Cinemeta-backed detail modal.
-  const openPersonResult = useCallback(async (r: { tmdbId: number; mediaType: 'movie' | 'tv'; title: string; poster: string | null }) => {
+  // LumiereDB's already carry theirs.
+  const openPersonResult = useCallback(async (r: PersonSearchResult) => {
+    if (r.imdbId) {
+      setDetailItem({ id: r.imdbId, type: r.mediaType === 'tv' ? 'series' : 'movie', name: r.title, poster: r.poster } as PosterCardItem);
+      return;
+    }
+    if (r.tmdbId == null) return;
     const res = await api.resolveImdbId(r.tmdbId, r.mediaType);
     if (res?.imdbId) {
       setDetailItem({ id: res.imdbId, type: res.type, name: r.title, poster: r.poster } as PosterCardItem);
@@ -829,7 +852,7 @@ export default function DiscoverPage() {
               <h3 className="text-base font-semibold font-display text-default">🌸 Airing this season</h3>
               <span className="text-xs text-muted">Anime currently airing, newest episodes first</span>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+            <ScrollRow className="flex gap-3 pb-2 -mx-1 px-1">
               {seasonalAnime.map((a) => (
                 <button
                   key={a.anilistId}
@@ -857,7 +880,7 @@ export default function DiscoverPage() {
                   </p>
                 </button>
               ))}
-            </div>
+            </ScrollRow>
           </PageSection>
         )}
 
@@ -866,7 +889,7 @@ export default function DiscoverPage() {
             <div className="flex items-baseline gap-2 mb-3 flex-wrap">
               <h3 className="text-base font-semibold font-display text-default">🔥 Trending on SIMKL</h3>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+            <ScrollRow className="flex gap-3 pb-2 -mx-1 px-1">
               {simklTrending.map((item) => (
                 <div key={item.id} className="w-32 sm:w-36 shrink-0">
                   <PosterCard
@@ -888,7 +911,7 @@ export default function DiscoverPage() {
                   />
                 </div>
               ))}
-            </div>
+            </ScrollRow>
           </PageSection>
         )}
 
@@ -899,7 +922,7 @@ export default function DiscoverPage() {
                 secondary refinement sitting immediately after it. On a
                 narrow screen the dropdown wraps below thanks to flex-wrap. */}
             <div className="flex gap-2 flex-wrap items-center">
-              {CATALOGS.map((c) => {
+              {catalogs.map((c) => {
                 const btn = (
                   <button
                     type="button"
@@ -1345,13 +1368,13 @@ export default function DiscoverPage() {
                     )}
                     <h3 className="text-base font-semibold font-display text-default">
                       {personSearch.person.name}
-                      <span className="text-muted font-normal"> — {type === 'series' ? 'series' : 'movies'} they&apos;re in</span>
+                      <span className="text-muted font-normal"> — {type === 'series' ? 'series' : 'movies'} they&apos;re {personSearch.source === 'lumiere' ? 'best known for' : 'in'}</span>
                     </h3>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
                     {sortedPersonResults.map((r) => (
                       <button
-                        key={`${r.mediaType}-${r.tmdbId}`}
+                        key={`${r.mediaType}-${r.tmdbId ?? r.imdbId}`}
                         type="button"
                         onClick={() => openPersonResult(r)}
                         title={`${r.title}${r.role ? ` · ${r.role}` : ''}`}
@@ -1438,7 +1461,11 @@ export default function DiscoverPage() {
                     </div>
                   )}
                   {!hasMore && displayedItems.length >= PAGE_SIZE && (
-                    <p className="text-xs text-muted">That&apos;s everything Cinemeta has for this catalog{genre ? ` in ${genre}` : ''}.</p>
+                    <p className="text-xs text-muted">
+                      {lumiere.ready && (catalog === 'top' || catalog === 'trending')
+                        ? `That's all of IMDb's ${catalog === 'trending' ? 'Trending' : 'Popular'} list${genre ? ` in ${genre}` : ''}.`
+                        : `That's everything Cinemeta has for this catalog${genre ? ` in ${genre}` : ''}.`}
+                    </p>
                   )}
                   {/* The observer target — a zero-height marker. */}
                   <div ref={sentinelRef} aria-hidden className="h-px w-full" />
@@ -1447,6 +1474,9 @@ export default function DiscoverPage() {
             </>
           )}
           </>
+          )}
+          {lumiere.ready && source === 'discover' && lumiere.attribution && (
+            <p className="mt-6 text-center text-[11px] text-subtle">{lumiere.attribution}</p>
           )}
         </PageSection>
         )}

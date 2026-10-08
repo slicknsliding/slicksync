@@ -637,6 +637,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
       const colMap = mapColumns(headers)
       const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId).catch(() => null)
+      const lumiereBase = await require('../utils/lumiere').readyLumiere(prisma, accountId).catch(() => '')
 
       // Capped so one enormous export (a decade of Letterboxd diary
       // entries) can't turn a single request into thousands of sequential
@@ -672,7 +673,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           skippedNonMovie++
           continue
         }
-        const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey)
+        const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey, lumiereBase)
         if (!resolved) {
           skipped++
           if (colMap.title && row[colMap.title]) unresolved.push(row[colMap.title])

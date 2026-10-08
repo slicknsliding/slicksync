@@ -8,6 +8,7 @@ import { SparklesIcon, FilmIcon, TvIcon, TrophyIcon, ArrowPathIcon, ArrowDownTra
 import { api, YearInReview, YearInReviewTitle } from '@/lib/api';
 import { renderWrappedCard, downloadBlob } from '@/lib/wrappedCard';
 import { toast } from '@/components/ui/Toast';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 // Year in Review (roadmap #8): a "Wrapped"-style yearly summary card for the
 // Metrics page. Read-only - it just visualizes what the metrics tables already
@@ -38,7 +39,7 @@ function TitleStrip({ titles, onOpen, badge }: {
   badge: (t: YearInReviewTitle) => string;
 }) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
+    <ScrollRow className="flex gap-2 pb-1">
       {titles.map((t) => (
         <button key={t.id} type="button" onClick={() => onOpen(t)} className="flex-shrink-0 w-16 text-left">
           <div className="w-16 h-24 rounded-md overflow-hidden bg-surface-hover flex items-center justify-center">
@@ -52,7 +53,7 @@ function TitleStrip({ titles, onOpen, badge }: {
           <p className="text-[10px] text-muted truncate mt-0.5">{badge(t)}</p>
         </button>
       ))}
-    </div>
+    </ScrollRow>
   );
 }
 

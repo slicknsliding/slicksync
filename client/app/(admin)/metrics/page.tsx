@@ -36,6 +36,7 @@ import {
   PlayIcon,
   ExclamationTriangleIcon,
   ServerIcon,
+  CircleStackIcon,
   PuzzlePieceIcon,
   HeartIcon,
   CheckCircleIcon,
@@ -60,6 +61,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 // Period options for filtering
 const PERIOD_OPTIONS = [
@@ -720,7 +722,7 @@ export default function MetricsPage() {
                           )}
 
                           {p.topTitles.length > 0 && (
-                            <div className="flex gap-2 overflow-x-auto pb-1">
+                            <ScrollRow className="flex gap-2 pb-1">
                               {p.topTitles.map((t) => (
                                 <div key={t.key} title={t.name} className="w-14 shrink-0">
                                   <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface border border-default">
@@ -729,7 +731,7 @@ export default function MetricsPage() {
                                   <p className="text-[10px] text-muted mt-1 truncate">{t.name}</p>
                                 </div>
                               ))}
-                            </div>
+                            </ScrollRow>
                           )}
 
                           {p.tasteTwin && (
@@ -771,7 +773,7 @@ export default function MetricsPage() {
                           <span className="text-sm font-medium text-default truncate">{pair.userB.username}</span>
                           <UserAvatar userId={pair.userB.id} name={pair.userB.username} email={pair.userB.email} src={pair.userB.useGravatar ? undefined : (pair.userB.avatarUrl ?? undefined)} size="sm" />
                         </div>
-                        <div className="flex gap-2 overflow-x-auto pb-1">
+                        <ScrollRow className="flex gap-2 pb-1">
                           {pair.shared.map((item) => (
                             <div key={item.key} title={item.name || undefined} className="w-16 shrink-0">
                               <div className="w-16 h-24 rounded-lg overflow-hidden bg-surface border border-default">
@@ -782,7 +784,7 @@ export default function MetricsPage() {
                               <p className="text-xs text-muted mt-1 truncate">{item.name}</p>
                             </div>
                           ))}
-                        </div>
+                        </ScrollRow>
                       </div>
                     ))}
                   </div>
@@ -1359,6 +1361,32 @@ export default function MetricsPage() {
                           </Badge>
                         </div>
                       ))}
+                    </div>
+                  </HealthCheckCard>
+                  </div>
+                  )}
+
+                  {/* The account's LumiereDB (IMDb's data, self-hosted). */}
+                  {healthData.lumiere && (
+                  <div className="mb-4 break-inside-avoid-column">
+                  <HealthCheckCard
+                    icon={<CircleStackIcon className="w-5 h-5" />}
+                    title="LumiereDB"
+                    ok={healthData.lumiere.state === 'ready' ? true : healthData.lumiere.state === 'building' ? null : false}
+                    summary={healthData.lumiere.state === 'ready' ? 'Ready' : healthData.lumiere.state === 'building' ? 'Building its index' : 'Not answering'}
+                  >
+                    <div className="flex items-start justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <p className="text-sm text-default truncate">{healthData.lumiere.address}</p>
+                        <p className="text-subtle">
+                          {healthData.lumiere.state === 'ready'
+                            ? 'Discover search, Trending and Smart Catalogs are answered from IMDb’s data.'
+                            : healthData.lumiere.message}
+                        </p>
+                      </div>
+                      <Badge variant={healthData.lumiere.state === 'ready' ? 'success' : healthData.lumiere.state === 'building' ? 'warning' : 'error'} size="sm" className="flex-shrink-0">
+                        {healthData.lumiere.state === 'ready' ? 'Up' : healthData.lumiere.state === 'building' ? 'Building' : 'Down'}
+                      </Badge>
                     </div>
                   </HealthCheckCard>
                   </div>

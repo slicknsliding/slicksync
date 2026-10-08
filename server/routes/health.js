@@ -95,6 +95,22 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
         console.warn('[Health] server status failed:', e.message);
       }
 
+      // The account's LumiereDB, when one is set: up, building its index,
+      // or not answering. One cached check (a minute), same as Settings'.
+      let lumiere = null;
+      try {
+        const { lumiereAddress, lumiereStatus } = require('../utils/lumiere');
+        const base = await lumiereAddress(prisma, accountId);
+        if (base) {
+          const status = await lumiereStatus(base);
+          let address = '';
+          try { const u = new URL(base); u.username = ''; u.password = ''; address = u.host + (u.pathname === '/' ? '' : u.pathname); } catch {}
+          lumiere = { ...status, address };
+        }
+      } catch (e) {
+        console.warn('[Health] LumiereDB status failed:', e.message);
+      }
+
       const timeline = [
         ...addonEvents.map((e) => ({
           id: e.id,
@@ -186,7 +202,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
       const overall =
         addonsOffline.length === 0 && vaultFailing.length === 0 && driftVisible.length === 0 &&
         (!proxy || proxy.ok !== false || proxy.healthIgnored) &&
-        servers.every((s) => s.status === 'up')
+        servers.every((s) => s.status === 'up') &&
+        (!lumiere || lumiere.state === 'ready' || lumiere.state === 'building')
           ? 'healthy'
           : 'attention';
 
@@ -224,6 +241,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
         },
         proxy,
         servers,
+        lumiere,
         mismatchCount,
         version,
         timeline,

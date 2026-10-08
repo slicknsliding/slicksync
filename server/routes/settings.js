@@ -8,6 +8,11 @@ const { postDiscord } = require('../utils/notify')
 const { DEFAULT_TIMEZONE } = require('../utils/dateUtils')
 const { normalizeOmdbApiKey } = require('../utils/omdb')
 
+// A LumiereDB address as typed or pasted -> just the server's base.
+function normalizeLumiere(raw) {
+  return require('../utils/lumiere').normalizeAddress(typeof raw === 'string' ? raw : '')
+}
+
 module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }) => {
   const router = express.Router();
 
@@ -1009,6 +1014,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           ownAddress,
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
+          lumiereDbUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.lumiereDbUrl === 'string') ? syncCfg.lumiereDbUrl : '',
           // Was only in the OTHER branch's response below, so private-mode
           // instances (which take this path) always showed "Not checked yet"
           // on load even while the daily check was storing results the whole
@@ -1101,6 +1107,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           ownAddress,
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
+          lumiereDbUrl: typeof syncCfg.lumiereDbUrl === 'string' ? syncCfg.lumiereDbUrl : '',
         }
         return res.json(resp)
       }
@@ -1112,7 +1119,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnConnectionHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, publicBaseUrl, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnConnectionHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, publicBaseUrl, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey, lumiereDbUrl } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -1222,6 +1229,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           publicBaseUrl: publicBaseUrl !== undefined ? (typeof publicBaseUrl === 'string' ? publicBaseUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.publicBaseUrl || ''),
           nuvioServerUrl: nuvioServerUrl !== undefined ? (typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.nuvioServerUrl || ''),
           nuvioAnonKey: nuvioAnonKey !== undefined ? (typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : '') : (baseCfg.nuvioAnonKey || ''),
+          // The account's own LumiereDB (utils/lumiere.js), saved as just the
+          // server's address whatever was pasted.
+          lumiereDbUrl: lumiereDbUrl !== undefined ? normalizeLumiere(lumiereDbUrl) : (baseCfg.lumiereDbUrl || ''),
           // Drop this provider's stored health-check result the moment ITS
           // key is the one being blanked out in this save (not on every
           // save - `!== undefined` is only true for the single field this
@@ -1338,6 +1348,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       // downstream regardless of how it was typed.
       if (nuvioServerUrl !== undefined) partial.nuvioServerUrl = typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : ''
       if (nuvioAnonKey !== undefined) partial.nuvioAnonKey = typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : ''
+      if (lumiereDbUrl !== undefined) partial.lumiereDbUrl = normalizeLumiere(lumiereDbUrl)
 
       const nextCfg = { ...base, ...partial }
 
@@ -2138,6 +2149,24 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       return res.json(await repairHistory(prisma, accountId, kinds))
     } catch (e) {
       return res.status(500).json({ error: e?.message || 'History repair failed' })
+    }
+  })
+
+  // GET /settings/lumiere-status - whether this account's LumiereDB is up:
+  // ready, still building its index, can't be reached, or not LumiereDB.
+  router.get('/lumiere-status', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { lumiereAddress, lumiereStatus } = require('../utils/lumiere')
+      const base = await lumiereAddress(prisma, accountId)
+      const status = await lumiereStatus(base, { fresh: req.query.fresh === '1' })
+      // Never echo a user name and password someone put in the address.
+      let shown = ''
+      try { if (base) { const u = new URL(base); u.username = ''; u.password = ''; shown = u.toString().replace(/\/+$/, '') } } catch {}
+      return res.json({ ...status, address: shown })
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'Could not check LumiereDB' })
     }
   })
 

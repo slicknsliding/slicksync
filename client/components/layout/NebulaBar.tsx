@@ -15,6 +15,7 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 // Matches Sidebar.tsx's isItemActive exactly - a sub-route (e.g.
 // /catalogs/[id] or /catalogs/nuvio-collections) should keep its parent nav
@@ -299,9 +300,9 @@ export function NebulaBar({
             // falls back to start-alignment when it overflows, so every
             // item stays reachable by swiping right - see that rule's own
             // comment for why this can't be a Tailwind justify-* class.
-            <div
+            <ScrollRow
               key={section.id}
-              className={isTV ? 'flex flex-nowrap items-center gap-1.5 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row' : 'flex flex-nowrap items-center gap-2 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row'}
+              className={isTV ? 'flex flex-nowrap items-center gap-1.5 w-full px-1 -mx-1 nebula-nav-row' : 'flex flex-nowrap items-center gap-2 w-full px-1 -mx-1 nebula-nav-row'}
             >
               {section.items.map((link) => {
                 const isActive = isNavItemActive(pathname, link.href, homeHref);
@@ -357,7 +358,7 @@ export function NebulaBar({
                   <Fragment key={`${link.href}-${pathname}`}>{navLink}</Fragment>
                 );
               })}
-            </div>
+            </ScrollRow>
           ))}
                 </motion.nav>
               )}

@@ -16,6 +16,7 @@ export function useDragScroll() {
   const startXRef = useRef(0);
   const startScrollRef = useRef(0);
   const capturedRef = useRef(false);
+  const justDraggedRef = useRef(false);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || e.button !== 0 || !ref.current) return;
@@ -41,12 +42,22 @@ export function useDragScroll() {
     if (capturedRef.current && ref.current) {
       try { ref.current.releasePointerCapture(e.pointerId); } catch {}
       capturedRef.current = false;
+      // The release after a drag must not also press whatever tab or card it
+      // ended over.
+      justDraggedRef.current = true;
+      setTimeout(() => { justDraggedRef.current = false; }, 0);
     }
+  }, []);
+
+  const onClickCapture = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!justDraggedRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
   }, []);
 
   return {
     ref,
-    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerLeave: onPointerUp },
+    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerLeave: onPointerUp, onClickCapture },
     /** True while an actual drag is in progress - a child click handler can
      *  check this to suppress the click that would otherwise fire on release. */
     isDragging: () => capturedRef.current,

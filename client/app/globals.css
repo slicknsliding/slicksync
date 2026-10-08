@@ -745,6 +745,39 @@ body {
     display: none;
   }
 
+  /* ScrollRow: tabs, chips and poster rows that scroll sideways. No bar -
+     dragged with the mouse, swiped on touch - and the edge fades wherever
+     there's more to see, so it's clear the row goes on. */
+  .scroll-row {
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .scroll-row::-webkit-scrollbar {
+    display: none;
+  }
+  .scroll-row[data-fade-left],
+  .scroll-row[data-fade-right] {
+    cursor: grab;
+    user-select: none;
+  }
+  .scroll-row[data-fade-left]:active,
+  .scroll-row[data-fade-right]:active {
+    cursor: grabbing;
+  }
+  .scroll-row[data-fade-right] {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .scroll-row[data-fade-left] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+    mask-image: linear-gradient(to right, transparent, #000 28px);
+  }
+  .scroll-row[data-fade-left][data-fade-right] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  }
+
   /* Poster/activity cards across Discover, Dashboard, Activity, and the
      detail modal's own "More Like This"/Cast rows are tap targets that
      open a detail modal on click - but iOS Safari's default long-press
@@ -1058,6 +1091,37 @@ body {
 @media (hover: none) {
   * {
     backdrop-filter: none !important;
+  }
+}
+
+/* Every scroll bar slim and rounded, without the arrow buttons Windows draws
+   by default. In the base layer so .custom-scrollbar and .no-scrollbar
+   (components) still win where they're used. Firefox only reads the
+   standard properties; Chrome and Safari would let those override the
+   ::-webkit-scrollbar look, so they're given to Firefox alone. */
+@layer base {
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-muted);
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent) transparent;
+    }
   }
 }
 

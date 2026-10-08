@@ -71,6 +71,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 // Watch time data type
 interface WatchTimeDataPoint {
@@ -1805,7 +1806,7 @@ export default function UserDetailPage() {
 
             {/* Tab Navigation */}
             <PageSection className="mb-6 md:mb-8">
-              <div className="flex items-center gap-2 p-1 rounded-xl bg-surface w-fit overflow-x-auto">
+              <ScrollRow className="flex items-center gap-2 p-1 rounded-xl bg-surface w-fit max-w-full">
                 <button
                   onClick={() => setActiveTab('overview')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1834,7 +1835,7 @@ export default function UserDetailPage() {
                   )}
                 </button>
                 )}
-              </div>
+              </ScrollRow>
             </PageSection>
 
             {activeTab === 'overview' && (

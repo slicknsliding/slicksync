@@ -89,13 +89,22 @@ const QUERY_SCHEMA_HINT = `Return ONLY a JSON object, no prose, no markdown fenc
 {
   "type": "movie" | "series" | null,
   "genres": string[],
+  "excludeGenres": string[],
   "yearFrom": number | null,
   "yearTo": number | null,
   "maxRuntimeMinutes": number | null,
+  "cast": string[],
+  "castMatch": "all" | "any",
+  "directors": string[],
+  "seriesStatus": "airing" | "ended" | null,
   "keywords": string[]
 }
 - "type": null if the request doesn't specify movie vs series/show.
 - "genres": real genre words like "Action", "Horror", "Comedy", "Neo-noir" -> "Thriller", "Crime" for genre-adjacent terms. Empty array if none implied.
+- "excludeGenres": genres the request rules out ("comedy but not romance" -> ["Romance"]). Empty array otherwise.
+- "cast": full names of actors the request names ("with Tom Hanks", "Pacino and De Niro films" -> ["Al Pacino", "Robert De Niro"]). Expand a surname to the full name only when it is unambiguous. "castMatch": "all" when every one of them must be in it ("both", "and", "together"), "any" for "or". Empty array if no actor is named.
+- "directors": full names of directors the request names ("Christopher Nolan films", "directed by Villeneuve" -> ["Denis Villeneuve"]). Empty array otherwise.
+- "seriesStatus": "airing" for shows still running, "ended" for finished ones, null otherwise.
 - "yearFrom"/"yearTo": a decade like "90s" becomes 1990/1999. A single year stays a single year (yearFrom=yearTo). null/null if no time period implied.
 - "maxRuntimeMinutes": only set from an explicit runtime constraint ("under 2 hours" -> 120). null otherwise.
 - "keywords": any other meaningful descriptive words (mood, setting, theme) not captured above, for a general-purpose search fallback. Ignore filler like "nobody has seen" or "that we haven't watched" - unwatched is already guaranteed elsewhere, not something to search for.`
@@ -200,12 +209,31 @@ function parseDescriptionFallback(description) {
   if (TYPE_SERIES_RE.test(text)) type = 'series'
   else if (TYPE_MOVIE_RE.test(text)) type = 'movie'
 
+  // "comedy but not romance", "no horror", "without musicals" rule a genre out.
   const genres = []
+  const excludeGenres = []
   for (const word of GENRE_WORDS) {
-    if (text.includes(word)) genres.push(GENRE_ALIASES[word] || (word.charAt(0).toUpperCase() + word.slice(1)))
+    if (!text.includes(word)) continue
+    const name = GENRE_ALIASES[word] || (word.charAt(0).toUpperCase() + word.slice(1))
+    const ruledOut = new RegExp(`\\b(not|no|without|except|but not)\\s+(any\\s+)?${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(text)
+    ;(ruledOut ? excludeGenres : genres).push(name)
   }
 
-  return normalizeQuery({ type, genres: [...new Set(genres)], yearFrom, yearTo, maxRuntimeMinutes, keywords: [] })
+  // Names keep their capitals, so these read the description as typed.
+  const directors = []
+  const directed = (description || '').match(/\bdirected by ((?:[A-Z][\w.'-]+\s?){2,4})/)
+  if (directed) directors.push(directed[1].trim())
+  const cast = []
+  const starring = (description || '').match(/\b(?:starring|with)\s+((?:[A-Z][\w.'-]+\s?){2,4})(?:\s*(and|or)\s+((?:[A-Z][\w.'-]+\s?){2,4}))?/)
+  if (starring) {
+    cast.push(starring[1].trim())
+    if (starring[3]) cast.push(starring[3].trim())
+  }
+
+  return normalizeQuery({
+    type, genres: [...new Set(genres)], excludeGenres: [...new Set(excludeGenres)], yearFrom, yearTo, maxRuntimeMinutes, keywords: [],
+    cast, castMatch: starring?.[2] === 'or' ? 'any' : 'all', directors,
+  })
 }
 
 // Number(null) coerces to 0, and 0 passes Number.isFinite - so a bare
@@ -220,13 +248,34 @@ function toFiniteOrNull(value, { positive = false } = {}) {
   return n
 }
 
+// How a rule's titles are ordered. 'trending' needs LumiereDB - TMDb's
+// Discover has no such order, so there it falls back to popularity.
+const SORTS = ['popular', 'trending', 'top_rated', 'votes', 'newest', 'oldest']
+
+function nameList(raw, max) {
+  if (!Array.isArray(raw)) return []
+  return [...new Set(raw.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim().slice(0, 80)))].slice(0, max)
+}
+
 function normalizeQuery(raw) {
   return {
     type: raw?.type === 'series' ? 'series' : raw?.type === 'movie' ? 'movie' : null,
     genres: Array.isArray(raw?.genres) ? raw.genres.filter((g) => typeof g === 'string' && g.trim()).slice(0, 5) : [],
+    excludeGenres: nameList(raw?.excludeGenres, 5),
     yearFrom: toFiniteOrNull(raw?.yearFrom),
     yearTo: toFiniteOrNull(raw?.yearTo),
+    minRuntimeMinutes: toFiniteOrNull(raw?.minRuntimeMinutes, { positive: true }),
     maxRuntimeMinutes: toFiniteOrNull(raw?.maxRuntimeMinutes, { positive: true }),
+    // Votes on IMDb's scale - the floor that keeps a 9.8 with twelve votes out.
+    minVotes: toFiniteOrNull(raw?.minVotes, { positive: true }),
+    sort: SORTS.includes(raw?.sort) ? raw.sort : null,
+    // Series only: still airing, or ended - and since when it last aired.
+    seriesStatus: raw?.seriesStatus === 'airing' || raw?.seriesStatus === 'ended' ? raw.seriesStatus : null,
+    lastAiredFrom: toFiniteOrNull(raw?.lastAiredFrom),
+    // People by name: actors (all of them in it, or any), and directors.
+    cast: nameList(raw?.cast, 5),
+    castMatch: raw?.castMatch === 'any' ? 'any' : 'all',
+    directors: nameList(raw?.directors, 3),
     keywords: Array.isArray(raw?.keywords) ? raw.keywords.filter((k) => typeof k === 'string' && k.trim()).slice(0, 5) : [],
   }
 }
@@ -325,19 +374,53 @@ async function resolveKeywordIds(keywords, tmdbKey) {
   return ids.filter((id) => id !== null)
 }
 
-async function discoverFromQuery(query, tmdbKey) {
-  const mediaType = query.type === 'series' ? 'tv' : 'movie' // default to movie when unspecified - the common case for a casual description
+const TMDB_SORT = {
+  popular: () => 'popularity.desc',
+  trending: () => 'popularity.desc',
+  top_rated: () => 'vote_average.desc',
+  votes: () => 'vote_count.desc',
+  newest: (dateField) => `${dateField}.desc`,
+  oldest: (dateField) => `${dateField}.asc`,
+}
+
+/**
+ * Structured query -> raw TMDb Discover rows. `mediaType` overrides the
+ * query's own type (a "movies and series" rule asks once for each);
+ * `pages` pulls more than TMDb's 20 a page; `people` carries TMDb person
+ * ids already looked up for the query's cast and directors (movies only -
+ * TMDb's series Discover has no people filter).
+ */
+async function discoverFromQuery(query, tmdbKey, { mediaType: forced, pages = 1, people = null } = {}) {
+  const mediaType = forced || (query.type === 'series' ? 'tv' : 'movie') // default to movie when unspecified - the common case for a casual description
   const maps = await loadGenreMaps(tmdbKey)
   const genreIds = resolveGenreIds(query.genres, mediaType, maps)
+  const withoutIds = resolveGenreIds(query.excludeGenres || [], mediaType, maps)
+  const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date'
+
+  // IMDb counts votes in far larger numbers than TMDb does - a film with
+  // 100,000 on IMDb has a couple of thousand on TMDb.
+  const voteFloor = query.minVotes ? Math.max(10, Math.round(query.minVotes / 50)) : 50
 
   const params = new URLSearchParams({
     api_key: tmdbKey,
-    sort_by: 'vote_average.desc',
-    'vote_count.gte': '50', // filters out obscure/no-rating noise so results read as real recommendations
+    sort_by: (TMDB_SORT[query.sort] || TMDB_SORT.top_rated)(dateField),
+    'vote_count.gte': String(voteFloor), // filters out obscure/no-rating noise so results read as real recommendations
     include_adult: 'false',
   })
   if (genreIds.length) params.set('with_genres', genreIds.join(','))
+  if (withoutIds.length) params.set('without_genres', withoutIds.join(','))
+  if (query.minRuntimeMinutes) params.set('with_runtime.gte', String(query.minRuntimeMinutes))
   if (query.maxRuntimeMinutes) params.set('with_runtime.lte', String(query.maxRuntimeMinutes))
+  if (query.minRating) params.set('vote_average.gte', String(query.minRating))
+  if (mediaType === 'tv') {
+    // TMDb's series status: 0 returning, 3 ended, 4 cancelled.
+    if (query.seriesStatus === 'airing') params.set('with_status', '0')
+    if (query.seriesStatus === 'ended') params.set('with_status', '3|4')
+    if (query.lastAiredFrom) params.set('air_date.gte', `${query.lastAiredFrom}-01-01`)
+  } else if (people) {
+    if (people.cast.length) params.set('with_cast', people.cast.join(query.castMatch === 'any' ? '|' : ','))
+    if (people.directors.length) params.set('with_crew', people.directors.join('|'))
+  }
   if (query.keywords.length) {
     const keywordIds = await resolveKeywordIds(query.keywords, tmdbKey)
     // Pipe = OR, not comma (AND) - these are independent descriptive terms
@@ -347,21 +430,30 @@ async function discoverFromQuery(query, tmdbKey) {
     if (keywordIds.length) params.set('with_keywords', keywordIds.join('|'))
   }
 
-  const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date'
   if (query.yearFrom) params.set(`${dateField}.gte`, `${query.yearFrom}-01-01`)
   if (query.yearTo) params.set(`${dateField}.lte`, `${query.yearTo}-12-31`)
 
-  const { signal, cancel } = timeoutSignal(FETCH_TIMEOUT_MS)
-  try {
-    const res = await fetch(`https://api.themoviedb.org/3/discover/${mediaType}?${params.toString()}`, { signal })
-    cancel()
-    if (!res.ok) return { mediaType, results: [] }
-    const data = await res.json()
-    return { mediaType, results: (data.results || []).slice(0, CANDIDATE_POOL) }
-  } catch {
-    cancel()
-    return { mediaType, results: [] }
+  const results = []
+  let failed = false
+  for (let page = 1; page <= Math.max(1, Math.min(5, pages)); page++) {
+    params.set('page', String(page))
+    const { signal, cancel } = timeoutSignal(FETCH_TIMEOUT_MS)
+    try {
+      const res = await fetch(`https://api.themoviedb.org/3/discover/${mediaType}?${params.toString()}`, { signal })
+      cancel()
+      if (!res.ok) { failed = page === 1; break }
+      const data = await res.json()
+      results.push(...(data.results || []))
+      if (page >= (data.total_pages || 1)) break
+    } catch {
+      cancel()
+      failed = page === 1
+      break
+    }
   }
+  // `failed`: TMDb didn't answer at all, which is not the same as nothing
+  // matching - a Smart Catalog keeps its titles on the first.
+  return { mediaType, results: pages > 1 ? results : results.slice(0, CANDIDATE_POOL), failed }
 }
 
 /** TMDb id -> real IMDb id + our catalog-item shape. null on no IMDb match (unresolvable items are dropped, not shown with a fake id). */
@@ -405,18 +497,20 @@ async function generateCatalogFromDescription(prisma, accountId, decrypt, descri
   // refreshListFromSourceForAccount already uses for the identical reason.
   const { resolveTmdbKey } = require('./listImport')
   const tmdbKey = await resolveTmdbKey(prisma, () => accountId, null)
-  if (!tmdbKey) throw new Error('A TMDb API key is required for this feature (Settings -> External API Keys)')
 
   const { query, usedAi, aiError } = await parseDescription(prisma, accountId, decrypt, trimmed)
-  const { mediaType, results } = await discoverFromQuery(query, tmdbKey)
-  if (results.length === 0) return { items: [], query, usedAi, aiError, mediaType }
+  // A description that doesn't say movies or series has always meant movies.
+  const asked = { ...query, type: query.type || 'movie' }
+  const mediaType = asked.type === 'series' ? 'tv' : 'movie'
 
+  // Already-watched titles are left out by the search itself (LumiereDB) or
+  // straight after it (TMDb), so a household that has seen a lot still
+  // gets a full preview.
   const watchedIds = await buildWatchedIdSet(prisma, accountId)
-  const { mapLimit } = require('./listImport')
-  const resolved = await mapLimit(results, 5, (r) => resolveToImdbItem(r, mediaType, tmdbKey))
-
-  const items = resolved.filter((item) => item && !watchedIds.has(item.id)).slice(0, MAX_ITEMS)
-  return { items, query, usedAi, aiError, mediaType }
+  const { findTitles } = require('./titleFinder')
+  const { items, engine, ignored } = await findTitles(prisma, accountId, asked, { limit: MAX_ITEMS, excludeIds: [...watchedIds], tmdbKey })
+  const { describeRule } = require('./smartCatalogs')
+  return { items, query, usedAi, aiError, mediaType, engine, ignored, summary: describeRule(asked) }
 }
 
 // Generic plain-text completion, for AI uses beyond catalog-building's own
@@ -457,6 +551,7 @@ module.exports = {
   parseDescriptionFallback,
   discoverFromQuery,
   resolveGenreIds,
+  loadGenreMaps,
   resolveKeywordIds,
   generateCatalogFromDescription,
   normalizeQuery,
