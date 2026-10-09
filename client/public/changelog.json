@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.96.0",
+    "date": "2026-10-08",
+    "title": "1.96.0 - Security fixes, LumiereDB, and new Smart Catalog rules",
+    "features": [
+      "Security: people's own pages now check who's asking - changing someone's addons or library, protecting or skipping addons, revoking their API key, syncing and reading their status all need their own sign-in. Private libraries stay private. Signing in only unlinks an account when it really belongs to someone else, never because Stremio or Nuvio is briefly down. One household can no longer remove another's people. The Health page needs a login. Shared instances should update.",
+      "LumiereDB for self-hosted instances - your own copy of IMDb's data (Settings -> Integrations; the one AIOMetadata uses works). Discover search reads typos, words run together, a year on the end, nicknames and titles in other languages; Discover gets Trending and IMDb's Popular by genre; people search works without a TMDb key; Smart Catalogs use IMDb's ratings and votes and always fill up; history imports match more titles. Shared instances don't offer it - IMDb's data is for personal use.",
+      "Smart Catalogs for everyone: actors (all or any) and directors by name, genres to leave out, a votes floor, a runtime range, still airing or ended, and an order - best rated, popular, trending, most voted, newest or oldest. Describe a catalog understands actors, directors and \"but not\". Catalogs that leave out what's been watched still come back full.",
+      "Settings -> About: credits, where the data comes from, and what's kept where - on a shared instance, what whoever runs it can see and how to cut off access.",
+      "Rows that scroll sideways (Settings tabs, the top navigation, chip and poster rows) are dragged or swiped, with no scroll bar and a fade where there's more. Other scroll bars are slim, without arrows."
+    ],
+    "bugFixes": [
+      "Large imports, such as configuration backups, no longer fail as too large.",
+      "Finishing an invite always uses the group the admin chose.",
+      "Logs no longer contain email addresses.",
+      "A private instance with no login says so when it starts."
+    ]
+  },
+  {
     "version": "1.95.0",
     "date": "2026-10-07",
     "title": "1.95.0 - Limits for everyone, profiles included, and age limits",
