@@ -477,6 +477,17 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         if (!parsed) return res.status(400).json({ message: 'That is not a migration code' })
         const accountId = getAccountId(req) || 'default'
 
+        // The address inside the code is fetched by this server. On an
+        // instance serving other households, a code must not point it at the
+        // server's own network.
+        if (INSTANCE_TYPE === 'public') {
+          try {
+            await require('../utils/safeUrl').assertSafeUrl(parsed.u)
+          } catch {
+            return res.status(400).json({ message: 'That migration code points at an address this instance can’t use' })
+          }
+        }
+
         let bundle
         try {
           const controller = new AbortController()

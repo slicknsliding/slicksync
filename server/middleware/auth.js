@@ -51,7 +51,12 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
             if (!acct || acct.disabled) {
               return res.status(401).json({ message: acct ? 'This account has been disabled' : 'This account no longer exists' });
             }
-          } catch {}
+          } catch {
+            // Can't tell whether the account is still allowed in - so it
+            // isn't, for now. Waving the token through would let a disabled
+            // or deleted account back in whenever the database hiccups.
+            return res.status(503).json({ message: 'Could not check this account just now - try again in a moment' });
+          }
         }
         req.appAccountId = decoded.accId;
         return next();

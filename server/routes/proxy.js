@@ -295,6 +295,17 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
 
       const originalBaseUrl = getBaseUrl(originalManifestUrl);
       upstreamUrl = `${originalBaseUrl}/${path}`;
+      // `path` is decoded, so an encoded "../" arrives as a real one and the
+      // address would climb out of the addon's own path on its server. The
+      // resolved address has to stay under the addon's base.
+      {
+        const base = new URL(`${originalBaseUrl.replace(/\/+$/, '')}/`);
+        const resolved = new URL(upstreamUrl);
+        if (resolved.origin !== base.origin || !resolved.pathname.startsWith(base.pathname)) {
+          errorMessage = 'Not a path of this addon';
+          return res.status(400).json({ error: errorMessage });
+        }
+      }
       // Build the proxy URL that was actually accessed (NOT the upstream URL)
       requestUrl = `${req.protocol}://${req.get('host')}/proxy/${uuid}/${path}`;
       const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;

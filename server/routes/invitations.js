@@ -533,7 +533,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         // Bump use count
         const updatedInvitation = await prisma.invitation.update({
           where: { id: request.invitation.id },
-          data: { currentUses: request.invitation.currentUses + 1 }
+          data: { currentUses: { increment: 1 } }
         })
 
         // Mark request as completed
@@ -1069,10 +1069,13 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         // But log the full error so we can debug
       }
 
-      // Find ALL users with this email (check all accounts since this is a public endpoint)
+      // Every Stremio person with this email - the opt-out is for the Stremio
+      // account the key just proved. A Nuvio or Jellyfin person who happens to
+      // share the email is someone else's sign-in and stays.
       const users = await prisma.user.findMany({
         where: {
-          email: stremioEmail
+          email: stremioEmail,
+          providerType: 'stremio'
         }
       })
 
@@ -1530,8 +1533,11 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         return res.status(404).json({ error: 'No accepted request found' })
       }
 
-      // group name priority: body > request > invitation > null
-      const finalGroupName = groupName || request.groupName || invitation.groupName || null
+      // The group is the one the admin chose (on the request, else the
+      // invite's). Never the caller's - this route is public, and a group
+      // named in the body used to win, letting someone pick their own group.
+      void groupName
+      const finalGroupName = request.groupName || invitation.groupName || null
 
       // validate the stremio auth key and get email - this is required
       let stremioEmail = null
