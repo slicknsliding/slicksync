@@ -452,7 +452,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 - **[iamneur0](https://github.com/iamneur0)** — creator of [Syncio](https://github.com/iamneur0/syncio) (MIT), the engine SlickSync is built on.
 - **[Avangelista](https://github.com/Avangelista)** — Nuvio provider integration concepts (OAuth device-code flow, credential auth).
 - **[Sonicx161](https://github.com/Sonicx161/AIOManager)** — creator of AIOManager, direct inspiration for the Vault feature.
-- **[0xConstant1](https://github.com/0xConstant1)** — creator of LumiereDB; **[cedya77](https://github.com/cedya77/aiometadata)** — creator of AIOMetadata, whose LumiereDB guide SlickSync follows.
+- **[0xConstant1](https://github.com/0xConstant1)** — creator of LumiereDB; **[cedya77](https://github.com/cedya77/aiometadata)** — creator of AIOMetadata
 
 Information courtesy of IMDb (https://www.imdb.com). Used with permission. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
