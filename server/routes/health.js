@@ -30,6 +30,9 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
 
   router.get('/', async (req, res) => {
     try {
+      // No signed-in account: a health check asking whether it's up. Answer
+      // that and nothing else - the rest of this is the admin Health page.
+      if (!req.appAccountId) return res.json({ status: 'ok' });
       const accountId = getAccountId(req) || 'default';
 
       const { getVersionStatus } = require('../utils/versionCheck');
