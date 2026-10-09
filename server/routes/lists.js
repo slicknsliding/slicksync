@@ -249,9 +249,9 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
       const { refreshSmartCatalog } = require('../utils/smartCatalogs')
       const { resolveTmdbKeyForAccount } = require('../utils/listImport')
       const tmdbKey = await resolveTmdbKeyForAccount(prisma, accountId)
-      if (!tmdbKey) return res.status(400).json({ error: 'A TMDb key is needed to evaluate a rule (Settings -> External API Keys)' })
-      const result = await refreshSmartCatalog(prisma, accountId, list, tmdbKey)
-      if (!result) return res.status(502).json({ error: 'Could not evaluate the rule just now - the catalog was left as it was' })
+      let why = null
+      const result = await refreshSmartCatalog(prisma, accountId, list, tmdbKey, { onError: (e) => { why = e?.message || null } })
+      if (!result) return res.status(502).json({ error: `${why || 'Could not evaluate the rule just now'} - the catalog was left as it was` })
       res.json({ success: true, ...result })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Refresh failed' })

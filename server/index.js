@@ -28,7 +28,6 @@ const usersRouter = require('./routes/users');
 const stremioRouter = require('./routes/stremio');
 const settingsRouter = require('./routes/settings');
 const externalApiRouter = require('./routes/externalApi');
-const debugRouter = require('./routes/debug');
 const publicAuthRouter = require('./routes/publicAuth');
 const invitationsRouter = require('./routes/invitations');
 const publicLibraryRouter = require('./routes/publicLibrary');
@@ -155,8 +154,10 @@ app.use(compression({
   },
 }));
 
-// Parse JSON bodies
-app.use(express.json());
+// Parse JSON bodies - once, here. A second express.json further down with
+// a bigger limit never ran: this one had already read (and capped) the body
+// at the 100kb default, so large config imports failed with 413.
+app.use(express.json({ limit: '10mb' }));
 
 // A body that is not valid JSON, or is literally `null`, is a mistake in the
 // request - it should say so rather than reading as a server failure. The
@@ -282,8 +283,6 @@ app.use('/api/public-library/generate-oauth-nuvio', authLimiter);
 app.use('/api/public-library/authenticate-nuvio', authLimiter);
 app.use('/api/public-library/poll-oauth-nuvio', pollLimiter);
 
-app.use(express.json({ limit: '10mb' }));
-
 // Multer - use centralized configuration
 const { standardUpload, imageUpload } = require('./utils/helpers');
 const upload = standardUpload;
@@ -332,6 +331,10 @@ app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIs
 app.use(createCsrfGuard({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, pathIsAllowlisted, parseCookies, cookieName }))
 
 if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) {
+  // No login of SlickSync's own: whoever reaches this address manages
+  // everything. Fine behind a login proxy (Authelia, Authentik...), not
+  // otherwise - so say it where the operator will see it.
+  console.warn('⚠️  No login is set (SLICKSYNC_PRIVATE_USERNAME / SLICKSYNC_PRIVATE_PASSWORD). Anyone who can open this address can manage this instance - set both, or keep it behind a login proxy.')
   app.use((req, res, next) => {
     if (!req.appAccountId) {
       req.appAccountId = DEFAULT_ACCOUNT_ID

@@ -123,7 +123,7 @@ export default function UserHomePage() {
         // Fetch activity and risk status in parallel, but handle failures gracefully
         const [activityResult, riskResult] = await Promise.allSettled([
           userActivity.getActivity(userId, authKey || undefined),
-          userSync.getAtRiskStatus(userId),
+          userSync.getAtRiskStatus(userId, authKey || undefined),
         ]);
         
         if (activityResult.status === 'fulfilled') {
@@ -162,7 +162,7 @@ export default function UserHomePage() {
       setSyncMessage(result.success ? 'Sync completed!' : result.message || 'Sync failed');
       
       // Refresh at-risk status after sync
-      const riskStatus = await userSync.getAtRiskStatus(userId);
+      const riskStatus = await userSync.getAtRiskStatus(userId, authKey || undefined);
       setAtRiskStatus(riskStatus);
     } catch (err: any) {
       setSyncMessage(err.message || 'Sync failed');

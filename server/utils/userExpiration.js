@@ -115,7 +115,7 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
             const resetResult = await resetUserAddons(user, decrypt, StremioAPIClient, createProvider)
             if (resetResult.success) {
               await require('./accountGuard').recordAssertedState(prisma, user.id, user.providerType, [])
-              console.log(`🔄 Reset addons for expired user: ${user.username} (${user.email})`)
+              console.log(`🔄 Reset addons for expired user: ${user.id}`)
             } else {
               console.warn(`⚠️  Could not reset addons for ${user.username}: ${resetResult.error}`)
             }
@@ -205,7 +205,7 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
             console.warn(`⚠️  Could not clear watch history for ${user.username}: ${e?.message}`)
           }
 
-          console.log(`✅ Deleted expired user: ${user.username} (${user.email})`)
+          console.log(`✅ Deleted expired user: ${user.id}`)
         } catch (error) {
           console.error(`❌ Error deleting expired user ${user.id}:`, error)
         }

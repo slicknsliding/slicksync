@@ -117,33 +117,40 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     }
   }
 
+  // `reason` says why a check failed, because only two answers mean the
+  // account really isn't this person's any more: nobody here has the email
+  // ('no-user'), or Stremio answered for the stored key with a different
+  // email ('mismatch'). A stored key that is stale, can't be decrypted, or
+  // couldn't be checked because Stremio didn't answer ('unchecked') is not
+  // that - the person signing in has just proved the email with a fresh key.
   async function validateUserStremioAuth(accountId, email, req) {
     const user = await prisma.user.findFirst({
-      where: { accountId, email }
+      where: { accountId, email, providerType: 'stremio' }
     })
 
     if (!user) {
-      return { valid: false, user: null }
+      return { valid: false, user: null, reason: 'no-user' }
     }
 
     if (!user.stremioAuthKey) {
-      return { valid: false, user }
+      return { valid: false, user, reason: 'no-key' }
     }
 
+    let storedEmail
     try {
       const storedAuthKey = decrypt(user.stremioAuthKey, req)
       const storedAuthKeyInfo = await validateStremioAuthKey(storedAuthKey)
-      const storedEmail = String(storedAuthKeyInfo?.user?.email || '').trim().toLowerCase()
-
-      if (storedEmail !== email) {
-        return { valid: false, user }
-      }
-
-      return { valid: true, user }
+      storedEmail = String(storedAuthKeyInfo?.user?.email || '').trim().toLowerCase()
     } catch (error) {
-      return { valid: false, user }
+      return { valid: false, user, reason: 'unchecked' }
     }
+    if (!storedEmail) return { valid: false, user, reason: 'unchecked' }
+    if (storedEmail !== email) return { valid: false, user, reason: 'mismatch' }
+    return { valid: true, user, reason: null }
   }
+
+  // Unlinking an account at sign-in is only ever for a real change of owner.
+  const reallyUnlinked = (validation) => !validation.valid && (validation.reason === 'no-user' || validation.reason === 'mismatch')
 
   // Same shape as validateUserStremioAuth, but re-validated via a live
   // Nuvio/Supabase token refresh instead of a Stremio session check - Nuvio
@@ -162,27 +169,25 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     })
 
     if (!user) {
-      return { valid: false, user: null }
+      return { valid: false, user: null, reason: 'no-user' }
     }
 
     if (!user.nuvioRefreshToken) {
-      return { valid: false, user }
+      return { valid: false, user, reason: 'no-key' }
     }
 
+    let storedEmail
     try {
       const storedRefreshToken = decrypt(user.nuvioRefreshToken, req)
       const refreshed = await refreshNuvioToken(storedRefreshToken)
       const payload = parseJwtPayload(refreshed.access_token)
-      const storedEmail = String(payload?.email || '').trim().toLowerCase()
-
-      if (storedEmail !== email) {
-        return { valid: false, user }
-      }
-
-      return { valid: true, user }
+      storedEmail = String(payload?.email || '').trim().toLowerCase()
     } catch (error) {
-      return { valid: false, user }
+      return { valid: false, user, reason: 'unchecked' }
     }
+    if (!storedEmail) return { valid: false, user, reason: 'unchecked' }
+    if (storedEmail !== email) return { valid: false, user, reason: 'mismatch' }
+    return { valid: true, user, reason: null }
   }
 
   // Generate unique UUID endpoint
@@ -748,7 +753,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             })
           }
 
-          if (!validation.valid) {
+          if (!validation.valid && validation.reason === 'mismatch') {
             const errorMsg = validation.user.stremioAuthKey
               ? 'A user with this email already exists in your account, but their Stremio authentication does not match. Please contact support.'
               : 'User exists but the stored Stremio authentication is invalid or expired. Please reconnect the user to Stremio first.'
@@ -800,7 +805,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
 
         if (account) {
           const validation = await validateUserStremioAuth(account.id, email, req)
-          if (!validation.valid) {
+          if (reallyUnlinked(validation)) {
             await prisma.appAccount.update({
               where: { id: account.id },
               data: { email: null, linkedProvider: null }
@@ -814,7 +819,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           const legacyAccount = await prisma.appAccount.findUnique({ where: { uuid: legacyUuid } })
           if (legacyAccount) {
             const validation = await validateUserStremioAuth(legacyAccount.id, email, req)
-            if (!validation.valid) {
+            if (reallyUnlinked(validation)) {
               const newUuid = await generateUniqueAccountUuid()
               await prisma.appAccount.update({
                 where: { id: legacyAccount.id },
@@ -860,8 +865,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       await ensureEmailUniqueness(prisma, email, account.id)
 
       let user = null
+      // The person whose Stremio account this is - never just the household's
+      // oldest person, whose own sign-in would be overwritten with this one.
       const existingUser = await prisma.user.findFirst({
-        where: { accountId: account.id },
+        where: { accountId: account.id, email, providerType: 'stremio' },
         orderBy: { id: 'asc' }
       })
 
@@ -1100,7 +1107,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
 
         if (account) {
           const validation = await validateUserNuvioAuth(account.id, email, req)
-          if (!validation.valid) {
+          if (reallyUnlinked(validation)) {
             await prisma.appAccount.update({
               where: { id: account.id },
               data: { email: null, linkedProvider: null }
@@ -1135,9 +1142,11 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       await ensureEmailUniqueness(prisma, email, account.id)
 
       let user = null
+      // The Nuvio account that signed in (its main profile) - never just the
+      // household's oldest person.
       const existingUser = await prisma.user.findFirst({
-        where: { accountId: account.id },
-        orderBy: { id: 'asc' }
+        where: { accountId: account.id, email, providerType: 'nuvio' },
+        orderBy: { nuvioProfileId: 'asc' }
       })
 
       if (isNewAccount) {

@@ -340,67 +340,13 @@ async function assignUserToGroup(prisma, userId, groupId, req) {
  * This ensures one email can only exist in one account at a time
  */
 async function ensureEmailUniqueness(prisma, email, targetAccountId) {
-  const normalizedEmail = email.trim().toLowerCase()
-
-  // Find all users with this email (across all accounts)
-  const existingUsers = await prisma.user.findMany({
-    where: {
-      email: normalizedEmail
-    },
-    select: {
-      id: true,
-      accountId: true
-    }
-  })
-
-  // Filter out users that are already in the target account (they're fine)
-  const usersToDelete = existingUsers.filter(user => user.accountId !== targetAccountId)
-
-  if (usersToDelete.length === 0) {
-    return // No duplicates, nothing to do
-  }
-
-  console.log(`[ensureEmailUniqueness] Found ${usersToDelete.length} duplicate user(s) with email ${normalizedEmail}, removing from other accounts...`)
-
-  // For each duplicate user, remove them from all groups and then delete them
-  for (const userToDelete of usersToDelete) {
-    // Find all groups in the user's account
-    const groups = await prisma.group.findMany({
-      where: {
-        accountId: userToDelete.accountId,
-        isActive: true
-      },
-      select: {
-        id: true,
-        userIds: true
-      }
-    })
-
-    // Remove user from all groups
-    for (const group of groups) {
-      if (group.userIds) {
-        try {
-          const userIds = JSON.parse(group.userIds)
-          if (Array.isArray(userIds) && userIds.includes(userToDelete.id)) {
-            const updatedUserIds = userIds.filter(id => id !== userToDelete.id)
-            await prisma.group.update({
-              where: { id: group.id },
-              data: { userIds: JSON.stringify(updatedUserIds) }
-            })
-            console.log(`[ensureEmailUniqueness] Removed user ${userToDelete.id} from group ${group.id}`)
-          }
-        } catch (e) {
-          console.error(`[ensureEmailUniqueness] Error parsing userIds for group ${group.id}:`, e)
-        }
-      }
-    }
-
-    // Delete the duplicate user
-    await prisma.user.delete({
-      where: { id: userToDelete.id }
-    })
-    console.log(`[ensureEmailUniqueness] Deleted duplicate user ${userToDelete.id} from account ${userToDelete.accountId}`)
-  }
+  // This used to DELETE every person with this email in every other
+  // household - on a shared instance, one household adding someone wiped
+  // that person (and any Nuvio or Jellyfin row with the same email) out of
+  // another household, leaving their history behind. Each household owns its
+  // own people: the Postgres schema (shared instances) is unique per
+  // household, and a private instance has the one household. Nothing to do.
+  void prisma; void email; void targetAccountId
 }
 
 module.exports = {

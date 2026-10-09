@@ -45,7 +45,11 @@ import {
   XMarkIcon,
   Squares2X2Icon,
   ArrowTopRightOnSquareIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import { ScrollRow } from '@/components/ui/ScrollRow';
+import { LumiereDbField } from '@/components/settings/LumiereDbField';
+import { AboutPanel } from '@/components/settings/AboutPanel';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
 // ('timeZone') - a fairly recent addition (Baseline 2023), not guaranteed
@@ -450,6 +454,7 @@ const SETTINGS_TABS = [
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
   { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
   { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
+  { key: 'about', label: 'About', icon: InformationCircleIcon, blurb: 'Credits, data, privacy' },
 ] as const;
 type SettingsTab = typeof SETTINGS_TABS[number]['key'];
 
@@ -891,6 +896,7 @@ export default function SettingsPage() {
           // which made the daily check look like it was never running.
           keyHealth: settings.keyHealth && Object.keys(settings.keyHealth).length > 0 ? settings.keyHealth : undefined,
           simklClientId: settings.simklClientId || '',
+          lumiereDbUrl: settings.lumiereDbUrl || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableWatchTogether: settings.enableWatchTogether !== false,
@@ -1338,7 +1344,7 @@ export default function SettingsPage() {
           )}
 
           <div className={`${useSettingsRail ? 'md:hidden' : ''} -mx-1 px-1 pb-3 sticky top-0 z-20`} style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
-            <div className="flex gap-1.5 overflow-x-auto">
+            <ScrollRow className="flex gap-1.5">
               {SETTINGS_TABS.map((t) => (
                 <button
                   key={t.key}
@@ -1351,13 +1357,15 @@ export default function SettingsPage() {
                   {t.label}
                 </button>
               ))}
-            </div>
+            </ScrollRow>
           </div>
 
           <div className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
 
 
         {activeTab === 'themes' && <ThemesPanel embedded />}
+
+        {activeTab === 'about' && <AboutPanel lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} shared={isPublicInstance} />}
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
@@ -2409,6 +2417,14 @@ export default function SettingsPage() {
                   </SettingRow>
                 </div>
               )}
+
+              {/* LumiereDB - IMDb's data, self-hosted (utils/lumiere.js).
+                  Self-hosted instances only: IMDb's data is for personal use. */}
+              {!isPublicInstance && <LumiereDbField
+                value={syncSettings.lumiereDbUrl || ''}
+                onChange={(v) => setSyncSettings((prev) => ({ ...prev, lumiereDbUrl: v }))}
+                onSave={(v) => handleSaveSetting('lumiereDbUrl' as keyof SyncSettings, v)}
+              />}
 
               {/* SIMKL Client ID - powers the "Link SIMKL" flow on a user's
                   own page (watch-history pull/push). Account-scoped like the

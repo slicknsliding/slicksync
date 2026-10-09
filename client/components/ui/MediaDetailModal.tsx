@@ -16,6 +16,7 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useDragScroll } from '@/lib/hooks/useDragScroll';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 interface MediaDetailModalProps {
   isOpen: boolean;
@@ -1405,7 +1406,7 @@ export function MediaDetailModal({
                       )}
                       {!seasonsLoading && seasons && seasons.length > 0 && (
                         <>
-                          <div className="flex gap-1.5 overflow-x-auto pb-2">
+                          <ScrollRow className="flex gap-1.5 pb-2">
                             {seasons.map((s) => (
                               <button
                                 key={s.season}
@@ -1420,7 +1421,7 @@ export function MediaDetailModal({
                                 )}
                               </button>
                             ))}
-                          </div>
+                          </ScrollRow>
                           <div className="max-h-56 overflow-y-auto pr-1 space-y-px">
                             {seasons.find((s) => s.season === activeSeason)?.episodes.map((ep) => (
                               <div

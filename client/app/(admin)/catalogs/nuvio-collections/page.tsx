@@ -33,6 +33,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 // Starter templates - genre folders built from each catalog's own "genre"
 // extra parameter, not from separate per-genre catalogs. Confirmed two ways
@@ -2000,7 +2001,7 @@ export default function NuvioCollectionsPage() {
                   ) : pickerPreview.length === 0 ? (
                     <p className="text-xs text-subtle">No preview available for this catalog.</p>
                   ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
+                    <ScrollRow className="flex gap-2 pb-1">
                       {pickerPreview.map((item) => (
                         <button
                           key={item.id}
@@ -2017,7 +2018,7 @@ export default function NuvioCollectionsPage() {
                           )}
                         </button>
                       ))}
-                    </div>
+                    </ScrollRow>
                   )}
                 </div>
               )}
@@ -2234,7 +2235,7 @@ export default function NuvioCollectionsPage() {
                   ) : items.length === 0 ? (
                     <p className="text-xs text-subtle">No preview available for this folder&apos;s sources.</p>
                   ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
+                    <ScrollRow className="flex gap-2 pb-1">
                       {items.map((item) => (
                         <button
                           key={item.id}
@@ -2251,7 +2252,7 @@ export default function NuvioCollectionsPage() {
                           )}
                         </button>
                       ))}
-                    </div>
+                    </ScrollRow>
                   )}
                 </div>
               );

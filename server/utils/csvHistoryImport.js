@@ -102,18 +102,48 @@ function mapColumns(headers) {
   return map
 }
 
+// Folds a title down to letters and digits, so "Spider-Man: No Way Home"
+// and "spider man no way home" compare equal.
+const fold = (t) => String(t || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '')
+
+// LumiereDB reads a title the way a person typed it - a typo, the title in
+// another language, a year on the end - and has no daily limit. A row with
+// a year takes the best match within a year of it (release dates differ by
+// country); one without a year only takes a match whose title is the same.
+async function matchWithLumiere(base, title, year) {
+  const { searchTitles } = require('./lumiere')
+  const y = Number(String(year || '').slice(0, 4)) || null
+  let found = []
+  try {
+    found = await searchTitles(base, 'movie', y ? `${title} ${y}` : title, { limit: 10 })
+    if (y && !found.some((f) => f.year && Math.abs(f.year - y) <= 1)) found = await searchTitles(base, 'movie', title, { limit: 10 })
+  } catch {
+    return null
+  }
+  const pick = y
+    ? found.find((f) => f.year && Math.abs(f.year - y) <= 1)
+    : found.find((f) => fold(f.name) === fold(title))
+  return pick ? { imdbId: pick.id, title: pick.name || title, year: pick.year ? String(pick.year) : year } : null
+}
+
 // Resolves one CSV row to a real IMDb id + title/year - a direct imdb-style
 // id column (IMDb's own export, or a Letterboxd row someone enriched) is
-// trusted outright; otherwise falls back to an OMDb title+year search, the
-// same resolution path listImport.js's own title-based imports already use.
-async function resolveRowToImdbItem(row, colMap, omdbApiKey) {
+// trusted outright; otherwise the account's LumiereDB when there is one,
+// then an OMDb title+year search, the same resolution path listImport.js's
+// own title-based imports already use.
+async function resolveRowToImdbItem(row, colMap, omdbApiKey, lumiereBase = '') {
   const rawId = colMap.imdbId ? row[colMap.imdbId] : null
   if (rawId && /^tt\d+$/.test(rawId.trim())) {
     return { imdbId: rawId.trim(), title: colMap.title ? row[colMap.title] : null, year: colMap.year ? row[colMap.year] : null }
   }
   const title = colMap.title ? row[colMap.title]?.trim() : null
-  if (!title || !omdbApiKey) return null
+  if (!title) return null
   const year = colMap.year ? row[colMap.year]?.trim() : null
+  if (lumiereBase) {
+    const matched = await matchWithLumiere(lumiereBase, title, year)
+    if (matched) return matched
+  }
+  if (!omdbApiKey) return null
   try {
     require('./omdbMeter').recordOmdbRequest(omdbApiKey)
     const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${year ? `&y=${encodeURIComponent(year)}` : ''}`

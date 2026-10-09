@@ -26,6 +26,7 @@ import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
 import { api, type AioCollection, type AioCollectionsView, type CustomList, type CustomListItem, type DiscoverItem } from '@/lib/api';
+import { ScrollRow } from '@/components/ui/ScrollRow';
 
 const LIST = '/catalogs/aiostreams-collections';
 
@@ -376,7 +377,7 @@ export default function AiostreamsCollectionPage() {
   const grid = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3';
   // Search results on a phone: one row that scrolls sideways, so the
   // collection itself stays in view below; the usual grid from sm up.
-  const resultsRow = 'flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 -mx-4 px-4 pb-2 sm:scroll-px-0 sm:mx-0 sm:px-0 sm:pb-0 sm:overflow-visible sm:grid sm:grid-cols-4 md:grid-cols-6';
+  const resultsRow = 'flex gap-3 snap-x snap-mandatory scroll-px-4 -mx-4 px-4 pb-2 sm:scroll-px-0 sm:mx-0 sm:px-0 sm:pb-0 sm:overflow-visible sm:grid sm:grid-cols-4 md:grid-cols-6';
   const resultCell = 'w-[30%] shrink-0 snap-start sm:w-auto';
 
   return (
@@ -447,13 +448,13 @@ export default function AiostreamsCollectionPage() {
                       </div>
                       {query.trim().length >= 2 && (
                         searching ? (
-                          <div className={resultsRow}>
+                          <ScrollRow className={resultsRow}>
                             {Array.from({ length: 8 }).map((_, i) => <div key={i} className={`${resultCell} aspect-[2/3] rounded-xl bg-surface-hover animate-pulse`} />)}
-                          </div>
+                          </ScrollRow>
                         ) : results.length === 0 ? (
                           <p className="text-sm text-muted">Nothing found for “{query.trim()}”.</p>
                         ) : (
-                          <div className={resultsRow}>
+                          <ScrollRow className={resultsRow}>
                             {results.map((r) => {
                               const added = inCollection.has(r.id);
                               return (
@@ -479,7 +480,7 @@ export default function AiostreamsCollectionPage() {
                                 </div>
                               );
                             })}
-                          </div>
+                          </ScrollRow>
                         )
                       )}
                     </div>

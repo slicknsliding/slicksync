@@ -533,7 +533,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         // Bump use count
         const updatedInvitation = await prisma.invitation.update({
           where: { id: request.invitation.id },
-          data: { currentUses: request.invitation.currentUses + 1 }
+          data: { currentUses: { increment: 1 } }
         })
 
         // Mark request as completed
@@ -1042,7 +1042,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         const { StremioAPIClient } = require('stremio-api-client')
         // Use the authKey from OAuth (current valid session) to clear addons
         // The authKey from OAuth is already plain text, no decryption needed
-        console.log(`🔄 Attempting to clear Stremio addons for email: ${stremioEmail}`)
+        console.log('🔄 Attempting to clear Stremio addons for an opted-out user')
         const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKey })
 
         // Clear all addons
@@ -1054,7 +1054,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         const remainingAddons = verifyResult?.addons || []
         if (Array.isArray(remainingAddons) && remainingAddons.length === 0) {
           addonsCleared = true
-          console.log(`✅ Successfully cleared Stremio addons for email: ${stremioEmail}`)
+          console.log('✅ Cleared Stremio addons for an opted-out user')
         } else {
           console.warn(`⚠️  Addons may not have been fully cleared. Remaining: ${remainingAddons.length}`)
         }
@@ -1069,10 +1069,13 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         // But log the full error so we can debug
       }
 
-      // Find ALL users with this email (check all accounts since this is a public endpoint)
+      // Every Stremio person with this email - the opt-out is for the Stremio
+      // account the key just proved. A Nuvio or Jellyfin person who happens to
+      // share the email is someone else's sign-in and stays.
       const users = await prisma.user.findMany({
         where: {
-          email: stremioEmail
+          email: stremioEmail,
+          providerType: 'stremio'
         }
       })
 
@@ -1090,7 +1093,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       const { deleteUserCascade } = require('../utils/accountDeletion')
       for (const user of users) {
         await deleteUserCascade(prisma, user.id)
-        console.log(`✅ Deleted user via opt-out: ${user.email} (${user.id})`)
+        console.log(`✅ Deleted user via opt-out: ${user.id}`)
       }
 
       res.setHeader('Content-Type', 'application/json')
@@ -1530,8 +1533,11 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         return res.status(404).json({ error: 'No accepted request found' })
       }
 
-      // group name priority: body > request > invitation > null
-      const finalGroupName = groupName || request.groupName || invitation.groupName || null
+      // The group is the one the admin chose (on the request, else the
+      // invite's). Never the caller's - this route is public, and a group
+      // named in the body used to win, letting someone pick their own group.
+      void groupName
+      const finalGroupName = request.groupName || invitation.groupName || null
 
       // validate the stremio auth key and get email - this is required
       let stremioEmail = null

@@ -37,10 +37,15 @@ git clone https://github.com/slicknsliding/slicksync.git
 cd slicksync
 cp env.example .env
 echo "JWT_SECRET=$(openssl rand -base64 32)" >> .env
+echo "SLICKSYNC_PRIVATE_USERNAME=admin" >> .env
+echo "SLICKSYNC_PRIVATE_PASSWORD=$(openssl rand -base64 18)" >> .env
 docker compose -f docker-compose.private.yml up -d
 ```
 
-Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot — you only need `JWT_SECRET`. Full walkthrough in [Installation](#-installation).
+Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot. Sign in with the username and password in `.env` (`grep SLICKSYNC_PRIVATE .env`). Full walkthrough in [Installation](#-installation).
+
+> [!IMPORTANT]
+> Without `SLICKSYNC_PRIVATE_USERNAME` and `SLICKSYNC_PRIVATE_PASSWORD`, SlickSync has no login of its own: anyone who can open its address can manage it. Leave them unset only if a login proxy (Authelia, Authentik, Cloudflare Access…) already guards the whole address.
 
 **New here?** Once it's running, **`/guides`** is the fastest way to learn it — a topic page for every page and setting, searchable, each with the gotchas that actually come up. The same content answers free-text questions from the command palette (`Ctrl+K` / `Cmd+K`), no AI key required.
 
@@ -187,6 +192,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - Any poster opens cast, rating, genres, director, runtime, awards and an inline trailer; Rotten Tomatoes/Metacritic, box office and franchise grouping with a free OMDb key.
 - **Cast &amp; crew deep-dive** — click an actor to see their real filmography and jump into any of it.
 - Browse Popular / New / Top Rated with genre filters and infinite scroll; **people search** as its own mode.
+- **With your own LumiereDB** (IMDb's data, self-hosted) — search that forgives typos, words run together, a year on the end, nicknames and titles in other languages; **Trending** and IMDb's Popular by genre; people search without a TMDb key.
 - **Describe it** — type the plot you half-remember and get the real title, verified against a real record before it's shown.
 - Four sources side by side: Discover, ★ Watchlist, ✨ For You, and "nobody here has seen it yet".
 - **Where to watch** provider logos, **MDBList** score, **franchise completion** and a **Finish the Saga** row.
@@ -199,7 +205,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - Create, rename, delete; add titles from any poster or its detail popup; custom cover art.
 - **Import** from MDBList, TMDb, a public Trakt list, AniList/MyAnimeList, a linked SIMKL account, or a pasted share code.
 - **Describe it in plain English** ("90s horror") and review the suggestions before anything is added.
-- **Smart Catalogs** — give a catalog criteria instead of a fixed list and it re-evaluates itself.
+- **Smart Catalogs** — give a catalog criteria instead of a fixed list and it re-evaluates itself: genres in or out, years, rating, actors (all or any) and directors, a votes floor, runtime, still airing or ended, and the order — trending, popular, best rated, most voted, newest or oldest. With a LumiereDB the ratings and votes are IMDb's, and titles the household has seen are left out before counting, so it always fills up.
 - **Content Rating allowlist** turns a catalog into an enforced, genuinely kid-safe list.
 - **Auto-refresh** keeps a URL-sourced catalog following its source; **export** to MDBList, SIMKL or a share code.
 - **Publish to another household** — a published catalog gets a link; pasted into another SlickSync's Import, it arrives as a normal catalog that plays through *their* addons and debrid. Only titles travel — no credentials, addons, users or watch history — and if they turn on Auto-refresh it keeps following yours. Unpublishing stops future pulls without reaching into what they already have.
@@ -415,6 +421,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 | `PUBLIC_APP_URL` | The address devices reach this instance on, for SlickTrax, pictures on a server and instant pauses. Normally learned when you open it - only needed when it's only ever opened through some other address | — |
 | `NUVIO_SUPABASE_URL` / `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's backend endpoint (also settable per account in Settings) | `https://api.nuvio.tv` / — |
 | `SIMKL_CLIENT_ID` | Instance-wide SIMKL app registration (each account can bring its own) | — |
+| `LUMIERE_DB_URL` | A [LumiereDB](https://github.com/cedya77/aiometadata/blob/dev/docs/lumiere-db.md) to use when none is set in Settings → External API Keys (e.g. `http://lumiere-db:8000` — the same one your AIOMetadata uses works). Self-hosted only: public mode doesn't offer LumiereDB, as IMDb's data is for personal use | — |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | Enable "Continue with..." SSO login (all four required) | — |
 | `AUTH_RATE_LIMIT_WINDOW_MS` / `AUTH_RATE_LIMIT_MAX_REQUESTS` | Credential-endpoint rate limit | 20 / 15 min |
 | `POLL_RATE_LIMIT_MAX_REQUESTS` | OAuth device-flow poll limit | 60/min |
@@ -445,6 +452,9 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 - **[iamneur0](https://github.com/iamneur0)** — creator of [Syncio](https://github.com/iamneur0/syncio) (MIT), the engine SlickSync is built on.
 - **[Avangelista](https://github.com/Avangelista)** — Nuvio provider integration concepts (OAuth device-code flow, credential auth).
 - **[Sonicx161](https://github.com/Sonicx161/AIOManager)** — creator of AIOManager, direct inspiration for the Vault feature.
+- **[0xConstant1](https://github.com/0xConstant1)** — creator of LumiereDB; **[cedya77](https://github.com/cedya77/aiometadata)** — creator of AIOMetadata, whose LumiereDB guide SlickSync follows.
+
+Information courtesy of IMDb (https://www.imdb.com). Used with permission. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 See [`README.upstream.md`](./README.upstream.md) for the original project's own README.
 
