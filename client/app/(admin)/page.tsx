@@ -791,6 +791,10 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Optional setup steps - one closed line (same component as the
+                Original layout's). Not on TV, where it can't be opened. */}
+            {!isTV && <SetupChecklist />}
+
             {/* Ring stat + mini stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
               <div className={`${NEBULA_GLASS_CLASS} p-5 flex items-center gap-5`} style={nebulaGlassStyle}>

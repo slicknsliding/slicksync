@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api';
-import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // What this instance hasn't been set up with yet.
 //
@@ -33,6 +31,7 @@ interface ChecklistItem {
 export function SetupChecklist() {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
   const [dismissed, setDismissed] = useState(true); // assume hidden until localStorage is read post-mount
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     try { setDismissed(localStorage.getItem(DISMISS_KEY) === '1'); } catch { setDismissed(false); }
@@ -71,52 +70,57 @@ export function SetupChecklist() {
   };
 
   return (
-    <Card padding="lg" className="mb-6">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="text-base font-semibold text-default">Finish setting up</h3>
-          <p className="text-xs text-muted mt-0.5">
-            {items.length - remaining.length} of {items.length} done. None of this is required - it is just the stuff people usually want on.
-          </p>
-        </div>
+    <div
+      className="mb-5 rounded-2xl"
+      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+    >
+      {/* One line, closed by default - opened only when someone wants it. */}
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => { if (!open) load(); setOpen(!open); }}
+          aria-expanded={open}
+          className="flex-1 min-w-0 flex items-center gap-2 text-left text-sm"
+        >
+          <span className="font-medium text-default">Finish setting up</span>
+          <span className="text-muted">· {remaining.length} left</span>
+          <span className="hidden sm:inline text-xs text-subtle truncate">- optional, the things people usually turn on</span>
+          <ChevronDownIcon className={`w-4 h-4 text-subtle shrink-0 ml-auto transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
         <button
           type="button"
           onClick={handleDismiss}
-          className="p-1.5 rounded-lg text-subtle hover:text-default shrink-0"
-          aria-label="Dismiss setup checklist"
-          title="Hide this permanently"
+          className="p-1 rounded-lg text-subtle hover:text-default shrink-0"
+          aria-label="Hide setup checklist"
+          title="Hide this for good"
         >
           <XMarkIcon className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="space-y-2">
-        {remaining.map((item) => (
-          <Link
-            key={item.key}
-            href={item.href}
-            className="flex items-start gap-3 p-3 rounded-xl transition-colors nav-item-hover-pill"
-            style={{ background: 'var(--color-surface-hover)' }}
-          >
-            <div className="w-5 h-5 rounded-full border-2 shrink-0 mt-0.5" style={{ borderColor: 'var(--color-surface-border)' }} />
-            <div className="min-w-0">
-              <span className="block text-sm font-medium text-default">{item.label}</span>
-              <span className="block text-xs text-muted mt-0.5">{item.detail}</span>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {items.length - remaining.length > 0 && (
-        <p className="flex items-center gap-1.5 text-xs text-muted mt-3">
-          <CheckCircleIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} />
-          {items.filter((i) => i.done).map((i) => i.label).join(' · ')}
-        </p>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {remaining.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="block p-3 rounded-xl transition-colors nav-item-hover-pill"
+                style={{ background: 'var(--color-surface-hover)' }}
+              >
+                <span className="block text-sm font-medium text-default">{item.label}</span>
+                <span className="block text-xs text-muted mt-0.5">{item.detail}</span>
+              </Link>
+            ))}
+          </div>
+          {items.length - remaining.length > 0 && (
+            <p className="flex items-center gap-1.5 text-xs text-muted mt-3">
+              <CheckCircleIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-success)' }} />
+              Done: {items.filter((i) => i.done).map((i) => i.label).join(' · ')}
+            </p>
+          )}
+        </div>
       )}
-
-      <div className="mt-3">
-        <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
-      </div>
-    </Card>
+    </div>
   );
 }
