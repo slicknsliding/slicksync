@@ -583,32 +583,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const { userId } = req.body;
       const authKey = getAuthKey(req);
       
-      if (!authKey && !userId) {
-        return res.status(400).json({ error: 'Auth key or user ID is required' });
+      // The key is the proof. Answering for a bare user id would let anyone
+      // with a member id sign in as them.
+      if (!authKey) {
+        return res.status(401).json({ error: 'Authentication required', message: 'Please sign in again' });
       }
-
-      // If userId is provided, we need to get the authKey from the user
-      let authKeyToValidate = authKey;
-      if (!authKeyToValidate && userId) {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { stremioAuthKey: true, accountId: true }
-        });
-        
-        if (!user || !user.stremioAuthKey) {
-          return res.status(403).json({ 
-            error: 'USER_NOT_FOUND',
-            message: 'Your account is not registered with SlickSync. Please contact an administrator to be added to a SlickSync group first.' 
-          });
-        }
-        
-        // Decrypt the auth key
-        const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
-        authKeyToValidate = decrypt(user.stremioAuthKey, mockReq);
-      }
+      const authKeyToValidate = authKey;
 
       // Validate using getPublicUser which checks existence, active status, and group membership
       const user = await getPublicUser(authKeyToValidate, req);
+      if (userId && user.id !== userId) {
+        return res.status(403).json({ error: 'Session mismatch', message: 'This Stremio session does not match this account' });
+      }
       
       res.json({
         success: true,
@@ -1217,15 +1203,12 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
-      // Security check: If requesting a different user's library, verify access
-      if (requestingUserId && requestingUserId !== userId) {
-        // Verify requesting user exists and belongs to same account
-        const requestingUser = await prisma.user.findUnique({
-          where: { id: requestingUserId },
-          select: { id: true, accountId: true }
-        });
-        
-        if (!requestingUser || requestingUser.accountId !== user.accountId) {
+      // Who is asking is proven by their own sign-in, never taken from the
+      // query string. Unproven askers see only a library its owner made public.
+      const asker = requestingUserId ? await personAsking(req, requestingUserId).catch(() => null) : null;
+      if (asker && asker.id !== userId) {
+        const requestingUser = asker;
+        if (requestingUser.accountId !== user.accountId) {
           return res.status(403).json({ error: 'Access denied: Invalid requesting user' });
         }
         
@@ -1237,9 +1220,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         if (!requestingUserInGroup || user.activityVisibility !== 'public') {
           return res.status(403).json({ error: 'Access denied: User library is private or you are not in the same group' });
         }
-      } else if (!requestingUserId && user.activityVisibility !== 'public') {
-        // If no requesting user ID provided and target user is private, deny access
-        // This prevents anonymous access to private libraries
+      } else if (!asker && user.activityVisibility !== 'public') {
+        // Nobody proven is asking and the library is private.
         return res.status(403).json({ error: 'Access denied: User library is private' });
       }
 
@@ -1462,6 +1444,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
+      // The addon address is fetched from this server; on an instance that
+      // serves other households it must not reach the server's own network.
+      if (require('../utils/config').INSTANCE_TYPE === 'public') {
+        try {
+          await require('../utils/safeUrl').assertSafeUrl(String(addonUrl).replace(/^stremio:\/\//i, 'https://'));
+        } catch {
+          return res.status(400).json({ error: 'That addon address can’t be used', message: 'That addon address can’t be used' });
+        }
+      }
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -1821,6 +1815,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -1875,6 +1871,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -1929,6 +1927,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -2030,6 +2030,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -2095,6 +2097,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -2866,6 +2870,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true }
@@ -2970,6 +2976,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user and verify auth
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -2987,10 +2995,6 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
-      // Optionally verify authKey matches
-      if (authKey && user.stremioAuthKey && authKey !== user.stremioAuthKey) {
-        return res.status(403).json({ error: 'Invalid auth key' });
-      }
 
       // Import syncUserAddons from users route
       const { syncUserAddons } = require('./users');
@@ -3027,6 +3031,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       // Get user with sync status info
+      if (!(await requireSelf(req, res, userId))) return;
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -3165,6 +3171,19 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   // reached or removed through here.
 
   /** The signed-in person asking - their app sign-in must be theirs. */
+  // A route that acts on one person has to be asked by that person: their
+  // own Stremio key, or the session token their Nuvio/Jellyfin sign-in got.
+  // A user id alone proves nothing - member ids show up in group lists.
+  async function requireSelf(req, res, userId) {
+    try {
+      return await personAsking(req, userId)
+    } catch (e) {
+      const status = e?.status || 401
+      res.status(status).json({ error: e.message, message: e.message })
+      return null
+    }
+  }
+
   async function personAsking(req, userId) {
     const user = userId ? await prisma.user.findUnique({
       where: { id: String(userId) },

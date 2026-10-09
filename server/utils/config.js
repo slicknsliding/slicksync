@@ -55,7 +55,10 @@ const defaultAddons = {
 // Auth allowlist for public endpoints
 const AUTH_ALLOWLIST = [
   '/health',
-  '/api/health',
+  // Only the build stamp - open tabs check it to notice an update, signed in
+  // or not. The rest of /api/health is the admin Health page; this list
+  // matches by startsWith, so a bare '/api/health' opened all of it.
+  '/api/health/build',
   '/api/public-auth/login',
   '/api/public-auth/register',
   '/api/public-auth/generate-uuid',

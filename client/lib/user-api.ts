@@ -677,9 +677,9 @@ export const userSync = {
   /**
    * Get user's at-risk status
    */
-  async getAtRiskStatus(userId: string): Promise<AtRiskStatus> {
+  async getAtRiskStatus(userId: string, authKey?: string): Promise<AtRiskStatus> {
     const params = new URLSearchParams({ userId });
-    return request(`/public-library/at-risk-status?${params.toString()}`);
+    return request(`/public-library/at-risk-status?${params.toString()}`, { authKey });
   },
 };
 

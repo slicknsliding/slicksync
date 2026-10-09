@@ -37,10 +37,15 @@ git clone https://github.com/slicknsliding/slicksync.git
 cd slicksync
 cp env.example .env
 echo "JWT_SECRET=$(openssl rand -base64 32)" >> .env
+echo "SLICKSYNC_PRIVATE_USERNAME=admin" >> .env
+echo "SLICKSYNC_PRIVATE_PASSWORD=$(openssl rand -base64 18)" >> .env
 docker compose -f docker-compose.private.yml up -d
 ```
 
-Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot — you only need `JWT_SECRET`. Full walkthrough in [Installation](#-installation).
+Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot. Sign in with the username and password in `.env` (`grep SLICKSYNC_PRIVATE .env`). Full walkthrough in [Installation](#-installation).
+
+> [!IMPORTANT]
+> Without `SLICKSYNC_PRIVATE_USERNAME` and `SLICKSYNC_PRIVATE_PASSWORD`, SlickSync has no login of its own: anyone who can open its address can manage it. Leave them unset only if a login proxy (Authelia, Authentik, Cloudflare Access…) already guards the whole address.
 
 **New here?** Once it's running, **`/guides`** is the fastest way to learn it — a topic page for every page and setting, searchable, each with the gotchas that actually come up. The same content answers free-text questions from the command palette (`Ctrl+K` / `Cmd+K`), no AI key required.
 
