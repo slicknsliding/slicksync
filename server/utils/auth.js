@@ -97,6 +97,10 @@ function pathIsAllowlisted(path) {
     // Stremio helpers are NOT allowlisted; require auth
     // Note: addons endpoints are NOT allowlisted; they require auth/CSRF
   ];
+  // Bare /api/health stays reachable for health checks people already point
+  // at it - without a login it answers only "ok" (routes/health.js). Exact
+  // match: /api/health/proxy-ignore and anything else under it stay gated.
+  if (path === '/api/health' || path === '/api/health/') return true;
   return AUTH_ALLOWLIST.some((prefix) => path.startsWith(prefix));
 }
 
