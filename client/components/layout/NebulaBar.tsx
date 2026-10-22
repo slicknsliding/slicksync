@@ -10,7 +10,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ComponentType, Fragment, ReactNode, useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -53,6 +53,7 @@ export function NebulaBar({
   const pathname = usePathname();
   const router = useRouter();
   const isTV = useIsTV();
+  const reduceMotion = useReducedMotion();
   // Reuses the same open/close state Original layout's Sidebar drawer
   // already gets from AdminClientLayout - the two never render at once
   // (Sidebar is hidden on exactly the pages that render this component
@@ -166,7 +167,7 @@ export function NebulaBar({
         nav links into a hamburger once scrolled. */}
     <div
       data-nebula-topbar
-      className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30'}
+      className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 py-4 md:px-6 md:py-6 sticky top-0 z-30'}
     >
       {/* Caps the bar so it reads as a floating island on wide desktop
           viewports instead of stretching edge-to-edge into empty space -
@@ -213,7 +214,7 @@ export function NebulaBar({
             bell inside this row, at the far end from the hamburger, once the
             page heading scrolls past, instead of floating them over the page
             under the bar. */}
-        <div data-nebula-logo-row className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4 mb-4'}>
+        <div data-nebula-logo-row className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4'}>
           {/* Hamburger - never on TV (nav is always shown inline there
               instead, see navVisible below); on mobile AND desktop alike,
               only once scrolled - nav shows inline at the top of the page
@@ -281,13 +282,22 @@ export function NebulaBar({
             <AnimatePresence initial={false}>
               {navVisible && (
                 <motion.nav
-                  initial={isScrolled ? { height: 0, opacity: 0 } : false}
+                  // Animate every reveal, including scrolling back to the top.
+                  // AnimatePresence skips only the bar's first render.
+                  initial={isTV ? false : { height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  className={isTV ? 'flex flex-col items-center gap-1 pt-1.5 overflow-hidden' : 'flex flex-col items-center gap-3 pt-4 overflow-hidden'}
-                  style={{ borderTop: '1px solid var(--color-surface-border)' }}
+                  transition={{ duration: reduceMotion ? 0 : 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
                 >
+                  {/* Height releases the nav's space in the page, so its divider
+                      and spacing belong inside the clipped area too. Keeping
+                      the logo row margin-free leaves equal padding above and
+                      below it when the nav is collapsed. */}
+                  <div
+                    className={isTV ? 'flex flex-col items-center gap-1 pt-1.5' : 'flex flex-col items-center gap-3 mt-4 pt-4'}
+                    style={{ borderTop: '1px solid var(--color-surface-border)' }}
+                  >
                   {sections.map((section) => (
             // Each section is its own row, same as Sidebar.tsx's vertical
             // stack of groups - spacing alone marks the grouping, no text
@@ -350,6 +360,7 @@ export function NebulaBar({
               })}
             </ScrollRow>
           ))}
+                  </div>
                 </motion.nav>
               )}
             </AnimatePresence>
