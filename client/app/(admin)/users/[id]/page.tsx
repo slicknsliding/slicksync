@@ -25,6 +25,7 @@ import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { SignInNuvioTvButton } from '@/components/nuvio/SignInNuvioTvButton';
 import { NuvioServersTile } from '@/components/nuvio/NuvioServersTile';
+import { HouseholdServersTile } from '@/components/jellyfin/HouseholdServersTile';
 import { CopyHistoryTile } from '@/components/user/CopyHistoryTile';
 import { SignInOfferBanner } from '@/components/user/SignInOfferBanner';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
@@ -1544,6 +1545,12 @@ export default function UserDetailPage() {
                 Trakt's own free export and needs no app and no VIP. */}
             {/* Their Jellyfin / AIOStreams / AIOMetadata in their Nuvio profile -
                 only for someone with both sign-ins (renders nothing otherwise). */}
+            {/* Their accounts on the Jellyfin servers given to their groups on
+                the Addons page (renders nothing when there are none). */}
+            <PageSection className="mb-6 empty:hidden">
+              <HouseholdServersTile userId={user.id} username={user.username} />
+            </PageSection>
+
             <PageSection className="mb-6 empty:hidden">
               <NuvioServersTile userId={user.id} />
             </PageSection>

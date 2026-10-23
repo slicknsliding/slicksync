@@ -1193,6 +1193,11 @@ model UserProviderCredential {
   jellyfinToken      String? // Encrypted, same scheme as User.jellyfinToken
   donorId           String?
   mergeArchivePath  String?
+  // Set when the sign-in was made for a Jellyfin server added on the Addons
+  // page ("jellyfin-server:<id>", utils/jellyfinHouseholdServers.js) rather
+  // than absorbed by a merge. Merges and Undo merge only ever look at rows
+  // where this is empty.
+  origin            String?
   createdAt         DateTime @default(now())
 
   @@unique([userId, providerType])

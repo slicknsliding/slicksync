@@ -12,6 +12,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
   // POST /probe, /quick-connect, /quick-connect-status
   mountSignInSteps(router);
 
+  // Jellyfin servers on the Addons page, given to groups like an addon.
+  router.use('/household-servers', require('./jellyfinHouseholdServers')({ prisma, getAccountId }));
+
   // Sign in and either add a new person or reconnect an existing one.
   router.post('/connect', async (req, res) => {
     try {

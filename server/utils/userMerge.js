@@ -87,7 +87,8 @@ async function getMergePreview(prisma, survivorId, donorId) {
  * reversed (vs. a pre-undo-support merge with no archive on file)?
  */
 async function getUndoInfo(prisma, survivorId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
-  const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId } })
+  // A sign-in made for a Jellyfin server on the Addons page isn't a merge.
+  const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId, origin: null } })
   if (!credential) return null
   // The donor's User row is gone by the time this is called (that's the
   // whole point of the merge) - its username only still exists in the
@@ -180,7 +181,7 @@ async function mergeUsers(prisma, survivorId, donorId, { dataDir = path.join(pro
   const existingSecondary = await prisma.userProviderCredential.findUnique({
     where: { userId_providerType: { userId: survivorId, providerType: donorFull.providerType } },
   })
-  if (existingSecondary) throw new Error(`Survivor already has a ${donorFull.providerType} account absorbed`)
+  if (existingSecondary && !existingSecondary.origin) throw new Error(`Survivor already has a ${donorFull.providerType} account absorbed`)
 
   // Archive filename is decided up front so the UserProviderCredential row
   // can point at it from the moment it's created, inside the same
@@ -196,6 +197,10 @@ async function mergeUsers(prisma, survivorId, donorId, { dataDir = path.join(pro
   const archive = { donorRows: {}, overwrittenSurvivorRows: {}, donorGroupIds: [] }
 
   await runMembershipTransaction(prisma, donorFull.accountId, async (tx) => {
+    // A sign-in SlickSync made for a household Jellyfin server gives way to
+    // the person's own login being merged in; the server's next sync sees
+    // they have one and doesn't make it again.
+    if (existingSecondary?.origin) await tx.userProviderCredential.delete({ where: { id: existingSecondary.id } })
     // 1. Absorb the donor's credentials as a secondary provider on the survivor.
     await tx.userProviderCredential.create({
       data: {
@@ -285,7 +290,7 @@ async function mergeUsers(prisma, survivorId, donorId, { dataDir = path.join(pro
  * top of this file for what that means in practice.
  */
 async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
-  const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId } })
+  const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId, origin: null } })
   if (!credential) throw new Error('No merged account found on this user to undo')
   if (!credential.donorId || !credential.mergeArchivePath) {
     throw new Error('This merge predates undo support and has no archive to reverse it from')

@@ -2640,6 +2640,79 @@ class ApiClient {
     return this.fetch<{ ok: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
   }
 
+  // Jellyfin servers on the Addons page, given to groups like an addon.
+  async householdServers() {
+    return this.fetch<{ servers: HouseholdServer[] }>('/jellyfin/household-servers');
+  }
+
+  async checkHouseholdServer(serverUrl: string) {
+    return this.fetch<import('@/components/jellyfin/JellyfinSignIn').JellyfinServerInfo & { suggestedName: string }>('/jellyfin/household-servers/check', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl }),
+    });
+  }
+
+  async householdServerQuickConnect(serverUrl: string) {
+    return this.fetch<{ code: string; secret: string; device: string; serverUrl: string }>('/jellyfin/household-servers/quick-connect', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl }),
+    });
+  }
+
+  async householdServerQuickConnectStatus(params: { serverUrl: string; secret: string; device: string }) {
+    return this.fetch<{ authenticated: boolean; expired?: boolean }>('/jellyfin/household-servers/quick-connect-status', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  async addHouseholdServer(data: {
+    serverUrl: string;
+    name: string;
+    groupIds: string[];
+    method: 'quickconnect' | 'apikey' | 'username';
+    apiKey?: string;
+    username?: string;
+    password?: string;
+    secret?: string;
+    device?: string;
+  }) {
+    return this.fetch<{ id: string; name: string; changes: HouseholdServerChange[] }>('/jellyfin/household-servers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateHouseholdServer(id: string, data: { name?: string; groupIds?: string[] }) {
+    return this.fetch<{ id: string; name: string; groupIds: string[] }>(`/jellyfin/household-servers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeHouseholdServer(id: string) {
+    return this.fetch<{ removed: boolean }>(`/jellyfin/household-servers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async syncHouseholdServer(id: string) {
+    return this.fetch<{ changes: HouseholdServerChange[] }>(`/jellyfin/household-servers/${encodeURIComponent(id)}/sync`, { method: 'POST' });
+  }
+
+  async personHouseholdServers(personId: string) {
+    return this.fetch<{ servers: PersonHouseholdServer[] }>(`/jellyfin/household-servers/people/${encodeURIComponent(personId)}`);
+  }
+
+  async approveHouseholdServerCode(serverId: string, personId: string, code: string) {
+    return this.fetch<{ approved: boolean; userName: string }>(`/jellyfin/household-servers/${encodeURIComponent(serverId)}/people/${encodeURIComponent(personId)}/quick-connect`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async householdServerPassword(serverId: string, personId: string) {
+    return this.fetch<{ userName: string; password: string }>(`/jellyfin/household-servers/${encodeURIComponent(serverId)}/people/${encodeURIComponent(personId)}/password`, { method: 'POST' });
+  }
+
   // "Their servers in Nuvio" - their Jellyfin / AIOStreams / AIOMetadata in their Nuvio profile.
   async getNuvioMediaServers(userId: string) {
     return this.fetch<NuvioServersState>(`/nuvio/users/${encodeURIComponent(userId)}/media-servers`);
@@ -4013,6 +4086,43 @@ export interface AioCollectionsView {
   linked: boolean;
   collections: AioCollection[];
   catalogs: { id: string; name: string; titles: number; cover: string | null }[];
+}
+
+/** A Jellyfin server on the Addons page (server/utils/jellyfinHouseholdServers.js). */
+export interface HouseholdServer {
+  id: string;
+  name: string;
+  address: string;
+  groupIds: string[];
+  groups: { id: string; name: string }[];
+  /** Everyone in its groups. */
+  people: number;
+  withAccounts: number;
+  /** Get an account on the next sync. */
+  waiting: number;
+  lastSyncAt: string | null;
+}
+
+export interface HouseholdServerChange {
+  action: 'made' | 'linked' | 'on' | 'off' | 'unlinked' | 'failed';
+  personId?: string;
+  name: string;
+  server?: string;
+  detail?: string;
+}
+
+/** A Jellyfin server a person has (or gets on the next sync) an account on. */
+export interface PersonHouseholdServer {
+  id: string;
+  name: string;
+  address: string;
+  groups: string[];
+  userName: string | null;
+  made: boolean;
+  own: boolean;
+  waiting: boolean;
+  tracked: boolean;
+  hasPassword: boolean;
 }
 
 /** One household user on an AIOStreams or AIOMetadata sign-in, as a profile. */

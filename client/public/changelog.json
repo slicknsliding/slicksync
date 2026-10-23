@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.102.0",
+    "date": "2026-10-22",
+    "title": "1.102.0 - Your Jellyfin server, given to groups like an addon",
+    "features": [
+      "Add a Jellyfin server on the Addons page: Add now asks whether you're adding an addon or a Jellyfin server. Type the address, give it a display name, connect as an administrator with Quick Connect, an API key or a username (the password is optional), and give it to groups. Everyone in them gets their own account on the server, named after them - or is linked to the one they already have there.",
+      "Any Jellyfin app signs in with it: Odin, Vifoy, Swiftfin, Infuse, Findroid and the rest. The person chooses Quick Connect in the app, and the code goes in on their page here. Apps without Quick Connect use the account name and the password shown under Show password on their page.",
+      "What they watch on it shows in Activity, history and AIOSync. Someone taken out of the groups has the account SlickSync made switched off, and back on if they return."
+    ],
+    "bugFixes": []
+  },
+  {
     "version": "1.101.0",
     "date": "2026-10-22",
     "title": "1.101.0 - A new Discover with a page for every actor, AIOSync between any app, person and profile, and a faster app",

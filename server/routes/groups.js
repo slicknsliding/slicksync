@@ -53,6 +53,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
   // from "already synced" to the normal check, so the group's new order
   // never actually got pushed down - reported as addons/reorder silently
   // not syncing to local user accounts.
+  // A Jellyfin server given to the group (utils/jellyfinHouseholdServers.js)
+  // never stops the addon sync.
+  async function syncHouseholdServers(prismaDep, accountId, groupId) {
+    try {
+      const changes = await require('../utils/jellyfinHouseholdServers').syncForGroup(prismaDep, accountId || 'default', groupId)
+      for (const c of changes) if (c.action !== 'failed') console.log(`[JellyfinServers] ${c.server}: ${c.name} ${c.action}`)
+    } catch (e) {
+      console.warn('[JellyfinServers] group sync step failed:', e?.message)
+    }
+  }
+
   async function syncGroupUsers(groupId, req, { forcePush = false } = {}) {
     // Load group with scoped account
     const group = await prisma.group.findFirst({
@@ -62,6 +73,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     if (!group) {
       return { error: 'Group not found', groupId }
     }
+
+    // Jellyfin servers given to this group: accounts for whoever is in it.
+    await syncHouseholdServers(prisma, getAccountId(req), groupId)
 
     // Parse userIds array from stored JSON
     let userIds = []
@@ -1560,6 +1574,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     // Load group
     const group = await prismaDep.group.findFirst({ where: { id: groupId, accountId: getAccountIdDep(reqDep) }, select: { id: true, userIds: true, name: true } })
     if (!group) return { error: 'Group not found', groupId }
+    await syncHouseholdServers(prismaDep, getAccountIdDep(reqDep), groupId)
     // Parse users
     let userIds = []
     try { userIds = Array.isArray(group.userIds) ? group.userIds : JSON.parse(group.userIds || '[]') } catch {}

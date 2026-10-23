@@ -1045,6 +1045,14 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize invite-made Jellyfin accounts:', err)
     }
 
+    // Jellyfin servers given to groups on the Addons page: accounts of people
+    // who left the groups switch off - see utils/jellyfinHouseholdServers.js.
+    try {
+      require('./utils/jellyfinHouseholdServers').scheduleHouseholdServers(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize household Jellyfin servers:', err)
+    }
+
     // Schedule DB size sampling for the Tasks page's storage chart
     // (private/SQLite-mode only - no-ops itself if DATABASE_URL isn't file:)
     try {
