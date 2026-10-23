@@ -95,7 +95,7 @@ async function protectedPage(owner) {
   try {
     const res = await safeFetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(15000) }, instancePolicy())
     const body = await res.json()
-    if (body?.data?.settings?.protected === true) page = `${base}/configure`
+    if (body?.data?.settings?.protected === true) page = `${base}/stremio/configure`
   } catch { /* unknown: offered as usual, and a refusal says why */ }
   protectedSeen.set(base, { at: Date.now(), page })
   return page

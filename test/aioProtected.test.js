@@ -19,7 +19,7 @@ const owner = (host) => ({ jellyfinServerKind: 'aiostreams', jellyfinServerUrl: 
 
 test('a protected AIOStreams is sent to its own configure page; an open one is not', async () => {
   statusBody = { data: { settings: { protected: true } } }
-  assert.equal(await household.protectedPage(owner('aio-locked.example.invalid')), 'https://aio-locked.example.invalid/configure')
+  assert.equal(await household.protectedPage(owner('aio-locked.example.invalid')), 'https://aio-locked.example.invalid/stremio/configure')
   statusBody = { data: { settings: { protected: false } } }
   assert.equal(await household.protectedPage(owner('aio-open.example.invalid')), null)
   // AIOMetadata has no such switch
