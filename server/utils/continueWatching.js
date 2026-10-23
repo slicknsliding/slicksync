@@ -552,7 +552,7 @@ async function getBuriedShows(prisma, accountId) {
   }).catch(() => [])
   const movieByKey = new Map(movieRows.map((m) => [`${m.userId}:${m.itemId}`, m]))
 
-  return dismissed.map((d) => {
+  const buried = dismissed.map((d) => {
     const hist = latest.get(`${d.userId}:${d.showId}`) || null
     const movie = movieByKey.get(`${d.userId}:${d.showId}`) || null
     return {
@@ -566,8 +566,21 @@ async function getBuriedShows(prisma, accountId) {
       lastWatchedAt: hist?.watchedAt || movie?.watchedAt || null,
       episodesWatched: counts.get(`${d.userId}:${d.showId}`) || 0,
       buriedAt: d.createdAt,
+      isMovie: !hist && !!movie,
     }
   })
+  // Buried with nothing left in history to name it ("tt31049299"): its real
+  // title from Cinemeta, and the poster everyone else gets for that id.
+  try {
+    await require('./titleNames').fillNames(buried, {
+      getName: (b) => b.showName, setName: (b, v) => { b.showName = v }, getId: (b) => b.showId, getType: (b) => (b.isMovie ? 'movie' : 'series'),
+    })
+  } catch { /* the id stays */ }
+  for (const b of buried) {
+    if (!b.poster && /^tt\d+$/.test(b.showId)) b.poster = `https://images.metahub.space/poster/small/${b.showId}/img`
+    delete b.isMovie
+  }
+  return buried
 }
 
 /** Dig a show back up: the dismissal is removed, so it reappears in

@@ -722,13 +722,21 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const whoName = user.username || user.email || 'Someone'
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
       title: `${whoName} started watching`,
-      body: displayName,
+      body: readableStreamTitle(shownName),
       icon: fresh?.posterUrl || '/android-chrome-192x192.png',
       url: '/activity',
     })
   } catch (error) {
     heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
   }
+}
+
+// A stream's own name can be an opaque file or cache id when its title isn't
+// matched yet - say so in words instead of printing the id.
+function readableStreamTitle(name) {
+  const n = String(name || '').trim()
+  if (!n || (/^[A-Za-z0-9_-]{20,}$/.test(n) && /\d/.test(n) && !/\s/.test(n))) return 'a title SlickSync couldn’t name yet'
+  return n
 }
 
 // Deliberately no "finished watching" notification here. It existed once,
