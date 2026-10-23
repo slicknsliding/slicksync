@@ -146,6 +146,11 @@ async function writeConfig({ serverUrl, account, password }, config) {
   }
   const body = await res.json().catch(() => null)
   if (!res.ok || !body?.success) {
+    // A protected AIOStreams (its own sign-in page switched on) only saves
+    // changes made while signed in there; it calls that an "addon password".
+    if (body?.error?.code === 'ADDON_PASSWORD_INVALID' || /invalid addon password/i.test(body?.error?.message || '')) {
+      throw Object.assign(new Error('Your AIOStreams only saves changes made while signed in on its own page - make this change there instead.'), { status: 409, protectedInstance: true })
+    }
     throw Object.assign(new Error(body?.error?.message || `AIOStreams answered ${res.status}`), { status: res.status >= 500 ? 502 : 400 })
   }
 }

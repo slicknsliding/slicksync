@@ -736,7 +736,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const personal = full.jellyfinServerKind === 'aiostreams' && profiles.length
         ? await require('../utils/aioHousehold').personalSettings(decrypt, { ...full, accountId }, profiles)
         : null;
-      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin, personal });
+      // A protected AIOStreams takes these changes only on its own page.
+      const managedOn = canManage ? await require('../utils/aioHousehold').protectedPage(full) : null;
+      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin, personal, managedOn });
     } catch (error) {
       sendError(res, error, 'Could not read the household');
     }

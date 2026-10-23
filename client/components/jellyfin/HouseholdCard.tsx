@@ -108,6 +108,9 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
   const [canManage, setCanManage] = useState(false);
   const [canPin, setCanPin] = useState(false);
   const [serverKind, setServerKind] = useState<string | null>(null);
+  // A protected AIOStreams takes new household users, PINs and sign-in
+  // addresses only on its own page: this is that page.
+  const [managedOn, setManagedOn] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -130,6 +133,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
       setCanPin(!!h.canPin);
       setServerKind(h.kind);
       setPersonal(h.personal || {});
+      setManagedOn(h.managedOn || null);
       return h;
     } catch {
       setProfiles(null);
@@ -393,7 +397,22 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               </div>
             );
           })}
-          {canManage && (
+          {canManage && managedOn && (
+            <a
+              href={managedOn}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={closeMenu}
+              className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 transition-colors hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <span className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-dashed border-default text-muted group-hover:text-default transition-colors">
+                <ArrowTopRightOnSquareIcon className="w-6 h-6" />
+              </span>
+              <span className="text-sm font-medium text-default text-center">Add on {kindLabel}</span>
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted">Household user</span>
+            </a>
+          )}
+          {canManage && !managedOn && (
             <button
               type="button"
               onClick={() => { closeMenu(); setAdding(true); }}
@@ -407,6 +426,12 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
             </button>
           )}
         </div>
+      )}
+
+      {isOpen && canManage && managedOn && (
+        <p className="text-xs text-muted mt-1">
+          Your {kindLabel} only takes new household users, PINs and sign-in addresses on its own page, under <span className="text-default">Users, trackers and playback</span>. They show up here by themselves.
+        </p>
       )}
 
       {sel && placement && typeof document !== 'undefined' && createPortal(
@@ -456,12 +481,22 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               <KeyIcon className="w-4 h-4 text-muted" /> Sign in
             </button>
           )}
-          {canPin && (
+          {canPin && managedOn && (
+            <a href={managedOn} target="_blank" rel="noopener noreferrer" className={MENU_ITEM} onClick={closeMenu}>
+              <LockClosedIcon className="w-4 h-4 text-muted" /> <span className="truncate">Change PIN on {kindLabel}</span><ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 text-muted ml-auto shrink-0" />
+            </a>
+          )}
+          {canPin && !managedOn && (
             <button className={MENU_ITEM} onClick={() => { closeMenu(); setPinFor(sel); }}>
               <LockClosedIcon className="w-4 h-4 text-muted" /> Change PIN
             </button>
           )}
-          {canSeparate && (
+          {canSeparate && managedOn && (
+            <a href={managedOn} target="_blank" rel="noopener noreferrer" className={MENU_ITEM} onClick={closeMenu}>
+              <LinkIcon className="w-4 h-4 text-muted" /> <span className="truncate">Own sign-in address on {kindLabel}</span><ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 text-muted ml-auto shrink-0" />
+            </a>
+          )}
+          {canSeparate && !managedOn && (
             <button className={MENU_ITEM} onClick={() => { closeMenu(); setAddressFor(sel); }}>
               <LinkIcon className="w-4 h-4 text-muted" /> Own sign-in address
             </button>
