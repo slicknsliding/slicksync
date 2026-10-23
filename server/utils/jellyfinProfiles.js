@@ -84,7 +84,7 @@ async function signInAs(serverUrl, names, userId, secret, onSignIn) {
  * there is one. Users that need a PIN, or that would not sign in, come back
  * without a token so the household card can offer to finish them.
  */
-async function signInHousehold({ probe, login, password, typedLogin, onSignIn }) {
+async function signInHousehold({ probe, login, password, typedLogin, onSignIn, skip = null }) {
   if (!hasHousehold(probe.kind)) return []
   let users = []
   try {
@@ -95,7 +95,7 @@ async function signInHousehold({ probe, login, password, typedLogin, onSignIn })
   }
   const account = accountOf(typedLogin)
   const out = []
-  for (const user of users.filter((u) => u.id !== login.userId)) {
+  for (const user of users.filter((u) => u.id !== login.userId && !(skip && skip.has(u.id)))) {
     const names = loginNamesFor(probe.kind, probe.serverUrl, account, user)
     // On AIOStreams, a user that can't sign in automatically is one with a PIN,
     // and isn't tried: wrong guesses count towards its lockout, and the
@@ -149,6 +149,50 @@ async function saveHousehold(prisma, encrypt, owner, household) {
       })
     }
   }
+}
+
+/**
+ * Household users added since: someone added on AIOStreams' or AIOMetadata's
+ * own page (a protected AIOStreams only takes them there) shows up here by
+ * itself. Only users not known yet are signed in, so nobody's sign-in is
+ * disturbed. Returns how many were found.
+ */
+const lastLook = new Map()
+async function refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs = 0 } = {}) {
+  if (!owner || owner.providerType !== 'jellyfin' || !hasHousehold(owner.jellyfinServerKind) || !owner.jellyfinToken) return 0
+  const at = lastLook.get(owner.id) || 0
+  if (minIntervalMs && Date.now() - at < minIntervalMs) return 0
+  lastLook.set(owner.id, Date.now())
+  const seal = { appAccountId: owner.accountId || 'default' }
+  const known = await prisma.jellyfinProfile.findMany({ where: { ownerUserId: owner.id }, select: { jellyfinUserId: true } })
+  const found = await signInHousehold({
+    probe: { serverUrl: owner.jellyfinServerUrl, kind: owner.jellyfinServerKind },
+    login: { token: decrypt(owner.jellyfinToken, seal), userId: owner.jellyfinUserId },
+    password: owner.aioConfigPassword ? decrypt(owner.aioConfigPassword, seal) : null,
+    typedLogin: owner.aioConfigId || null,
+    onSignIn: handToHolders(prisma, encrypt, owner.jellyfinServerUrl),
+    skip: new Set(known.map((k) => k.jellyfinUserId)),
+  })
+  if (found.length) await saveHousehold(prisma, encrypt, owner, found)
+  return found.length
+}
+
+let refreshTimer = null
+function scheduleHouseholdRefresh(prisma, decrypt, encrypt) {
+  if (refreshTimer) clearInterval(refreshTimer)
+  const run = async () => {
+    try {
+      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', isActive: true, jellyfinToken: { not: null }, jellyfinServerKind: { in: [...HOUSEHOLD_KINDS] } } })
+      for (const o of owners) {
+        try {
+          const n = await refreshHousehold(prisma, decrypt, encrypt, o)
+          if (n) console.log(`[JellyfinProfiles] ${n} new household user(s) for ${o.username}`)
+        } catch (e) { console.warn(`[JellyfinProfiles] household check for ${o.username} failed:`, e?.message) }
+      }
+    } catch (e) { console.warn('[JellyfinProfiles] household check failed:', e?.message) }
+  }
+  setTimeout(run, 3 * 60 * 1000)
+  refreshTimer = setInterval(run, 10 * 60 * 1000)
 }
 
 /**
@@ -300,7 +344,7 @@ async function mergeProfileBack(prisma, { profile, owner }) {
   return { mergedInto: owner.id, removed: { id: person.id, username: person.username } }
 }
 
-module.exports = {
+module.exports = { refreshHousehold, scheduleHouseholdRefresh,
   forgetPersonHousehold,
   forgetProfileSignIn,
   hasHousehold,

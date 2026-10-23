@@ -1045,6 +1045,14 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize invite-made Jellyfin accounts:', err)
     }
 
+    // AIOStreams and AIOMetadata household users added on their own pages
+    // show up here by themselves - see utils/jellyfinProfiles.js.
+    try {
+      require('./utils/jellyfinProfiles').scheduleHouseholdRefresh(prisma, decrypt, encrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize household checks:', err)
+    }
+
     // Jellyfin servers given to groups on the Addons page: accounts of people
     // who left the groups switch off - see utils/jellyfinHouseholdServers.js.
     try {
