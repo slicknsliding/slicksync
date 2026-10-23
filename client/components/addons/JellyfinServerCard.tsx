@@ -22,7 +22,7 @@ export function JellyfinServerCard({ server, onOpen, focusable }: { server: Hous
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="addon-card-name font-semibold transition-all group-hover:text-primary text-default truncate">{server.name}</h3>
-            <p className="text-sm text-muted truncate">{server.address}</p>
+            {server.address !== server.name && <p className="text-sm text-muted truncate">{server.address}</p>}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 mt-3">

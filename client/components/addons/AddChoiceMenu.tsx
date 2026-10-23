@@ -12,9 +12,11 @@ import { PuzzlePieceIcon } from '@heroicons/react/24/outline';
 import { JellyfinLogo } from '@/components/jellyfin/JellyfinLogo';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 
-export function AddChoiceMenu({ anchor, isTV, onClose, onAddon, onServer }: {
+export function AddChoiceMenu({ anchor, anchorEl, isTV, onClose, onAddon, onServer }: {
   /** The button it opened from. */
   anchor: DOMRect;
+  /** That button: a press on it is its own toggle, not a press outside. */
+  anchorEl?: Element | null;
   isTV: boolean;
   onClose: () => void;
   onAddon: () => void;
@@ -44,7 +46,10 @@ export function AddChoiceMenu({ anchor, isTV, onClose, onAddon, onServer }: {
   }, [isTV]);
 
   useEffect(() => {
-    const down = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    const down = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (ref.current && !ref.current.contains(t) && !anchorEl?.contains(t)) onClose();
+    };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || (e.key === 'Backspace' && isTV)) onClose(); };
     // The press that opened it is still finishing: listen from the next tick.
     const t = setTimeout(() => {
@@ -58,11 +63,13 @@ export function AddChoiceMenu({ anchor, isTV, onClose, onAddon, onServer }: {
       window.removeEventListener('resize', onClose);
       document.removeEventListener('keydown', key);
     };
-  }, [onClose, isTV]);
+  }, [onClose, isTV, anchorEl]);
 
   const item = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hov-surface transition-colors';
   const icon = 'w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 bg-surface-hover';
-  const choose = (fn: () => void) => () => { onClose(); fn(); };
+  // What was picked opens first; the menu goes on the next tick, so on a TV
+  // the remote's key press finishes before the item it landed on is gone.
+  const choose = (fn: () => void) => () => { fn(); setTimeout(onClose, 0); };
 
   const rows = [
     {

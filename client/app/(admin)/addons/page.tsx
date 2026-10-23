@@ -203,7 +203,7 @@ export default function AddonsPage() {
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   // "+ Add" asks what to add: an addon, or a Jellyfin server.
-  const [addMenuAnchor, setAddMenuAnchor] = useState<DOMRect | null>(null);
+  const [addMenuAnchor, setAddMenuAnchor] = useState<{ rect: DOMRect; el: Element } | null>(null);
   const addButtonRef = useRef<HTMLDivElement>(null);
   const [householdServers, setHouseholdServers] = useState<HouseholdServer[]>([]);
   const [serverModal, setServerModal] = useState<{ server: HouseholdServer | null } | null>(null);
@@ -212,7 +212,7 @@ export default function AddonsPage() {
   }, []);
   useEffect(() => { loadHouseholdServers(); }, [loadHouseholdServers]);
   const openAddMenu = useCallback((el: Element | null) => {
-    if (el) setAddMenuAnchor(el.getBoundingClientRect());
+    if (el) setAddMenuAnchor({ rect: el.getBoundingClientRect(), el });
   }, []);
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -1093,7 +1093,8 @@ export default function AddonsPage() {
 
       {addMenuAnchor && (
         <AddChoiceMenu
-          anchor={addMenuAnchor}
+          anchor={addMenuAnchor.rect}
+          anchorEl={addMenuAnchor.el}
           isTV={isTV}
           onClose={() => setAddMenuAnchor(null)}
           onAddon={() => setIsAddModalOpen(true)}
