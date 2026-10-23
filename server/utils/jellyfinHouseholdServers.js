@@ -397,7 +397,9 @@ async function syncServerNow(prisma, accountId, id, { add = true } = {}) {
           rec.tracked = await keepSignIn(prisma, accountId, server, person, rec, credentials).catch(() => false)
           accounts[person.id] = rec
           changes.push({ action: 'on', personId: person.id, name: rec.userName })
-        } else if (add && !rec.off && !rec.own && !rec.tracked) {
+        } else if (add && !rec.off && !rec.own && !credentials.some((c) => c.userId === person.id && c.origin === originOf(server.id))) {
+          // No tracking sign-in for them (just picked up again, or a merge
+          // took the slot and was undone): sign in again if the slot is free.
           rec = { ...rec, tracked: await keepSignIn(prisma, accountId, server, person, rec, credentials).catch(() => false) }
           accounts[person.id] = rec
         }

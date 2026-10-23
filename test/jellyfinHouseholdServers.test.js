@@ -205,6 +205,22 @@ test('an account SlickSync numbered ("owner 2") is found again even without the 
   assert.equal([...jf.users.values()].filter((u) => /^owner/.test(u.Name)).length, 2)
 })
 
+test('a merge takes the Jellyfin slot; once it is undone, the next sync signs them in again', async () => {
+  const { db } = await setup()
+  await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  // A merge replaced Sarah's server sign-in with her own merged-in login...
+  const i = db.creds.findIndex((c) => c.userId === 'p-sarah')
+  db.creds.splice(i, 1, { id: 'merged', userId: 'p-sarah', providerType: 'jellyfin', origin: null, jellyfinServerUrl: 'https://elsewhere.invalid' })
+  await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  assert.equal(db.sync.jellyfinHouseholdServers.s1.accounts['p-sarah'].tracked, false)
+  assert.equal(db.creds.filter((c) => c.userId === 'p-sarah').length, 1)
+  // ...and was undone.
+  db.creds.splice(db.creds.findIndex((c) => c.id === 'merged'), 1)
+  await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  assert.equal(db.sync.jellyfinHouseholdServers.s1.accounts['p-sarah'].tracked, true)
+  assert.ok(db.creds.some((c) => c.userId === 'p-sarah' && c.origin === 'jellyfin-server:s1'))
+})
+
 test('names Jellyfin takes, and which server a sign-in is on', () => {
   assert.equal(servers.accountName('Jen 🎬!', new Set()), 'Jen')
   assert.equal(servers.accountName('jen', new Set(['jen', 'jen 2'])), 'jen 3')
@@ -213,4 +229,13 @@ test('names Jellyfin takes, and which server a sign-in is on', () => {
   assert.ok(servers.sameServer(s, 'http://JF.example.invalid', null))
   assert.ok(servers.sameServer(s, 'https://other.invalid', 'SRV1'))
   assert.ok(!servers.sameServer(s, 'https://other.invalid', 'srv2'))
+})
+
+test('a server sign-in is never shown or undone as a merge', async () => {
+  const { getUndoInfo } = require('../server/utils/userMerge')
+  const rows = [{ id: 'c1', userId: 'p-sarah', providerType: 'jellyfin', origin: 'jellyfin-server:s1' }]
+  const prisma = { userProviderCredential: { findFirst: async ({ where }) => rows.find((r) => r.userId === where.userId && (where.origin === undefined || r.origin === where.origin)) || null } }
+  assert.equal(await getUndoInfo(prisma, 'p-sarah'), null)
+  rows.push({ id: 'c2', userId: 'p-sarah', providerType: 'stremio', origin: null, donorId: 'd', mergeArchivePath: null })
+  assert.equal((await getUndoInfo(prisma, 'p-sarah')).providerType, 'stremio')
 })
