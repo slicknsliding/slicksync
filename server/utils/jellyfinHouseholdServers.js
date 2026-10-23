@@ -115,7 +115,8 @@ async function makeKey(url, token, deviceId) {
  * { method: 'apikey', apiKey } | { method: 'username', username, password }
  * | { method: 'quickconnect', secret, device }. Returns the server and an API key.
  */
-async function connectAdmin(prisma, rawUrl, auth = {}) {
+async function connectAdmin(prisma, rawUrl, auth = {}, accountId = 'default') {
+  if (auth.method === 'person') return connectWithPerson(prisma, accountId, auth.personId)
   const probe = await jfAuth.probeServer(rawUrl)
   if (probe.kind !== 'jellyfin') {
     throw httpError(400, `That's ${probe.kindLabel}, which can't make accounts for people - add a Jellyfin server here`)
@@ -156,8 +157,56 @@ async function connectAdmin(prisma, rawUrl, auth = {}) {
   return { probe, key, keyMade: true }
 }
 
+/**
+ * Someone here already signs in to the server as one of its administrators:
+ * SlickSync makes its key with that sign-in, so nobody types anything. Their
+ * own sign-in is left as it is.
+ */
+async function connectWithPerson(prisma, accountId, personId) {
+  const collections = require('./jellyfinServerCollections')
+  const person = await prisma.user.findFirst({
+    where: { id: String(personId || ''), accountId, providerType: 'jellyfin', jellyfinToken: { not: null } },
+    select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, jellyfinServerId: true, jellyfinUserId: true, jellyfinToken: true },
+  })
+  if (!person?.jellyfinServerUrl) throw httpError(404, 'That person doesn’t sign in to a Jellyfin server here')
+  const probe = await jfAuth.probeServer(person.jellyfinServerUrl)
+  if (probe.kind !== 'jellyfin') throw httpError(400, `That's ${probe.kindLabel}, which can't make accounts for people - add a Jellyfin server here`)
+  const session = collections.sessionFor(person, decrypt)
+  let me
+  try { me = await collections.call(session, '/Users/Me') } catch (e) {
+    if (e?.status === 401 || e?.status === 403) throw httpError(400, `${person.username}'s sign-in on that server has stopped working - reconnect them, or connect another way`)
+    throw e
+  }
+  if (!me?.Policy?.IsAdministrator) throw httpError(403, `${person.username} isn’t an administrator on this server - connect another way`)
+  const key = await makeKey(session.base, session.token, session.deviceId)
+  return { probe, key, keyMade: true }
+}
+
+/**
+ * The Jellyfin servers people here already sign in with that aren't added
+ * yet, for the top of the Add dialog - and who, if anyone, is an
+ * administrator there.
+ */
+async function knownServers(prisma, accountId) {
+  const collections = require('./jellyfinServerCollections')
+  const added = Object.values(await readServers(prisma, accountId))
+  const out = []
+  for (const s of await collections.serversFor(prisma, accountId)) {
+    if (added.some((a) => sameServer(a, s.url, s.people[0]?.jellyfinServerId))) continue
+    const { session, admin, serverName } = await collections.findActor(s, decrypt)
+    out.push({
+      url: s.url,
+      address: s.address,
+      name: collections.serverDisplayName(serverName, s.address),
+      people: s.people.map((p) => p.username),
+      admin: admin && session ? { id: session.person.id, name: session.person.username } : null,
+    })
+  }
+  return out
+}
+
 async function addServer(prisma, accountId, { url, name, auth, groupIds }) {
-  const { probe, key, keyMade } = await connectAdmin(prisma, url, auth)
+  const { probe, key, keyMade } = await connectAdmin(prisma, url, auth, accountId)
   const existing = Object.values(await readServers(prisma, accountId)).find((s) => s.url === probe.serverUrl || (probe.serverId && s.serverId === probe.serverId))
   if (existing) throw httpError(409, `${existing.name} is already added`)
   const id = crypto.randomBytes(8).toString('hex')
@@ -588,7 +637,7 @@ function scheduleHouseholdServers(prisma) {
 }
 
 module.exports = {
-  connectAdmin, addServer, updateServer, removeServer, syncServer, syncForGroup,
+  connectAdmin, addServer, updateServer, removeServer, syncServer, syncForGroup, knownServers,
   listServers, personServers, approveCode, revealPassword, scheduleHouseholdServers,
   // for tests
   accountName, sameServer, originOf, readServers,

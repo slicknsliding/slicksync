@@ -32,6 +32,15 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // Servers people here already sign in with, not added yet.
+  router.get('/known', async (req, res) => {
+    try {
+      res.json({ servers: await servers.knownServers(prisma, accountOf(req)) });
+    } catch (error) {
+      sendError(res, error, 'Could not list the servers people use');
+    }
+  });
+
   router.post('/', async (req, res) => {
     try {
       const b = req.body || {};
@@ -39,7 +48,7 @@ module.exports = ({ prisma, getAccountId }) => {
         url: b.serverUrl,
         name: b.name,
         groupIds: b.groupIds,
-        auth: { method: b.method, apiKey: b.apiKey, username: b.username, password: b.password, secret: b.secret, device: b.device },
+        auth: { method: b.method, apiKey: b.apiKey, username: b.username, password: b.password, secret: b.secret, device: b.device, personId: b.personId },
       });
       const changes = [];
       for (const groupId of server.groupIds) changes.push(...await servers.syncForGroup(prisma, accountOf(req), groupId).catch(() => []));

@@ -5,16 +5,18 @@
 // gets their own account on it (server/utils/jellyfinHouseholdServers.js).
 // SlickSync needs an administrator's say-so to make accounts - Quick Connect,
 // an API key from the server's dashboard, or a username (password optional,
-// as a Jellyfin account may have none).
+// as a Jellyfin account may have none). Servers people here already sign in
+// with are offered at the top; where one of them is an administrator there,
+// SlickSync connects with their sign-in and nothing is typed.
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Modal, Button, ConfirmModal } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { JellyfinLogo } from '@/components/jellyfin/JellyfinLogo';
-import { api, type HouseholdServer, type HouseholdServerChange } from '@/lib/api';
+import { api, type HouseholdServer, type HouseholdServerChange, type KnownHouseholdServer } from '@/lib/api';
 
-type Method = 'quickconnect' | 'apikey' | 'username';
+type Method = 'quickconnect' | 'apikey' | 'username' | 'person';
 type Group = { id: string; name: string; color?: string; description?: string };
 
 const field = 'w-full px-4 py-3 rounded-xl text-sm bg-[var(--color-bg)] border border-default text-default placeholder:text-subtle';
@@ -94,6 +96,8 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [quick, setQuick] = useState<{ code: string; secret: string; device: string; serverUrl: string } | null>(null);
   const [quickState, setQuickState] = useState<'idle' | 'starting' | 'waiting' | 'approved' | 'expired'>('idle');
+  const [known, setKnown] = useState<KnownHouseholdServer[] | null>(null);
+  const [picked, setPicked] = useState<KnownHouseholdServer | null>(null);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopPoll = () => { if (poll.current) clearInterval(poll.current); poll.current = null; };
 
@@ -101,13 +105,14 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
     if (!isOpen) { stopPoll(); return; }
     setAddress(''); setChecked(null); setName(server?.name || ''); setMethod('username'); setUsername(''); setPassword('');
     setShowPassword(false); setApiKey(''); setSelected(new Set(server?.groupIds || [])); setError(null);
-    setQuick(null); setQuickState('idle'); setSaving(false); setSyncing(false);
+    setQuick(null); setQuickState('idle'); setSaving(false); setSyncing(false); setPicked(null); setKnown(null);
+    if (!server) api.householdServersKnown().then((r) => setKnown(r.servers || [])).catch(() => setKnown([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, server?.id]);
   useEffect(() => () => stopPoll(), []);
 
-  const check = async () => {
-    const value = address.trim();
+  const check = async (typed?: string) => {
+    const value = (typed ?? address).trim();
     if (!value) { setError('Enter the server address'); return null; }
     if (checked && (value === checked.serverUrl || value === checked.display)) return checked;
     setChecking(true);
@@ -173,6 +178,19 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
     }
   };
 
+  // One of the servers people already use: address and name filled in, and
+  // their administrator's sign-in when there is one.
+  const pickKnown = (k: KnownHouseholdServer) => {
+    if (picked?.url === k.url) { setPicked(null); setAddress(''); setChecked(null); setName(''); setMethod('username'); return; }
+    stopPoll(); setQuick(null); setQuickState('idle'); setError(null);
+    setPicked(k);
+    setAddress(k.url);
+    setChecked(null);
+    setName(k.name);
+    setMethod(k.admin ? 'person' : 'username');
+    check(k.url);
+  };
+
   const pick = (next: Method) => {
     setMethod(next);
     setError(null);
@@ -193,6 +211,11 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
       } finally {
         setSaving(false);
       }
+      return;
+    }
+    if (!revealed) { await check(); return; }
+    if (method === 'person' && picked?.admin) {
+      await finish({ serverUrl: picked.url, name: name.trim(), groupIds: [...selected], method: 'person', personId: picked.admin.id });
       return;
     }
     if (method === 'quickconnect') { startQuick(); return; }
@@ -235,6 +258,11 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
     }
   };
 
+  // With servers to offer, the form opens with just them and an address;
+  // the rest follows once one is picked or an address is found.
+  const offering = !editing && !!known?.length;
+  const revealed = editing || !offering || !!picked || !!checked;
+
   const seg = (m: Method, text: string) => (
     <button
       type="button"
@@ -260,7 +288,44 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
             </p>
           </div>
 
-          {!editing && (
+          {offering && (
+            <div>
+              <span className={label}>Already in SlickSync</span>
+              <div className="space-y-2">
+                {known!.map((k) => {
+                  const on = picked?.url === k.url;
+                  const who = k.people.length <= 2 ? k.people.join(' and ') : `${k.people.slice(0, 2).join(', ')} and ${k.people.length - 2} more`;
+                  return (
+                    <button
+                      key={k.url}
+                      type="button"
+                      onClick={() => pickKnown(k)}
+                      aria-pressed={on}
+                      className={`w-full flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 p-3 rounded-2xl text-left border transition-colors ${on ? 'sync-chip-on' : 'sync-chip-off'}`}
+                    >
+                      <span className="w-10 h-10 rounded-[11px] flex items-center justify-center shrink-0" style={{ background: '#000b25', border: '1px solid rgba(120,130,220,.35)' }}>
+                        <JellyfinLogo size={22} />
+                      </span>
+                      <span className="min-w-0 flex-1 basis-[calc(100%-3.25rem)] sm:basis-auto">
+                        <span className="block font-semibold text-default truncate">{k.name}</span>
+                        <span className="block text-[12.5px] text-muted">{k.address !== k.name ? `${k.address} · ` : ''}{who} sign{k.people.length === 1 ? 's' : ''} in here</span>
+                      </span>
+                      <span className={`ml-[3.25rem] sm:ml-auto shrink-0 text-[11.5px] px-2.5 py-0.5 rounded-full border whitespace-nowrap ${k.admin ? 'border-[rgba(63,185,80,.35)] quick-approved' : 'border-default text-muted'}`}>
+                        {k.admin ? `${k.admin.name} is an admin` : 'No admin here'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {!picked && (
+                <div className="flex items-center gap-2.5 text-[12.5px] text-muted mt-4 before:content-[''] before:flex-1 before:h-px before:bg-[var(--color-surface-border)] after:content-[''] after:flex-1 after:h-px after:bg-[var(--color-surface-border)]">
+                  or type another one
+                </div>
+              )}
+            </div>
+          )}
+
+          {!editing && !picked && (
             <div>
               <label htmlFor="jf-server-address" className={label}>Server address</label>
               <input
@@ -280,15 +345,38 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
             </div>
           )}
 
+          {revealed && (
           <div>
             <label htmlFor="jf-server-name" className={label}>Display name</label>
             <input id="jf-server-name" type="text" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Home Jellyfin" className={field} />
-            <p className={hint}>What people see in SlickSync.{editing ? '' : ' Filled in from the server’s own name.'}</p>
+            <p className={hint}>What people see in SlickSync.{editing || picked ? '' : ' Filled in from the server’s own name.'}</p>
           </div>
+          )}
 
-          {!editing && (
+          {revealed && !editing && method === 'person' && picked?.admin && (
             <div>
               <span className={label}>Connect as an administrator</span>
+              <div className="flex items-center gap-3 p-3 rounded-xl border sync-chip-on">
+                <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-surface-hover text-default shrink-0">{picked.admin.name.charAt(0).toUpperCase()}</span>
+                <span className="min-w-0">
+                  <span className="block font-semibold text-default">With {picked.admin.name}&apos;s sign-in</span>
+                  <span className="block text-[12.5px] text-muted">{picked.admin.name} is an administrator on this server - nothing to type</span>
+                </span>
+              </div>
+              <button type="button" onClick={() => pick('username')} className="text-[12.5px] text-muted underline underline-offset-4 mt-2.5">
+                Use Quick Connect, an API key or a username instead
+              </button>
+            </div>
+          )}
+
+          {revealed && !editing && method !== 'person' && (
+            <div>
+              <span className={label}>Connect as an administrator</span>
+              {picked?.admin && (
+                <button type="button" onClick={() => pick('person')} className="text-[12.5px] text-muted underline underline-offset-4 mb-2.5 block">
+                  Connect with {picked.admin.name}&apos;s sign-in instead
+                </button>
+              )}
               <div className="flex gap-1.5">
                 {seg('quickconnect', 'Quick Connect')}
                 {seg('apikey', 'API key')}
@@ -351,10 +439,12 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
             </div>
           )}
 
+          {revealed && (
           <div>
             <span className={label}>Give it to groups</span>
             <GroupPicker groups={groups} selected={selected} onChange={setSelected} />
           </div>
+          )}
 
           {error && <p className="text-sm text-error">{error}</p>}
 
@@ -378,7 +468,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
               isLoading={saving}
               disabled={checking || (!editing && method === 'quickconnect' && (quickState === 'waiting' || quickState === 'starting' || quickState === 'approved'))}
             >
-              {editing ? 'Save' : method === 'quickconnect' && quickState === 'idle' ? 'Get a code' : 'Add server'}
+              {editing ? 'Save' : !revealed ? 'Continue' : method === 'quickconnect' && quickState === 'idle' ? 'Get a code' : 'Add server'}
             </Button>
           </div>
         </div>

@@ -2645,6 +2645,10 @@ class ApiClient {
     return this.fetch<{ servers: HouseholdServer[] }>('/jellyfin/household-servers');
   }
 
+  async householdServersKnown() {
+    return this.fetch<{ servers: KnownHouseholdServer[] }>('/jellyfin/household-servers/known');
+  }
+
   async checkHouseholdServer(serverUrl: string) {
     return this.fetch<import('@/components/jellyfin/JellyfinSignIn').JellyfinServerInfo & { suggestedName: string }>('/jellyfin/household-servers/check', {
       method: 'POST',
@@ -2670,7 +2674,8 @@ class ApiClient {
     serverUrl: string;
     name: string;
     groupIds: string[];
-    method: 'quickconnect' | 'apikey' | 'username';
+    method: 'quickconnect' | 'apikey' | 'username' | 'person';
+    personId?: string;
     apiKey?: string;
     username?: string;
     password?: string;
@@ -4101,6 +4106,16 @@ export interface HouseholdServer {
   /** Get an account on the next sync. */
   waiting: number;
   lastSyncAt: string | null;
+}
+
+/** A Jellyfin server people here already sign in with, not added on the Addons page yet. */
+export interface KnownHouseholdServer {
+  url: string;
+  address: string;
+  name: string;
+  people: string[];
+  /** Someone here who is an administrator there: SlickSync connects with their sign-in. */
+  admin: { id: string; name: string } | null;
 }
 
 export interface HouseholdServerChange {

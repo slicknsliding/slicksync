@@ -22,6 +22,8 @@ function fakeJellyfin() {
   }
   const approved = []
   const pending = new Map()
+  const keys = []
+  const keysMadeWith = []
   jfAuth.jfRequest = async (base, path, opts = {}) => {
     assert.equal(base, URL)
     const method = opts.method || 'GET'
@@ -36,6 +38,8 @@ function fakeJellyfin() {
       if (m[1] !== '123456' && !pending.has(m[1])) throw Object.assign(new Error('nf'), { status: 404 })
       approved.push({ code: m[1], userId: m[2] }); if (pending.has(m[1])) pending.set(m[1], m[2]); return true
     }
+    if (path === '/Auth/Keys' && method === 'GET') return { Items: keys.map((k) => ({ AccessToken: k, AppName: 'SlickSync' })) }
+    if (path.startsWith('/Auth/Keys?app=') && method === 'POST') { keys.push(`key${keys.length + 1}`); keysMadeWith.push(opts.token); return null }
     throw new Error(`unexpected ${method} ${path}`)
   }
   jfAuth.authenticateByName = async (base, name, pw) => {
@@ -49,7 +53,7 @@ function fakeJellyfin() {
     const uid = pending.get(secret.slice(2)); const u = users.get(uid)
     return { serverUrl: base, serverId: 'srv1', token: `tok-${uid}`, userId: uid, userName: u.Name, isAdmin: false }
   }
-  return { users, add, approved }
+  return { users, add, approved, keysMadeWith }
 }
 
 function fakeDb(people, groups) {
@@ -219,6 +223,40 @@ test('a merge takes the Jellyfin slot; once it is undone, the next sync signs th
   await servers.syncForGroup(db.prisma, 'acc', 'g-family')
   assert.equal(db.sync.jellyfinHouseholdServers.s1.accounts['p-sarah'].tracked, true)
   assert.ok(db.creds.some((c) => c.userId === 'p-sarah' && c.origin === 'jellyfin-server:s1'))
+})
+
+test('servers people already sign in with are offered, with who is an administrator; connecting with them needs nothing typed', async () => {
+  const { jf, db, people } = await setup()
+  const collections = require('../server/utils/jellyfinServerCollections')
+  const tom = people.find((p) => p.id === 'p-tom')
+  Object.assign(tom, { jellyfinToken: 'enc:TOMTOKEN', jellyfinUserName: 'tom' })
+  collections.serversFor = async () => [
+    { key: 'srv1', url: URL, address: 'jf.example.invalid', people: [tom] },
+    { key: 'other', url: 'https://cabin.example.invalid', address: 'cabin.example.invalid', people: [{ ...tom, id: 'p-jen', username: 'Jen', jellyfinServerUrl: 'https://cabin.example.invalid', jellyfinServerId: 'srv2' }] },
+  ]
+  collections.findActor = async (srv) => (srv.key === 'srv1' ? { session: { person: tom }, admin: true, serverName: 'Home' } : { session: null, admin: false, serverName: 'Cabin' })
+  // s1 (this URL) is already added: only the cabin server is offered
+  let known = await servers.knownServers(db.prisma, 'acc')
+  assert.deepEqual(known.map((k) => k.address), ['cabin.example.invalid'])
+  assert.equal(known[0].admin, null)
+  // Not added yet: offered, with Tom as its administrator
+  db.sync = {}
+  known = await servers.knownServers(db.prisma, 'acc')
+  const home = known.find((k) => k.url === URL)
+  assert.deepEqual(home.admin, { id: 'p-tom', name: 'Tom' })
+  assert.deepEqual(home.people, ['Tom'])
+
+  // Connecting with Tom's sign-in: the key is made with his token
+  db.prisma.user.findFirst = async ({ where }) => (where.id === 'p-tom' ? tom : null)
+  jfAuth.probeServer = async () => ({ serverUrl: URL, serverId: 'srv1', serverName: 'Home', kind: 'jellyfin' })
+  collections.call = async (session, path) => (path === '/Users/Me' ? { Policy: { IsAdministrator: session.token === 'TOMTOKEN' } } : null)
+  const added = await servers.addServer(db.prisma, 'acc', { url: '', name: 'Home', auth: { method: 'person', personId: 'p-tom' }, groupIds: ['g-family'] })
+  assert.ok(added.id)
+  assert.deepEqual(jf.keysMadeWith, ['TOMTOKEN'])
+  // ...and not when they aren't an administrator there
+  collections.call = async () => ({ Policy: { IsAdministrator: false } })
+  db.sync = {}
+  await assert.rejects(servers.addServer(db.prisma, 'acc', { url: '', name: 'Home', auth: { method: 'person', personId: 'p-tom' }, groupIds: [] }), /isn’t an administrator/)
 })
 
 test('names Jellyfin takes, and which server a sign-in is on', () => {

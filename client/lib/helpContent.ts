@@ -741,7 +741,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Addons -> Add -> Jellyfin server. Type the address, connect as an administrator (Quick Connect, an API key, or a username) and give it to groups. When a group syncs, everyone in it gets their own account on the server, for any Jellyfin app.',
     steps: [
       'On Addons, press Add and choose Jellyfin server.',
-      'Type the server address. The display name fills itself in with the server’s own name - change it to anything.',
+      'Servers people here already sign in with are listed at the top under Already in SlickSync - tap one to fill in its address and name. If one of them is an administrator there, SlickSync connects with their sign-in and there is nothing to type.',
+      'Or type the server address. The display name fills itself in with the server’s own name - change it to anything.',
       'Connect as an administrator of the server: Quick Connect (approve the code in a Jellyfin app signed in as an administrator), an API key (the server’s Dashboard -> API Keys, then +), or a username, with the password if it has one.',
       'Pick the groups it’s for and press Add server. Everyone in them gets their account straight away, and anyone who joins later gets theirs the next time the group syncs.',
       'To sign in on an app, the person chooses Quick Connect there; you type the code it shows on their page in SlickSync and press Approve.',
