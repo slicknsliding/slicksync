@@ -7,9 +7,11 @@
       "Add a Jellyfin server on the Addons page: Add now asks whether you're adding an addon or a Jellyfin server. Type the address, give it a display name, connect as an administrator with Quick Connect, an API key or a username (the password is optional), and give it to groups. Servers your people already sign in with are listed first; if one of them is an administrator there, SlickSync connects with their sign-in and there's nothing to type. Everyone in them gets their own account on the server, named after them - or is linked to the one they already have there.",
       "Any Jellyfin app signs in with it: Odin, Vifoy, Swiftfin, Infuse, Findroid and the rest. The person chooses Quick Connect in the app, and the code goes in on their page here. Apps without Quick Connect use the account name and the password shown under Show password on their page.",
       "What they watch on it shows in Activity, history and AIOSync. Someone taken out of the groups has the account SlickSync made switched off, and back on if they return.",
-      "A title's details open on one picture: the scene at the top now reaches past the title and ratings, then fades into a plain panel."
+      "A title's details open on one picture: the scene at the top now reaches past the title and ratings, then fades into a plain panel.",
+      "Household users added on AIOStreams' or AIOMetadata's own page show up on the household card by themselves - within ten minutes, or as soon as you open it."
     ],
     "bugFixes": [
+      "On an AIOStreams with its own sign-in page switched on, adding a household user, changing a PIN or giving someone their own sign-in address failed with \"Invalid addon password\". Those now open AIOStreams' own page, which is the only place it takes them, and anything else it refuses says why.",
       "Remove from Activity could ask about the wrong person after right-clicking a second card, and then remove nothing (\"Nothing recorded for that viewing\"). It always asks about, and removes, the card the menu is on.",
       "The Graveyard could list a buried title by its id (\"tt31049299\") with no poster once its history was gone. It shows the real title and poster.",
       "\"Started watching\" for a stream through AIOStreams could show the stream's own id instead of the title. It shows the title.",
