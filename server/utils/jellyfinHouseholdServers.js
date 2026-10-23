@@ -31,6 +31,10 @@ const { rememberSignIn } = require('./jellyfinConnect')
 const { encrypt, decrypt } = require('./encryption')
 
 const MAP = 'jellyfinHouseholdServers'
+// The accounts SlickSync made on a server that was removed, by the server's
+// id (or address), so adding it back picks them up - passwords included -
+// instead of making everyone a second one.
+const PAST = 'jellyfinHouseholdServersPast'
 const RECONCILE_MS = 10 * 60 * 1000
 const KEY_APP = 'SlickSync'
 
@@ -45,6 +49,24 @@ async function readSync(prisma, accountId) {
   const asString = typeof cfg === 'string'
   if (asString) { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
   return { cfg: cfg && typeof cfg === 'object' ? cfg : {}, asString }
+}
+
+const pastKey = (serverId, url) => (serverId ? `id:${normId(serverId)}` : `url:${String(url || '').toLowerCase()}`)
+
+async function patchPast(prisma, accountId, key, value) {
+  const { cfg, asString } = await readSync(prisma, accountId)
+  const map = { ...(cfg[PAST] && typeof cfg[PAST] === 'object' ? cfg[PAST] : {}) }
+  if (value === null) delete map[key]
+  else map[key] = value
+  const all = { ...cfg, [PAST]: map }
+  await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(all) : all } })
+}
+
+async function readPast(prisma, accountId, serverId, url) {
+  const { cfg } = await readSync(prisma, accountId)
+  const map = cfg[PAST] && typeof cfg[PAST] === 'object' ? cfg[PAST] : {}
+  const key = [pastKey(serverId, url), pastKey(null, url)].find((k) => map[k])
+  return key ? { key, past: map[key] } : null
 }
 
 async function readServers(prisma, accountId) {
@@ -140,6 +162,12 @@ async function addServer(prisma, accountId, { url, name, auth, groupIds }) {
   if (existing) throw httpError(409, `${existing.name} is already added`)
   const id = crypto.randomBytes(8).toString('hex')
   const fallbackName = require('./jellyfinServerCollections').serverDisplayName(probe.serverName, jfAuth.displayServer(probe.serverUrl))
+  // Added before and removed: the accounts SlickSync made there are its own again.
+  const found = await readPast(prisma, accountId, probe.serverId, probe.serverUrl)
+  const accounts = {}
+  for (const [personId, rec] of Object.entries(found?.past?.accounts || {})) {
+    if (rec?.made && rec.jellyfinUserId) accounts[personId] = { ...rec, tracked: false }
+  }
   const server = {
     id,
     name: String(name || '').trim().slice(0, 80) || fallbackName,
@@ -148,10 +176,11 @@ async function addServer(prisma, accountId, { url, name, auth, groupIds }) {
     key: encrypt(key, sealFor(accountId)),
     keyMade,
     groupIds: await ownGroups(prisma, accountId, groupIds),
-    accounts: {},
+    accounts,
     createdAt: new Date().toISOString(),
   }
   await patchServer(prisma, accountId, id, () => server)
+  if (found) await patchPast(prisma, accountId, found.key, null)
   return server
 }
 
@@ -185,6 +214,10 @@ async function removeServer(prisma, accountId, id) {
   const server = (await readServers(prisma, accountId))[id]
   if (!server) throw httpError(404, 'Server not found')
   await prisma.userProviderCredential.deleteMany({ where: { origin: originOf(id) } })
+  const made = Object.fromEntries(Object.entries(server.accounts || {}).filter(([, r]) => r?.made))
+  if (Object.keys(made).length) {
+    await patchPast(prisma, accountId, pastKey(server.serverId, server.url), { url: server.url, serverId: server.serverId || null, accounts: made, removedAt: new Date().toISOString() })
+  }
   if (server.keyMade) {
     try {
       const token = decrypt(server.key, sealFor(accountId))
@@ -364,6 +397,9 @@ async function syncServerNow(prisma, accountId, id, { add = true } = {}) {
           rec.tracked = await keepSignIn(prisma, accountId, server, person, rec, credentials).catch(() => false)
           accounts[person.id] = rec
           changes.push({ action: 'on', personId: person.id, name: rec.userName })
+        } else if (add && !rec.off && !rec.own && !rec.tracked) {
+          rec = { ...rec, tracked: await keepSignIn(prisma, accountId, server, person, rec, credentials).catch(() => false) }
+          accounts[person.id] = rec
         }
         continue
       }
@@ -386,7 +422,10 @@ async function syncServerNow(prisma, accountId, id, { add = true } = {}) {
       // An account with their name. Never an administrator's: approving
       // Quick Connect for it would hand them the server.
       const wanted = accountName(person.username, new Set()).toLowerCase()
-      const named = serverUsers.find((u) => String(u.Name || '').toLowerCase() === wanted && !u.Policy?.IsAdministrator)
+      const numbered = (n) => n.startsWith(`${wanted} `) && /^\d+$/.test(n.slice(wanted.length + 1))
+      const usable = serverUsers.filter((u) => !u.Policy?.IsAdministrator && !Object.values(accounts).some((r) => normId(r.jellyfinUserId) === normId(u.Id)))
+      const named = usable.find((u) => String(u.Name || '').toLowerCase() === wanted)
+        || usable.find((u) => numbered(String(u.Name || '').toLowerCase()))
       if (named) {
         rec = { jellyfinUserId: normId(named.Id), userName: named.Name, made: false, own: false, off: false, tracked: false }
         rec.tracked = await keepSignIn(prisma, accountId, server, person, rec, credentials).catch((e) => {

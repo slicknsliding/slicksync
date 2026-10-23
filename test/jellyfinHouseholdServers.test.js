@@ -175,6 +175,36 @@ test('approving a Quick Connect code signs the app in as that person; the passwo
   await assert.rejects(servers.revealPassword(db.prisma, 'acc', 's1', 'p-gary'), /its own password/)
 })
 
+test('removing a server and adding it back picks up the accounts SlickSync made, passwords and all', async () => {
+  const { jf, db } = await setup()
+  await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  const before = db.sync.jellyfinHouseholdServers.s1.accounts
+  jfAuth.probeServer = async () => ({ serverUrl: URL, serverId: 'srv1', serverName: 'Home', kind: 'jellyfin' })
+  await servers.removeServer(db.prisma, 'acc', 's1')
+  assert.equal(db.creds.length, 0)
+  const again = await servers.addServer(db.prisma, 'acc', { url: URL, name: 'Home', auth: { method: 'apikey', apiKey: 'KEY' }, groupIds: ['g-family'] })
+  const changes = await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  const recs = db.sync.jellyfinHouseholdServers[again.id].accounts
+  // No one got a second account: Sarah and "owner 2" are the same ones, made by SlickSync, password kept.
+  assert.ok(!changes.some((c) => c.action === 'made'))
+  assert.equal(recs['p-sarah'].jellyfinUserId, before['p-sarah'].jellyfinUserId)
+  assert.equal(recs['p-sarah'].password, before['p-sarah'].password)
+  assert.equal(recs['p-owner'].userName, 'owner 2')
+  assert.equal([...jf.users.values()].filter((u) => /^owner/.test(u.Name)).length, 2)
+  // ...and they're tracked again.
+  assert.deepEqual(db.creds.map((c) => c.userId).sort(), ['p-gary', 'p-owner', 'p-sarah'])
+})
+
+test('an account SlickSync numbered ("owner 2") is found again even without the record', async () => {
+  const { jf, db } = await setup()
+  await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  db.sync = { jellyfinHouseholdServers: { s1: { ...db.sync.jellyfinHouseholdServers.s1, accounts: {} } } }
+  db.creds.length = 0
+  const changes = await servers.syncForGroup(db.prisma, 'acc', 'g-family')
+  assert.equal(changes.find((c) => c.personId === 'p-owner').action, 'linked')
+  assert.equal([...jf.users.values()].filter((u) => /^owner/.test(u.Name)).length, 2)
+})
+
 test('names Jellyfin takes, and which server a sign-in is on', () => {
   assert.equal(servers.accountName('Jen 🎬!', new Set()), 'Jen')
   assert.equal(servers.accountName('jen', new Set(['jen', 'jen 2'])), 'jen 3')
