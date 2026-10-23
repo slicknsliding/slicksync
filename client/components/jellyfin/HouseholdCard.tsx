@@ -322,6 +322,9 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
 
   const sel = profiles.find((p) => p.id === selected) || null;
   const tracked = profiles.filter((p) => p.status === 'tracked').length;
+  // The main profile counts too, as it does on the Nuvio card.
+  const shownCount = profiles.length + (main ? 1 : 0);
+  const shownTracked = tracked + (main ? 1 : 0);
   const isOpen = embedded || open;
 
   const body = (
@@ -330,7 +333,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <h4 className="text-sm font-semibold text-default truncate">{personName}</h4>
           <Badge variant={kindLabel === 'AIOMetadata' ? 'aiometadata' : 'aiostreams'} size="sm">{kindLabel}</Badge>
-          <span className="text-xs text-muted">{profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'} · {tracked} tracked with {personName}</span>
+          <span className="text-xs text-muted">{shownCount} {shownCount === 1 ? 'profile' : 'profiles'} · {shownTracked} tracked with {personName}</span>
         </div>
       ) : (
       <div className="flex items-center gap-3">
@@ -342,7 +345,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
             <p className="text-xs text-muted mt-0.5">
               {open
                 ? `Everyone else on ${personName}'s ${kindLabel} sign-in counts as ${personName} until you separate them`
-                : `${profiles.length + (main ? 1 : 0)} ${profiles.length + (main ? 1 : 0) === 1 ? 'profile' : 'profiles'} · ${tracked + (main ? 1 : 0)} tracked with ${personName}`}
+                : `${shownCount} ${shownCount === 1 ? 'profile' : 'profiles'} · ${shownTracked} tracked with ${personName}`}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -751,6 +754,7 @@ export function HouseholdsCard({ owners, onPeopleChanged, limits }: {
   const withHousehold = owners.filter((o) => (byOwner[o.id] || []).length > 0 || manageable[o.id]);
   if (withHousehold.length === 0) return null;
   const all = withHousehold.flatMap((o) => byOwner[o.id]);
+  // Each of them also has their main profile, the first tile on their card.
 
   return (
     <Card padding="lg">
@@ -761,7 +765,7 @@ export function HouseholdsCard({ owners, onPeopleChanged, limits }: {
             <p className="text-xs text-muted mt-0.5 truncate">
               {open
                 ? 'Everyone else on an AIOStreams or AIOMetadata sign-in counts as that person until you separate them'
-                : `${all.length} ${all.length === 1 ? 'profile' : 'profiles'} · ${withHousehold.length === 1 ? withHousehold[0].name : `${withHousehold.length} people`}`}
+                : `${all.length + withHousehold.length} ${all.length + withHousehold.length === 1 ? 'profile' : 'profiles'} · ${withHousehold.length === 1 ? withHousehold[0].name : `${withHousehold.length} people`}`}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
