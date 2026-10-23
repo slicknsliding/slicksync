@@ -32,6 +32,8 @@ interface PendingAction {
   back?: () => void;
 }
 
+const MAIN_ID = '__main';
+
 const STATUS_TEXT: Record<HouseholdProfile['status'], string> = {
   tracked: 'Tracked with this person',
   own: 'Separated - its own person',
@@ -111,6 +113,8 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
   // A protected AIOStreams takes new household users, PINs and sign-in
   // addresses only on its own page: this is that page.
   const [managedOn, setManagedOn] = useState<string | null>(null);
+  // The configuration's main user, shown first like the Nuvio card's main profile.
+  const [main, setMain] = useState<{ name: string; avatarUrl: string | null; limitId: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -134,6 +138,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
       setServerKind(h.kind);
       setPersonal(h.personal || {});
       setManagedOn(h.managedOn || null);
+      setMain(h.main || null);
       return h;
     } catch {
       setProfiles(null);
@@ -337,7 +342,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
             <p className="text-xs text-muted mt-0.5">
               {open
                 ? `Everyone else on ${personName}'s ${kindLabel} sign-in counts as ${personName} until you separate them`
-                : `${profiles.length} ${profiles.length === 1 ? 'profile' : 'profiles'} · ${tracked} tracked with ${personName}`}
+                : `${profiles.length + (main ? 1 : 0)} ${profiles.length + (main ? 1 : 0) === 1 ? 'profile' : 'profiles'} · ${tracked + (main ? 1 : 0)} tracked with ${personName}`}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -359,12 +364,39 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
 
       {isOpen && (
         <div className={`${embedded ? 'mt-3' : 'mt-5'} grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2`}>
+          {main && (
+            <div className="flex flex-col items-center gap-1.5 min-w-0 pb-2">
+              <button
+                type="button"
+                data-household-tile
+                data-household-main
+                onClick={(e) => openMenu(MAIN_ID, e.currentTarget)}
+                aria-haspopup="menu"
+                aria-expanded={selected === MAIN_ID}
+                className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  selected === MAIN_ID ? 'bg-surface-hover ring-1 ring-primary/50' : 'hover:bg-surface-hover'
+                }`}
+              >
+                <span data-household-circle className="relative transition-transform group-hover:scale-105">
+                  <Mark profile={{ id: MAIN_ID, name: main.name, status: 'tracked', person: null, avatarUrl: main.avatarUrl }} size={64} />
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary text-white">
+                    Main
+                  </span>
+                </span>
+                <span className="text-sm font-medium max-w-full truncate text-default">{main.name}</span>
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-default max-w-full truncate">{personName}</span>
+                <span className="text-[11px] text-subtle">Main profile</span>
+              </button>
+              <LimitsButton id={main.limitId} name={personName} summary={limits?.[main.limitId] || null} />
+            </div>
+          )}
           {profiles.map((p) => {
             const isSelected = p.id === selected;
             const caption = p.status === 'own' ? (p.person?.username || 'Its own person')
-              : p.status === 'tracked' ? `With ${personName}`
+              : p.status === 'tracked' ? personName
               : p.status === 'untracked' ? 'Not tracked'
               : p.status === 'needs-pin' ? 'Needs its PIN' : 'Needs the password';
+            const subline = p.status === 'own' ? 'Separated' : p.status === 'tracked' ? 'Merged' : null;
             return (
               // The tile, and its Limits pill under it - beside it rather than
               // inside, since the tile is a button itself.
@@ -389,7 +421,8 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
                   )}
                 </span>
                 <span className="text-sm font-medium max-w-full truncate text-default">{p.name}</span>
-                <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted max-w-full truncate">{caption}</span>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] max-w-full truncate ${subline ? 'text-default' : 'text-muted'}`}>{caption}</span>
+                {subline && <span className="text-[11px] text-subtle">{subline}</span>}
               </button>
               {p.limitId && (
                 <LimitsButton id={p.limitId} name={p.name} summary={limits?.[p.limitId] || null} />
@@ -432,6 +465,36 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
         <p className="text-xs text-muted mt-1">
           Your {kindLabel} only takes new household users, PINs and sign-in addresses on its own page, under <span className="text-default">Users, trackers and playback</span>. They show up here by themselves.
         </p>
+      )}
+
+      {selected === MAIN_ID && main && placement && typeof document !== 'undefined' && createPortal(
+        <motion.div
+          ref={popoverRef}
+          role="menu"
+          initial={{ opacity: 0, y: placement.above ? 4 : -4, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.12 }}
+          className="fixed z-[9999] rounded-2xl border border-default bg-surface shadow-2xl backdrop-blur-xl p-1.5"
+          style={{ left: placement.left, top: placement.top, bottom: placement.bottom, width: POPOVER_WIDTH, transformOrigin: `${placement.arrowX}px ${placement.above ? '100%' : '0%'}` }}
+        >
+          <span
+            aria-hidden
+            className="absolute w-3 h-3 rotate-45 bg-surface border-default"
+            style={{
+              left: placement.arrowX - 6,
+              ...(placement.above ? { bottom: -6, borderRightWidth: 1, borderBottomWidth: 1 } : { top: -6, borderLeftWidth: 1, borderTopWidth: 1 }),
+            }}
+          />
+          <div className="px-3 pt-2 pb-2 mb-1 border-b border-default">
+            <p className="text-sm font-semibold text-default truncate">{main.name}</p>
+            <p className="text-xs text-muted mt-0.5">{personName}&apos;s main profile</p>
+          </div>
+          <Link href={`/users/${userId}`} className={MENU_ITEM} onClick={closeMenu} autoFocus>
+            <ArrowTopRightOnSquareIcon className="w-4 h-4 text-muted" /> <span className="truncate">Open {personName}</span>
+          </Link>
+          <p className="px-3 py-2 text-xs text-subtle">The main user always stays its own person.</p>
+        </motion.div>,
+        document.body,
       )}
 
       {sel && placement && typeof document !== 'undefined' && createPortal(

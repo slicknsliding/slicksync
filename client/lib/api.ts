@@ -2754,7 +2754,7 @@ class ApiClient {
   }
 
   async getHousehold(userId: string) {
-    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean; canPin?: boolean; personal?: Record<string, HouseholdPersonal> | null; managedOn?: string | null }>(
+    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean; canPin?: boolean; personal?: Record<string, HouseholdPersonal> | null; managedOn?: string | null; main?: { name: string; avatarUrl: string | null; limitId: string } | null }>(
       `/jellyfin/users/${encodeURIComponent(userId)}/household`
     );
   }

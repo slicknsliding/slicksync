@@ -62,3 +62,13 @@ test('only AIOStreams and AIOMetadata sign-ins have households', async () => {
   assert.equal(await profiles.refreshHousehold(prisma, decrypt, encrypt, { ...owner, jellyfinServerKind: 'jellyfin' }), 0)
   assert.equal(await profiles.refreshHousehold(prisma, decrypt, encrypt, { ...owner, providerType: 'stremio' }), 0)
 })
+
+test('the main user is described with the name the server has for them, never the configuration UUID', async () => {
+  jfAuth.currentUser = async () => ({ userId: 'main', userName: 'slicknslidin' })
+  const main = await profiles.describeMain(decrypt, { ...owner, id: 'owner-main', username: 'VIFOY 1080P', jellyfinUserName: 'uuid-1', avatarUrl: null })
+  assert.deepEqual(main, { name: 'slicknslidin', avatarUrl: null, limitId: 'owner-main' })
+  jfAuth.currentUser = async () => { throw new Error('offline') }
+  const fallback = await profiles.describeMain(decrypt, { ...owner, id: 'owner-main-2', username: 'VIFOY 1080P', jellyfinUserName: '3e5f4edd-d292-401f-a481-92d627d81fbe' })
+  assert.equal(fallback.name, 'VIFOY 1080P')
+  assert.equal(await profiles.describeMain(decrypt, { ...owner, jellyfinServerKind: 'jellyfin' }), null)
+})

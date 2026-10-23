@@ -157,6 +157,28 @@ async function saveHousehold(prisma, encrypt, owner, household) {
  * itself. Only users not known yet are signed in, so nobody's sign-in is
  * disturbed. Returns how many were found.
  */
+/**
+ * The configuration's main user, as the first profile on the household card:
+ * the name the server has for them (cached a while), and their limits are
+ * the person's own.
+ */
+const mainNames = new Map()
+async function describeMain(decrypt, owner) {
+  if (!owner || owner.providerType !== 'jellyfin' || !hasHousehold(owner.jellyfinServerKind)) return null
+  const hit = mainNames.get(owner.id)
+  let name = hit && Date.now() - hit.at < 10 * 60 * 1000 ? hit.name : null
+  if (!name && owner.jellyfinToken) {
+    try {
+      const me = await jfAuth.currentUser(owner.jellyfinServerUrl, decrypt(owner.jellyfinToken, { appAccountId: owner.accountId || 'default' }), { timeoutMs: 8000 })
+      name = me.userName || null
+    } catch { /* the stored name will do */ }
+    if (name) mainNames.set(owner.id, { at: Date.now(), name })
+  }
+  // An AIOStreams main user signs in with the configuration UUID; never show that.
+  const stored = owner.jellyfinUserName && !/^[0-9a-f-]{32,36}$/i.test(owner.jellyfinUserName) ? owner.jellyfinUserName : null
+  return { name: name || stored || owner.username, avatarUrl: owner.avatarUrl || null, limitId: owner.id }
+}
+
 const lastLook = new Map()
 async function refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs = 0 } = {}) {
   if (!owner || owner.providerType !== 'jellyfin' || !hasHousehold(owner.jellyfinServerKind) || !owner.jellyfinToken) return 0
@@ -344,7 +366,7 @@ async function mergeProfileBack(prisma, { profile, owner }) {
   return { mergedInto: owner.id, removed: { id: person.id, username: person.username } }
 }
 
-module.exports = { refreshHousehold, scheduleHouseholdRefresh,
+module.exports = { describeMain, refreshHousehold, scheduleHouseholdRefresh,
   forgetPersonHousehold,
   forgetProfileSignIn,
   hasHousehold,

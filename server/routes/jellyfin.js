@@ -720,9 +720,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const person = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId }, select: { id: true, providerType: true, jellyfinServerKind: true } });
       if (!person) return res.status(404).json({ error: 'User not found' });
       // Anyone added on the server's own page since: picked up as the card opens.
+      let main = null;
       if (person.providerType === 'jellyfin') {
         const owner = await prisma.user.findFirst({ where: { id: person.id } });
         await household.refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs: 60 * 1000 }).catch((e) => console.warn('[Jellyfin] household check failed:', e?.message));
+        main = await household.describeMain(decrypt, owner).catch(() => null);
       }
       const profiles = person.providerType === 'jellyfin' ? await household.describeHousehold(prisma, person.id) : [];
       const membership = await prisma.jellyfinProfile.findFirst({ where: { ownUserId: person.id, accountId } });
@@ -743,7 +745,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         : null;
       // A protected AIOStreams takes these changes only on its own page.
       const managedOn = canManage ? await require('../utils/aioHousehold').protectedPage(full) : null;
-      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin, personal, managedOn });
+      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin, personal, managedOn, main });
     } catch (error) {
       sendError(res, error, 'Could not read the household');
     }
