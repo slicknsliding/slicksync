@@ -67,9 +67,17 @@ export function ActivityCardMenu({ target, onClose, actions }: {
     remove: (watcher: MenuWatcher) => Promise<void>;
   };
 }) {
-  const [confirm, setConfirm] = useState<MenuWatcher | null>(null);
+  // The question belongs to the card it was asked on. Right-clicking another
+  // card while it showed used to carry it over, and Remove then went for the
+  // new card's viewing under the old card's person - nothing was found.
+  const [asked, setAsked] = useState<{ card: string; watcher: MenuWatcher } | null>(null);
   const [busy, setBusy] = useState(false);
   if (!target) return null;
+  // Which card: where it was opened and what it is (the page rebuilds the
+  // target object on every refresh, so not the object itself).
+  const card = `${target.x},${target.y}|${target.title}|${target.watchers.map((w) => w.userId).join(',')}`;
+  const confirm = asked && asked.card === card ? asked.watcher : null;
+  const setConfirm = (w: MenuWatcher | null) => setAsked(w ? { card, watcher: w } : null);
   const close = () => { setConfirm(null); onClose(); };
   const item = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors text-left';
   const icon = 'w-4 h-4 text-muted shrink-0';
