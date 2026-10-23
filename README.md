@@ -146,6 +146,12 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **Keep an AIOStreams household user separate** (AIOStreams 2.36) — they get a sign-in address of their own, see nobody else and stay off the picker. Copy the address from the household card, or replace it. Off unless you switch it on.
 - **Profile pictures both ways** — a picture changed in SlickSync can go to their Jellyfin, AIOStreams or AIOMetadata server too, and one changed on the server shows up here within minutes.
 
+### Your Jellyfin server, given to a group
+
+- **Addons → Add → Jellyfin server** — add your server once, connected as an administrator with Quick Connect, an API key or a username (the password is optional), and give it to groups like an addon. Everyone in them gets their own account on it, named after them; someone who already has one there is linked to it instead of getting a second.
+- **Any Jellyfin app** — Odin, Vifoy, Swiftfin, Infuse, Findroid and the rest. The person chooses Quick Connect in the app and the code goes in on their page; apps without Quick Connect use the account name and the password under **Show password**.
+- What they watch there is tracked like any Jellyfin sign-in. Someone who leaves the groups — or is switched off, expires or is removed — has the account SlickSync made switched off, not deleted, and back on if they return. An account that was already on the server is only unlinked, never switched off. Remove the server and add it back, and the same accounts are found again.
+
 ### Collections
 
 **Catalogs → Jellyfin | AIOStreams** — one page for both.
