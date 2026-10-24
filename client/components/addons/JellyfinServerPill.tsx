@@ -104,8 +104,9 @@ export function JellyfinServerPill({ link, isTV = false, className = '' }: { lin
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
-          <p className="mt-1 text-muted break-words">
-            {link.address} · {link.personName} signs in to it, with {profiles}.
+          <p className="mt-1 text-muted break-words">{link.address}</p>
+          <p className="mt-0.5 text-muted">
+            Signed in here as <span className="text-default font-medium">{link.personName}</span> · {profiles}
           </p>
           <Link href="/users" onClick={() => setOpen(false)} className="inline-block mt-2 px-2 py-1 rounded-lg bg-surface-hover hover:text-primary transition-colors">
             Open its profiles →
