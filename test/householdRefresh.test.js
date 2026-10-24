@@ -14,7 +14,7 @@ function fake() {
   const rows = [{ id: 'jp1', ownerUserId: 'owner', jellyfinUserId: 'kid', name: 'Kid', token: 'enc:old', ownUserId: null }]
   const signIns = []
   jfAuth.listServerUsers = async () => [
-    { id: 'main', name: 'VIFOY', isMain: true, needsPin: false },
+    { id: 'main', name: 'MAIN', isMain: true, needsPin: false },
     { id: 'kid', name: 'Kid', isMain: false, needsPin: false },
     { id: 'neph', name: 'Nephews', isMain: false, needsPin: false },
   ]
@@ -65,10 +65,10 @@ test('only AIOStreams and AIOMetadata sign-ins have households', async () => {
 
 test('the main user is described with the name the server has for them, never the configuration UUID', async () => {
   jfAuth.currentUser = async () => ({ userId: 'main', userName: 'slicknslidin' })
-  const main = await profiles.describeMain(decrypt, { ...owner, id: 'owner-main', username: 'VIFOY 1080P', jellyfinUserName: 'uuid-1', avatarUrl: null })
+  const main = await profiles.describeMain(decrypt, { ...owner, id: 'owner-main', username: 'Living Room', jellyfinUserName: 'uuid-1', avatarUrl: null })
   assert.deepEqual(main, { name: 'slicknslidin', avatarUrl: null, limitId: 'owner-main' })
   jfAuth.currentUser = async () => { throw new Error('offline') }
-  const fallback = await profiles.describeMain(decrypt, { ...owner, id: 'owner-main-2', username: 'VIFOY 1080P', jellyfinUserName: '3e5f4edd-d292-401f-a481-92d627d81fbe' })
-  assert.equal(fallback.name, 'VIFOY 1080P')
+  const fallback = await profiles.describeMain(decrypt, { ...owner, id: 'owner-main-2', username: 'Living Room', jellyfinUserName: '3e5f4edd-d292-401f-a481-92d627d81fbe' })
+  assert.equal(fallback.name, 'Living Room')
   assert.equal(await profiles.describeMain(decrypt, { ...owner, jellyfinServerKind: 'jellyfin' }), null)
 })
