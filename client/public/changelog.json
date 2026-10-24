@@ -9,7 +9,8 @@
       "What they watch on it shows in Activity, history and AIOSync. Someone taken out of the groups has the account SlickSync made switched off, and back on if they return.",
       "A title's details open on one picture: the scene at the top now reaches past the title and ratings, then fades into a plain panel.",
       "Household users added on AIOStreams' or AIOMetadata's own page show up on the household card by themselves - within about 20 seconds, or as soon as you open it.",
-      "The AIOStreams and AIOMetadata profiles card shows the configuration's main user too, as the first profile marked Main, like the Nuvio profiles card. The others say whose they are, and whether they're merged or separated."
+      "The AIOStreams and AIOMetadata profiles card shows the configuration's main user too, as the first profile marked Main, like the Nuvio profiles card. The others say whose they are, and whether they're merged or separated.",
+      "An AIOStreams or AIOMetadata addon whose configuration someone also signs in to as a Jellyfin server says so on its card, with who - tap it for the address and a way to its profiles."
     ],
     "bugFixes": [
       "On an AIOStreams with its own sign-in page switched on, adding a household user, changing a PIN or giving someone their own sign-in address failed with \"Invalid addon password\". On the AIOStreams your SlickSync already signs in to for Now Playing, they work again with nothing more to enter. On any other one, they open that AIOStreams' own page - the only place it takes them - and anything else it refuses says why.",

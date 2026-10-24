@@ -756,7 +756,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Only administrators can make accounts on a Jellyfin server. With Quick Connect or a username, SlickSync turns the sign-in into an API key of its own named SlickSync, so it keeps working if the password changes.',
     ],
     tips: [
-      'AIOStreams and AIOMetadata can’t make accounts for people - this is for a Jellyfin server you run.',
+      'AIOStreams and AIOMetadata are Jellyfin servers and addons in one: they’re added on the Addons page as addons, and the card says when someone also signs in to that configuration as a Jellyfin server. Their people are household users, added on the Users page.',
       'Accounts made this way are hidden from the server’s sign-in screen, the way Jellyfin makes new accounts.',
     ],
     related: ['add-jellyfin-account', 'invite-household', 'sync-preview'],
