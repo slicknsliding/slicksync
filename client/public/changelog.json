@@ -8,7 +8,7 @@
       "Any Jellyfin app signs in with it: Odin, Vifoy, Swiftfin, Infuse, Findroid and the rest. The person chooses Quick Connect in the app, and the code goes in on their page here. Apps without Quick Connect use the account name and the password shown under Show password on their page.",
       "What they watch on it shows in Activity, history and AIOSync. Someone taken out of the groups has the account SlickSync made switched off, and back on if they return.",
       "A title's details open on one picture: the scene at the top now reaches past the title and ratings, then fades into a plain panel.",
-      "Household users added on AIOStreams' or AIOMetadata's own page show up on the household card by themselves - within ten minutes, or as soon as you open it.",
+      "Household users added on AIOStreams' or AIOMetadata's own page show up on the household card by themselves - within a minute, or as soon as you open it.",
       "The AIOStreams and AIOMetadata profiles card shows the configuration's main user too, as the first profile marked Main, like the Nuvio profiles card. The others say whose they are, and whether they're merged or separated."
     ],
     "bugFixes": [

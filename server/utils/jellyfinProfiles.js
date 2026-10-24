@@ -166,7 +166,7 @@ const mainNames = new Map()
 async function describeMain(decrypt, owner) {
   if (!owner || owner.providerType !== 'jellyfin' || !hasHousehold(owner.jellyfinServerKind)) return null
   const hit = mainNames.get(owner.id)
-  let name = hit && Date.now() - hit.at < 10 * 60 * 1000 ? hit.name : null
+  let name = hit && Date.now() - hit.at < 60 * 1000 ? hit.name : null
   if (!name && owner.jellyfinToken) {
     try {
       const me = await jfAuth.currentUser(owner.jellyfinServerUrl, decrypt(owner.jellyfinToken, { appAccountId: owner.accountId || 'default' }), { timeoutMs: 8000 })
@@ -207,14 +207,17 @@ function scheduleHouseholdRefresh(prisma, decrypt, encrypt) {
       const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', isActive: true, jellyfinToken: { not: null }, jellyfinServerKind: { in: [...HOUSEHOLD_KINDS] } } })
       for (const o of owners) {
         try {
+          mainNames.delete(o.id)
           const n = await refreshHousehold(prisma, decrypt, encrypt, o)
           if (n) console.log(`[JellyfinProfiles] ${n} new household user(s) for ${o.username}`)
         } catch (e) { console.warn(`[JellyfinProfiles] household check for ${o.username} failed:`, e?.message) }
       }
     } catch (e) { console.warn('[JellyfinProfiles] household check failed:', e?.message) }
   }
-  setTimeout(run, 3 * 60 * 1000)
-  refreshTimer = setInterval(run, 10 * 60 * 1000)
+  // Every minute: someone added on the server's own page, or a renamed main
+  // user, shows up here within a minute - one small read per person.
+  setTimeout(run, 60 * 1000)
+  refreshTimer = setInterval(run, 60 * 1000)
 }
 
 /**
