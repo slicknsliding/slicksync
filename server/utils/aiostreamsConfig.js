@@ -125,6 +125,51 @@ async function readConfig({ serverUrl, account, password }) {
  * configuration on save, so callers change only their own parts of what they
  * just read and send all of it back.
  */
+/**
+ * The AIOStreams this install signs in to for Now Playing (AIOSTREAMS_URL and
+ * its dashboard sign-in, utils/proxyStreamMonitor.js). A protected AIOStreams
+ * only saves configuration changes from someone signed in there, and that
+ * sign-in is one - so on a household's own install, adding household users
+ * and the rest work with nothing more to enter. Never on an instance serving
+ * strangers: the operator's sign-in must not open everyone's configurations.
+ */
+function ownInstanceLogin(base) {
+  const url = process.env.AIOSTREAMS_URL
+  const username = process.env.AIOSTREAMS_AUTH_USERNAME
+  const password = process.env.AIOSTREAMS_AUTH_PASSWORD
+  if (!url || !username || !password || !base || restrictsPrivateAddresses()) return null
+  try {
+    if (new URL(url).origin.toLowerCase() !== new URL(base).origin.toLowerCase()) return null
+  } catch {
+    return null
+  }
+  return { username, password }
+}
+
+const sessions = new Map()
+async function ownInstanceSession(base, { fresh = false } = {}) {
+  const login = ownInstanceLogin(base)
+  if (!login) return null
+  const hit = sessions.get(base)
+  if (hit && !fresh && Date.now() - hit.at < 6 * 60 * 60 * 1000) return hit.cookie
+  try {
+    const res = await fetch(`${base}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(login),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    if (!res.ok) { sessions.delete(base); return null }
+    const set = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [res.headers.get('set-cookie')].filter(Boolean)
+    const cookie = set.map((c) => String(c).split(';')[0]).join('; ')
+    if (!cookie) return null
+    sessions.set(base, { at: Date.now(), cookie })
+    return cookie
+  } catch {
+    return null
+  }
+}
+
 async function writeConfig({ serverUrl, account, password }, config) {
   const base = instanceBase(serverUrl)
   if (!base || !account) throw Object.assign(new Error('Not an AIOStreams configuration'), { status: 400 })
@@ -133,18 +178,26 @@ async function writeConfig({ serverUrl, account, password }, config) {
     await assertSafeUrl(base)
   }
   const auth = Buffer.from(`${account}:${password}`).toString('base64')
-  let res
-  try {
-    res = await guardedFetch(`${base}/api/v1/user`, {
-      method: 'PUT',
-      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
-  } catch (e) {
-    throw Object.assign(new Error(unreachableMessage(e)), { status: 502 })
+  const put = async (cookie) => {
+    try {
+      return await guardedFetch(`${base}/api/v1/user`, {
+        method: 'PUT',
+        headers: { Authorization: `Basic ${auth}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+        body: JSON.stringify({ config }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+    } catch (e) {
+      throw Object.assign(new Error(unreachableMessage(e)), { status: 502 })
+    }
   }
-  const body = await res.json().catch(() => null)
+  const cookie = await ownInstanceSession(base)
+  let res = await put(cookie)
+  let body = await res.json().catch(() => null)
+  // A session that ran out: sign in again once.
+  if (cookie && (body?.error?.code === 'ADDON_PASSWORD_INVALID' || res.status === 401)) {
+    const again = await ownInstanceSession(base, { fresh: true })
+    if (again) { res = await put(again); body = await res.json().catch(() => null) }
+  }
   if (!res.ok || !body?.success) {
     // A protected AIOStreams (its own sign-in page switched on) only saves
     // changes made while signed in there; it calls that an "addon password".
@@ -400,7 +453,7 @@ function scheduleConfigGuard(prisma, decrypt) {
   timer = setInterval(run, CHECK_INTERVAL_MS)
 }
 
-module.exports = {
+module.exports = { ownInstanceSession,
   alert,
   instanceBase,
   configAccountFrom,

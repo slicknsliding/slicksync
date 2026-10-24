@@ -97,6 +97,8 @@ async function protectedPage(owner) {
     const body = await res.json()
     if (body?.data?.settings?.protected === true) page = `${base}/stremio/configure`
   } catch { /* unknown: offered as usual, and a refusal says why */ }
+  // This install's own AIOStreams, which it already signs in to: it can save there.
+  if (page && await require('./aiostreamsConfig').ownInstanceSession(base)) page = null
   protectedSeen.set(base, { at: Date.now(), page })
   return page
 }

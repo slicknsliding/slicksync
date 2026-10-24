@@ -42,3 +42,32 @@ test('a save refused for that reason says what it means', async () => {
     global.fetch = realFetch
   }
 })
+
+test("this install's own AIOStreams is saved to with the sign-in it already has - never another AIOStreams, never on a shared instance", async () => {
+  const realFetch = global.fetch
+  const sent = []
+  global.fetch = async (url, init = {}) => {
+    sent.push({ url, cookie: init.headers?.Cookie || null })
+    if (url.endsWith('/api/v1/auth/login')) return { ok: true, headers: { getSetCookie: () => ['aiostreams.session=abc; Path=/; HttpOnly'] } }
+    return { ok: true, status: 200, json: async () => ({ success: true, data: {} }) }
+  }
+  Object.assign(process.env, { AIOSTREAMS_URL: 'https://aio-own.example.invalid', AIOSTREAMS_AUTH_USERNAME: 'owner', AIOSTREAMS_AUTH_PASSWORD: 'pw' })
+  try {
+    await config.writeConfig({ serverUrl: 'https://aio-own.example.invalid/jellyfin', account: 'uuid', password: 'cfg' }, {})
+    assert.equal(sent.find((s) => s.url.endsWith('/api/v1/user')).cookie, 'aiostreams.session=abc')
+    sent.length = 0
+    await config.writeConfig({ serverUrl: 'https://someone-else.example.invalid/jellyfin', account: 'uuid', password: 'cfg' }, {})
+    assert.ok(!sent.some((s) => s.url.includes('/auth/login')) && sent[0].cookie === null)
+    // The card: a protected AIOStreams it can sign in to offers the normal Add
+    statusBody = { data: { settings: { protected: true } } }
+    assert.equal(await household.protectedPage({ jellyfinServerKind: 'aiostreams', jellyfinServerUrl: 'https://aio-own.example.invalid/jellyfin' }), null)
+    // A shared instance never uses it
+    const cfg = require('../server/utils/config')
+    const was = cfg.INSTANCE_TYPE
+    cfg.INSTANCE_TYPE = 'public'
+    try { assert.equal(await config.ownInstanceSession('https://aio-own.example.invalid'), null) } finally { cfg.INSTANCE_TYPE = was }
+  } finally {
+    global.fetch = realFetch
+    delete process.env.AIOSTREAMS_URL; delete process.env.AIOSTREAMS_AUTH_USERNAME; delete process.env.AIOSTREAMS_AUTH_PASSWORD
+  }
+})
