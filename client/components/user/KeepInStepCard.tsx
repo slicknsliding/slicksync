@@ -33,9 +33,26 @@ function ago(at: string) {
   return `${Math.round(s / 86400)}d ago`;
 }
 
+// The menu is about this tall; with less room than that under the button -
+// the last rows of the card, which clips what spills over - it opens upward.
+const MENU_HEIGHT = 150;
+
 function ModePicker({ mode, onPick }: { mode: KeepInStepMode; onPick: (m: KeepInStepMode) => void }) {
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const toggle = () => {
+    if (!open && ref.current) {
+      const below = ref.current.getBoundingClientRect().bottom;
+      let limit = window.innerHeight;
+      for (let el = ref.current.parentElement; el; el = el.parentElement) {
+        const o = getComputedStyle(el);
+        if (/(hidden|clip|auto|scroll)/.test(o.overflowY)) { limit = Math.min(limit, el.getBoundingClientRect().bottom); break; }
+      }
+      setUp(limit - below < MENU_HEIGHT);
+    }
+    setOpen((o) => !o);
+  };
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -48,7 +65,7 @@ function ModePicker({ mode, onPick }: { mode: KeepInStepMode; onPick: (m: KeepIn
     <div ref={ref} className="relative shrink-0 ml-auto">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-expanded={open}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-default text-xs whitespace-nowrap ${mode === 'off' ? 'text-muted' : 'text-default'}`}
       >
@@ -56,7 +73,7 @@ function ModePicker({ mode, onPick }: { mode: KeepInStepMode; onPick: (m: KeepIn
         <ChevronDownIcon className="w-3 h-3 opacity-60" />
       </button>
       {open && (
-        <div className="absolute z-30 right-0 mt-2 w-56 rounded-xl border border-default p-1.5 shadow-2xl" style={{ background: 'var(--color-surface)' }}>
+        <div className={`absolute z-30 right-0 w-56 rounded-xl border border-default p-1.5 shadow-2xl ${up ? 'bottom-full mb-2' : 'top-full mt-2'}`} style={{ background: 'var(--color-surface)' }}>
           {(['both', 'receive', 'off'] as KeepInStepMode[]).map((m) => (
             <button
               key={m}

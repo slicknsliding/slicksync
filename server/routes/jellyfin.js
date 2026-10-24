@@ -723,7 +723,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       let main = null;
       if (person.providerType === 'jellyfin') {
         const owner = await prisma.user.findFirst({ where: { id: person.id } });
-        await household.refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs: 60 * 1000 }).catch((e) => console.warn('[Jellyfin] household check failed:', e?.message));
+        await household.refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs: 10 * 1000 }).catch((e) => console.warn('[Jellyfin] household check failed:', e?.message));
         main = await household.describeMain(decrypt, owner).catch(() => null);
       }
       const profiles = person.providerType === 'jellyfin' ? await household.describeHousehold(prisma, person.id) : [];

@@ -166,7 +166,7 @@ const mainNames = new Map()
 async function describeMain(decrypt, owner) {
   if (!owner || owner.providerType !== 'jellyfin' || !hasHousehold(owner.jellyfinServerKind)) return null
   const hit = mainNames.get(owner.id)
-  let name = hit && Date.now() - hit.at < 60 * 1000 ? hit.name : null
+  let name = hit && Date.now() - hit.at < 20 * 1000 ? hit.name : null
   if (!name && owner.jellyfinToken) {
     try {
       const me = await jfAuth.currentUser(owner.jellyfinServerUrl, decrypt(owner.jellyfinToken, { appAccountId: owner.accountId || 'default' }), { timeoutMs: 8000 })
@@ -214,10 +214,11 @@ function scheduleHouseholdRefresh(prisma, decrypt, encrypt) {
       }
     } catch (e) { console.warn('[JellyfinProfiles] household check failed:', e?.message) }
   }
-  // Every minute: someone added on the server's own page, or a renamed main
-  // user, shows up here within a minute - one small read per person.
-  setTimeout(run, 60 * 1000)
-  refreshTimer = setInterval(run, 60 * 1000)
+  // Every 20 seconds: someone added on the server's own page, or a renamed
+  // main user, shows up here almost at once. One small read of the server's
+  // user list per person - nobody is signed in again unless they're new.
+  setTimeout(run, 20 * 1000)
+  refreshTimer = setInterval(run, 20 * 1000)
 }
 
 /**
