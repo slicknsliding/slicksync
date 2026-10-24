@@ -10,6 +10,7 @@
 // SlickSync connects with their sign-in and nothing is typed.
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { ArrowPathIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Modal, Button, ConfirmModal } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
@@ -97,6 +98,8 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
   const [quick, setQuick] = useState<{ code: string; secret: string; device: string; serverUrl: string } | null>(null);
   const [quickState, setQuickState] = useState<'idle' | 'starting' | 'waiting' | 'approved' | 'expired'>('idle');
   const [known, setKnown] = useState<KnownHouseholdServer[] | null>(null);
+  // The address is AIOStreams or AIOMetadata: already an addon here, its people on the Users page.
+  const [otherKind, setOtherKind] = useState<string | null>(null);
   const [picked, setPicked] = useState<KnownHouseholdServer | null>(null);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopPoll = () => { if (poll.current) clearInterval(poll.current); poll.current = null; };
@@ -105,7 +108,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
     if (!isOpen) { stopPoll(); return; }
     setAddress(''); setChecked(null); setName(server?.name || ''); setMethod('username'); setUsername(''); setPassword('');
     setShowPassword(false); setApiKey(''); setSelected(new Set(server?.groupIds || [])); setError(null);
-    setQuick(null); setQuickState('idle'); setSaving(false); setSyncing(false); setPicked(null); setKnown(null);
+    setQuick(null); setQuickState('idle'); setSaving(false); setSyncing(false); setPicked(null); setKnown(null); setOtherKind(null);
     if (!server) api.householdServersKnown().then((r) => setKnown(r.servers || [])).catch(() => setKnown([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, server?.id]);
@@ -119,7 +122,8 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
     setError(null);
     try {
       const info = await api.checkHouseholdServer(value);
-      if (info.kind !== 'jellyfin') throw new Error(`That's ${info.kindLabel}, which can't make accounts for people - add a Jellyfin server here`);
+      if (info.kind !== 'jellyfin') { setOtherKind(info.kindLabel); setChecked(null); return null; }
+      setOtherKind(null);
       const next = { serverUrl: info.serverUrl, display: info.display, quickConnect: info.quickConnect };
       setChecked(next);
       setAddress(info.serverUrl);
@@ -261,7 +265,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
   // With servers to offer, the form opens with just them and an address;
   // the rest follows once one is picked or an address is found.
   const offering = !editing && !!known?.length;
-  const revealed = editing || !offering || !!picked || !!checked;
+  const revealed = !otherKind && (editing || !offering || !!picked || !!checked);
 
   const seg = (m: Method, text: string) => (
     <button
@@ -334,7 +338,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
                 inputMode="url"
                 autoComplete="url"
                 value={address}
-                onChange={(e) => { setAddress(e.target.value); setChecked(null); }}
+                onChange={(e) => { setAddress(e.target.value); setChecked(null); setOtherKind(null); }}
                 onBlur={() => { if (address.trim() && !checked) check(); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); check(); } }}
                 placeholder="jellyfin.example.com"
@@ -342,6 +346,16 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
               />
               {checking && <p className={hint}>Checking…</p>}
               {checked && !checking && <p className="text-xs mt-2 flex items-center gap-1 quick-approved"><CheckCircleIcon className="w-4 h-4" /> Found it</p>}
+              {otherKind && !checking && (
+                <div className="mt-3 rounded-xl border border-default bg-surface-hover p-3 text-sm text-default">
+                  <p className="font-semibold">That&apos;s {otherKind}.</p>
+                  <p className="text-muted mt-1">
+                    It&apos;s a Jellyfin server and an addon in one, so it&apos;s added on this page as an addon, and its card says it&apos;s a Jellyfin server too.
+                    Its people are household users of the configuration, on the <b className="text-default">Users</b> page - add one there with + Add.
+                  </p>
+                  <Link href="/users" onClick={onClose} className="inline-block mt-2 text-sm font-medium text-primary">Open Users →</Link>
+                </div>
+              )}
             </div>
           )}
 
@@ -466,7 +480,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
               className="flex-1"
               onClick={submit}
               isLoading={saving}
-              disabled={checking || (!editing && method === 'quickconnect' && (quickState === 'waiting' || quickState === 'starting' || quickState === 'approved'))}
+              disabled={checking || !!otherKind || (!editing && method === 'quickconnect' && (quickState === 'waiting' || quickState === 'starting' || quickState === 'approved'))}
             >
               {editing ? 'Save' : !revealed ? 'Continue' : method === 'quickconnect' && quickState === 'idle' ? 'Get a code' : 'Add server'}
             </Button>

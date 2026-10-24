@@ -6,7 +6,8 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { SharedConfigPill } from '@/components/addons/SharedConfigPill';
-import { sharedConfigPeers, configKindOf, type SharedPeer } from '@/lib/sharedConfig';
+import { sharedConfigPeers, configKindOf, configKeyOf, type SharedPeer } from '@/lib/sharedConfig';
+import { JellyfinServerPill } from '@/components/addons/JellyfinServerPill';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -25,7 +26,7 @@ import { NebulaPageHeading, NebulaHeaderStats, NebulaCompactStatCard, NEBULA_GLA
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, Addon, type HouseholdServer } from '@/lib/api';
+import { api, Addon, type HouseholdServer, type ConfigServerLink } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -230,6 +231,16 @@ export default function AddonsPage() {
   const [addons, setAddons] = useState<Addon[]>([]);
   // Addons whose links open the same AIOStreams/AIOMetadata configuration.
   const sharedPeers = useMemo(() => sharedConfigPeers(addons), [addons]);
+  // AIOStreams/AIOMetadata configurations someone also signs in to as a
+  // Jellyfin server: their addon cards say so.
+  const [serverLinks, setServerLinks] = useState<Map<string, ConfigServerLink>>(new Map());
+  useEffect(() => {
+    api.configServerLinks().then((r) => setServerLinks(new Map((r.links || []).map((l) => [l.key, l])))).catch(() => {});
+  }, []);
+  const serverLinkOf = (addon: { manifestUrl?: string | null }) => {
+    const key = configKeyOf(addon.manifestUrl);
+    return key ? serverLinks.get(key) : undefined;
+  };
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -894,6 +905,7 @@ export default function AddonsPage() {
                                 focusable={isTV}
                                 dragHandleProps={dragHandleProps}
                                 sharedPeers={sharedPeers.get(addon.id)}
+                                serverLink={serverLinkOf(addon)}
                               />
                             </StaggerItem>
                             )}
@@ -940,6 +952,7 @@ export default function AddonsPage() {
                                 focusable={isTV}
                                 dragHandleProps={dragHandleProps}
                                 sharedPeers={sharedPeers.get(addon.id)}
+                                serverLink={serverLinkOf(addon)}
                               />
                             )}
                           </SortableAddonWrapper>
@@ -1292,6 +1305,7 @@ function AddonCard({
   dragHandleProps,
   layout = 'grid',
   sharedPeers,
+  serverLink,
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -1325,6 +1339,8 @@ function AddonCard({
   layout?: 'grid' | 'row';
   /** Other addons opening the same saved configuration (lib/sharedConfig.ts). */
   sharedPeers?: SharedPeer[];
+  /** Its configuration is also signed in to as a Jellyfin server. */
+  serverLink?: ConfigServerLink;
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1458,7 +1474,7 @@ function AddonCard({
 
   // The label and Shared settings: on a phone they follow the version and
   // counts, everywhere else they lead the tags row - never a row of their own.
-  const labelPills = (addon.customTag || (sharedPeers && sharedPeers.length > 0)) ? (
+  const labelPills = (addon.customTag || (sharedPeers && sharedPeers.length > 0) || serverLink) ? (
     <>
       {addon.customTag && (
         <span
@@ -1482,6 +1498,7 @@ function AddonCard({
           isTV={focusable}
         />
       )}
+      {serverLink && <JellyfinServerPill link={serverLink} isTV={focusable} />}
     </>
   ) : null;
 
@@ -1664,6 +1681,7 @@ function AddonCard({
             {sharedPeers && sharedPeers.length > 0 && (
               <SharedConfigPill peers={sharedPeers} kind={configKindOf(addon.manifestUrl, addon.name)} isTV={focusable} />
             )}
+            {serverLink && <JellyfinServerPill link={serverLink} isTV={focusable} />}
             {/* Moved out of its old leading spot (before the drag handle,
                 crowding every row's start on mobile). A flex-basis:100%
                 spacer forces this onto its own line UNCONDITIONALLY - a

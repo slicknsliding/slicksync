@@ -2645,6 +2645,11 @@ class ApiClient {
     return this.fetch<{ servers: HouseholdServer[] }>('/jellyfin/household-servers');
   }
 
+  /** AIOStreams/AIOMetadata configurations someone signs in to as a Jellyfin server, keyed host|config id. */
+  async configServerLinks() {
+    return this.fetch<{ links: ConfigServerLink[] }>('/jellyfin/household-servers/config-links');
+  }
+
   async householdServersKnown() {
     return this.fetch<{ servers: KnownHouseholdServer[] }>('/jellyfin/household-servers/known');
   }
@@ -4106,6 +4111,16 @@ export interface HouseholdServer {
   /** Get an account on the next sync. */
   waiting: number;
   lastSyncAt: string | null;
+}
+
+/** An AIOStreams or AIOMetadata configuration someone here also signs in to as a Jellyfin server. */
+export interface ConfigServerLink {
+  key: string;
+  personId: string;
+  personName: string;
+  kind: 'aiostreams' | 'aiometadata';
+  address: string;
+  profiles: number;
 }
 
 /** A Jellyfin server people here already sign in with, not added on the Addons page yet. */

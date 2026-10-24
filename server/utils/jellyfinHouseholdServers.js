@@ -119,7 +119,7 @@ async function connectAdmin(prisma, rawUrl, auth = {}, accountId = 'default') {
   if (auth.method === 'person') return connectWithPerson(prisma, accountId, auth.personId)
   const probe = await jfAuth.probeServer(rawUrl)
   if (probe.kind !== 'jellyfin') {
-    throw httpError(400, `That's ${probe.kindLabel}, which can't make accounts for people - add a Jellyfin server here`)
+    throw httpError(400, `That's ${probe.kindLabel} - it's added on the Addons page as an addon, and its people are household users on the Users page`)
   }
   const url = probe.serverUrl
   if (auth.method === 'apikey') {
@@ -170,7 +170,7 @@ async function connectWithPerson(prisma, accountId, personId) {
   })
   if (!person?.jellyfinServerUrl) throw httpError(404, 'That person doesn’t sign in to a Jellyfin server here')
   const probe = await jfAuth.probeServer(person.jellyfinServerUrl)
-  if (probe.kind !== 'jellyfin') throw httpError(400, `That's ${probe.kindLabel}, which can't make accounts for people - add a Jellyfin server here`)
+  if (probe.kind !== 'jellyfin') throw httpError(400, `That's ${probe.kindLabel} - it's added on the Addons page as an addon, and its people are household users on the Users page`)
   const session = collections.sessionFor(person, decrypt)
   let me
   try { me = await collections.call(session, '/Users/Me') } catch (e) {

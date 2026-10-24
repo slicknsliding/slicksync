@@ -32,6 +32,35 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // AIOStreams and AIOMetadata configurations someone here signs in to as a
+  // Jellyfin server, keyed like client/lib/sharedConfig.ts configKeyOf
+  // (host|config id), so the matching addon card can say it's a server too.
+  router.get('/config-links', async (req, res) => {
+    try {
+      const people = await prisma.user.findMany({
+        where: { accountId: accountOf(req), providerType: 'jellyfin', jellyfinServerKind: { in: ['aiostreams', 'aiometadata'] }, aioConfigId: { not: null } },
+        select: { id: true, username: true, jellyfinServerUrl: true, jellyfinServerKind: true, aioConfigId: true },
+      });
+      const links = [];
+      for (const p of people) {
+        let host = null;
+        try { host = new URL(p.jellyfinServerUrl).host.toLowerCase(); } catch { continue; }
+        const profiles = await prisma.jellyfinProfile.count({ where: { ownerUserId: p.id } });
+        links.push({
+          key: `${host}|${String(p.aioConfigId).toLowerCase()}`,
+          personId: p.id,
+          personName: p.username,
+          kind: p.jellyfinServerKind,
+          address: jfAuth.displayServer(p.jellyfinServerUrl),
+          profiles: profiles + 1,
+        });
+      }
+      res.json({ links });
+    } catch (error) {
+      sendError(res, error, 'Could not read which addons are Jellyfin servers too');
+    }
+  });
+
   // Servers people here already sign in with, not added yet.
   router.get('/known', async (req, res) => {
     try {
