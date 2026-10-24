@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/Toast';
 import { JellyfinLogo } from '@/components/jellyfin/JellyfinLogo';
 import { api, type PersonHouseholdServer } from '@/lib/api';
 
-const APPS = ['Odin', 'Vifoy', 'Swiftfin', 'Infuse', 'Findroid'];
+const APPS = ['Odin', 'Swiftfin', 'Infuse', 'Findroid'];
 
 function ServerRow({ personId, personName, server }: { personId: string; personName: string; server: PersonHouseholdServer }) {
   const [code, setCode] = useState('');

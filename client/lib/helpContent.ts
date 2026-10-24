@@ -737,7 +737,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'jellyfin-server-for-a-group',
     title: 'Giving a group accounts on your Jellyfin server',
     category: 'Addons',
-    keywords: ['jellyfin server', 'add jellyfin server', 'jellyfin account for everyone', 'make jellyfin accounts', 'jellyfin users', 'group jellyfin', 'odin', 'vifoy', 'swiftfin', 'infuse', 'findroid', 'quick connect code', 'jellyfin password', 'api key', 'media server for family'],
+    keywords: ['jellyfin server', 'add jellyfin server', 'jellyfin account for everyone', 'make jellyfin accounts', 'jellyfin users', 'group jellyfin', 'odin', 'swiftfin', 'infuse', 'findroid', 'quick connect code', 'jellyfin password', 'api key', 'media server for family'],
     answer: 'Addons -> Add -> Jellyfin server. Type the address, connect as an administrator (Quick Connect, an API key, or a username) and give it to groups. When a group syncs, everyone in it gets their own account on the server, for any Jellyfin app.',
     steps: [
       'On Addons, press Add and choose Jellyfin server.',
