@@ -92,11 +92,12 @@ function getBadgeStyles(variant: BadgeVariant) {
         borderColor: 'rgba(255, 152, 0, 0.18)',
       };
     case 'jellyfin':
-      // A real Jellyfin server: teal.
+      // A real Jellyfin server: Jellyfin's own navy and purple-to-blue edge,
+      // the same family as the AIOStreams badge and the Catalogs pill.
       return {
-        background: 'linear-gradient(115deg, rgba(20, 184, 166, 0.20) 0%, rgba(34, 211, 238, 0.14) 100%)',
-        color: 'rgb(153, 246, 228)',
-        borderColor: 'rgba(45, 212, 191, 0.28)',
+        background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(170, 92, 195, 0.75), rgba(0, 164, 220, 0.75)) border-box',
+        color: 'rgb(212, 208, 255)',
+        borderColor: 'transparent',
       };
     case 'aiostreams':
       // AIOStreams' media server, in the Catalogs tile's look: dark navy with
@@ -192,6 +193,11 @@ export function Badge({ children, variant = 'default', size = 'sm', pulse = fals
         <>
           <JellyfinLogo size={size === 'sm' ? 10 : 12} />
           <span><span style={{ color: 'rgb(212, 208, 255)' }}>AIO</span><span style={{ color: 'rgb(159, 146, 255)' }}>Streams</span></span>
+        </>
+      ) : variant === 'jellyfin' ? (
+        <>
+          <JellyfinLogo size={size === 'sm' ? 10 : 12} />
+          {children}
         </>
       ) : children}
     </span>

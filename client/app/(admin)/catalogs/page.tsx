@@ -278,9 +278,9 @@ export default function ListsPage() {
       onClick={() => router.push('/catalogs/aiostreams-collections')}
       className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
-        background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(170, 92, 195, 0.75), rgba(0, 164, 220, 0.75)) border-box',
+        background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(190, 110, 215, 0.95), rgba(0, 180, 235, 0.95)) border-box',
         border: '1.5px solid transparent',
-        boxShadow: '-6px 0 20px -6px rgba(170, 92, 195, 0.35), 6px 0 20px -6px rgba(0, 164, 220, 0.35)',
+        boxShadow: '-8px 0 24px -6px rgba(170, 92, 195, 0.55), 8px 0 24px -6px rgba(0, 164, 220, 0.55)',
       }}
     >
       <span
@@ -290,7 +290,7 @@ export default function ListsPage() {
         <JellyfinLogo />
       </span>
       <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate">
-        <span style={{ background: 'linear-gradient(90deg, #C58BDA, #4CC3EE)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Jellyfin</span>
+        <span style={{ background: 'linear-gradient(90deg, #E2B4F2, #7FD9F7)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Jellyfin Collections</span>
       </span>
     </button>
   );
