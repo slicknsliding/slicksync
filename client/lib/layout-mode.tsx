@@ -21,9 +21,41 @@ export const layoutModeMeta: Record<LayoutModeId, { name: string; description: s
   },
 };
 
+// Where the account button (picture + account menu) lives. Each layout has two
+// places and remembers its own pick; 'a' is the default for both.
+//   Top Navi ('nebula'): a = in the top bar, b = floating pill bottom-left
+//   Original ('current'): a = top of the sidebar by the logo, b = sidebar foot
+export const accountButtonIds = ['a', 'b'] as const;
+export type AccountButtonId = (typeof accountButtonIds)[number];
+export type AccountPlacement = 'bar' | 'float' | 'sideTop' | 'sideFoot';
+
+export const accountButtonMeta: Record<LayoutModeId, Record<AccountButtonId, { name: string; description: string; placement: AccountPlacement }>> = {
+  nebula: {
+    a: { name: 'In the top bar', description: 'Your picture at the right end of the bar. Menu drops down.', placement: 'bar' },
+    b: { name: 'Floating, bottom left', description: 'A small pill that floats over the page. Menu opens upward.', placement: 'float' },
+  },
+  current: {
+    a: { name: 'Top of the sidebar', description: 'Your picture beside the SlickSync logo. Menu drops down.', placement: 'sideTop' },
+    b: { name: 'Foot of the sidebar', description: 'Where it sits today. Menu opens upward.', placement: 'sideFoot' },
+  },
+};
+
+const ACCOUNT_BUTTON_KEYS: Record<LayoutModeId, string> = {
+  nebula: 'slicksync-account-button-nebula',
+  current: 'slicksync-account-button-current',
+};
+
+type AccountButtonChoices = Record<LayoutModeId, AccountButtonId>;
+const defaultAccountButtons: AccountButtonChoices = { nebula: 'a', current: 'a' };
+
 interface LayoutModeContextValue {
   layoutMode: LayoutModeId;
   setLayoutMode: (id: LayoutModeId) => void;
+  /** The account button choice of each layout. A TV always gets 'a' - a remote
+   *  cannot reach a floating pill, or the foot of a sidebar. */
+  accountButtons: AccountButtonChoices;
+  /** Stores the choice for one layout (Settings passes the layout it shows). */
+  setAccountButton: (layout: LayoutModeId, id: AccountButtonId) => void;
 }
 
 // Default is 'nebula' ("Top Navi") - the earlier Nebula-specific issues
@@ -33,12 +65,15 @@ interface LayoutModeContextValue {
 const defaultContextValue: LayoutModeContextValue = {
   layoutMode: 'nebula',
   setLayoutMode: () => {},
+  accountButtons: defaultAccountButtons,
+  setAccountButton: () => {},
 };
 
 const LayoutModeContext = createContext<LayoutModeContextValue>(defaultContextValue);
 
 export function LayoutModeProvider({ children }: { children: ReactNode }) {
   const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('nebula');
+  const [accountChoices, setAccountChoices] = useState<AccountButtonChoices>(defaultAccountButtons);
   const [mounted, setMounted] = useState(false);
   // TV mode has no D-pad wiring built for Original's sidebar/card chrome at
   // all - every TVPageProvider/TVFocusable/TVLink pass this session
@@ -58,6 +93,14 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('slicksync-layout-mode') as LayoutModeId | null;
     const initial = saved && layoutModeIds.includes(saved) ? saved : 'nebula';
     setLayoutModeState(initial);
+    // Same moment, same reason: a saved "pill" choice must not flash as the bar.
+    const read = (layout: LayoutModeId): AccountButtonId => {
+      try {
+        const v = localStorage.getItem(ACCOUNT_BUTTON_KEYS[layout]);
+        return v === 'b' ? 'b' : 'a';
+      } catch { return 'a'; }
+    };
+    setAccountChoices({ nebula: read('nebula'), current: read('current') });
     setMounted(true);
   }, []);
 
@@ -72,8 +115,19 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setAccountButton = (layout: LayoutModeId, id: AccountButtonId) => {
+    if (!layoutModeIds.includes(layout) || !accountButtonIds.includes(id)) return;
+    setAccountChoices((prev) => ({ ...prev, [layout]: id }));
+    try { localStorage.setItem(ACCOUNT_BUTTON_KEYS[layout], id); } catch { /* storage blocked: lasts this visit */ }
+  };
+
   return (
-    <LayoutModeContext.Provider value={{ layoutMode: isTV ? 'nebula' : layoutMode, setLayoutMode }}>
+    <LayoutModeContext.Provider value={{
+      layoutMode: isTV ? 'nebula' : layoutMode,
+      setLayoutMode,
+      accountButtons: isTV ? defaultAccountButtons : accountChoices,
+      setAccountButton,
+    }}>
       {children}
     </LayoutModeContext.Provider>
   );
@@ -81,6 +135,17 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
 
 export function useLayoutMode() {
   return useContext(LayoutModeContext);
+}
+
+/** Set by whatever hosts the account button (the top bar, the sidebar) so the
+ *  button and its menu know which way to open. Null outside those hosts. */
+export const AccountPlacementContext = createContext<AccountPlacement | null>(null);
+
+/** Where the account button sits for the given layout (default: the layout in use). */
+export function useAccountPlacement(layout?: LayoutModeId): AccountPlacement {
+  const { layoutMode, accountButtons } = useContext(LayoutModeContext);
+  const which = layout ?? layoutMode;
+  return accountButtonMeta[which][accountButtons[which]].placement;
 }
 
 // Pages that actually have a Nebula-styled render path. Everything else

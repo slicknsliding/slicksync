@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 interface HourlyHeatmapProps {
   hourlyActivity: HourlyActivity[];
@@ -47,11 +48,8 @@ export function HourlyHeatmap({ hourlyActivity, peakHour }: HourlyHeatmapProps) 
             />
             <YAxis stroke="#64748b" fontSize={12} />
             <Tooltip
-              contentStyle={{
-                backgroundColor: 'rgba(20, 20, 35, 0.95)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '12px',
-              }}
+              contentStyle={CHART_TOOLTIP_STYLE}
+              labelStyle={CHART_TOOLTIP_LABEL_STYLE}
             />
             <Bar
               dataKey="sessions"

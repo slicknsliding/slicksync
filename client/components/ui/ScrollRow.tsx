@@ -65,7 +65,7 @@ export function ScrollRow({ className = '', wrapperClassName = '', arrows = fals
 
   if (!arrows) return row;
 
-  const arrowClass = 'absolute top-1/2 -translate-y-1/2 z-20 w-5 h-5 rounded-full flex items-center justify-center bg-primary text-white shadow-sm hover:brightness-110 transition-opacity';
+  const arrowClass = 'absolute top-1/2 -translate-y-1/2 z-20 w-5 h-5 rounded-full flex items-center justify-center bg-primary-solid text-white shadow-sm hover:brightness-110 transition-opacity';
   return (
     <div className={`relative min-w-0 ${wrapperClassName}`}>
       {row}

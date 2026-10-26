@@ -1301,6 +1301,7 @@ model PersonPushSubscription {
   auth       String
   userAgent  String?
   lastSeenAt DateTime?
+  label      String? // Their own name for this device ("Kitchen tablet"), set from the portal; unset falls back to a guess from the browser
   createdAt  DateTime  @default(now())
 
   @@unique([userId, endpoint])

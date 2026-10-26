@@ -224,7 +224,7 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
           <button
             type="button"
             onClick={() => { setCategory(''); setPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!category ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!category ? 'bg-primary-solid text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'}`}
           >
             All
           </button>
@@ -233,7 +233,7 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
               key={c}
               type="button"
               onClick={() => { setCategory(category === c ? '' : c); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${category === c ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${category === c ? 'bg-primary-solid text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'}`}
             >
               {c}
             </button>

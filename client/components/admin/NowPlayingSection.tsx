@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Badge, UserAvatar } from '@/components/ui';
+import { PlaybackDot, PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
 import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
@@ -34,6 +35,10 @@ interface NowPlayingItem {
   /** True once the proxy has stopped reconfirming the stream - the figure
    *  above is then final and must not be counted past. */
   elapsedFrozen?: boolean;
+  // For the freshness line under the card (lib/playbackFreshness.ts).
+  reportedAtTimestamp?: number;
+  paused?: boolean;
+  playingUntilTimestamp?: number;
   // Where playback stood at the provider's last checkpoint, and the links
   // that open the title in each app - the same fields the Activity page's
   // card shows, so the two read the same.
@@ -167,6 +172,7 @@ export function NowPlayingSection({ items, now }: NowPlayingSectionProps) {
             {watchingFor(item) && (
               <p className="text-xs text-subtle mt-0.5">Watching for {watchingFor(item)}</p>
             )}
+            <PlaybackFreshnessLine row={item} />
             {typeof item.lastPosition === 'number' && typeof item.totalDuration === 'number' && item.totalDuration > 0 && (item.stremioAppUrl || item.nuvioAppUrl) && (
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className="text-xs text-subtle">
@@ -206,7 +212,7 @@ export function NowPlayingSection({ items, now }: NowPlayingSectionProps) {
 
           {/* Live indicator and Time Ago */}
           <div className="flex-shrink-0 self-center">
-            <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+            <PlaybackDot row={item} />
           </div>
         </motion.div>
       ))}

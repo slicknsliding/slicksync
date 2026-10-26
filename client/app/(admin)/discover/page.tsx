@@ -722,7 +722,7 @@ export default function DiscoverPage() {
       )}
       <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         <button type="button" onClick={clearFilters} disabled={filterCount === 0} className="text-sm font-medium disabled:opacity-40" style={{ color: 'var(--color-primary)' }}>Clear all</button>
-        <button type="button" onClick={() => filtersPop.setOpen(false)} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--color-primary)' }}>Done</button>
+        <button type="button" onClick={() => filtersPop.setOpen(false)} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--color-primary-solid)' }}>Done</button>
       </div>
     </>
   );
@@ -900,7 +900,7 @@ export default function DiscoverPage() {
                       <AdjustmentsHorizontalIcon className="w-5 h-5 sm:w-4 sm:h-4" />
                       <span className={sortOptions ? 'hidden sm:inline' : ''}>Filters</span>
                       {filterCount > 0 && (
-                        <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary)' }}>{filterCount}</span>
+                        <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary-solid)' }}>{filterCount}</span>
                       )}
                     </button>
                     {filtersPop.open && (

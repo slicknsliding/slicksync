@@ -37,6 +37,10 @@ interface UserAuthContextType {
   loginJellyfin: (credentials: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshUserInfo: () => Promise<void>;
+  /** Changes what the page knows about the person right away (their new picture), and keeps it for the next load. */
+  applyUserInfo: (patch: Partial<UserInfo>) => void;
+  /** Becomes another of the person's own Nuvio profiles: the session token the server handed out for it. */
+  switchNuvioProfile: (userId: string, sessionToken: string, user: Partial<UserInfo>) => Promise<void>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -308,6 +312,34 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     }
   }, [userId, provider, authKey]);
 
+  const applyUserInfo = useCallback((patch: Partial<UserInfo>) => {
+    setUserInfo((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ userId: current.id, provider: provider || 'stremio', authKey, userInfo: next }));
+      } catch { /* the change shows now; the next load reads it from the server */ }
+      return next;
+    });
+  }, [provider, authKey]);
+
+  // Moving to another profile of the same Nuvio login. The server issued a
+  // session for that profile only; from here on every call is theirs.
+  const switchNuvioProfile = useCallback(async (newUserId: string, sessionToken: string, user: Partial<UserInfo>) => {
+    setUserId(newUserId);
+    setProvider('nuvio');
+    setAuthKey(sessionToken);
+    setUserInfo((current) => {
+      const next = { ...(current || {}), ...user, id: newUserId } as UserInfo;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ userId: newUserId, provider: 'nuvio', authKey: sessionToken, userInfo: next }));
+      } catch { /* kept for this tab only */ }
+      return next;
+    });
+    // The switch answer carries the basics; the rest (group, Gravatar) is read now.
+    void fillInfoAfterSignIn(newUserId, 'nuvio', sessionToken);
+  }, [fillInfoAfterSignIn]);
+
   // Self-service "delete my account" - permanently removes only this user's
   // own row and data. logout()'s local cleanup runs regardless of provider
   // since there's nothing left server-side to keep a session valid against.
@@ -339,6 +371,8 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     loginJellyfin,
     logout,
     refreshUserInfo,
+    applyUserInfo,
+    switchNuvioProfile,
     deleteAccount,
   };
 

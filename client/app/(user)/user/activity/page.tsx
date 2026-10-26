@@ -15,6 +15,7 @@ import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userActivity, WatchSession, UserActivityData } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { Avatar, ViewModeToggle, Card } from '@/components/ui';
+import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
 import {
   AreaChart,
   Area,
@@ -28,6 +29,7 @@ import {
 } from 'recharts';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { providerTypeLabel } from '@/lib/providers';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
@@ -93,14 +95,8 @@ function formatDateHeader(dateKey: string): string {
 }
 
 // Memoized tooltip style
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(30, 30, 56, 0.95)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  backdropFilter: 'blur(12px)',
-} as const;
-
-const TOOLTIP_LABEL_STYLE = { color: '#fff' } as const;
+const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
+const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 // Stat Card Component
 function StatCard({
@@ -795,6 +791,7 @@ export default function UserActivityPage() {
                                                         }
                                                         return null;
                                                       })()}
+                        <PlaybackFreshnessLine row={np} />
                                                     </div>
                                                   </motion.div>
                                                 ))}

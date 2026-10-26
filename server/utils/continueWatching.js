@@ -129,7 +129,11 @@ async function getResumeState(prisma, accountId, userId, itemId, videoId) {
 
   const ratio = session.lastPosition / session.totalDuration
   const inProgress = session.lastPosition >= RESUME_MIN_POSITION_MS && ratio < RESUME_MAX_RATIO
-  return { inProgress, progressPercent: Math.round(ratio * 100) }
+  return {
+    inProgress,
+    progressPercent: Math.round(ratio * 100),
+    remainingMinutes: Math.max(1, Math.round((session.totalDuration - session.lastPosition) / 60000))
+  }
 }
 
 /**
@@ -155,21 +159,27 @@ function invalidateContinueWatching(accountId) {
   for (const key of cwBuilding.keys()) if (key.startsWith(prefix)) cwBuilding.delete(key)
 }
 
-async function getContinueWatching(prisma, accountId, limit = 8) {
-  const key = `${accountId || 'default'}:${limit}`
+// `userId` narrows the row to one person - their own portal Home. It is part of
+// the key (so one person's row is never handed to another) and is applied to
+// the history read itself, before the limit: capped afterwards, a quiet
+// member's row would be whatever of the household's newest shows happened to
+// be theirs, usually nothing.
+async function getContinueWatching(prisma, accountId, limit = 8, { userId = null } = {}) {
+  const key = `${accountId || 'default'}:${limit}${userId ? `:u:${userId}` : ''}`
   const hit = cwMemo.get(key)
   if (hit && Date.now() - hit.at < CW_MEMO_TTL_MS) return hit.value
   // Several screens opening at once share one computation.
   if (cwBuilding.has(key)) return cwBuilding.get(key)
-  const promise = computeContinueWatching(prisma, accountId, limit)
+  const promise = computeContinueWatching(prisma, accountId, limit, userId)
     .then((value) => { if (cwBuilding.get(key) === promise) cwMemo.set(key, { at: Date.now(), value }); return value })
     .finally(() => { if (cwBuilding.get(key) === promise) cwBuilding.delete(key) })
   cwBuilding.set(key, promise)
   return promise
 }
 
-async function computeContinueWatching(prisma, accountId, limit = 8) {
+async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId = null) {
   const accountIdValue = accountId || 'default'
+  const ofPerson = onlyUserId ? { userId: onlyUserId } : {}
   const { resolveOmdbKeyForAccount } = require('./listImport')
   const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountIdValue)
 
@@ -178,7 +188,7 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
   // groupBy for "latest row per group with full columns".
   const since = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) // 120 days
   const rows = await prisma.episodeWatchHistory.findMany({
-    where: { accountId: accountIdValue, watchedAt: { gte: since } },
+    where: { accountId: accountIdValue, ...ofPerson, watchedAt: { gte: since } },
     orderBy: { watchedAt: 'desc' }
   })
 
@@ -288,6 +298,7 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
       nextEpisode: target,
       resume: isResume,
       progressPercent: isResume ? resumeState.progressPercent : null,
+      remainingMinutes: isResume ? (resumeState.remainingMinutes ?? null) : null,
       lastWatchedAt: row.watchedAt,
       imdbRating: metadata.imdbRating || null,
       rottenTomatoes: metadata.rottenTomatoes || null,
@@ -328,7 +339,7 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
   // only qualifies while its WatchSession says it's partway through; finished
   // movies have nothing to continue.
   const movieRows = await prisma.movieWatchHistory.findMany({
-    where: { accountId: accountIdValue, watchedAt: { gte: since } },
+    where: { accountId: accountIdValue, ...ofPerson, watchedAt: { gte: since } },
     orderBy: { watchedAt: 'desc' }
   })
   const latestPerMovie = new Map()
@@ -378,6 +389,7 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
       nextEpisode: null,
       resume: true,
       progressPercent: resumeState.progressPercent,
+      remainingMinutes: resumeState.remainingMinutes ?? null,
       lastWatchedAt: row.watchedAt,
       imdbRating: metadata?.imdbRating || null,
       rottenTomatoes: metadata?.rottenTomatoes || null,

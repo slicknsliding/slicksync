@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -47,7 +47,9 @@ import {
   ArrowTopRightOnSquareIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
-import { ScrollRow } from '@/components/ui/ScrollRow';
+import { SettingsNavigation, collectSettingsEntries, type SettingsTabDef } from '@/components/settings/SettingsNavigation';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { LumiereDbField } from '@/components/settings/LumiereDbField';
 import { AboutPanel } from '@/components/settings/AboutPanel';
 
@@ -136,7 +138,7 @@ function ToggleSwitch({
     >
       <div
         className={`relative w-10 h-5 rounded-full transition-colors ${
-          enabled ? 'bg-primary' : 'bg-muted'
+          enabled ? 'bg-primary-solid' : 'bg-muted'
         }`}
       >
         <motion.div
@@ -436,16 +438,18 @@ function BackupKeyField({
 // time. Deep links from the command palette still land on the exact control:
 // SETTINGS_TABS_BY_SECTION maps the palette's own section labels onto these
 // tabs so the page can switch before it scrolls.
+// `group` is the labelled block of the left rail: what the person sees and
+// wears (experience) against how the instance is wired up (setup).
 const SETTINGS_TABS = [
-  { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone' },
-  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds' },
-  { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed' },
-  { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest' },
-  { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
-  { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
-  { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
-  { key: 'about', label: 'About', icon: InformationCircleIcon, blurb: 'Credits, data, privacy' },
-] as const;
+  { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone', group: 'experience' },
+  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds', group: 'experience' },
+  { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed', group: 'setup' },
+  { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest', group: 'experience' },
+  { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover', group: 'setup' },
+  { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling', group: 'setup' },
+  { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone', group: 'setup' },
+  { key: 'about', label: 'About', icon: InformationCircleIcon, blurb: 'Credits, data, privacy', group: 'setup' },
+] as const satisfies readonly SettingsTabDef[];
 type SettingsTab = typeof SETTINGS_TABS[number]['key'];
 
 const SETTINGS_TABS_BY_SECTION: Record<string, SettingsTab> = {
@@ -474,19 +478,14 @@ export default function SettingsPage() {
   // Mirrors the localStorage flag so the switch reflects reality after mount
   // (reading it during render would disagree with the server render).
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-  // The rail's hover is tracked here instead of in CSS, for two reasons that
-  // both bit this rail. The rows carry inline styles, and an inline
-  // background silently beats any :hover rule that isn't !important - so the
-  // CSS hover never actually painted anything. And a CSS :hover STICKS after
-  // a tap on a touch screen (there is no hover-out event to end it), which is
-  // exactly the "the last one I clicked stays lit" symptom. State can only
-  // hold one key, and only a real mouse can set it, so at most one row is
-  // ever lit and a tap can never leave one behind.
-  const [hoveredTab, setHoveredTab] = useState<SettingsTab | null>(null);
   // Nebula puts the app's own nav across the top, so settings can own the
   // left rail. Original already has a sidebar - a second one beside it is
   // the clutter this avoids.
   const useSettingsRail = layoutMode === 'nebula';
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  // The sections (each in a data-settings-pane) the search reads its index from.
+  const contentRef = useRef<HTMLDivElement>(null);
   const [beginnerMode, setBeginnerModeState] = useState(false);
   useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
 
@@ -998,6 +997,10 @@ export default function SettingsPage() {
     // Jumping from the command palette must also switch tabs, or the
     // control it wants is simply not mounted to scroll to.
     const tabFor = (target: string) => {
+      // The section the control sits in on the page (every section stays
+      // mounted), else the palette index's own section for it.
+      const pane = findSettingElement(target)?.closest<HTMLElement>('[data-settings-pane]')?.dataset.settingsPane;
+      if (pane) return pane as SettingsTab;
       const entry = SETTINGS_INDEX.find((e) => e.label === target);
       return entry ? SETTINGS_TABS_BY_SECTION[entry.section] : undefined;
     };
@@ -1263,7 +1266,7 @@ export default function SettingsPage() {
     : 'No API key';
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title="Settings"
@@ -1289,68 +1292,17 @@ export default function SettingsPage() {
             it. Below md this has to be plain block flow: strip on top,
             settings under it. */}
         <div className={useSettingsRail ? 'md:flex md:gap-6 md:items-start' : ''}>
-          {useSettingsRail && (
-          <nav
-            className="hidden md:block w-56 shrink-0 sticky top-4"
-            // Safety net for the pointer that leaves the rail fast enough to
-            // skip a row's own leave event (or leaves the window entirely).
-            onPointerLeave={() => setHoveredTab(null)}
-          >
-            <div className="rounded-2xl p-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
-              {SETTINGS_TABS.map((t) => {
-                const active = activeTab === t.key;
-                const hovered = !active && hoveredTab === t.key;
-                const Icon = t.icon;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    // Clearing the hover on click matters as much as setting
-                    // it: after a tap the finger is gone but the pointer
-                    // never "leaves", so without this the row you just
-                    // chose would keep its hover tint on top of everything.
-                    onClick={(e) => { setActiveTab(t.key); setHoveredTab(null); e.currentTarget.blur(); }}
-                    onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredTab(t.key); }}
-                    onPointerLeave={() => setHoveredTab((k) => (k === t.key ? null : k))}
-                    // One of three mutually exclusive classes, never a mix,
-                    // and each is !important (see globals.css) - so a row
-                    // that is not the selected one cannot be painted by a
-                    // leftover :hover, a theme rule, or anything else. The
-                    // selected row is a solid fill rather than the 20% tint
-                    // it used to be: the tint sat too close to the card
-                    // behind it to read as "this one and none of the others".
-                    className={`relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none rail-item ${active ? 'rail-item-on' : hovered ? 'rail-item-warm' : 'rail-item-off'}`}
-                  >
-                    <Icon className={`w-4 h-4 shrink-0 ${active ? 'rail-ico-on' : 'text-muted'}`} />
-                    <span className="min-w-0">
-                      <span className={`block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
-                      <span className={`block text-[11px] leading-tight ${active ? 'rail-blurb-on' : 'text-muted'}`}>{t.blurb}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-          )}
+          <SettingsNavigation
+            tabs={SETTINGS_TABS}
+            active={activeTab}
+            onSelect={(key) => setActiveTab(key as SettingsTab)}
+            rail={useSettingsRail}
+            isTV={isTV}
+            getEntries={() => collectSettingsEntries(contentRef.current, SETTINGS_TABS, SETTINGS_INDEX, (section) => SETTINGS_TABS_BY_SECTION[section])}
+            onPick={(entry) => window.dispatchEvent(new CustomEvent('slicksync:settings-highlight', { detail: entry.label }))}
+          />
 
-          <div className={`${useSettingsRail ? 'md:hidden' : ''} -mx-1 px-1 pb-3 sticky top-0 z-20`} style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
-            <ScrollRow className="flex gap-1.5">
-              {SETTINGS_TABS.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setActiveTab(t.key)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap focus:outline-none ${
-                    activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </ScrollRow>
-          </div>
-
-          <div className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
+          <div ref={contentRef} className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
 
 
         {activeTab === 'themes' && <ThemesPanel embedded />}
@@ -1359,7 +1311,7 @@ export default function SettingsPage() {
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
-        {activeTab === 'general' && (
+        <div hidden={activeTab !== 'general'} data-settings-pane="general">
         <PageSection className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1415,14 +1367,14 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* Welcome tour replay - low-key, one line, no card padding beyond
             the norm here so it doesn't stand out among the settings around
             it. Users kept accidentally clicking past a step with no way
             back (fixed in the wizard itself) and had no way to pull it back
             up afterward either - this is that way back in, not a big CTA. */}
-        {activeTab === 'general' && (
+        <div hidden={activeTab !== 'general'} data-settings-pane="general">
         <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center justify-between gap-3">
@@ -1441,10 +1393,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* Privacy & Display */}
-        {activeTab === 'general' && (
+        <div hidden={activeTab !== 'general'} data-settings-pane="general">
         <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1520,10 +1472,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* Sync Mode */}
-        {activeTab === 'sync' && (
+        <div hidden={activeTab !== 'sync'} data-settings-pane="sync">
         <PageSection delay={0.1} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1566,10 +1518,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* Notifications */}
-        {activeTab === 'notifications' && (
+        <div hidden={activeTab !== 'notifications'} data-settings-pane="notifications">
         <PageSection delay={0.15} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1875,13 +1827,13 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* SlickTrax — opt-outs for SlickSync's native tracking surfaces
             (Watchlist, Watched indicators, Recommendations). All default ON.
             Turning any off hides its UI + skips its network requests
             immediately (the hook cache invalidates on save). */}
-        {activeTab === 'features' && (
+        <div hidden={activeTab !== 'features'} data-settings-pane="features">
         <PageSection delay={0.18} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2028,7 +1980,7 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* External API Keys — every external service key SlickSync can use, split
             out from SlickTrax so that card stays pure on/off toggles.
@@ -2036,7 +1988,7 @@ export default function SettingsPage() {
             first, falling back to the instance's own env var (if the
             operator configured one) only when this is left blank - never
             a flat shared key silently used across every account. */}
-        {activeTab === 'integrations' && (
+        <div hidden={activeTab !== 'integrations'} data-settings-pane="integrations">
         <PageSection delay={0.19} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2560,10 +2512,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* API Key */}
-        {activeTab === 'integrations' && (
+        <div hidden={activeTab !== 'integrations'} data-settings-pane="integrations">
         <PageSection delay={0.2} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2645,12 +2597,12 @@ export default function SettingsPage() {
             <ShortcutRecipes baseUrl={syncSettings.ownAddress || syncSettings.publicBaseUrl} apiKey={apiKey} />
           </div>
         </PageSection>
-        )}
+        </div>
 
         {/* Passkeys - sign in with the device's own unlock instead of the
             password. Strictly an addition: the password never goes away, so
             a lost device cannot lock anyone out of their own instance. */}
-        {activeTab === 'security' && (
+        <div hidden={activeTab !== 'security'} data-settings-pane="security">
         <PageSection delay={0.205} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2698,12 +2650,12 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* Two-Factor Authentication - opt-in TOTP on top of the account
             login. See server/utils/twoFactor.js for why disable/regenerate
             both require a fresh code rather than just an active session. */}
-        {activeTab === 'security' && (
+        <div hidden={activeTab !== 'security'} data-settings-pane="security">
         <PageSection delay={0.21} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2817,7 +2769,7 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
-        )}
+        </div>
 
         {/* Backup codes - shown exactly once, right after enabling 2FA or
             regenerating codes. Closing this modal is the only way past it,
@@ -2850,7 +2802,8 @@ export default function SettingsPage() {
             (per the register page's own warning), and there was previously
             nowhere to look it back up short of the Account dropdown modal.
             Always findable here for troubleshooting/support. */}
-        {activeTab === 'security' && isPublicInstance && accountInfo?.uuid && (
+        {isPublicInstance && accountInfo?.uuid && (
+        <div hidden={activeTab !== 'security'} data-settings-pane="security">
           <PageSection delay={0.22} className="mb-6">
             <Card padding="lg">
               <div className="flex items-center gap-3 mb-5">
@@ -2886,10 +2839,11 @@ export default function SettingsPage() {
               </div>
             </Card>
           </PageSection>
+        </div>
         )}
 
         {/* Danger Zone */}
-        {activeTab === 'security' && (
+        <div hidden={activeTab !== 'security'} data-settings-pane="security">
         <PageSection delay={0.25}>
           <Card padding="lg" className="border-error">
             <div className="flex items-center gap-3 mb-5">
@@ -2940,7 +2894,7 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
-        )}
+        </div>
           </div>
         </div>
       </div>
@@ -2978,6 +2932,6 @@ export default function SettingsPage() {
         currentAvatarUrl={accountInfo?.avatarUrl}
         onSave={handleAvatarSave}
       />
-    </>
+    </Wrapper>
   );
 }

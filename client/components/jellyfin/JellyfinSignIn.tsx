@@ -215,7 +215,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
             type="submit"
             disabled={checking}
             className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2"
-            style={{ background: 'var(--color-primary)', color: 'white', opacity: checking ? 0.6 : 1 }}
+            style={{ background: 'var(--color-primary-solid)', color: 'white', opacity: checking ? 0.6 : 1 }}
           >
             {checking ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : null}
             {checking ? 'Checking…' : 'Continue'}
@@ -354,7 +354,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                 type="submit"
                 disabled={submitting}
                 className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2"
-                style={{ background: 'var(--color-primary)', color: 'white', opacity: submitting ? 0.6 : 1 }}
+                style={{ background: 'var(--color-primary-solid)', color: 'white', opacity: submitting ? 0.6 : 1 }}
               >
                 {submitting ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : null}
                 {submitting ? 'Signing in…' : submitLabel}
@@ -385,7 +385,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                 </>
               )}
               {quickStatus === 'expired' && (
-                <button type="button" onClick={startQuick} className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2" style={{ background: 'var(--color-primary)', color: 'white' }}>
+                <button type="button" onClick={startQuick} className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2" style={{ background: 'var(--color-primary-solid)', color: 'white' }}>
                   <ArrowPathIcon className="w-5 h-5" /> Get a new code
                 </button>
               )}

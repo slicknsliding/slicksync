@@ -437,7 +437,7 @@ export default function InvitationsPage() {
                               <th className="px-4 py-4 text-left w-12">
                                 <div
                                   className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${hasSelection && selectedIds.size === invitationsDisplay.length
-                                    ? 'bg-primary border-primary'
+                                    ? 'bg-primary-solid border-primary-solid'
                                     : 'border-default hover:border-primary'
                                     }`}
                                   onClick={() => hasSelection && selectedIds.size === invitationsDisplay.length ? deselectAll() : selectAll()}
@@ -469,7 +469,7 @@ export default function InvitationsPage() {
                                   <td className="px-4 py-4">
                                     <div
                                       className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedIds.has(invite.id)
-                                        ? 'bg-primary border-primary'
+                                        ? 'bg-primary-solid border-primary-solid'
                                         : 'border-default'
                                         }`}
                                     >

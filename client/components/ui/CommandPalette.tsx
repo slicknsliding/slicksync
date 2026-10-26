@@ -291,8 +291,7 @@ export function CommandPalette() {
               style={{ maxWidth: 'min(38rem, 100%)' }}
             >
               <div
-                className="rounded-2xl overflow-hidden shadow-2xl"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+                className="popup-panel rounded-2xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--color-surface-border)' }}>
                   <MagnifyingGlassIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-text-muted)' }} />

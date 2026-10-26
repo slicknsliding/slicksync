@@ -135,7 +135,7 @@ function TagPill({
       ref={setNodeRef}
       className={`group/tag flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
         isActive
-          ? 'bg-primary text-white border-transparent'
+          ? 'bg-primary-solid text-white border-transparent'
           : tinted
             ? 'border-transparent'
             : 'bg-surface-hover text-muted nav-item-hover-pill border-default'
@@ -2282,7 +2282,7 @@ function AddAddonModal({
                                       {/* Selection indicator circle */}
                                       <div
                                         className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected
-                                            ? 'bg-primary border-primary'
+                                            ? 'bg-primary-solid border-primary-solid'
                                             : 'border-default group-hover:border-primary/50'
                                           }`}
                                       >

@@ -42,7 +42,7 @@ export function SignInOfferBanner({ userId }: { userId: string }) {
       </div>
       <div className="flex gap-2 ml-auto">
         <button type="button" onClick={notNow} className="px-3 py-1.5 rounded-lg text-sm border border-default text-default whitespace-nowrap">Not now</button>
-        <Link href={href} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white whitespace-nowrap" style={{ background: 'var(--color-primary)' }}>Show me what copies</Link>
+        <Link href={href} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white whitespace-nowrap" style={{ background: 'var(--color-primary-solid)' }}>Show me what copies</Link>
       </div>
     </div>
   );

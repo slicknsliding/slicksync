@@ -268,7 +268,7 @@ export default function ListsPage() {
     </button>
   );
 
-  // Jellyfin | AIOStreams collections, next to Nuvio's: which catalogs show
+  // Jellyfin collections (Jellyfin servers and AIOStreams), next to Nuvio's: which catalogs show
   // up as collections in AIOStreams' apps and on a household's own Jellyfin
   // server. Jellyfin's mark and colours, with "AIOStreams" in AIOStreams' own
   // lavender and indigo.

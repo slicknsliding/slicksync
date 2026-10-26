@@ -395,7 +395,7 @@ function SortableCatalogItem({ catalog, isSelected, onToggle }: { catalog: any; 
       <div
         className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
           isSelected 
-            ? 'bg-primary border-primary' 
+            ? 'bg-primary-solid border-primary-solid' 
             : 'border-default group-hover:border-primary/50'
         }`}
       >
@@ -1719,7 +1719,7 @@ export default function AddonDetailPage() {
                       <div
                         className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
                           isSelected 
-                            ? 'bg-primary border-primary' 
+                            ? 'bg-primary-solid border-primary-solid' 
                             : 'border-default group-hover:border-primary/50'
                         }`}
                       >

@@ -108,7 +108,7 @@ export function YearInReviewCard() {
               type="button"
               onClick={() => setYear(y)}
               className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                y === year ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                y === year ? 'bg-primary-solid text-white' : 'bg-surface-hover text-muted hover:text-default'
               }`}
             >
               {y}

@@ -251,6 +251,26 @@ function lighten(hex: string, amount = 0.15): string {
   return `#${[up(rgb.r), up(rgb.g), up(rgb.b)].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function relLum(c: { r: number; g: number; b: number }): number {
+  const f = [c.r, c.g, c.b].map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+  return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+}
+
+// The fill that sits behind white text (buttons, active tabs, chips, tick
+// badges, toggles): the accent itself when white already reads on it
+// (4.5:1), otherwise darkened a step at a time until it does. Text and links
+// keep the plain accent. Hover goes darker, never lighter.
+function solidFor(hex: string): { solid: string; hover: string } {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return { solid: hex, hover: hex };
+  const toHex = (c: { r: number; g: number; b: number }) => `#${[c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+  const darker = (c: { r: number; g: number; b: number }, t: number) => ({ r: c.r * (1 - t), g: c.g * (1 - t), b: c.b * (1 - t) });
+  let t = 0;
+  let solid = rgb;
+  while (1.05 / (relLum(solid) + 0.05) < 4.5 && t < 0.9) { t += 0.005; solid = darker(rgb, t); }
+  return { solid: toHex(solid), hover: toHex(darker(solid, 0.08)) };
+}
+
 function rgba(hex: string, alpha: number): string {
   const rgb = hexToRgb(hex);
   if (!rgb) return hex;
@@ -268,6 +288,7 @@ function fontFamilyFor(id: FontId | null | undefined): string | null {
 // changes both headings AND body text consistently.
 const OVERRIDE_VARS = [
   '--color-primary', '--color-primary-hover', '--color-primary-muted', '--color-primaryMuted',
+  '--color-primary-solid', '--color-primary-solid-hover', '--color-on-primary-solid',
   '--color-secondary', '--color-secondary-muted', '--color-secondaryMuted',
   '--color-chart-1', '--color-chart-2',
   '--color-progress',
@@ -285,6 +306,11 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
   el.className = custom.base;
   el.style.setProperty('--color-primary', custom.primary);
   el.style.setProperty('--color-primary-hover', lighten(custom.primary));
+  const { solid, hover: solidHover } = solidFor(custom.primary);
+  el.style.setProperty('--color-primary-solid', solid);
+  el.style.setProperty('--color-primary-solid-hover', solidHover);
+  // solidFor darkens until white text reads, whatever the base theme does.
+  el.style.setProperty('--color-on-primary-solid', '#fff');
   el.style.setProperty('--color-primary-muted', rgba(custom.primary, 0.15));
   el.style.setProperty('--color-primaryMuted', rgba(custom.primary, 0.15));
   el.style.setProperty('--color-secondary', custom.secondary);

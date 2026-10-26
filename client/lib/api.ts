@@ -3,6 +3,8 @@
 // Otherwise use the explicit URL (useful for production or different ports)
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+import type { HistoryImportFileResult } from './user-api';
+
 // One entry in a cast member's filmography, as /api/discover/person returns it.
 /** One of a person's SlickTrax rows - see server/routes/traxAddon.js orderedTraxRows. */
 export interface TraxRow { key: string; name: string; hidden: boolean }
@@ -2119,10 +2121,11 @@ class ApiClient {
       `/addons/${encodeURIComponent(addonId)}/unvaultify`, { method: 'POST' });
   }
 
-  async importUserHistory(userId: string, file: File) {
+  // dryRun reports what would be added without writing anything (a preview).
+  async importUserHistory(userId: string, file: File, dryRun = false) {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/import-history`, {
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/import-history${dryRun ? '?dryRun=1' : ''}`, {
       method: 'POST',
       body: formData,
       credentials: 'include',
@@ -2130,9 +2133,10 @@ class ApiClient {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Import failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      // The status rides along so a caller can tell "nothing importable in that file" (400) from a real failure.
+      throw Object.assign(new Error(error.error || `HTTP ${response.status}`), { status: response.status });
     }
-    return response.json() as Promise<{ imported: number; skipped: number; skippedEpisodes?: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
+    return response.json() as Promise<HistoryImportFileResult & { imported: number }>;
   }
 
   // Letterboxd-import-compatible CSV export for one household member - a
@@ -5569,6 +5573,13 @@ export interface MetricsData {
     // instead of computing `now - watchedAtTimestamp` for proxy entries.
     elapsedSeconds?: number;
     elapsedFrozen?: boolean;
+    // When this row was last reconfirmed live / its provider checkpoint
+    // saved (ms) - the freshness line counts from it. `paused` is set only
+    // when the player itself reported a pause.
+    reportedAtTimestamp?: number;
+    paused?: boolean;
+    // AIOStreams apps: until when "Playing" is believable (server's estimate).
+    playingUntilTimestamp?: number;
     // The device and app it's playing on, when the server reports them
     // (a Jellyfin server's sessions do).
     device?: { name: string | null; client: string | null } | null;

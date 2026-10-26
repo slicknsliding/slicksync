@@ -1642,7 +1642,7 @@ export default function ListDetailPage() {
                           <div className="w-full h-full flex items-center justify-center text-xs text-subtle p-1 text-center">{s.name}</div>
                         )}
                         <div className={`absolute inset-0 transition-colors ${checked ? 'bg-primary/20' : 'bg-black/0 group-hover:bg-black/10'}`} />
-                        <div className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-sm border flex items-center justify-center ${checked ? 'bg-primary border-primary' : 'bg-black/50 border-white/60'}`}>
+                        <div className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-sm border flex items-center justify-center ${checked ? 'bg-primary-solid border-primary-solid' : 'bg-black/50 border-white/60'}`}>
                           {checked && <span className="text-white text-xs leading-none">✓</span>}
                         </div>
                       </div>

@@ -615,7 +615,7 @@ export function CreateUserModal({
                             type="button"
                             onClick={() => setProvider('stremio')}
                             aria-pressed={provider === 'stremio'}
-                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'stremio' ? 'bg-primary text-white' : 'bg-transparent text-muted hover:text-default'}`}
+                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'stremio' ? 'bg-primary-solid text-white' : 'bg-transparent text-muted hover:text-default'}`}
                           >
                             Stremio
                           </button>
@@ -623,7 +623,7 @@ export function CreateUserModal({
                             type="button"
                             onClick={() => setProvider('nuvio')}
                             aria-pressed={provider === 'nuvio'}
-                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'nuvio' ? 'bg-primary text-white' : 'bg-transparent text-muted hover:text-default'}`}
+                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'nuvio' ? 'bg-primary-solid text-white' : 'bg-transparent text-muted hover:text-default'}`}
                           >
                             Nuvio
                           </button>
@@ -631,12 +631,13 @@ export function CreateUserModal({
                             type="button"
                             onClick={() => setProvider('jellyfin')}
                             aria-pressed={provider === 'jellyfin'}
-                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'jellyfin' ? 'bg-primary text-white' : 'bg-transparent text-muted hover:text-default'}`}
+                            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${provider === 'jellyfin' ? 'bg-primary-solid text-white' : 'bg-transparent text-muted hover:text-default'}`}
                           >
-                            Jellyfin | AIOStreams
+                            Jellyfin
                           </button>
                         </div>
                       )}
+                      {!isReconnect && <p className="text-xs text-center -mt-3 mb-4" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>}
 
                       {(provider === 'jellyfin' || isJellyfinReconnect) && (
                         <div className="space-y-4">

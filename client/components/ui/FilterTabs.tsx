@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useLayoutEffect, useEffect, useId } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef, useLayoutEffect, useEffect, useId, type KeyboardEvent } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useDroppable } from '@dnd-kit/core';
 import {
   ChevronDownIcon,
@@ -10,6 +10,21 @@ import {
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { ScrollRow } from './ScrollRow';
+
+// One tab stop per group (the selected tab); arrows, Home and End move
+// between tabs, and landing on one selects it. Focus scrolls the tab into view.
+function moveTabFocus(event: KeyboardEvent<HTMLButtonElement>) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const tabs = Array.from(event.currentTarget.closest('[role="tablist"]')?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
+  if (!tabs.length) return;
+  const current = tabs.indexOf(event.currentTarget);
+  const direction = getComputedStyle(event.currentTarget).direction === 'rtl' ? -1 : 1;
+  const step = event.key === 'ArrowRight' ? direction : -direction;
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + step + tabs.length) % tabs.length;
+  event.preventDefault();
+  tabs[next].focus();
+  tabs[next].click();
+}
 
 // Wraps a tab button to make it a dnd-kit drop target when enabled — kept as
 // its own component since useDroppable is a hook and can't be called
@@ -76,6 +91,7 @@ export function FilterTabs({
   enableDropTargets = false,
   dropTargetPrefix = 'vault-category-',
 }: FilterTabsProps) {
+  const reduceMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
   const generatedId = useId();
@@ -85,18 +101,17 @@ export function FilterTabs({
   const updateIndicatorPosition = () => {
     if (!containerRef.current) return;
 
-    const activeButton = containerRef.current.querySelector(
-      `[data-tab-key="${activeKey}"]`
-    ) as HTMLButtonElement | null;
+    // Matched on the attribute value (a key with a quote in it would break
+    // a selector) and measured in layout pixels: offsetLeft/offsetWidth
+    // ignore the transform of a dialog that is mid-scale on open, where
+    // getBoundingClientRect reads the shrunken box and parks the indicator
+    // off the tab. A transform does not trigger the ResizeObserver either.
+    const activeButton = Array.from(containerRef.current.querySelectorAll<HTMLButtonElement>('[data-tab-key]'))
+      .find((button) => button.dataset.tabKey === activeKey);
 
     if (activeButton) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const buttonRect = activeButton.getBoundingClientRect();
-      
-      setIndicatorStyle({
-        left: buttonRect.left - containerRect.left,
-        width: buttonRect.width,
-      });
+      const next = { left: activeButton.offsetLeft, width: activeButton.offsetWidth };
+      setIndicatorStyle((previous) => (previous?.left === next.left && previous.width === next.width ? previous : next));
     }
   };
 
@@ -167,7 +182,8 @@ export function FilterTabs({
             width: indicatorStyle.width,
           }}
           transition={{
-            type: 'spring',
+            duration: reduceMotion ? 0 : undefined,
+            type: reduceMotion ? 'tween' : 'spring',
             stiffness: 500,
             damping: 35,
             mass: 1,
@@ -191,7 +207,8 @@ export function FilterTabs({
                 onClick={() => onChange(option.key)}
                 role="tab"
                 aria-selected={isActive}
-                aria-controls={`panel-${option.key}`}
+                tabIndex={isActive || (option.key === options[0]?.key && !options.some((o) => o.key === activeKey)) ? 0 : -1}
+                onKeyDown={moveTabFocus}
                 className={`
                   relative z-10 flex items-center justify-center gap-2 w-full whitespace-nowrap ${styles.button} rounded-lg font-medium
                   transition-colors duration-150 ease-out
@@ -231,7 +248,7 @@ export function FilterTabs({
                         ? 'bg-warning text-white'
                         : option.badge.variant === 'success'
                           ? 'bg-success text-white'
-                          : 'bg-primary text-white'
+                          : 'bg-primary-solid text-white'
                     }
                   `}
                   aria-label={`${option.badge.value} ${option.label}`}
@@ -279,6 +296,7 @@ export function FilterTabsSimple({
     <div
       className={`flex flex-wrap ${styles.container} rounded-xl bg-surface border border-default ${className}`}
       role="tablist"
+      aria-label="Filter options"
     >
       {options.map((option) => {
         const isActive = activeKey === option.key;
@@ -288,6 +306,8 @@ export function FilterTabsSimple({
             key={option.key}
             onClick={() => onChange(option.key)}
             role="tab"
+            tabIndex={isActive || (option.key === options[0]?.key && !options.some((o) => o.key === activeKey)) ? 0 : -1}
+            onKeyDown={moveTabFocus}
             aria-selected={isActive}
             className={`
               ${styles.button} rounded-lg font-medium transition-all duration-150
@@ -439,7 +459,7 @@ export function FilterTabsResponsive({
               transition={{ duration: 0.15 }}
               className={`fixed left-4 right-4 top-1/2 -translate-y-1/2 z-50 ${many ? 'lg:hidden' : 'md:hidden'}`}
             >
-              <div className="bg-surface border border-default rounded-xl overflow-hidden shadow-xl max-h-[70vh] overflow-y-auto">
+              <div className="popup-panel rounded-xl overflow-hidden max-h-[70dvh] overflow-y-auto">
                 {options.map((option) => {
                   const isActive = activeKey === option.key;
                   

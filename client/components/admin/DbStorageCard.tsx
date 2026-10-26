@@ -13,15 +13,10 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(20, 20, 35, 0.95)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  backdropFilter: 'blur(12px)',
-} as const;
-
-const TOOLTIP_LABEL_STYLE = { color: '#fff' } as const;
+const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
+const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

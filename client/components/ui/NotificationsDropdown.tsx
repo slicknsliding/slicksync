@@ -37,11 +37,11 @@ interface NotificationsDropdownProps {
   floating?: boolean;
 }
 
-/** Each floating topbar icon's own round backdrop - shared with TopbarActions. */
+/** Each floating topbar icon's own round backdrop - shared with TopbarActions.
+ *  Solid: an opaque surface reads over any poster, and there is nothing
+ *  worth blurring behind a 40px circle. */
 export const FLOATING_ICON_STYLE: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-  backdropFilter: 'blur(18px)',
-  WebkitBackdropFilter: 'blur(18px)',
+  background: 'var(--color-surface)',
   border: '1px solid var(--color-surface-border)',
   boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
 };
@@ -615,7 +615,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
           // "eleven things are waiting" are different amounts of urgency.
           <span
             className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold leading-none"
-            style={{ background: 'var(--color-primary)', color: '#fff' }}
+            style={{ background: 'var(--color-primary-solid)', color: '#fff' }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
@@ -655,7 +655,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   after) so the panel's own background naturally covers its
                   bottom half, same trick as any CSS speech-bubble tail. */}
               <div
-                className="absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t border-default"
+                className="popup-caret absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t"
                 style={{ background: 'var(--color-surface)' }}
               />
               {/* Plain div, not <Card> - Card's Nebula mode auto-applies a
@@ -669,8 +669,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   layout mode - a floating overlay always needs strong
                   contrast, that's not a Nebula-vs-Current distinction. */}
               <div
-                className="shadow-xl border border-default max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
-                style={{ background: 'var(--color-surface)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+                className="popup-panel max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-default">

@@ -207,6 +207,12 @@ async function announceStart(prisma, user, where, item, fresh) {
 const LIVE_GRACE_MS = 10 * 60 * 1000
 // And when the runtime was never reported, after this long.
 const LIVE_MAX_NO_DURATION_MS = 4 * 60 * 60 * 1000
+// How long a paused viewing stays on Now Playing, as "Paused", before it drops.
+const PAUSED_KEEP_MS = 20 * 60 * 1000
+// The "Playing" label stops claiming playback this long after the estimated
+// position passes the runtime; with no runtime reported, after this long.
+const PLAYING_MARGIN_MS = 2 * 60 * 1000
+const PLAYING_MAX_NO_DURATION_MS = 3 * 60 * 60 * 1000
 // A cursor this old is a viewing that will never finish; it is removed.
 const STALE_CURSOR_MS = 2 * 24 * 60 * 60 * 1000
 
@@ -214,15 +220,41 @@ const STALE_CURSOR_MS = 2 * 24 * 60 * 60 * 1000
  * What is playing in AIOStreams' apps right now, for Now Playing. Only a
  * viewing between a start and its pause or stop; the position is estimated
  * from where it started and the time since, because AIOStreams reports no
- * progress in between.
+ * progress in between. A viewing paused in the last PAUSED_KEEP_MS stays too,
+ * flagged `paused` (a later start resumes it, a stop deletes the cursor).
  */
 async function liveViewings(prisma, accountId, userIds = null) {
   const now = Date.now()
   const rows = await prisma.watchStateCursor.findMany({
-    where: { accountId, startAt: { not: null }, ...(userIds ? { userId: { in: userIds } } : {}) },
+    where: {
+      accountId,
+      OR: [{ startAt: { not: null } }, { updatedAt: { gte: new Date(now - PAUSED_KEEP_MS) } }],
+      ...(userIds ? { userId: { in: userIds } } : {}),
+    },
   })
   const out = []
   for (const c of rows) {
+    if (!c.startAt) {
+      // Paused: the cursor was last written by the pause event.
+      const pausedAt = new Date(c.updatedAt).getTime()
+      if (!Number.isFinite(pausedAt) || now - pausedAt > PAUSED_KEEP_MS) continue
+      out.push({
+        userId: c.userId,
+        itemId: c.itemId,
+        itemType: c.itemType,
+        videoId: c.itemType === 'series' ? c.videoId : null,
+        itemName: c.itemName || null,
+        poster: c.poster || null,
+        season: c.season ?? null,
+        episode: c.episode ?? null,
+        startedAt: new Date(c.createdAt || pausedAt),
+        positionMs: null,
+        durationMs: c.durationMs || null,
+        observedAt: pausedAt,
+        paused: true,
+      })
+      continue
+    }
     const startedAt = new Date(c.startAt).getTime()
     const remaining = c.durationMs ? Math.max(0, c.durationMs - (c.startPositionMs || 0)) + LIVE_GRACE_MS : LIVE_MAX_NO_DURATION_MS
     if (now > startedAt + remaining) continue
@@ -240,6 +272,13 @@ async function liveViewings(prisma, accountId, userIds = null) {
       startedAt: new Date(c.createdAt || c.startAt),
       positionMs: position,
       durationMs: c.durationMs || null,
+      // The last event heard for it (AIOStreams reports nothing in between).
+      observedAt: startedAt,
+      // Until when "Playing" is believable: the estimated position reaches
+      // the runtime (plus a margin), or a fixed cap when there is no runtime.
+      playingUntil: startedAt + (c.durationMs
+        ? Math.max(0, c.durationMs - (c.startPositionMs || 0)) + PLAYING_MARGIN_MS
+        : PLAYING_MAX_NO_DURATION_MS),
     })
   }
   return out
@@ -636,6 +675,7 @@ async function buildPull(prisma, user, since) {
 
 module.exports = {
   liveViewings,
+  PAUSED_KEEP_MS,
   manifestBlock,
   viewerSlug,
   readViewerMap,

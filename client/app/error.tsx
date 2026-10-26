@@ -33,7 +33,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
           <button
             onClick={reset}
             className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ background: 'var(--color-primary)' }}
+            style={{ background: 'var(--color-primary-solid)' }}
           >
             Try again
           </button>

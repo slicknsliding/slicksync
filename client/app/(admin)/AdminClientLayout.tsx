@@ -85,7 +85,7 @@ function LayoutDndWrapper({ children }: { children: ReactNode }) {
       {children}
       <DragOverlay>
         {activeLabel ? (
-          <div className="px-4 py-2 rounded-xl shadow-lg text-sm font-medium" style={{ background: 'var(--color-primary)', color: '#fff' }}>
+          <div className="px-4 py-2 rounded-xl shadow-lg text-sm font-medium" style={{ background: 'var(--color-primary-solid)', color: '#fff' }}>
             {activeLabel}
           </div>
         ) : null}

@@ -431,6 +431,9 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
       // observations to diff (see this repo's CLAUDE.md).
       lastPosition: session.lastPosition ?? null,
       totalDuration: session.totalDuration ?? null,
+      // When the provider's checkpoint was last written, for the "Last seen"
+      // label on the cards.
+      ...(session.updatedAt ? { reportedAtTimestamp: session.updatedAt.getTime() } : {}),
       // Same episode-aware deep-link builder Continue Watching already uses
       // (server/utils/appLinks.js) - not the plain client-side one, which
       // has no season/episode parameter at all for series.
@@ -479,6 +482,13 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
         lastPosition: v.positionMs,
         totalDuration: v.durationMs,
         source: v.source || 'aiostreams',
+        // When the player was last heard from, and whether it said paused -
+        // only what the player itself reported, for the cards' freshness line.
+        ...(typeof v.observedAt === 'number' || v.observedAt instanceof Date
+          ? { reportedAtTimestamp: new Date(v.observedAt).getTime() }
+          : {}),
+        ...(v.paused === true ? { paused: true } : {}),
+        ...(typeof v.playingUntil === 'number' ? { playingUntilTimestamp: v.playingUntil } : {}),
         // The device and app it's playing on, when the server says (Jellyfin does).
         ...(v.device ? { device: v.device } : {}),
         // A Jellyfin app has no link to open a title with, and a Stremio or

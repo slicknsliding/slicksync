@@ -46,7 +46,7 @@ function CatalogTile({ c, busy, disabled, onToggle }: { c: CatalogRow; busy: boo
           ? <img src={src} alt="" className={`absolute inset-0 w-full h-full object-cover transition-opacity ${c.on ? '' : 'opacity-60 group-hover:opacity-90'}`} />
           : <div className="absolute inset-0 flex items-center justify-center"><Squares2X2Icon className="w-10 h-10 text-muted" /></div>}
         {c.on && (
-          <span className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary flex items-center justify-center shadow">
+          <span className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary-solid flex items-center justify-center shadow">
             <CheckIcon className="w-4 h-4 text-white" />
           </span>
         )}

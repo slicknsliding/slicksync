@@ -14,6 +14,7 @@ import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
 import { ActivityCardMenu, useCardMenuPress, type MenuTarget, type MenuWatcher } from '@/components/activity/ActivityCardMenu';
+import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { toast } from '@/components/ui/Toast';
 import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, SOURCE_ORDER, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
@@ -764,7 +765,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           // absolute-anchored-to-a-32px-avatar dropdown could run off the
           // top/side of a narrow phone screen), reverting to the original
           // avatar-anchored dropdown at `sm` and up where it already worked.
-          const popoverClass = "fixed z-[9999] w-48 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5";
+          const popoverClass = "popup-panel fixed z-[9999] w-48 rounded-lg p-1.5";
           return (
             <div className="absolute top-2 right-2">
               {count > 1 ? (
@@ -790,7 +791,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                   aria-label={`${count} people watched — show who`}
                 >
                   <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} useGravatar={activity.userUseGravatar} size="sm" />
-                  <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary text-white ring-2 ring-slate-900">
+                  <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary-solid text-white ring-2 ring-[var(--color-bg-subtle)]">
                     {count}
                   </span>
                 </button>
@@ -845,12 +846,13 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             since the always-visible text badge cluttered the poster art. */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
           <div className="absolute top-2 left-2">
-            {/* Always a dark pill with white text, whatever the poster
+            {/* Always a solid pill with the theme's own text, whatever the poster
                 behind it. The tinted translucent style the list view uses
                 disappeared against bright artwork (unreadable on a red
                 poster) - a badge over an image cannot borrow its colour
-                from the type, it has to carry its own contrast. */}
-            <div className="px-2 py-1 rounded-md text-xs font-semibold tabular-nums text-white bg-black/75 ring-1 ring-white/15 shadow-lg backdrop-blur-sm">
+                from the type, it has to carry its own contrast. Solid theme
+                surface (.art-badge), no blur. */}
+            <div className="art-badge px-2 py-1 rounded-md text-xs font-semibold tabular-nums">
               {formatDuration(activity.durationSeconds)}
             </div>
           </div>
@@ -865,7 +867,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             poster, which has no such collision risk. */}
         {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
           <div className="absolute bottom-2 right-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+            <div className="art-badge px-2 py-0.5 rounded-md text-[10px] font-medium">
               {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
             </div>
           </div>
@@ -1532,6 +1534,7 @@ function NowPlayingItemBody({
             </p>
           );
         })()}
+        <PlaybackFreshnessLine row={np} />
         {/* "Resume here" - jumps to the right title/episode on whatever
             device you tap this from, with the exact position shown so you
             know where to seek to. Neither Stremio's nor Nuvio's deep-link

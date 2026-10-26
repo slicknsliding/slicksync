@@ -2071,7 +2071,7 @@ export default function NuvioCollectionsPage() {
                           discover the thumbnail is clickable. */}
                       <div
                         className="absolute bottom-1 right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"
-                        style={{ background: 'var(--color-primary)' }}
+                        style={{ background: 'var(--color-primary-solid)' }}
                       >
                         <PencilSquareIcon className="w-3.5 h-3.5 text-white" />
                       </div>

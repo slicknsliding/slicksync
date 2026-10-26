@@ -170,3 +170,25 @@ test('mergeProxyNowPlaying: ids decide over names - a matched stream never borro
   assert.equal(result.length, 2)
   assert.notEqual(result.find((r) => r.source === 'aiostreams-proxy').item.id, 'tt0099864')
 })
+
+// --- when a live row was last reconfirmed (the cards' freshness line) --------
+
+test('mergeProxyNowPlaying: a proxy row says when the poll last reconfirmed it, apart from request cadence', async () => {
+  const users = [{ id: 'user-1', username: 'alice', email: 'alice@example.com' }]
+  const reconfirmed = new Date('2026-07-15T20:09:30Z')
+  // lastSeenAt froze minutes before (a fast debrid stream); the poll kept confirming.
+  const row = makeProxyRow({ isActive: true, updatedAt: reconfirmed, lastSeenAt: new Date('2026-07-15T20:01:00Z') })
+  const result = await mergeProxyNowPlaying(makeSplitPrisma([row], []), 'acct-1', users, [], { isConfirming: () => true })
+  const card = result.find((r) => r.source === 'aiostreams-proxy')
+  assert.equal(card.reportedAtTimestamp, reconfirmed.getTime())
+})
+
+test('jellyfinLive: a viewing carries the pass that saw it and whether the player said paused', () => {
+  const live = require('../server/utils/jellyfinLive')
+  const before = Date.now()
+  live.recordLive('fresh-user', [{ itemId: 'tt1', itemType: 'movie', videoId: 'tt1', itemName: 'X', positionMs: 1000, durationMs: 9000, paused: true }])
+  const [v] = live.liveViewings(['fresh-user'])
+  assert.ok(v.observedAt >= before && v.observedAt <= Date.now())
+  assert.equal(v.paused, true)
+  live.forgetUser('fresh-user')
+})

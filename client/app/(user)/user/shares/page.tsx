@@ -403,7 +403,7 @@ export default function UserSharesPage() {
           {type === 'received' && !share.viewedAt && (
             <div 
               className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-xs font-medium"
-              style={{ background: 'var(--color-primary)', color: 'white' }}
+              style={{ background: 'var(--color-primary-solid)', color: 'white' }}
             >
               New
             </div>
@@ -749,7 +749,7 @@ export default function UserSharesPage() {
               onClick={handleBulkAddToLibrary}
               disabled={actionLoading === 'bulk'}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium"
-              style={{ background: 'var(--color-primary)', color: 'white' }}
+              style={{ background: 'var(--color-primary-solid)', color: 'white' }}
             >
               <BookmarkIcon className="w-4 h-4" />
               Add to Library

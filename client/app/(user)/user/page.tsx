@@ -16,10 +16,12 @@ import {
 } from '@heroicons/react/24/outline';
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
-import { Avatar } from '@/components/ui';
+import { ProfileAvatar } from '@/components/user/NuvioProfileSwitcher';
+import { ContinueWatchingRow } from '@/components/user/ContinueWatchingRow';
 import { userActivity, userSync, UserActivityData, AtRiskStatus, getOwnScreenTime } from '@/lib/user-api';
 import { MoonIcon as PausedMoonIcon, PauseCircleIcon as PausedIcon } from '@heroicons/react/24/outline';
 import { providerTypeLabel } from '@/lib/providers';
+import { PlaybackDot, PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
 
 // Format watch time from seconds to human-readable
 function formatWatchTime(seconds: number): string {
@@ -225,15 +227,8 @@ export default function UserHomePage() {
             rather than squeezing the picture into a pill. */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
           <div className="flex items-center gap-4 sm:gap-6 flex-1 min-w-0">
-          <Avatar
-            name={userInfo?.username || 'User'}
-            email={userInfo?.email}
-            useGravatar={userInfo?.useGravatar}
-            colorIndex={userInfo?.colorIndex || 0}
-            size="xl"
-            showRing
-            className="w-16 h-16 sm:w-20 sm:h-20 shrink-0"
-          />
+          {/* Their picture; a Nuvio login with several profiles makes it the button that switches between them. */}
+          <ProfileAvatar className="w-16 h-16 sm:w-20 sm:h-20 shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1">
               <h2
@@ -306,6 +301,9 @@ export default function UserHomePage() {
           </div>
         </div>
       </motion.div>
+
+      {/* Partly-watched shows and films, theirs only; hides itself when there are none. */}
+      <ContinueWatchingRow />
 
       {/* Loading State */}
       {loading && (
@@ -432,8 +430,9 @@ export default function UserHomePage() {
                           {np.item.season ? `S${np.item.season}E${np.item.episode}` : `E${np.item.episode}`}
                         </p>
                       )}
+                      <PlaybackFreshnessLine row={np} />
                     </div>
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <PlaybackDot row={np} liveClassName="bg-green-500" />
                   </div>
                 ))}
               </div>

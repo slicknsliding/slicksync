@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { StatCard, Badge } from '@/components/ui';
 import { PuzzlePieceIcon, UsersIcon, ChartPieIcon } from '@heroicons/react/24/outline';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 interface AddonPerformanceCardProps {
   totalAddons: number;
@@ -128,6 +129,8 @@ export function AddonPerformanceCard({
                   ))}
                 </Pie>
                 <Tooltip 
+                  contentStyle={CHART_TOOLTIP_STYLE}
+                  labelStyle={CHART_TOOLTIP_LABEL_STYLE}
                   formatter={(value: any, name: any, props: any) => [
                     `${value} (${props.payload.percentage}%)`, 
                     name

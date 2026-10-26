@@ -384,7 +384,7 @@ export default function AiostreamsCollectionPage() {
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin | AIOStreams Collections', href: listPath }, { label: title }]} className="text-xl font-semibold" />}
+          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections', href: listPath }, { label: title }]} className="text-xl font-semibold" />}
           subtitle={subtitle}
           actions={<div className="flex items-center gap-2">{backButton}{actions}</div>}
         />
@@ -471,7 +471,7 @@ export default function AiostreamsCollectionPage() {
                                     type="button"
                                     onClick={() => (added ? undefined : addTitle(r))}
                                     disabled={busyTitle === r.id || added}
-                                    className={`absolute top-1.5 right-1.5 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow transition-colors ${added ? 'bg-primary' : 'bg-black/70 hover:bg-primary'}`}
+                                    className={`absolute top-1.5 right-1.5 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow transition-colors ${added ? 'bg-primary-solid' : 'bg-black/70 hover:bg-primary-solid'}`}
                                     aria-label={added ? `${r.name} is in this collection` : `Add ${r.name}`}
                                     title={added ? 'In this collection' : 'Add to this collection'}
                                   >
@@ -544,7 +544,7 @@ export default function AiostreamsCollectionPage() {
                                       ? <img src={cat.cover} alt="" className={`absolute inset-0 w-full h-full object-cover transition-opacity ${on ? '' : 'opacity-50 group-hover:opacity-90'}`} />
                                       : <div className="absolute inset-0 flex items-center justify-center"><Squares2X2Icon className="w-8 h-8 text-muted" /></div>}
                                     {on && (
-                                      <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow">
+                                      <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-primary-solid flex items-center justify-center shadow">
                                         <CheckIcon className="w-4 h-4 text-white" />
                                       </span>
                                     )}

@@ -104,7 +104,7 @@ export function AddChoiceMenu({ anchor, anchorEl, isTV, onClose, onAddon, onServ
     <div
       ref={ref}
       role="menu"
-      className="fixed z-[10000] p-1.5 rounded-2xl bg-surface border border-default shadow-2xl"
+      className="popup-panel fixed z-[10000] p-1.5 rounded-2xl"
       style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, width: place?.width ?? 320 }}
     >
       {rows.map((r) => (isTV ? (

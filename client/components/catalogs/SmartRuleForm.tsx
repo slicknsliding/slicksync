@@ -94,7 +94,7 @@ export function SmartRuleForm({ draft, setDraft, lumiereReady }: {
                   type="button"
                   onClick={() => setDraft((d) => ({ ...d, castMatch: m }))}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    (draft.castMatch || 'all') === m ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
+                    (draft.castMatch || 'all') === m ? 'bg-primary-solid text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
                   }`}
                 >
                   {m === 'all' ? 'All of them in it' : 'Any of them'}

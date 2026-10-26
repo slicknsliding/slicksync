@@ -1,6 +1,6 @@
 'use client';
 
-// Jellyfin | AIOStreams collections, one page. An AIOStreams account and a
+// Jellyfin collections (Jellyfin servers and AIOStreams), one page. An AIOStreams account and a
 // household's own Jellyfin server are both picked here; a Jellyfin server
 // opens components/jellyfin/ServerCollections (catalogs as server-wide
 // Jellyfin collections). For an AIOStreams account, the rest of this note:
@@ -152,7 +152,7 @@ export default function AiostreamsCollectionsPage() {
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin | AIOStreams Collections' }]} className="text-xl font-semibold" />}
+          title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections' }]} className="text-xl font-semibold" />}
           subtitle={subtitle}
           actions={backButton}
         />
@@ -160,7 +160,7 @@ export default function AiostreamsCollectionsPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
           {layoutMode === 'nebula' && (
-            <NebulaPageHeading title="Jellyfin | AIOStreams Collections" subtitle={subtitle} leading={backButton} />
+            <NebulaPageHeading title="Jellyfin Collections" subtitle={subtitle} leading={backButton} />
           )}
 
           <PageSection>
@@ -176,7 +176,7 @@ export default function AiostreamsCollectionsPage() {
                   </div>
                 ) : choices === 0 ? (
                   <p className="text-xs text-subtle">
-                    Nobody here signs in with AIOStreams or to a Jellyfin server of their own yet. Add someone with Users &rarr; Add &rarr; Jellyfin | AIOStreams.{' '}
+                    Nobody here signs in with AIOStreams or to a Jellyfin server of their own yet. Add someone with Users &rarr; Add &rarr; Jellyfin.{' '}
                     <Link href="/guides/add-jellyfin-account" className="text-primary hover:underline">How</Link>
                   </p>
                 ) : (

@@ -411,7 +411,7 @@ export default function ChangelogPage() {
                                       e.stopPropagation();
                                       copyUpdateCommand();
                                     }}
-                                    className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium bg-primary text-white hover:bg-primary-hover transition-colors min-w-[74px] justify-center cursor-pointer"
+                                    className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium bg-primary-solid text-white hover:bg-primary-solid-hover transition-colors min-w-[74px] justify-center cursor-pointer"
                                   >
                                     {copied ? (
                                       <CheckIcon className="w-3 h-3" />

@@ -238,7 +238,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
   const episodeStyle = (e: Episode) => {
     const isTarget = target && e.season === target.season && e.episode === target.episode;
     const willMark = target && !e.watched && isAired(e, now) && upTo(target.season, target.episode)(e);
-    if (isTarget) return e.watched ? 'bg-success/25 border-success text-success ring-2 ring-success/40' : 'bg-primary border-primary text-white font-semibold';
+    if (isTarget) return e.watched ? 'bg-success/25 border-success text-success ring-2 ring-success/40' : 'bg-primary-solid border-primary-solid text-white font-semibold';
     if (willMark) return 'bg-primary/20 border-primary/40 text-default';
     if (e.watched) return 'bg-success/15 border-transparent text-success hover:border-success/50';
     return 'border-default text-muted hover:bg-surface-hover hover:text-default';
@@ -481,7 +481,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                         type="button"
                         disabled={busy}
                         onClick={startRun}
-                        className="w-full px-3 py-2 rounded-xl text-xs font-medium bg-primary text-white disabled:opacity-40 transition-opacity"
+                        className="w-full px-3 py-2 rounded-xl text-xs font-medium bg-primary-solid text-white disabled:opacity-40 transition-opacity"
                       >
                         Mark {toMark.length} episode{toMark.length === 1 ? '' : 's'} watched, up to here
                       </button>

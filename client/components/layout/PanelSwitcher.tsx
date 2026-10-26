@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useContext, useId, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,7 +16,11 @@ import {
 } from '@heroicons/react/24/outline';
 import { Avatar } from '@/components/ui';
 import { AccountModal } from './AccountModal';
-import { useLayoutMode } from '@/lib/layout-mode';
+import { useLayoutMode, AccountPlacementContext } from '@/lib/layout-mode';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+
+const TORBOX_REFERRAL_URL = 'https://torbox.app/subscription?referral=790ccd5b-646d-43d7-9072-aef7a6eb1de8';
 
 interface PanelSwitcherProps {
   /** Current panel mode */
@@ -58,34 +62,56 @@ interface PanelSwitcherProps {
  * Panel switcher component for switching between Admin and User panels
  * Appears in the sidebar of both panels
  */
-export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, variant = 'full', dropdownPosition = 'up', align = 'right' }: PanelSwitcherProps) {
+export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, variant = 'full', dropdownPosition: dropdownPositionProp = 'up', align: alignProp = 'right' }: PanelSwitcherProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const isTV = useIsTV();
   const [isOpen, setIsOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  // Where the host (top bar, sidebar) put this button decides which way its
+  // menu opens: from the top bar or the head of the sidebar it drops down; from
+  // the floating pill or the foot of the sidebar it opens upward. Callers
+  // outside those hosts keep the props they passed.
+  const placement = useContext(AccountPlacementContext);
+  const inBar = placement === 'bar';
+  const atSidebarTop = placement === 'sideTop';
+  const dropdownPosition = inBar || atSidebarTop ? 'down' : placement === 'float' || placement === 'sideFoot' ? 'up' : dropdownPositionProp;
+  const align = inBar ? 'right' : atSidebarTop || placement === 'float' ? 'left' : alignProp;
 
-  // Close menu when clicking outside
+  // Close menu when clicking outside. pointerdown, not mousedown: iOS Safari
+  // sends no mouse events for a tap on something that isn't itself clickable.
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, []);
 
-  // Close on escape
+  // Close on escape, and hand focus back to the button that opened the menu
   useEffect(() => {
+    if (!isOpen) return;
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        triggerRef.current?.focus();
+      }
     };
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, []);
+  }, [isOpen]);
+
+  // A remote reaches the trigger and each row through the D-pad focus tree;
+  // everywhere else the wrapper steps aside.
+  const tv = (onEnter: () => void, node: ReactNode) =>
+    isTV ? <TVFocusable onEnterPress={onEnter}>{node}</TVFocusable> : node;
 
   const handleSwitchPanel = async () => {
     if (mode === 'admin') {
@@ -149,19 +175,41 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
   const targetPanel = isAdmin ? 'User' : 'Admin';
   const TargetIcon = isAdmin ? UserIcon : ShieldCheckIcon;
   const isCompact = variant === 'compact';
+  // In the bar or at the head of the sidebar the picture is round; the floating
+  // pill and the sidebar foot keep the rounded square they always had.
+  const roundPicture = inBar || atSidebarTop;
+  const pictureSize = roundPicture ? 'md' : 'sm';
+  const pictureBox = roundPicture ? 'w-10 h-10' : 'w-8 h-8';
+  const pictureShape = roundPicture ? 'rounded-full' : 'rounded-lg';
 
   return (
-    <div className="relative" ref={menuRef}>
+    // At the head of the sidebar the menu anchors to the whole header row
+    // (its own relative box), not to the small picture, so it can open at the
+    // sidebar's left edge instead of hanging off the picture.
+    <div className={atSidebarTop ? '' : 'relative'} ref={menuRef}>
       {/* Trigger Button */}
+      {tv(() => setIsOpen((o) => !o), (
       <motion.button
+        ref={triggerRef}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={() => setIsOpen(!isOpen)}
-        className={`${isCompact
+        aria-label="Account menu"
+        aria-haspopup="true"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? menuId : undefined}
+        tabIndex={isTV ? -1 : undefined}
+        className={`${inBar
+          // In the bar: a round picture in a solid pill (no blur), at least 44px to hit.
+          ? 'flex items-center gap-2 min-w-11 min-h-11 pl-1 pr-1 min-[1920px]:pr-2.5 rounded-2xl transition-all duration-200'
+          : atSidebarTop
+          ? 'flex items-center gap-1 min-w-11 min-h-11 pl-1 pr-2 rounded-2xl transition-all duration-200'
+          : isCompact
           ? 'flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200'
           : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200'} ${isOpen ? 'panel-btn-open' : 'panel-btn'}`}
         style={{
           color: 'var(--color-text)',
+          ...(inBar || atSidebarTop ? { background: isOpen ? undefined : 'var(--color-surface)', border: '1px solid var(--color-surface-border)' } : {}),
         }}
       >
         {/* Current Mode Icon */}
@@ -174,14 +222,14 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 name={userInfo.username || 'A'}
                 src={userInfo.avatarUrl || undefined}
                 email={userInfo.email || undefined}
-                size="sm"
-                className="w-8 h-8"
-                avatarClassName="rounded-lg"
+                size={pictureSize}
+                className={pictureBox}
+                avatarClassName={pictureShape}
                 fallbackIcon={<ShieldCheckIcon className="w-4 h-4" style={{ color: 'white' }} />}
               />
             ) : (
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                className={`${pictureBox} ${pictureShape} flex items-center justify-center`}
                 style={{ background: 'var(--color-primary-muted)' }}
               >
                 <ShieldCheckIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
@@ -191,16 +239,17 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             userInfo ? (
               <Avatar
                 name={userInfo.username || 'U'}
+                src={userInfo.avatarUrl || undefined}
                 email={userInfo.email || undefined}
                 useGravatar={userInfo.useGravatar}
                 colorIndex={userInfo.colorIndex || 0}
-                size="sm"
-                className="w-8 h-8"
-                avatarClassName="rounded-lg"
+                size={pictureSize}
+                className={pictureBox}
+                avatarClassName={pictureShape}
               />
             ) : (
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                className={`${pictureBox} ${pictureShape} flex items-center justify-center`}
                 style={{ background: 'var(--color-success-muted)' }}
               >
                 <UserIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} />
@@ -209,7 +258,31 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
           )}
         </div>
 
-        {!collapsed && !isCompact && (
+        {/* In the bar the name only shows when there is room for it (wide screens) */}
+        {inBar && (
+          <>
+            <div className="hidden min-[1920px]:block text-left min-w-0 max-w-[11rem]">
+              <p className="text-sm font-medium truncate">
+                {isAdmin ? (userInfo?.username || 'Admin Panel') : (userInfo?.username || 'User Panel')}
+              </p>
+              <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
+                {isAdmin ? (userInfo?.email || 'Administrator') : (userInfo?.email || 'Signed in')}
+              </p>
+            </div>
+            <ChevronDownIcon
+              className={`hidden min-[1920px]:block w-4 h-4 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+              style={{ color: 'var(--color-text-muted)' }}
+            />
+          </>
+        )}
+        {atSidebarTop && (
+          <ChevronDownIcon
+            className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            style={{ color: 'var(--color-text-muted)' }}
+          />
+        )}
+
+        {!collapsed && !isCompact && !roundPicture && (
           <>
             <div className="flex-1 text-left min-w-0">
               <p className="text-sm font-medium truncate">
@@ -227,27 +300,26 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
           </>
         )}
       </motion.button>
+      ))}
 
       {/* Dropdown Menu */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: dropdownPosition === 'down' ? 10 : -10, scale: 0.95 }}
+            id={menuId}
+            initial={{ opacity: 0, y: dropdownPosition === 'down' ? -10 : 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: dropdownPosition === 'down' ? 10 : -10, scale: 0.95 }}
+            exit={{ opacity: 0, y: dropdownPosition === 'down' ? -10 : 10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
             className={
-              `absolute rounded-xl overflow-hidden shadow-xl z-50 ${dropdownPosition === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} ${
-                isCompact ? `${align === 'left' ? 'left-0' : 'right-0'} w-72` : 'left-0 right-0'
+              `popup-panel absolute rounded-xl overflow-hidden z-50 ${dropdownPosition === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} ${
+                isCompact || atSidebarTop ? `${align === 'left' ? 'left-0' : 'right-0'} w-72 max-w-[calc(100vw-1.5rem)]` : 'left-0 right-0'
               }`
             }
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-surface-border)',
-            }}
           >
             {/* Switch Panel Button */}
-            <button
+            {tv(() => handleSwitchPanel(), (
+<button
               onClick={handleSwitchPanel}
               className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:bg-surface-hover"
               style={{ color: 'var(--color-text)' }}
@@ -271,6 +343,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
               </div>
               <ArrowsRightLeftIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
             </button>
+))}
 
             {/* TorBox referral - always shown for both layouts (previously a
                 floating badge fixed to a screen corner, which needed its own
@@ -285,8 +358,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             {isAdmin && (
               <>
                 <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
-                <a
-                  href="https://torbox.app/subscription?referral=790ccd5b-646d-43d7-9072-aef7a6eb1de8"
+                {tv(() => window.open(TORBOX_REFERRAL_URL, '_blank', 'noopener,noreferrer'), (
+<a
+                  href={TORBOX_REFERRAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsOpen(false)}
@@ -301,9 +375,11 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   </div>
                   <span className="nav-item-label text-sm font-medium">Torbox Referral</span>
                 </a>
+))}
                 {showSystemLinks && (
                   <>
-                    <button
+                    {tv(() => { setIsOpen(false); router.push('/tasks'); }, (
+<button
                       onClick={() => { setIsOpen(false); router.push('/tasks'); }}
                       className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                       style={{ color: 'var(--color-text)' }}
@@ -316,7 +392,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                       </div>
                       <span className="nav-item-label text-sm font-medium">Tasks</span>
                     </button>
-                    <button
+))}
+                    {tv(() => { setIsOpen(false); router.push('/settings'); }, (
+<button
                       onClick={() => { setIsOpen(false); router.push('/settings'); }}
                       className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                       style={{ color: 'var(--color-text)' }}
@@ -329,7 +407,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                       </div>
                       <span className="nav-item-label text-sm font-medium">Settings</span>
                     </button>
-                    <button
+))}
+                    {tv(() => { setIsOpen(false); router.push('/changelog'); }, (
+<button
                       onClick={() => { setIsOpen(false); router.push('/changelog'); }}
                       className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                       style={{ color: 'var(--color-text)' }}
@@ -342,6 +422,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                       </div>
                       <span className="nav-item-label text-sm font-medium">Changelog</span>
                     </button>
+))}
                   </>
                 )}
               </>
@@ -351,7 +432,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             {isAdmin && isPublicInstance && (
               <>
                 <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
-                <button
+                {tv(() => { setIsOpen(false); setAccountModalOpen(true); }, (
+<button
                   onClick={() => { setIsOpen(false); setAccountModalOpen(true); }}
                   className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-surface"
                   style={{ color: 'var(--color-text)' }}
@@ -367,6 +449,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Manage login methods</p>
                   </div>
                 </button>
+))}
               </>
             )}
 
@@ -374,7 +457,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
 
             {/* Logout Button */}
-            <button
+            {tv(() => handleLogout(), (
+<button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-error"
               style={{ color: 'var(--color-error)' }}
@@ -387,6 +471,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
               </div>
               <span className="text-sm font-medium">Logout</span>
             </button>
+))}
           </motion.div>
         )}
       </AnimatePresence>

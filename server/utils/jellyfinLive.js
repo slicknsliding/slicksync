@@ -60,6 +60,8 @@ function liveViewings(userIds = null) {
         positionMs: v.paused ? v.positionMs : Math.min(v.positionMs + (now - entry.at), v.durationMs || Infinity),
         durationMs: v.durationMs,
         paused: v.paused === true,
+        // The pass that last saw it, for the "updated N s ago" label.
+        observedAt: entry.at,
         device: v.device ? { name: v.device.name || null, client: v.device.client || null } : null,
       })
     }

@@ -103,7 +103,7 @@ export function CatalogPickerMenu({
                 onClick={() => handleToggle(list)}
                 className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-default hover:bg-surface-hover transition-colors text-left"
               >
-                <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${active ? 'bg-primary border-primary' : 'border-default'}`}>
+                <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${active ? 'bg-primary-solid border-primary-solid' : 'border-default'}`}>
                   {active && <CheckIcon className="w-3 h-3 text-white" />}
                 </span>
                 <span className="flex-1 min-w-0 truncate">{list.name}</span>

@@ -394,6 +394,10 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // confidently incorrect guess.
       lastActivityAt: representative.lastSeenAt.toISOString(),
       lastActivityAtTimestamp: representative.lastSeenAt.getTime(),
+      // When this stream was last reconfirmed live (the poll cycle that
+      // found it still open) - what the "Live - updated 8 s ago" label on the
+      // cards counts from. Display only; nothing here merges on it.
+      reportedAtTimestamp: mostRecentPollConfirmation.getTime(),
       // Elapsed time we can actually stand behind, in seconds - real
       // wall-clock elapsed while the connection is confirmed live, but
       // frozen once we can no longer confirm that rather than continuing to

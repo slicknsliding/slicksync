@@ -62,6 +62,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { ScrollRow } from '@/components/ui/ScrollRow';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 // Period options for filtering
 const PERIOD_OPTIONS = [
@@ -86,14 +87,8 @@ function formatMinutes(minutes: number): string {
 }
 
 // Hoisted tooltip style - uses CSS variable compatible colors
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(20, 20, 35, 0.95)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  backdropFilter: 'blur(12px)',
-} as const;
-
-const TOOLTIP_LABEL_STYLE = { color: '#fff' } as const;
+const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
+const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 // Memoized chart component
 const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ date: string; hours: number }> }) {

@@ -102,18 +102,17 @@ export function NebulaTopbar() {
   );
 }
 
-// Each page's title row - page-specific controls (Sync All, a period
-// picker, a group filter, etc.) live here now, to the right of the title,
-// the same spot Current's own <Header> puts its actions - not in the shared
-// topbar above, which has no room to spare once you account for every
-// page's differing actions, and whose own crowding fixes kept getting
-// undone by the fact that content was living in the wrong place to begin
-// with. flex-wrap so actions drop to their own line below the title on a
-// narrow screen rather than fighting it for space. Notifications and the
-// command palette live here on every screen size - there is deliberately no
-// second copy anywhere else, so there's exactly one bell mounted and no way
-// for the two platforms to drift apart in what the cluster contains or
-// where it sits.
+// Each page's title row - the title at the left, page-specific controls (Sync
+// All, a period picker, a group filter, etc.) at the right of the same line,
+// then the command palette and notifications at the far right. The title is
+// where the eye starts, and the buttons stay in the same place from page to
+// page. Not in the shared topbar above, which has no room to spare once you
+// account for every page's differing actions. flex-wrap so the controls drop
+// to their own line below the title on a narrow screen rather than fighting
+// it for space. Notifications and the command palette live here on every
+// screen size - there is deliberately no second copy anywhere else, so
+// there's exactly one bell mounted and no way for the two platforms to drift
+// apart in what the cluster contains or where it sits.
 export function NebulaPageHeading({
   title,
   subtitle,
@@ -124,80 +123,40 @@ export function NebulaPageHeading({
   title: string;
   subtitle?: string;
   actions?: ReactNode;
-  /** Compact inline KPI strip (see NebulaHeaderStats) - sits centered
-      between the title and actions on desktop (where justify-between
-      naturally puts a 3rd flex child), drops to its own full-width
-      centered row below them on mobile since it can't share a row with
-      both without crowding - a page-specific opt-in replacement for a
+  /** Compact inline KPI strip (see NebulaHeaderStats) - drops to its own row
+      under the title and actions, left-aligned, since it can't share a row
+      with both without crowding - a page-specific opt-in replacement for a
       full NebulaStatCard grid when the stats are secondary context, not
       the page's main content (see the Addons page for the first use). */
   stats?: ReactNode;
-  /** Left column content (e.g. a "Back" button) - that column is normally
-      empty space that exists only to keep the title optically centered.
-      Opt-in per page rather than folded into `actions`, since a back
-      control reads as "leave this page" and belongs on the opposite side
-      from Rename/Delete/the bell, not bunched in with them. */
+  /** Content just before the title (e.g. a "Back" button). Opt-in per page
+      rather than folded into `actions`, since a back control reads as "leave
+      this page" and belongs on the opposite side from Rename/Delete/the bell,
+      not bunched in with them. */
   leading?: ReactNode;
 }) {
   return (
-    // On desktop switch from flex to a 3-column grid so the title sits in the
-    // MIDDLE column (centered on the page) while actions stay right-aligned in
-    // the last column — an empty left column mirrors the actions width so the
-    // title is optically centered. Mobile keeps the compact flex-wrap layout
-    // (title on the left, actions can wrap).
-    <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap md:grid md:grid-cols-[1fr_auto_1fr] md:items-start md:gap-4">
-      {leading && (
-        <div className="order-0 md:col-start-1 flex items-center">
-          {leading}
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+        {leading && <div className="flex items-center">{leading}</div>}
+        <div className="min-w-0">
+          <h1 className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.12] tracking-tight font-bold font-display mb-1 text-default">{title}</h1>
+          {subtitle && <p className="text-sm text-muted max-w-2xl">{subtitle}</p>}
         </div>
-      )}
-      <div className="order-1 md:col-start-2 md:text-center">
-        <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
-        {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
-      <div className="flex items-center justify-end gap-2 flex-wrap w-full md:w-auto order-2 md:order-3 md:col-start-3 md:justify-self-end">
-        {/* Renders identically on mobile and desktop. Mobile previously got
-            a separate fixed top-right pill in NebulaTopbar with the command
-            palette stripped out, which meant the two platforms disagreed on
-            both what the cluster contained and where it lived. That pill
-            existed to dodge a real bug - the bell's dropdown (anchored
-            `right-0` off itself, w-80) shot off the left edge of a phone
-            screen whenever this row wrapped, because a wrapped line with a
-            single flex item packed to the line's START. `justify-end` below
-            fixes that at the root by right-aligning EVERY wrapped line, so
-            the workaround is no longer needed and the bell can live in the
-            same place on both.
-
-            w-full on mobile is load-bearing: flex-wrap only kicks in once
-            this div's own width is bounded - without it, a flex child is
-            free to grow past the viewport to fit all actions on one line
-            instead of wrapping, which is exactly what happened on Group/
-            User/Addon detail pages with 4+ action buttons (Active toggle,
-            Sync, Edit, Delete) - they ran off the right edge requiring a
-            horizontal scroll to reach Delete. md:w-auto reverts to natural
-            sizing in the desktop grid cell, where justify-self-end still
-            needs it hugging content width.
-
-            justify-end (Tailwind justify-content: flex-end) is also the
-            actual fix for elements not reaching the true right edge -
-            justify-self-end above only positions THIS div within its own
-            grid cell; it says nothing about how ITS OWN children pack
-            inside it, which defaulted to flex-start (hugging this div's
-            left edge) even though the div itself was correctly flush right
-            - every button/bell inside consistently sat short of the page's
-            actual right margin as a result. */}
-        <TopbarActions />
-        {/* Zero-height, full-width flex item forces a line-break: the bell
-            (above) always lands on its own line, `actions` (below) always
-            starts a fresh line under it - deliberate and consistent across
-            every page using this heading, not just an incidental wrap on
-            pages with enough buttons to run out of room. Harmless on pages
-            with no actions, since nothing follows it to wrap. */}
-        <div className="basis-full h-0" aria-hidden />
+      {/* Full width on a phone so the controls sit under the title with the
+          palette and bell at the right edge: the bell's dropdown opens
+          leftward from itself, so it must never end up packed at the start of
+          a line, where it would run off the left edge of the screen.
+          md:w-auto hugs the content in the same row as the title. */}
+      <div className="flex items-center gap-2 flex-wrap w-full md:w-auto md:justify-end">
         {actions}
+        <div className="ml-auto">
+          <TopbarActions />
+        </div>
       </div>
       {stats && (
-        <div className="order-3 md:order-4 md:col-span-3 md:row-start-2 w-full md:w-auto flex justify-center md:justify-self-center">
+        <div className="w-full flex md:justify-start">
           {stats}
         </div>
       )}
