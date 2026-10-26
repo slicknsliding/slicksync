@@ -182,3 +182,58 @@ test('safeFetch: a vet function replaces the default check for the first address
   await assert.rejects(safeFetch(`${first}/start`, {}, { allowPrivate: true, vet }), /blocked host/)
   assert.deepEqual(seen, [`${first}/start`, `${target}/secret`])
 })
+
+test('safeFetch: a name that is public when checked and internal when connected to is refused', async (t) => {
+  let hits = 0
+  const base = await listen(t, (req, res) => { hits++; res.end('internal') })
+  const port = new URL(base).port
+  // DNS rebinding: the first answer (the address check) is public, every
+  // later one (the connection's own lookup) is the loopback address.
+  const original = dns.lookup
+  let asked = 0
+  dns.lookup = async () => [{ address: asked++ === 0 ? '93.184.216.34' : '127.0.0.1', family: 4 }]
+  t.after(() => { dns.lookup = original })
+  await assert.rejects(safeFetch(`http://rebind.example:${port}/`), /blocked host/)
+  assert.ok(asked >= 2, 'the connection looked the name up itself')
+  assert.equal(hits, 0, 'nothing may be sent to the address it rebound to')
+})
+
+test('safeFetch: a redirect to a name that resolves to an internal address is refused', async (t) => {
+  let hits = 0
+  const internal = await listen(t, (req, res) => { hits++; res.end('internal') })
+  const first = await listen(t, (req, res) => { res.writeHead(302, { location: `http://intranet.example:${new URL(internal).port}/` }); res.end() })
+  // A household install still refuses link-local, so a hop to a name that
+  // resolves there is the refusal to see.
+  resolveTo(t, { 'intranet.example': ['169.254.169.254'] })
+  await assert.rejects(safeFetch(`${first}/x`, {}, { allowPrivate: true }), /blocked host/)
+  assert.equal(hits, 0)
+})
+
+test('safeFetch: connects by name to the vetted address (Host header, household install)', async (t) => {
+  let seen = null
+  const base = await listen(t, (req, res) => { seen = req.headers.host; res.end('hello') })
+  const port = new URL(base).port
+  resolveTo(t, { 'nas.lan': ['127.0.0.1'] })
+  const res = await safeFetch(`http://nas.lan:${port}/x`, {}, { allowPrivate: true })
+  assert.equal(await res.text(), 'hello')
+  assert.equal(seen, `nas.lan:${port}`)
+  assert.equal(res.url, `http://nas.lan:${port}/x`)
+})
+
+test('safeFetch: a compressed answer and a JSON body come through like fetch', async (t) => {
+  const zlib = require('node:zlib')
+  const base = await listen(t, (req, res) => {
+    if (req.method === 'POST') { let b = ''; req.on('data', (c) => { b += c }); req.on('end', () => res.end(b)); return }
+    res.writeHead(200, { 'content-encoding': 'gzip', 'content-type': 'application/json' })
+    res.end(zlib.gzipSync('{"a":1}'))
+  })
+  assert.deepEqual(await (await safeFetch(`${base}/`, {}, { allowPrivate: true })).json(), { a: 1 })
+  const echoed = await safeFetch(`${base}/`, { method: 'POST', body: '{"b":2}' }, { allowPrivate: true })
+  assert.equal(echoed.status, 200)
+  assert.equal(await echoed.text(), '{"b":2}')
+})
+
+test('safeFetch: an aborted request rejects with the abort reason', async (t) => {
+  const base = await listen(t, () => {})
+  await assert.rejects(safeFetch(`${base}/slow`, { signal: AbortSignal.timeout(100) }, { allowPrivate: true }), (e) => e.name === 'TimeoutError' || e.name === 'AbortError')
+})

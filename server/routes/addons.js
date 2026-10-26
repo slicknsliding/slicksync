@@ -3,6 +3,7 @@ const { publicMessage } = require('../utils/publicError');
 const { StremioAPIClient } = require('stremio-api-client');
 const { handleDatabaseError, sendError, createRouteHandler, DatabaseTransactions } = require('../utils/handlers');
 const { findAddonById, sanitizeUrl, validateAccountContext } = require('../utils/helpers');
+const { idsInAccount } = require('../utils/helpers/database');
 const { responseUtils, dbUtils } = require('../utils/routeUtils');
 const { readProxyLogs } = require('../utils/proxyLogger');
 const { assertSafeUrl, safeFetch, instancePolicy } = require('../utils/safeUrl');
@@ -1021,6 +1022,11 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       const sanitizedUrl = sanitizeUrl(url);
       if (!sanitizedUrl) {
         return responseUtils.badRequest(res, 'Invalid URL provided');
+      }
+
+      // Groups to assign must be this account's own
+      if (groupIds != null && !(Array.isArray(groupIds) && await idsInAccount(prisma, 'group', groupIds, getAccountId(req)))) {
+        return responseUtils.badRequest(res, 'One or more groups were not found');
       }
 
       const lowerUrl = sanitizedUrl.toLowerCase()
@@ -2166,6 +2172,11 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         return res.status(404).json({ error: 'Addon not found' });
       }
 
+      // Groups to assign must be this account's own
+      if (groupIds != null && !(Array.isArray(groupIds) && await idsInAccount(prisma, 'group', groupIds, getAccountId(req)))) {
+        return res.status(400).json({ error: 'One or more groups were not found' });
+      }
+
       // If URL is provided, validate scheme and fetch manifest to refresh fields
       let manifestData = null;
       let nextUrl = undefined;
@@ -2766,9 +2777,18 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     try {
       const { limit = '100', offset = '0', addonId } = req.query;
 
-      // Read all proxy logs from file (optionally filtered by addonId)
+      // The log file is shared by every account, so only this account's
+      // entries may leave it.
+      const accountId = getAccountId(req);
+      if (!accountId) return responseUtils.success(res, { logs: [], total: 0, limit: parseInt(limit), offset: parseInt(offset) });
+      const ownAddons = await prisma.addon.findMany({ where: { accountId }, select: { id: true } });
+
+      // Read this account's proxy logs from file (optionally filtered by addonId)
       const { logs, total } = await readProxyLogs({
         addonId: addonId || null,
+        accountId,
+        accountAddonIds: ownAddons.map(a => a.id),
+        includeUnattributed: INSTANCE_TYPE !== 'public',
         limit: parseInt(limit),
         offset: parseInt(offset)
       });

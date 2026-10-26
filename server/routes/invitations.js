@@ -661,6 +661,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         }
       })
 
+      // A Jellyfin account the invitation made for this request goes with the
+      // rejection (utils/jellyfinInviteAccounts.js). Kept on record as removed,
+      // so accepting it again can say so instead of signing in to nothing.
+      try {
+        await require('../utils/jellyfinInviteAccounts').onRequestDropped(prisma, decrypt, accountId, request, { keep: true })
+      } catch (e) {
+        console.warn('Could not remove the Jellyfin account made for this request:', e?.message)
+      }
+
       res.json(updatedRequest)
     } catch (error) {
       console.error('Error rejecting request:', error)
@@ -697,6 +706,12 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         request.invitation.currentUses >= request.invitation.maxUses
       ) {
         return res.status(400).json({ error: 'Invitation has reached maximum uses' })
+      }
+
+      // Rejecting deleted the account the invitation made; there is nothing
+      // left to accept.
+      if (await require('../utils/jellyfinInviteAccounts').accountWasRemoved(prisma, accountId, request)) {
+        return res.status(409).json({ error: 'The Jellyfin account made for this request was deleted when it was rejected - ask them to request again' })
       }
 
       const finalGroupName = groupName || request.invitation.groupName || null
@@ -1179,6 +1194,16 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
   })
 
   publicRouter.post('/:inviteCode/request', async (req, res) => {
+    // The Jellyfin account this request made, until the request is stored: it
+    // goes again if the request doesn't get that far.
+    let madeJellyfin = null
+    const discardMade = async () => {
+      if (!madeJellyfin) return
+      const made = madeJellyfin
+      madeJellyfin = null
+      try { await require('../utils/jellyfinInviteAccounts').onRequestDropped(prisma, decrypt, made.accountId, made) }
+      catch (e) { console.warn('Could not remove the Jellyfin account made for this request:', e?.message) }
+    }
     try {
       const { inviteCode } = req.params
       const { username, authKey, email: legacyEmail, nuvioCode, jellyfin, jellyfinNew } = req.body
@@ -1230,6 +1255,19 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
       if (hasJellyfin || wantsNewJellyfin) {
         const { signInFromBody, jellyfinFields } = require('../utils/jellyfinConnect')
         const { identityEmail } = require('../providers/jellyfinAuth')
+        // The username checks come before the account is made on the server,
+        // so a refusal can't leave one behind. (The email is only known once
+        // it exists, and a new account's can't be taken.)
+        if (wantsNewJellyfin) {
+          const wanted = username.trim()
+          if (await prisma.user.findFirst({ where: { accountId: invitation.accountId, username: wanted } })) {
+            return res.status(409).json({ error: 'USERNAME_EXISTS', message: 'This username is already taken' })
+          }
+          const earlier = await prisma.inviteRequest.findFirst({ where: { invitationId: invitation.id, username: wanted }, orderBy: { createdAt: 'desc' } })
+          if (earlier) {
+            return res.status(409).json({ error: 'A request already exists for this email and username', status: earlier.status })
+          }
+        }
         let signedIn
         try {
           signedIn = wantsNewJellyfin
@@ -1239,6 +1277,7 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
           const status = err?.status === 401 ? 401 : 400
           return res.status(status).json({ error: publicMessage(err, 'Could not sign in to the server'), ...(err?.pinNeeded ? { pinNeeded: true } : {}) })
         }
+        if (wantsNewJellyfin) madeJellyfin = { accountId: invitation.accountId, jellyfinServerUrl: signedIn.probe.serverUrl, jellyfinUserId: signedIn.login.userId }
         await require('../utils/jellyfinConnect').rememberSignIn(prisma, encrypt, signedIn.probe, signedIn.login)
         const { providerType: _jfType, ...fields } = jellyfinFields(signedIn.probe, signedIn.login, encrypt, { appAccountId: invitation.accountId })
         jellyfinData = fields
@@ -1300,6 +1339,7 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
         }
       })
 
+      if (existingUserByEmail || existingUserByUsername) await discardMade()
       if (existingUserByEmail && existingUserByUsername) {
         return res.status(409).json({ error: 'EMAIL_AND_USERNAME_EXIST', message: 'Both email and username are already registered' })
       }
@@ -1321,6 +1361,7 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
       })
 
       if (existingRequest) {
+        await discardMade()
         return res.status(409).json({
           error: 'A request already exists for this email and username',
           status: existingRequest.status
@@ -1342,10 +1383,13 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
         }
       })
 
+      madeJellyfin = null // stored: the account now belongs to the request
+
       // The stored sign-in stays on the server.
       const { jellyfinToken: _token, stremioAuthKey: _key, nuvioRefreshToken: _refresh, ...safeRequest } = request
       res.json(safeRequest)
     } catch (error) {
+      await discardMade()
       console.error('Error submitting invite request:', error)
       res.status(500).json({ error: 'Failed to submit request' })
     }

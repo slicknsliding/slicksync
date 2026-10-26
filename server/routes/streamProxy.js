@@ -19,6 +19,54 @@ function setCorsHeaders(res) {
   res.set('Access-Control-Max-Age', '86400');
 }
 
+// Both proxies hand an addon author's bytes back on the dashboard's own
+// origin, so what the browser may do with them is decided here and not by the
+// upstream's Content-Type: an addon that answers text/html (or JavaScript,
+// SVG, XML, CSS) would otherwise run script inside a signed-in session, and a
+// proxied .js file satisfies the page's script-src 'self'. Only the kinds of
+// thing a Stremio, Nuvio or Jellyfin client really asks for pass through
+// (JSON, images, audio, video, playlists, subtitles, raw bytes); anything else
+// is served as a download.
+const SAFE_EXACT_TYPES = new Set([
+  'application/json',
+  'application/octet-stream',
+  'application/vnd.apple.mpegurl',
+  'application/x-mpegurl',
+  'application/dash+xml',
+  'application/ttml+xml',
+  'application/x-subrip',
+  'application/x-subtitle',
+  'text/plain',
+  'text/vtt',
+  'text/srt',
+  'text/x-ssa',
+]);
+
+function isSafeContentType(contentType) {
+  const base = String(contentType || '').split(';')[0].trim().toLowerCase();
+  if (!base) return true; // nothing declared: it is sent as raw bytes below
+  if (SAFE_EXACT_TYPES.has(base)) return true;
+  if (base.endsWith('+json')) return true;
+  // SVG is an image by name and a script host in practice.
+  if (base.startsWith('image/')) return base !== 'image/svg+xml';
+  return base.startsWith('video/') || base.startsWith('audio/');
+}
+
+/**
+ * Headers every proxied upstream body goes out with. Returns the content type
+ * to send, which is the upstream's when it is a safe kind and otherwise
+ * application/octet-stream served as an attachment. The CSP replaces the
+ * page CSP (helmet sets that earlier) for this response only: nothing loads
+ * and nothing runs, even if a browser were to render the body.
+ */
+function applyProxiedBodyHeaders(res, contentType) {
+  const safe = isSafeContentType(contentType);
+  res.set('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (!safe) res.set('Content-Disposition', 'attachment');
+  return safe ? (contentType || 'application/octet-stream') : 'application/octet-stream';
+}
+
 /**
  * Encrypt a stream URL for use in the proxy
  * Uses AES-256-GCM with the server key
@@ -326,6 +374,11 @@ module.exports = ({ getServerKey }) => {
           }
         });
 
+        // The upstream's type and disposition only stand when it is media;
+        // an unsafe type becomes a download (see isSafeContentType).
+        res.set('Content-Type', applyProxiedBodyHeaders(res, upstreamResponse.headers.get('content-type')));
+        if (!isSafeContentType(upstreamResponse.headers.get('content-type'))) hasContentDisposition = true;
+
         // If upstream didn't send a filename, try to derive one from the URL
         if (!hasContentDisposition) {
           try {
@@ -390,3 +443,7 @@ module.exports = ({ getServerKey }) => {
     processStreamResponse
   };
 };
+
+// Shared with the addon proxy, which serves the same kind of foreign bytes.
+module.exports.isSafeContentType = isSafeContentType;
+module.exports.applyProxiedBodyHeaders = applyProxiedBodyHeaders;

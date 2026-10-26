@@ -1,7 +1,7 @@
 // Auth and CSRF middlewares (factory-style for DI/testing)
 const { checkAccountClaims, pathNeedsLiveAccount } = require('../utils/auth')
 
-module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, jsonwebtoken, prisma }) {
+module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, jsonwebtoken, prisma, DEFAULT_ACCOUNT_ID }) {
   const jwt = jsonwebtoken || require('jsonwebtoken')
 
   // The payload of a session token of the given kind ('access' or 'refresh'),
@@ -9,9 +9,19 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
   // portal sessions are signed with the same secret, and none of them may ever
   // open an account (see checkAccountClaims). An access token in the refresh
   // slot, or the other way round, is refused too.
+  //
+  // A private instance has one account, the default one (every request there
+  // resolves to it whatever the token says), so a token for any other account
+  // id is not a way in: a stray row, however it got made, must never
+  // authenticate as the owner.
   function accountToken(token, kind) {
     try {
-      return checkAccountClaims(jwt.verify(token, JWT_SECRET), [kind])
+      const claims = checkAccountClaims(jwt.verify(token, JWT_SECRET), [kind])
+      if (claims && INSTANCE_TYPE !== 'public') {
+        const onlyId = DEFAULT_ACCOUNT_ID || require('../utils/config').DEFAULT_ACCOUNT_ID
+        if (claims.accId !== onlyId) return null
+      }
+      return claims
     } catch {
       return null
     }
@@ -64,7 +74,7 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
     const newAt = issueAccessToken(rj.accId);
     res.cookie(cookieName('sfm_at'), newAt, {
       httpOnly: true,
-      secure: isProdEnv(),
+      secure: isProdEnv() || res.req?.secure === true,
       sameSite: isProdEnv() ? 'strict' : 'lax',
       path: '/',
       maxAge: 30 * 24 * 60 * 60 * 1000,
@@ -74,7 +84,7 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
       const newCsrf = randomCsrfToken();
       res.cookie(cookieName('sfm_csrf'), newCsrf, {
         httpOnly: false,
-        secure: isProdEnv(),
+        secure: isProdEnv() || res.req?.secure === true,
         sameSite: isProdEnv() ? 'strict' : 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000, // Match access token expiration

@@ -12,6 +12,14 @@
 
 const dns = require('dns').promises
 const net = require('net')
+const http = require('http')
+const https = require('https')
+const zlib = require('zlib')
+const { Readable, PassThrough, pipeline } = require('stream')
+
+// Taken now so a test that swaps global.fetch for a stand-in is still
+// answered by it; nothing in production ever replaces it.
+const nativeFetch = globalThis.fetch
 
 function v4Parts(ip) {
   const parts = ip.split('.').map(Number)
@@ -133,9 +141,105 @@ function untilAborted(work, signal) {
 }
 
 /**
+ * The name a request connects to is looked up again by the socket, after
+ * assertSafeUrl already looked it up once. A name that answers with a public
+ * address to the check and an internal one to the connection (DNS rebinding)
+ * would pass the first and reach the second. So the connection does its own
+ * lookup through here, and every address it could use is vetted: what is
+ * checked is what is connected to. Honoured by both Node and Bun.
+ */
+function vettedLookup(allowPrivate) {
+  const refused = allowPrivate ? isLinkLocalIp : isPrivateIp
+  return (host, opts, cb) => {
+    if (typeof opts === 'function') { cb = opts; opts = {} }
+    dns.lookup(host, { all: true }).then((addresses) => {
+      if (!addresses.length) throw new Error('unresolvable host')
+      if (addresses.some((a) => refused(a.address))) throw new Error('blocked host')
+      if (opts && opts.all) cb(null, addresses)
+      else cb(null, addresses[0].address, addresses[0].family)
+    }).catch((err) => cb(err))
+  }
+}
+
+const NO_BODY = new Set([101, 204, 205, 304])
+
+function toRequestBody(body) {
+  if (body == null) return null
+  if (typeof body === 'string' || Buffer.isBuffer(body)) return body
+  if (body instanceof Uint8Array) return Buffer.from(body.buffer, body.byteOffset, body.byteLength)
+  if (body instanceof ArrayBuffer) return Buffer.from(body)
+  if (body instanceof URLSearchParams) return body.toString()
+  throw new TypeError('unsupported request body')
+}
+
+/**
+ * One request over node:http(s), answered as a fetch Response. Unlike fetch
+ * this lets the connection's own address lookup be vetted (vettedLookup), and
+ * it behaves the same under Node and Bun, where an undici dispatcher would not.
+ * TLS still checks the certificate against the real hostname. Redirects are
+ * not followed: safeFetch does that, hop by hop.
+ */
+function pinnedRequest(urlString, options, allowPrivate) {
+  const url = new URL(urlString)
+  const secure = url.protocol === 'https:'
+  const headers = new Headers(options.headers || {})
+  // fetch would decompress for the caller; asking for nothing keeps that out
+  // of the way, and a server that compresses anyway is unpacked below.
+  const method = String(options.method || 'GET').toUpperCase()
+  const body = toRequestBody(options.body)
+  if (body != null && !headers.has('content-length')) headers.set('content-length', String(Buffer.byteLength(body)))
+  const signal = options.signal
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason ?? abortError())
+    const host = stripBrackets(url.hostname)
+    const req = (secure ? https : http).request({
+      protocol: url.protocol,
+      host,
+      port: url.port || (secure ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method,
+      headers: Object.fromEntries(headers),
+      lookup: net.isIP(host) ? undefined : vettedLookup(allowPrivate),
+    })
+    // Rejected here as well as destroyed: Bun closes the socket without raising.
+    const onAbort = () => { const reason = signal.reason ?? abortError(); req.destroy(reason); reject(reason) }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const done = () => signal?.removeEventListener('abort', onAbort)
+    req.once('error', (err) => { done(); reject(err) })
+    req.once('response', (incoming) => {
+      const responseHeaders = new Headers()
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        for (const v of Array.isArray(value) ? value : [value]) responseHeaders.append(name, v)
+      }
+      let stream = incoming
+      const encoding = String(incoming.headers['content-encoding'] || '').toLowerCase()
+      const unpack = { gzip: zlib.createGunzip, 'x-gzip': zlib.createGunzip, deflate: zlib.createInflate, br: zlib.createBrotliDecompress }[encoding]
+      if (unpack) {
+        stream = pipeline(incoming, unpack(), new PassThrough(), () => {})
+        responseHeaders.delete('content-encoding')
+        responseHeaders.delete('content-length')
+      }
+      incoming.once('close', done)
+      const res = new Response(NO_BODY.has(incoming.statusCode) || method === 'HEAD' ? null : Readable.toWeb(stream), {
+        status: incoming.statusCode,
+        statusText: incoming.statusMessage,
+        headers: responseHeaders,
+      })
+      if (NO_BODY.has(incoming.statusCode) || method === 'HEAD') incoming.resume()
+      Object.defineProperty(res, 'url', { value: urlString })
+      resolve(res)
+    })
+    req.end(body)
+  })
+}
+
+/**
  * fetch, with the same check applied to every redirect on the way. A plain
  * fetch after assertSafeUrl only vouches for the first address: a public
  * host can answer with a redirect to an internal one, and it was followed.
+ * The address each request connects to is vetted as the connection is made
+ * (see vettedLookup), so a name that changes its answer in between does not
+ * get through either.
  *
  * `vet`, when given, is asked about every address (the first and each hop)
  * instead of the default check, for a caller that holds redirects to a rule of
@@ -146,7 +250,9 @@ async function safeFetch(raw, init = {}, { allowPrivate = false, maxRedirects = 
   let options = { ...init, redirect: 'manual' }
   for (let hop = 0; ; hop++) {
     await untilAborted(vet ? vet(current) : assertSafeUrl(current, { allowPrivate }), options.signal)
-    const res = await fetch(current, options)
+    const res = globalThis.fetch !== nativeFetch
+      ? await globalThis.fetch(current, options)
+      : await pinnedRequest(current, options, allowPrivate)
     const location = REDIRECTS.has(res.status) ? res.headers.get('location') : null
     if (!location) return res
     if (hop >= maxRedirects) throw new Error('too many redirects')

@@ -54,14 +54,14 @@ const { INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, PRIVATE_AUTH_USERNAME, PRIVATE_AUTH
 const { parseAddonIds, parseProtectedAddons, canonicalizeManifestUrl, normalizeUrl, isProdEnv, filterManifestByResources, filterManifestByCatalogs } = require('./utils/validation');
 const { sha256Hex, hmacHex, manifestUrlHmac, getAccountHmacKey, normalizeManifestObject, manifestHash, manifestHmac } = require('./utils/hashing');
 const { validateStremioAuthKey, filterDefaultAddons, buildAddonDbData } = require('./utils/stremio');
-const { pathIsAllowlisted, extractBearerToken, parseCookies, cookieName, issueAccessToken, issueRefreshToken, verifyAccountToken, randomCsrfToken } = require('./utils/auth');
+const { pathIsAllowlisted, extractBearerToken, parseCookies, cookieName, issueAccessToken, issueRefreshToken, verifyAccountToken, randomCsrfToken, defaultAccountPassword, replaceLegacyDefaultHash } = require('./utils/auth');
 const { getAccountId: getAccountIdHelper, scopedWhere, assignUserToGroup } = require('./utils/helpers');
 const { selectKeyForRequest, encrypt, decrypt, getAccountHmacKey: getAccountHmacKeyEnc, encryptIf, decryptIf, getDecryptedManifestUrl, decryptWithFallback } = require('./utils/encryption');
 
 async function ensureDefaultAccount(prismaClient) {
   if (INSTANCE_TYPE === 'public') return
 
-  const defaultPassword = process.env.PRIVATE_ACCOUNT_PASSWORD || 'private-mode'
+  const defaultPassword = defaultAccountPassword()
   const existing = await prismaClient.appAccount.findUnique({ where: { id: DEFAULT_ACCOUNT_ID } })
 
   if (!existing) {
@@ -84,6 +84,11 @@ async function ensureDefaultAccount(prismaClient) {
     }
     if (!existing.passwordHash) {
       updates.passwordHash = await bcrypt.hash(defaultPassword, 12)
+    } else {
+      // Installs seeded before the password became random still hold the
+      // well-known one - swap it out so it stops working as a way in.
+      const replaced = await replaceLegacyDefaultHash(existing.passwordHash)
+      if (replaced) updates.passwordHash = replaced
     }
     if (Object.keys(updates).length > 0) {
       await prismaClient.appAccount.update({ where: { id: DEFAULT_ACCOUNT_ID }, data: updates })
@@ -396,7 +401,7 @@ app.get('/health', async (req, res) => {
 
 // Global auth and CSRF gates via middleware factories
 const { createAuthGate, createCsrfGuard } = require('./middleware/auth')
-app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, prisma }))
+app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, prisma, DEFAULT_ACCOUNT_ID }))
 app.use(createCsrfGuard({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, pathIsAllowlisted, parseCookies, cookieName }))
 
 if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) {

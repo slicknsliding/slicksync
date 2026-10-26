@@ -104,6 +104,20 @@ async function allowPrivatePoster(prisma, src) {
   return isServerPosterUrl(src, await knownServerUrls(prisma))
 }
 
+// The probe's own request: on a public instance the server address is one
+// someone typed in, so it is checked like any other (redirects are not
+// followed - a redirect is an answer too, and is not a refusal).
+async function probeFetch(url, init) {
+  const { restrictsPrivateAddresses } = require('../providers/jellyfinAuth')
+  if (!restrictsPrivateAddresses()) return fetch(url, init)
+  try {
+    return await require('./safeUrl').safeFetch(url, init, { allowPrivate: false, maxRedirects: 0 })
+  } catch (e) {
+    if (e?.message === 'too many redirects') return { status: 302 }
+    throw e
+  }
+}
+
 // Per server: does it hand out images without a sign-in? Checked once with
 // the first poster address that comes up, remembered for 6 hours.
 const openByServer = new Map()
@@ -113,7 +127,7 @@ const OPEN_TTL_MS = 6 * 60 * 60 * 1000
  * true / false once known; `fetchImpl` is for tests. A server that can't be
  * reached right now isn't remembered either way - it is asked again later.
  */
-async function imagesOpen(serverKey, posterUrl, { fetchImpl = fetch } = {}) {
+async function imagesOpen(serverKey, posterUrl, { fetchImpl = probeFetch } = {}) {
   const cached = openByServer.get(serverKey)
   if (cached && Date.now() - cached.at < OPEN_TTL_MS) return cached.open
   if (!posterUrl) return true

@@ -27,6 +27,24 @@ function restrictsPrivateAddresses() {
 }
 
 /**
+ * fetch for a request to a stored or typed server address. Where the address
+ * has to be a public one it goes through safeFetch, which checks the address
+ * and every redirect; a household install keeps plain fetch and its LAN.
+ * An address that is refused throws an Error with `.status` 400.
+ */
+async function guardedFetch(url, init) {
+  if (!restrictsPrivateAddresses()) return fetch(url, init)
+  try {
+    return await require('../utils/safeUrl').safeFetch(url, init, { allowPrivate: false })
+  } catch (e) {
+    if (ADDRESS_REFUSALS.has(e?.message)) {
+      throw Object.assign(new Error(e.message === 'blocked host' ? 'That address is on a private network, which this instance cannot reach' : `Server address not usable: ${e.message}`), { status: 400 })
+    }
+    throw e
+  }
+}
+
+/**
  * The address as a base every API path can be appended to. People paste what
  * their browser shows - the web client's own pages, a trailing slash, the
  * hash route - and AIOStreams hands out addresses with a path of their own
@@ -395,4 +413,5 @@ module.exports = {
   displayServer,
   identityEmail,
   restrictsPrivateAddresses,
+  guardedFetch,
 }

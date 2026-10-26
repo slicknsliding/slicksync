@@ -3210,7 +3210,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { donorId } = req.query
       if (!donorId) return res.status(400).json({ error: 'donorId is required' })
       const { getMergePreview } = require('../utils/userMerge')
-      const preview = await getMergePreview(prisma, req.params.id, donorId)
+      const preview = await getMergePreview(prisma, req.params.id, donorId, getAccountId(req))
       res.json(preview)
     } catch (error) {
       console.error('Error building merge preview:', error)
@@ -3223,7 +3223,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { donorId } = req.body || {}
       if (!donorId) return res.status(400).json({ error: 'donorId is required' })
       const { mergeUsers } = require('../utils/userMerge')
-      const result = await mergeUsers(prisma, req.params.id, donorId)
+      const result = await mergeUsers(prisma, req.params.id, donorId, getAccountId(req))
       res.json({ success: true, ...result })
     } catch (error) {
       console.error('Error merging users:', error)
@@ -3234,7 +3234,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.get('/:id/merge-info', async (req, res) => {
     try {
       const { getUndoInfo } = require('../utils/userMerge')
-      const info = await getUndoInfo(prisma, req.params.id)
+      const info = await getUndoInfo(prisma, req.params.id, getAccountId(req))
       res.json({ info })
     } catch (error) {
       console.error('Error checking merge info:', error)
@@ -3245,7 +3245,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.post('/:id/undo-merge', async (req, res) => {
     try {
       const { undoMerge } = require('../utils/userMerge')
-      const result = await undoMerge(prisma, req.params.id)
+      const result = await undoMerge(prisma, req.params.id, getAccountId(req))
       res.json({ success: true, ...result })
     } catch (error) {
       console.error('Error undoing merge:', error)

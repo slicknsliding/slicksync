@@ -103,7 +103,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, createProvider }) =>
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         const groupAddons = await prisma.groupAddon.findMany({
-          where: { groupId: group.id, isEnabled: true },
+          where: { groupId: group.id, isEnabled: true, addon: { accountId } },
           include: { addon: true },
           orderBy: { position: 'asc' },
         });

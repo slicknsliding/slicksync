@@ -15,11 +15,27 @@
 // Jellyfin lets only administrators make accounts and switch them on and off,
 // so all of it goes through an administrator's sign-in on that server.
 
+const crypto = require('crypto')
 const serverCollections = require('./jellyfinServerCollections')
 const jfAuth = require('../providers/jellyfinAuth')
 
 const RECONCILE_MS = 10 * 60 * 1000
 const MAX_WAITING = 10
+// A place held for an account still being made. One that was never released
+// (the process died mid-way) stops counting after this.
+const RESERVATION_MS = 5 * 60 * 1000
+
+// Work that must not overlap, one queue per key. In-process on purpose: one
+// server process serves a household, so a database lock would add nothing. A
+// task that fails does not hold up the next one.
+const queues = new Map() // key -> tail of the queue
+function inQueue(key, task) {
+  const run = (queues.get(key) || Promise.resolve()).then(task)
+  const tail = run.then(() => {}, () => {})
+  queues.set(key, tail)
+  tail.then(() => { if (queues.get(key) === tail) queues.delete(key) })
+  return run
+}
 
 const httpError = (status, message) => Object.assign(new Error(message), { status })
 const normId = (id) => String(id || '').replace(/-/g, '').toLowerCase()
@@ -33,16 +49,22 @@ async function readSync(prisma, accountId) {
   return { cfg: cfg && typeof cfg === 'object' ? cfg : {}, asString }
 }
 
-/** Change entries of one map in the account's settings, on a fresh read. null removes an entry. */
-async function patchMap(prisma, accountId, mapName, entries) {
-  const { cfg, asString } = await readSync(prisma, accountId)
-  const map = { ...(cfg[mapName] && typeof cfg[mapName] === 'object' ? cfg[mapName] : {}) }
-  for (const [k, v] of Object.entries(entries)) {
-    if (v === null) delete map[k]
-    else map[k] = v
-  }
-  const next = { ...cfg, [mapName]: map }
-  await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(next) : next } })
+/**
+ * Change entries of one map in the account's settings, on a fresh read. null
+ * removes an entry. One at a time per account: the whole settings object is
+ * written back, so two overlapping changes would each undo the other's.
+ */
+function patchMap(prisma, accountId, mapName, entries) {
+  return inQueue(`patch:${accountId}`, async () => {
+    const { cfg, asString } = await readSync(prisma, accountId)
+    const map = { ...(cfg[mapName] && typeof cfg[mapName] === 'object' ? cfg[mapName] : {}) }
+    for (const [k, v] of Object.entries(entries)) {
+      if (v === null) delete map[k]
+      else map[k] = v
+    }
+    const next = { ...cfg, [mapName]: map }
+    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(next) : next } })
+  })
 }
 
 /** A server's administrator sign-in, or null when nobody here signs in as one. */
@@ -92,42 +114,74 @@ async function setDisabled(session, jellyfinUserId, disabled) {
  * Make the account for an invite request. Returns the same { probe, login }
  * a sign-in gives, so the request is stored exactly like one made by
  * signing in with an existing account.
+ *
+ * One at a time per invitation: the waiting limit is checked and a place held
+ * inside the same turn, so parallel requests can't each see room and all make
+ * an account.
  */
 async function createForRequest(prisma, decrypt, invitation, { username, password }) {
   const name = String(username || '').trim()
   const pw = String(password || '')
   if (!name) throw httpError(400, 'Pick a username first')
   if (pw.length < 6) throw httpError(400, 'Use a password of at least 6 characters')
+  return inQueue(`create:${invitation.id}`, () => createLocked(prisma, decrypt, invitation, name, pw))
+}
+
+async function createLocked(prisma, decrypt, invitation, name, pw) {
   const key = await invitationServer(prisma, invitation.accountId, invitation.id)
   if (!key) throw httpError(400, 'This invitation doesn’t make accounts')
   // Anyone with the link could otherwise fill the server with accounts
-  // waiting to be accepted.
+  // waiting to be accepted. Places held for accounts still being made count.
   const { cfg } = await readSync(prisma, invitation.accountId)
-  const waiting = Object.values(cfg.jellyfinInviteAccounts || {}).filter((r) => r?.invitationId === invitation.id && r.state === 'pending').length
+  const now = Date.now()
+  const held = (r) => r?.reservedAt && now - Date.parse(r.reservedAt) < RESERVATION_MS
+  const live = (r) => r?.invitationId === invitation.id && r.state === 'pending' && (!r.reservedAt || held(r))
+  const waiting = Object.values(cfg.jellyfinInviteAccounts || {}).filter(live).length
   if (waiting >= MAX_WAITING) throw httpError(429, 'Too many people are already waiting to be accepted on this invitation - ask whoever invited you')
   const { server, session } = await adminSession(prisma, decrypt, invitation.accountId, key)
   if (!server || !session) throw httpError(503, 'The server can’t make accounts right now - ask whoever invited you')
 
-  let created
+  // Hold the place before the account exists, so what is waiting is on record
+  // even while it is being made (and stale holds are swept out).
+  const holdKey = `${key}|making:${crypto.randomUUID()}`
+  const stale = Object.entries(cfg.jellyfinInviteAccounts || {}).filter(([, r]) => r?.reservedAt && !held(r))
+  await patchMap(prisma, invitation.accountId, 'jellyfinInviteAccounts', {
+    ...Object.fromEntries(stale.map(([k]) => [k, null])),
+    [holdKey]: { serverKey: key, invitationId: invitation.id, state: 'pending', reservedAt: new Date(now).toISOString() },
+  })
+
+  let jellyfinUserId = null
   try {
-    created = await serverCollections.call(session, '/Users/New', { method: 'POST', body: { Name: name, Password: pw } })
+    let created
+    try {
+      created = await serverCollections.call(session, '/Users/New', { method: 'POST', body: { Name: name, Password: pw } })
+    } catch (e) {
+      if (e?.status === 400) throw httpError(400, `The server already has someone called ${name} - pick another username`)
+      throw e
+    }
+    jellyfinUserId = normId(created?.Id)
+    if (!jellyfinUserId) throw httpError(502, 'The server did not make the account')
+
+    const probe = await jfAuth.probeServer(server.url)
+    const login = await jfAuth.authenticateByName(probe.serverUrl, name, pw)
+    // Off until the request is accepted.
+    await setDisabled(session, jellyfinUserId, true)
+    await patchMap(prisma, invitation.accountId, 'jellyfinInviteAccounts', {
+      [holdKey]: null,
+      [recordKey(probe.serverUrl, jellyfinUserId)]: {
+        serverKey: key, serverUrl: probe.serverUrl, jellyfinUserId, name, invitationId: invitation.id, state: 'pending', createdAt: new Date().toISOString(),
+      },
+    })
+    return { probe, login: { ...login, serverId: login.serverId || probe.serverId } }
   } catch (e) {
-    if (e?.status === 400) throw httpError(400, `The server already has someone called ${name} - pick another username`)
+    // Nothing is left behind by a request that didn't go through: not the
+    // held place, and not an account nobody has a record of.
+    if (jellyfinUserId) {
+      try { await serverCollections.call(session, `/Users/${jellyfinUserId}`, { method: 'DELETE' }) } catch {}
+    }
+    try { await patchMap(prisma, invitation.accountId, 'jellyfinInviteAccounts', { [holdKey]: null }) } catch {}
     throw e
   }
-  const jellyfinUserId = normId(created?.Id)
-  if (!jellyfinUserId) throw httpError(502, 'The server did not make the account')
-
-  const probe = await jfAuth.probeServer(server.url)
-  const login = await jfAuth.authenticateByName(probe.serverUrl, name, pw)
-  // Off until the request is accepted.
-  await setDisabled(session, jellyfinUserId, true)
-  await patchMap(prisma, invitation.accountId, 'jellyfinInviteAccounts', {
-    [recordKey(probe.serverUrl, jellyfinUserId)]: {
-      serverKey: key, serverUrl: probe.serverUrl, jellyfinUserId, name, invitationId: invitation.id, state: 'pending', createdAt: new Date().toISOString(),
-    },
-  })
-  return { probe, login: { ...login, serverId: login.serverId || probe.serverId } }
 }
 
 async function recordFor(prisma, accountId, serverUrl, jellyfinUserId) {
@@ -148,15 +202,26 @@ async function onAccepted(prisma, decrypt, accountId, person) {
 }
 
 /** A request with an invite-made account was rejected or deleted: the account goes too. */
-async function onRequestDropped(prisma, decrypt, accountId, request) {
+async function onRequestDropped(prisma, decrypt, accountId, request, opts = {}) {
   if (!request?.jellyfinServerUrl || !request.jellyfinUserId) return
   const found = await recordFor(prisma, accountId, request.jellyfinServerUrl, request.jellyfinUserId)
+  // Deleting a rejected request also clears the note that its account was removed.
+  if (found?.rec.state === 'removed') { if (!opts.keep) await patchMap(prisma, accountId, 'jellyfinInviteAccounts', { [found.key]: null }); return }
   if (!found || found.rec.state !== 'pending') return
   const { session } = await adminSession(prisma, decrypt, accountId, found.rec.serverKey)
   if (!session) return
   try { await serverCollections.call(session, `/Users/${found.rec.jellyfinUserId}`, { method: 'DELETE' }) }
   catch (e) { if (e?.status !== 404) throw e }
-  await patchMap(prisma, accountId, 'jellyfinInviteAccounts', { [found.key]: null })
+  // A rejection stays on record: the request can be accepted again, and then
+  // has to be told its account is gone.
+  await patchMap(prisma, accountId, 'jellyfinInviteAccounts', { [found.key]: opts.keep ? { ...found.rec, state: 'removed', removedAt: new Date().toISOString() } : null })
+}
+
+/** True when the account made for this request was deleted by its rejection. */
+async function accountWasRemoved(prisma, accountId, request) {
+  if (!request?.jellyfinServerUrl || !request.jellyfinUserId) return false
+  const found = await recordFor(prisma, accountId, request.jellyfinServerUrl, request.jellyfinUserId)
+  return found?.rec.state === 'removed'
 }
 
 /**
@@ -212,5 +277,5 @@ function scheduleInviteAccounts(prisma, decrypt) {
 
 module.exports = {
   inviteServers, invitationServer, setInvitationServer, publicOffer, createForRequest,
-  onAccepted, onRequestDropped, reconcileAccount, scheduleInviteAccounts, setDisabled,
+  onAccepted, onRequestDropped, accountWasRemoved, reconcileAccount, scheduleInviteAccounts, setDisabled,
 }

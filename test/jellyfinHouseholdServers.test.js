@@ -272,8 +272,8 @@ test('names Jellyfin takes, and which server a sign-in is on', () => {
 test('a server sign-in is never shown or undone as a merge', async () => {
   const { getUndoInfo } = require('../server/utils/userMerge')
   const rows = [{ id: 'c1', userId: 'p-sarah', providerType: 'jellyfin', origin: 'jellyfin-server:s1' }]
-  const prisma = { userProviderCredential: { findFirst: async ({ where }) => rows.find((r) => r.userId === where.userId && (where.origin === undefined || r.origin === where.origin)) || null } }
-  assert.equal(await getUndoInfo(prisma, 'p-sarah'), null)
+  const prisma = { user: { findFirst: async ({ where }) => (where.id === 'p-sarah' && where.accountId === 'acc' ? { id: 'p-sarah' } : null) }, userProviderCredential: { findFirst: async ({ where }) => rows.find((r) => r.userId === where.userId && (where.origin === undefined || r.origin === where.origin)) || null } }
+  assert.equal(await getUndoInfo(prisma, 'p-sarah', 'acc'), null)
   rows.push({ id: 'c2', userId: 'p-sarah', providerType: 'stremio', origin: null, donorId: 'd', mergeArchivePath: null })
-  assert.equal((await getUndoInfo(prisma, 'p-sarah')).providerType, 'stremio')
+  assert.equal((await getUndoInfo(prisma, 'p-sarah', 'acc')).providerType, 'stremio')
 })

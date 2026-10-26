@@ -37,10 +37,13 @@ function runLongTransaction(prisma, fn) {
  * Counts + warnings for the merge confirmation modal, before anything is
  * actually touched.
  */
-async function getMergePreview(prisma, survivorId, donorId) {
+async function getMergePreview(prisma, survivorId, donorId, accountId) {
+  // Both people must belong to the caller's account: a bare id lookup would
+  // let one household read or absorb another's people.
+  if (!accountId) throw new Error('Account not found')
   const [survivor, donor] = await Promise.all([
-    prisma.user.findUnique({ where: { id: survivorId }, select: { id: true, username: true, providerType: true, accountId: true } }),
-    prisma.user.findUnique({ where: { id: donorId }, select: { id: true, username: true, providerType: true, accountId: true } }),
+    prisma.user.findFirst({ where: { id: survivorId, accountId }, select: { id: true, username: true, providerType: true, accountId: true } }),
+    prisma.user.findFirst({ where: { id: donorId, accountId }, select: { id: true, username: true, providerType: true, accountId: true } }),
   ])
   if (!survivor) throw new Error('Survivor user not found')
   if (!donor) throw new Error('Donor user not found')
@@ -51,7 +54,7 @@ async function getMergePreview(prisma, survivorId, donorId) {
   // person. Absorbed into another provider's user it would lose which
   // profile it is, and every sync would then write that user's addons into
   // the main profile's list. Profiles are combined from Nuvio profiles on the Users page.
-  const donorProfile = await prisma.user.findUnique({ where: { id: donorId }, select: { nuvioProfileId: true } })
+  const donorProfile = await prisma.user.findFirst({ where: { id: donorId, accountId }, select: { nuvioProfileId: true } })
   if (donor.providerType === 'nuvio' && Number(donorProfile?.nuvioProfileId || 1) > 1) {
     throw new Error('This is one profile of a shared Nuvio account. Combine profiles from Nuvio profiles on the Users page instead')
   }
@@ -86,7 +89,8 @@ async function getMergePreview(prisma, survivorId, donorId) {
  * Is there anything to undo for this survivor, and can it actually be
  * reversed (vs. a pre-undo-support merge with no archive on file)?
  */
-async function getUndoInfo(prisma, survivorId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
+async function getUndoInfo(prisma, survivorId, accountId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
+  if (!accountId || !await prisma.user.findFirst({ where: { id: survivorId, accountId }, select: { id: true } })) return null
   // A sign-in made for a Jellyfin server on the Addons page isn't a merge.
   const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId, origin: null } })
   if (!credential) return null
@@ -172,10 +176,10 @@ async function migrateTable(tx, modelName, survivorId, donorId, recencyField, fi
  * the API response. Throws (aborting the transaction) on any validation
  * failure - nothing partial is left behind either way.
  */
-async function mergeUsers(prisma, survivorId, donorId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
-  const preview = await getMergePreview(prisma, survivorId, donorId)
+async function mergeUsers(prisma, survivorId, donorId, accountId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
+  const preview = await getMergePreview(prisma, survivorId, donorId, accountId)
 
-  const donorFull = await prisma.user.findUnique({ where: { id: donorId } })
+  const donorFull = await prisma.user.findFirst({ where: { id: donorId, accountId } })
   if (!donorFull) throw new Error('Donor user not found')
 
   const existingSecondary = await prisma.userProviderCredential.findUnique({
@@ -289,7 +293,10 @@ async function mergeUsers(prisma, survivorId, donorId, { dataDir = path.join(pro
  * Best-effort, not a perfect time-reversal - see the module comment at the
  * top of this file for what that means in practice.
  */
-async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
+async function undoMerge(prisma, survivorId, accountId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
+  if (!accountId || !await prisma.user.findFirst({ where: { id: survivorId, accountId }, select: { id: true } })) {
+    throw new Error('No merged account found on this user to undo')
+  }
   const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId, origin: null } })
   if (!credential) throw new Error('No merged account found on this user to undo')
   if (!credential.donorId || !credential.mergeArchivePath) {
@@ -302,6 +309,8 @@ async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd()
   }
   const archive = JSON.parse(fs.readFileSync(archiveFullPath, 'utf8'))
   const { donorId, donor, donorRows = {}, overwrittenSurvivorRows = {}, donorGroupIds = [] } = archive
+  // The archive recreates a whole user row: it must be for this account.
+  if (donor.accountId !== accountId) throw new Error('Merge archive belongs to another account - refusing to undo')
   if (donorId !== credential.donorId) {
     throw new Error('Archive file does not match this account\'s recorded merge - refusing to undo')
   }
