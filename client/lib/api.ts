@@ -5550,7 +5550,7 @@ export interface MetricsData {
   };
   nowPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
-    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number };
+    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean };
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)

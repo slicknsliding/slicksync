@@ -595,6 +595,8 @@ export interface NowPlayingItem {
     poster?: string;
     season?: number;
     episode?: number;
+    // A proxy stream whose title isn't known yet - name is plain words.
+    titlePending?: boolean;
   };
   startTime: string;
   videoId?: string;

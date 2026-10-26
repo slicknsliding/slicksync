@@ -761,7 +761,7 @@ export default function UserActivityPage() {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate text-default">
+                        <p className={`text-sm font-medium truncate ${np.item.titlePending ? 'text-muted' : 'text-default'}`}>
                           {np.item.name}
                         </p>
                         <div className="text-xs text-muted truncate">

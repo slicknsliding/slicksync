@@ -14,4 +14,23 @@ function proxyDisplayTitle(row) {
   return year ? `${row.metadataName} (${year[1]})` : row.metadataName
 }
 
-module.exports = { proxyDisplayTitle }
+// What a card says while a stream's title isn't known yet.
+const TITLE_PENDING_NAME = 'Title not known yet'
+
+const MEDIA_EXTENSION = /\.(mkv|mp4|avi|ts|m4v|webm)$/i
+
+// A stream's name can be an opaque file or cache id (a usenet or debrid hash)
+// rather than a title. Opaque means: no whitespace, 20+ characters of
+// letters, digits, "_" and "-", at least one digit - after a trailing media
+// extension is stripped. Release names ("Powder.1995.1080p.AMZN.WEB-DL") carry
+// dots, and titles carry spaces or parentheses, so neither is caught. A pure
+// hex or base64-ish run is opaque too, even without a digit-bearing look.
+function isOpaqueStreamName(name) {
+  const n = String(name || '').trim().replace(MEDIA_EXTENSION, '')
+  if (!n) return true
+  if (/\s/.test(n) || !/^[A-Za-z0-9_-]+$/.test(n)) return false
+  if (n.length < 20) return false
+  return /\d/.test(n) || /^[0-9a-f]+$/i.test(n)
+}
+
+module.exports = { proxyDisplayTitle, isOpaqueStreamName, TITLE_PENDING_NAME }

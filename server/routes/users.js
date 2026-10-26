@@ -1630,14 +1630,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       ])
       const nameOf = (id) => accountUsers.find((u) => u.id === id)?.username || null
       const byIp = new Map()
+      // An opaque stream id is not a title; leave it out rather than print it.
+      const { isOpaqueStreamName } = require('../utils/proxyTitle')
+      const readableName = (name) => (name && !isOpaqueStreamName(name) ? name : null)
       for (const sess of sessions) {
         if (!sess.clientIp) continue
         const cur = byIp.get(sess.clientIp)
         if (!cur) {
-          byIp.set(sess.clientIp, { clientIp: sess.clientIp, lastSeenAt: sess.lastSeenAt, lastTitle: sess.displayName || null, streams: 1 })
+          byIp.set(sess.clientIp, { clientIp: sess.clientIp, lastSeenAt: sess.lastSeenAt, lastTitle: readableName(sess.displayName), streams: 1 })
         } else {
           cur.streams++
-          if (!cur.lastTitle && sess.displayName) cur.lastTitle = sess.displayName
+          if (!cur.lastTitle) cur.lastTitle = readableName(sess.displayName)
         }
       }
       // Claimed IPs always appear, even quiet ones - a claim you can't see

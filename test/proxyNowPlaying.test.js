@@ -192,3 +192,126 @@ test('jellyfinLive: a viewing carries the pass that saw it and whether the playe
   assert.equal(v.paused, true)
   live.forgetUser('fresh-user')
 })
+
+// --- a stream whose only name is an opaque id --------------------------------
+
+const { isOpaqueStreamName, TITLE_PENDING_NAME } = require('../server/utils/proxyTitle')
+
+test('isOpaqueStreamName: ids are opaque, with or without a media extension', () => {
+  assert.equal(isOpaqueStreamName('Qk3vN8rT2pLx9WcYb7HdZf4sGj1mAe5u'), true)
+  assert.equal(isOpaqueStreamName('Qk3vN8rT2pLx9WcYb7HdZf4sGj1mAe5u.mkv'), true)
+  assert.equal(isOpaqueStreamName('Qk3vN8rT2pLx9WcYb7HdZf4sGj1mAe5u.MP4'), true)
+  assert.equal(isOpaqueStreamName('a1b2c3d4_e5f6-a7b8c9d0e1f2'), true)
+  assert.equal(isOpaqueStreamName('0123456789abcdef0123456789abcdef'), true) // hex hash
+  assert.equal(isOpaqueStreamName('abcdefabcdefabcdefabcdef'), true) // hex, no digit
+  assert.equal(isOpaqueStreamName(''), true)
+  assert.equal(isOpaqueStreamName(null), true)
+})
+
+test('isOpaqueStreamName: real titles and release names are not', () => {
+  assert.equal(isOpaqueStreamName('Toy Story (1995)'), false)
+  assert.equal(isOpaqueStreamName('Powder.1995.1080p.AMZN.WEB-DL'), false)
+  assert.equal(isOpaqueStreamName('Powder.1995.1080p.AMZN.WEB-DL.mkv'), false)
+  assert.equal(isOpaqueStreamName('Chernobyl'), false)
+  assert.equal(isOpaqueStreamName('Supercalifragilisticexpialidocious'), false) // long single word, no digit
+  assert.equal(isOpaqueStreamName('Se7en'), false)
+  assert.equal(isOpaqueStreamName('The Rock (1996)'), false)
+})
+
+const opaqueRow = (overrides = {}) => makeProxyRow({
+  filename: 'Qk3vN8rT2pLx9WcYb7HdZf4sGj1mAe5u.mkv',
+  displayName: 'Qk3vN8rT2pLx9WcYb7HdZf4sGj1mAe5u',
+  metadataName: null,
+  metadataItemId: null,
+  isActive: true,
+  startTime: new Date('2026-07-15T20:00:00Z'),
+  ...overrides,
+})
+const opaqueUsers = [{ id: 'user-1', username: 'alice', email: 'alice@example.com' }]
+const mergeOpaque = (natives) =>
+  mergeProxyNowPlaying(makeSplitPrisma([opaqueRow()], []), 'acct-1', opaqueUsers, natives, { isConfirming: () => true })
+
+test('mergeProxyNowPlaying: an opaque stream borrows the one native session that began after it opened', async () => {
+  const fresh = {
+    user: { id: 'user-1', username: 'alice' },
+    item: { id: 'tt777:1:2', name: 'Some Show', type: 'series', poster: 'https://posters/show.jpg', season: 1, episode: 2 },
+    videoId: 'tt777:1:2',
+    watchedAtTimestamp: new Date('2026-07-15T20:00:30Z').getTime(),
+    lastPosition: 120000,
+    totalDuration: 2700000,
+  }
+  const result = await mergeOpaque([fresh])
+  assert.equal(result.length, 1, 'one card, not the proxy card plus the native one')
+  assert.equal(result[0].source, 'aiostreams-proxy')
+  assert.equal(result[0].item.name, 'Some Show')
+  assert.equal(result[0].item.poster, 'https://posters/show.jpg')
+  assert.equal(result[0].item.episode, 2)
+  assert.equal(result[0].lastPosition, 120000)
+  assert.notEqual(result[0].item.titlePending, true)
+})
+
+test('mergeProxyNowPlaying: an opaque stream does not borrow a session from before it (the film they just finished)', async () => {
+  const earlier = {
+    user: { id: 'user-1', username: 'alice' },
+    item: { id: 'tt1', name: 'Finished Film', type: 'movie', poster: 'https://posters/film.jpg' },
+    videoId: null,
+    watchedAtTimestamp: new Date('2026-07-15T18:00:00Z').getTime(),
+    reportedAtTimestamp: new Date('2026-07-15T19:30:00Z').getTime(),
+  }
+  const result = await mergeOpaque([earlier])
+  const card = result.find((r) => r.source === 'aiostreams-proxy')
+  assert.equal(card.item.name, TITLE_PENDING_NAME)
+  assert.equal(card.item.titlePending, true)
+  assert.equal(card.item.poster, null)
+  assert.ok(!JSON.stringify(card).includes('Qk3vN8rT2pLx9WcYb7HdZf4sGj1mAe5u'), 'the id appears nowhere on the card')
+  assert.ok(result.some((r) => r.item.name === 'Finished Film'), 'their other session is left alone')
+})
+
+test('mergeProxyNowPlaying: an opaque stream does not borrow a finished session even if it was written after it opened', async () => {
+  const done = {
+    user: { id: 'user-1', username: 'alice' },
+    item: { id: 'tt2', name: 'Just Ended', type: 'movie' },
+    videoId: null,
+    watchedAtTimestamp: new Date('2026-07-15T19:00:00Z').getTime(),
+    reportedAtTimestamp: new Date('2026-07-15T20:01:00Z').getTime(),
+    lastPosition: 7100000,
+    totalDuration: 7200000,
+  }
+  const card = (await mergeOpaque([done])).find((r) => r.source === 'aiostreams-proxy')
+  assert.equal(card.item.titlePending, true)
+})
+
+test('mergeProxyNowPlaying: an opaque stream with two candidate native sessions is not guessed', async () => {
+  const at = new Date('2026-07-15T20:00:10Z').getTime()
+  const a = { user: { id: 'user-1', username: 'alice' }, item: { id: 'tt3', name: 'First' }, videoId: null, watchedAtTimestamp: at }
+  const b = { user: { id: 'user-1', username: 'alice' }, item: { id: 'tt4', name: 'Second' }, videoId: null, watchedAtTimestamp: at }
+  const result = await mergeOpaque([a, b])
+  const card = result.find((r) => r.source === 'aiostreams-proxy')
+  assert.equal(card.item.name, TITLE_PENDING_NAME)
+  assert.equal(result.length, 3, 'both native entries stay')
+})
+
+test('mergeProxyNowPlaying: a session started within 2 minutes before the stream still counts as this viewing', async () => {
+  const slightlyBefore = {
+    user: { id: 'user-1', username: 'alice' },
+    item: { id: 'tt5', name: 'Close Enough' },
+    videoId: null,
+    watchedAtTimestamp: new Date('2026-07-15T19:58:30Z').getTime(),
+  }
+  const card = (await mergeOpaque([slightlyBefore])).find((r) => r.source === 'aiostreams-proxy')
+  assert.equal(card.item.name, 'Close Enough')
+})
+
+test('mergeProxyNowPlaying: an identifiable stream title is unchanged by the opaque rule', async () => {
+  const unrelated = {
+    user: { id: 'user-1', username: 'alice' },
+    item: { id: 'tt6', name: 'Unrelated', poster: 'https://posters/u.jpg' },
+    videoId: null,
+    watchedAtTimestamp: new Date('2026-07-15T20:00:30Z').getTime(),
+  }
+  const result = await mergeProxyNowPlaying(makeSplitPrisma([makeProxyRow({ isActive: true })], []), 'acct-1', opaqueUsers, [unrelated], { isConfirming: () => true })
+  const card = result.find((r) => r.source === 'aiostreams-proxy')
+  assert.equal(card.item.name, 'The Rock (1996)')
+  assert.notEqual(card.item.titlePending, true)
+  assert.ok(result.some((r) => r.item.name === 'Unrelated'))
+})

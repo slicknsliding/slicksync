@@ -35,7 +35,7 @@ const { notifyPushForType } = require('./pushNotifications')
 // A connection counts as playing from its second request - see proxyPlaying.js.
 const { isPlayingConnection } = require('./proxyPlaying')
 
-const { proxyDisplayTitle } = require('./proxyTitle')
+const { proxyDisplayTitle, isOpaqueStreamName } = require('./proxyTitle')
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
 // Overlap guard. pollOnce is async and this runs on a fixed 30s timer, so
@@ -735,7 +735,7 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
 // matched yet - say so in words instead of printing the id.
 function readableStreamTitle(name) {
   const n = String(name || '').trim()
-  if (!n || (/^[A-Za-z0-9_-]{20,}$/.test(n) && /\d/.test(n) && !/\s/.test(n))) return 'a title SlickSync couldn’t name yet'
+  if (isOpaqueStreamName(n)) return 'a title SlickSync couldn’t name yet'
   return n
 }
 

@@ -1376,7 +1376,7 @@ function NowPlayingItemBody({
             {np.user.username}
           </span>
         </TVLink>
-        <p className="text-sm text-muted truncate">
+        <p className={`text-sm truncate ${np.item.titlePending ? 'text-subtle' : 'text-muted'}`}>
           {np.item.name}
           {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
             <span className="ml-1">
