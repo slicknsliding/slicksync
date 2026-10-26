@@ -17,7 +17,17 @@
       "Remove from Activity could ask about the wrong person after right-clicking a second card, and then remove nothing (\"Nothing recorded for that viewing\"). It always asks about, and removes, the card the menu is on.",
       "The Graveyard could list a buried title by its id (\"tt31049299\") with no poster once its history was gone. It shows the real title and poster.",
       "\"Started watching\" for a stream through AIOStreams could show the stream's own id instead of the title. It shows the title.",
-      "On phones, a title's details could show its scene a second time, sharp, behind the buttons and description. Gone."
+      "On phones, a title's details could show its scene a second time, sharp, behind the buttons and description. Gone.",
+      "Nuvio sign-in links opened an address that no longer answers. They open Nuvio's current approval page.",
+      "Members signed in with Nuvio could be signed out of their page by reloading it twice in a row. Reloads keep them signed in.",
+      "Joining by invite with Nuvio could wait forever after approving on the device. It goes through, and an expired code says so.",
+      "A household install that uses SlickSync's own sign-in can no longer be entered by creating a new account or with the built-in account's old password.",
+      "Signing in with Stremio, Nuvio or Jellyfin asks for your two-step code when the account has one, like every other sign-in.",
+      "Sign-in cookies are marked secure whenever SlickSync is reached over HTTPS.",
+      "Pages and scripts an addon serves through the addon proxy or stream links download instead of opening on SlickSync's own address.",
+      "Addresses SlickSync fetches are checked at the moment it connects, and calls to a saved Jellyfin server follow the same rules.",
+      "An invite that makes Jellyfin accounts keeps its limit of 10 people waiting even when many ask at once, and removes the account of a request you reject.",
+      "On shared instances, proxy logs, merging people and linking addons to groups only ever reach your own account."
     ]
   },
   {
