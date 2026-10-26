@@ -3,7 +3,7 @@ const { publicMessage } = require('../utils/publicError');
 const jwt = require('jsonwebtoken');
 const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
-const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin, refreshNuvioToken, isTokenExpired } = require('../providers/nuvioAuth');
+const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin, isTokenExpired } = require('../providers/nuvioAuth');
 const { makeCreateProvider } = require('../providers');
 const { encrypt, decrypt } = require('../utils/encryption');
 const { canonicalizeManifestUrl } = require('../utils/validation');
@@ -172,8 +172,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
   // Nuvio's identity proof shape is different from Stremio's - a single
   // authKey Stremio re-validates identically on every call vs. a refresh
-  // token that Nuvio ROTATES on use. Proving identity (fresh OAuth exchange,
-  // or a live refreshNuvioToken call) happens at each call site below; this
+  // token that Nuvio ROTATES on use. Proving identity (a fresh OAuth exchange,
+  // or the caller's signed portal session) happens at each call site below; this
   // helper is the shared DB-side half - same USER_NOT_FOUND/USER_NOT_ACTIVE/
   // USER_NOT_IN_GROUP sentinels and the same self-healing re-persist pattern
   // getPublicUser uses for a rotated Stremio authKey, just keyed on
@@ -819,10 +819,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
-  // Validate a Nuvio user session (mirrors /validate) - given userId, loads
-  // that user's own stored refresh token and live-verifies it against Nuvio
-  // (refreshNuvioToken throws if it's been revoked/expired), then re-checks
-  // active/group status the same way getPublicUserNuvio always does.
+  // Validate a Nuvio user session (mirrors /validate) - given userId and the
+  // caller's own portal session token, re-checks active/group status the same
+  // way getPublicUserNuvio always does.
   router.post('/validate-nuvio', async (req, res) => {
     try {
       const { userId } = req.body;
@@ -857,14 +856,12 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
       const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq);
 
-      let refreshed;
-      try {
-        refreshed = await refreshNuvioToken(storedRefreshToken);
-      } catch (err) {
-        return res.status(401).json({ error: 'Validation failed', message: 'Invalid or expired Nuvio session' });
-      }
-
-      const validatedUser = await getPublicUserNuvio(user.nuvioUserId, refreshed.refresh_token || storedRefreshToken, req, userId);
+      // The signed portal session above already proves who this is. Refreshing
+      // here spent Nuvio's single-use refresh token on every page load, outside
+      // the provider's shared refresh (providers/nuvio.js), so two quick
+      // reloads - or a reload during a sync - left one of them holding a dead
+      // token and signed the person out.
+      const validatedUser = await getPublicUserNuvio(user.nuvioUserId, storedRefreshToken, req, userId);
 
       res.json({
         success: true,

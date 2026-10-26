@@ -1,0 +1,33 @@
+# What a docker build may see. Local credentials, data and logs never belong in an
+# image, and the image installs its own Linux node_modules - a copy from this
+# machine would overwrite them at the builder's COPY . .
+.env
+.env.*
+!.env.example
+data
+backup
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.backup
+*.bak
+
+# Built inside the image
+**/node_modules
+**/.next
+**/*.tsbuildinfo
+client/.build-stamp
+prisma/schema.prisma
+
+# Not part of the app
+.git
+.mockups
+logs
+**/*.log
+coverage
+tmp
+temp
+Thumbs.db

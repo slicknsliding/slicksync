@@ -928,7 +928,11 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
       const { resolveServerConfigForAccount } = require('../providers/supabase')
       const serverConfig = await resolveServerConfigForAccount(prisma, invitation.accountId)
       const status = await pollNuvioTvLogin(code, deviceNonce, anonToken, serverConfig)
-      if (status?.status !== 'authorized') return res.json({ status: status?.status || 'pending' })
+      // Nuvio's status is opaque, as at sign-in: 'pending' means keep waiting
+      // and the exchange, not one particular label, proves approval. A dead
+      // code is said as such rather than sent to the exchange.
+      if (!status?.status || status.status === 'pending') return res.json({ status: 'pending' })
+      if (['expired', 'cancelled', 'canceled', 'denied', 'rejected'].includes(status.status)) return res.json({ status: status.status })
 
       // Approved on the device. The exchange happens here rather than in the
       // browser so the refresh token never leaves the server; the request

@@ -109,9 +109,6 @@ Thumbs.db
 
 *.tsbuildinfo
 
-# Docker
-.dockerignore
-
 # Prisma
 prisma/migrations/dev.db*
 

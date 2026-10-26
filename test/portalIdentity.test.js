@@ -339,3 +339,24 @@ for (const type of ['public', 'private']) {
     assert.deepEqual(calls, ['https://addon.example.com/manifest.json'])
   })
 }
+
+// A page reload restores the session through /validate-nuvio. It used to spend
+// Nuvio's single-use refresh token each time, so two reloads close together
+// signed the person out.
+test('restoring a Nuvio session never spends the refresh token', async () => {
+  const before = data.user.rows.find((u) => u.id === 'nA').nuvioRefreshToken
+  const previousFetch = global.fetch
+  let providerCalls = 0
+  global.fetch = async () => { providerCalls++; throw new Error('provider unavailable') }
+  try {
+    const key = session('nA', 'nuvio')
+    const results = await Promise.all([1, 2, 3, 4].map(() => call('POST', '/validate-nuvio', { key, body: { userId: 'nA' } })))
+    for (const r of results) {
+      assert.equal(r.status, 200)
+      assert.equal(jwt.verify(r.body.sessionToken, SECRET).sub, 'nA')
+    }
+    assert.equal(providerCalls, 0)
+    assert.equal(data.user.rows.find((u) => u.id === 'nA').nuvioRefreshToken, before)
+    assert.equal((await call('POST', '/validate-nuvio', { key: 'not-a-session', body: { userId: 'nA' } })).status, 401)
+  } finally { global.fetch = previousFetch }
+})
