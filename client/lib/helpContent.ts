@@ -1351,9 +1351,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['nebula', 'layout mode', 'top nav layout', 'glass panel', 'account button', 'profile picture position', 'move account menu'],
     answer: 'Themes → Layout. Nebula is an alternate top-nav, glass-panel layout you can pick independently of your color Theme - it\'s a structural choice, not another color option.',
     details: [
-      'Under the layouts, "Account button" picks where your picture and account menu sit. Top Navi: in the top bar (the default, at its right end) or floating at the bottom left. Original: at the top of the sidebar next to the logo (the default) or at its foot.',
-      'Each layout remembers its own choice. On a TV the account button is always in the bar, where the remote can reach it.',
-      'The top bar is one row; on narrower screens, and once you scroll, its links fold behind the menu button next to your picture.',
+      'Top Navi has an "Account button" choice under the layouts: "Floating, bottom left" (the default, a small pill that floats over the page) or "In the top bar" (your picture at the right end of the bar).',
+      'Original keeps the account button at the foot of the sidebar - there is nothing to choose. On a TV the account button is always in the bar, where the remote can reach it.',
     ],
     href: '/themes',
     linkLabel: 'Open Themes',

@@ -26,7 +26,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
-import { AccountPlacementContext, useAccountPlacement } from '@/lib/layout-mode';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -151,9 +150,6 @@ function NavSection({ label, children, delay = 0 }: NavSectionProps) {
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  // Choice A puts the account picture beside the logo, B keeps it at the foot.
-  const placement = useAccountPlacement('current');
-  const accountAtTop = placement === 'sideTop';
   const [accountInfo, setAccountInfo] = useState<{ username?: string; email?: string | null; uuid?: string | null; linkedProvider?: 'stremio' | 'nuvio' | null; avatarUrl?: string | null } | null>(null);
 
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
@@ -197,7 +193,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   let globalIndex = 0;
 
   return (
-    <AccountPlacementContext.Provider value={placement}>
+    <>
       {/* Mobile Backdrop */}
       <AnimatePresence>
         {isOpen && (
@@ -239,49 +235,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </button>
         </div>
 
-        {/* Account at the top: a smaller logo with the account picture beside it,
-            on the drawer too. The account menu anchors to this row, so it
-            drops down from the sidebar's left edge. */}
-        {accountAtTop && (
-          <div
-            className="relative flex items-center gap-2 px-4 py-4 md:py-5"
-            style={{ borderBottom: '1px solid var(--color-surface-border)' }}
-          >
-            <Link href="/" aria-label="SlickSync home" className="flex items-center gap-2.5 min-w-0">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shrink-0"
-                style={{
-                  background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)',
-                  boxShadow: '0 6px 18px -6px var(--color-primary)',
-                }}
-              >
-                <SlickSyncLogo className="w-7 h-7" />
-              </div>
-              <span
-                className="text-xl font-bold font-display tracking-tight truncate"
-                style={{
-                  background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}
-              >
-                SlickSync
-              </span>
-            </Link>
-            <div className="ml-auto shrink-0">
-              <PanelSwitcher
-                mode="admin"
-                userInfo={accountInfo}
-                onLogout={handleLogout}
-                variant="compact"
-              />
-            </div>
-          </div>
-        )}
-
         {/* Logo */}
-        {!accountAtTop && (
         <div
           className="p-5 hidden md:block"
           style={{ borderBottom: '1px solid var(--color-surface-border)' }}
@@ -313,7 +267,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             </div>
           </Link>
         </div>
-        )}
 
         {/* Navigation Sections. overscroll-contain stops scroll chaining -
             without it, dragging past this list's own top/bottom edge (or
@@ -364,7 +317,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             group, alongside Tasks/Settings/Themes/Changelog) instead of
             floating here as its own badge - one stable spot instead of a
             positioning pass on every layout. */}
-        {!accountAtTop && (
         <div
           className="p-3 flex flex-col items-start gap-2"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
@@ -377,8 +329,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             />
           </div>
         </div>
-        )}
       </motion.aside>
-    </AccountPlacementContext.Provider>
+    </>
   );
 }

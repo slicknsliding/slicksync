@@ -383,23 +383,20 @@ const LayoutModeCard = memo(function LayoutModeCard({
   );
 });
 
-// Account button card - where the picture and account menu live. The two
-// tiles follow whichever layout is picked above (Top Navi: in the bar or a
-// floating pill; Original: top of the sidebar or its foot), and each layout
-// remembers its own. Same drawn-preview language as LayoutModeCard: shape, not
-// colour.
+// Account button card - where the picture and account menu live in Top Navi:
+// at the right end of the bar, or a floating pill bottom left (the default).
+// Original always keeps it at the foot of the sidebar, so it has no choice.
+// Same drawn-preview language as LayoutModeCard: shape, not colour.
 const AccountButtonCard = memo(function AccountButtonCard({
-  layoutId,
   choice,
   isSelected,
   onSelect,
 }: {
-  layoutId: LayoutModeId;
   choice: AccountButtonId;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const meta = accountButtonMeta[layoutId][choice];
+  const meta = accountButtonMeta[choice];
   const dot = (size: number) => (
     <span
       className="rounded-full shrink-0"
@@ -428,63 +425,30 @@ const AccountButtonCard = memo(function AccountButtonCard({
         className="relative w-full h-20 rounded-lg mb-2 overflow-hidden border border-default"
         style={{ backgroundColor: 'var(--color-bg)' }}
       >
-        {layoutId === 'current' ? (
-          <div className="flex h-full">
-            <div className="w-[34px] h-full flex flex-col gap-1 p-1.5" style={{ backgroundColor: 'var(--color-surface)' }}>
-              {choice === 'a' ? (
-                <div className="flex items-center gap-[3px]">
-                  <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
-                  {dot(8)}
-                </div>
-              ) : (
-                <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
-              )}
-              <div className="w-full h-1 rounded-full opacity-30 bg-white" />
-              <div className="w-full h-1 rounded-full opacity-30 bg-white" />
-              {choice === 'b' && (
-                <div className="mt-auto flex items-center gap-[3px]">
-                  {dot(9)}
-                  <div className="h-[3px] flex-1 rounded-sm opacity-35 bg-white" />
-                </div>
-              )}
-            </div>
-            <div className="flex-1 p-2 flex flex-col gap-1.5">
-              <div className="flex gap-1">
-                <div className="w-6 h-6 rounded" style={{ backgroundColor: 'var(--color-surface)' }} />
-                <div className="w-6 h-6 rounded" style={{ backgroundColor: 'var(--color-surface)' }} />
-              </div>
-              <div className="flex-1 rounded mt-1" style={{ backgroundColor: 'var(--color-surface)' }} />
-            </div>
+        <div className="h-full flex flex-col p-1.5 gap-1.5">
+          <div className="relative h-5 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface)' }}>
+            <div className="w-6 h-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))' }} />
+            {choice === 'a' && <span className="absolute right-1">{dot(9)}</span>}
           </div>
-        ) : (
-          <div className="h-full flex flex-col p-1.5 gap-1.5">
-            <div className="h-4 rounded-full flex items-center gap-1 px-1.5" style={{ backgroundColor: 'var(--color-surface)' }}>
-              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))' }} />
-              <div className="w-3 h-1 rounded-full opacity-40 bg-white" />
-              <div className="w-3 h-1 rounded-full opacity-40 bg-white" />
-              <div className="w-3 h-1 rounded-full opacity-40 bg-white" />
-              {choice === 'a' && <span className="ml-auto">{dot(9)}</span>}
-            </div>
-            <div className="flex-1 flex gap-1">
-              <div className="flex-1 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.8 }} />
-              <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
-              <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
-            </div>
-            {choice === 'b' && (
-              <span
-                className="absolute left-2 bottom-2 w-5 h-3.5 rounded-full flex items-center pl-[3px]"
-                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
-              >
-                {dot(7)}
-              </span>
-            )}
+          <div className="flex-1 flex gap-1">
+            <div className="flex-1 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.8 }} />
+            <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+            <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
           </div>
-        )}
+          {choice === 'b' && (
+            <span
+              className="absolute left-2 bottom-2 w-5 h-3.5 rounded-full flex items-center pl-[3px]"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+            >
+              {dot(7)}
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="font-medium text-sm text-default">
         {meta.name}
-        {choice === 'a' && (
+        {choice === 'b' && (
           <span className="ml-1.5 align-[1px] text-[10.5px] font-semibold px-1.5 rounded-full bg-secondary-muted text-secondary">Default</span>
         )}
       </p>
@@ -506,7 +470,7 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
     saveCustomTheme, updateCustomTheme, deleteCustomTheme,
     previewCustom, cancelPreview,
   } = useTheme();
-  const { layoutMode, setLayoutMode, accountButtons, setAccountButton } = useLayoutMode();
+  const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
   const { viewMode, setViewMode } = useDefaultViewMode();
   // Confirmation modal for deleting a saved custom theme.
   const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
@@ -646,28 +610,30 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
               ))}
             </div>
 
-            {/* Account button - its two tiles follow the layout picked above. */}
-            <div className="mt-5 mb-2 flex flex-wrap items-baseline gap-x-2">
-              <h4 className="text-sm font-semibold text-default">Account button</h4>
-              <p className="text-xs text-muted">
-                Where your picture and account menu live, for {layoutModeMeta[layoutMode].name}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {accountButtonIds.map((id) => (
-                <AccountButtonCard
-                  key={`${layoutMode}-${id}`}
-                  layoutId={layoutMode}
-                  choice={id}
-                  isSelected={accountButtons[layoutMode] === id}
-                  onSelect={() => setAccountButton(layoutMode, id)}
-                />
-              ))}
-            </div>
-            <p className="flex items-center gap-2 text-xs text-muted mt-2.5">
-              <InformationCircleIcon className="w-4 h-4 shrink-0 text-secondary" />
-              <span>The two choices follow the layout picked above, and each layout remembers its own. On a TV the account button is always the first one, because a remote cannot reach a floating pill.</span>
-            </p>
+            {/* Account button - Top Navi only. Original always keeps it at the
+                foot of the sidebar, so there is nothing to choose there. */}
+            {layoutMode === 'nebula' && (
+              <>
+                <div className="mt-5 mb-2 flex flex-wrap items-baseline gap-x-2">
+                  <h4 className="text-sm font-semibold text-default">Account button</h4>
+                  <p className="text-xs text-muted">Where your picture and account menu live in Top Navi</p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {[...accountButtonIds].reverse().map((id) => (
+                    <AccountButtonCard
+                      key={id}
+                      choice={id}
+                      isSelected={accountButton === id}
+                      onSelect={() => setAccountButton(id)}
+                    />
+                  ))}
+                </div>
+                <p className="flex items-center gap-2 text-xs text-muted mt-2.5">
+                  <InformationCircleIcon className="w-4 h-4 shrink-0 text-secondary" />
+                  <span>On a TV the account button is always in the bar, because a remote cannot reach a floating pill.</span>
+                </p>
+              </>
+            )}
 
             {/* Moved here from Settings -> Other Settings - a display
                 arrangement choice belongs alongside Layout, not off on its

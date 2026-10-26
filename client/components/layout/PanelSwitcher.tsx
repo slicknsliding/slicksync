@@ -71,15 +71,13 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  // Where the host (top bar, sidebar) put this button decides which way its
-  // menu opens: from the top bar or the head of the sidebar it drops down; from
-  // the floating pill or the foot of the sidebar it opens upward. Callers
-  // outside those hosts keep the props they passed.
+  // Where the top bar put this button decides which way its menu opens: from
+  // the bar it drops down; from the floating pill it opens upward. The sidebar
+  // foot (no host) keeps the props it passed.
   const placement = useContext(AccountPlacementContext);
   const inBar = placement === 'bar';
-  const atSidebarTop = placement === 'sideTop';
-  const dropdownPosition = inBar || atSidebarTop ? 'down' : placement === 'float' || placement === 'sideFoot' ? 'up' : dropdownPositionProp;
-  const align = inBar ? 'right' : atSidebarTop || placement === 'float' ? 'left' : alignProp;
+  const dropdownPosition = inBar ? 'down' : placement === 'float' ? 'up' : dropdownPositionProp;
+  const align = inBar ? 'right' : placement === 'float' ? 'left' : alignProp;
 
   // Close menu when clicking outside. pointerdown, not mousedown: iOS Safari
   // sends no mouse events for a tap on something that isn't itself clickable.
@@ -175,18 +173,15 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
   const targetPanel = isAdmin ? 'User' : 'Admin';
   const TargetIcon = isAdmin ? UserIcon : ShieldCheckIcon;
   const isCompact = variant === 'compact';
-  // In the bar or at the head of the sidebar the picture is round; the floating
-  // pill and the sidebar foot keep the rounded square they always had.
-  const roundPicture = inBar || atSidebarTop;
-  const pictureSize = roundPicture ? 'md' : 'sm';
-  const pictureBox = roundPicture ? 'w-10 h-10' : 'w-8 h-8';
-  const pictureShape = roundPicture ? 'rounded-full' : 'rounded-lg';
+  // In the bar the picture is round; the floating pill and the sidebar foot
+  // keep the rounded square they always had.
+  // (smaller on a TV, where the bar is compact)
+  const pictureSize = inBar && !isTV ? 'md' : 'sm';
+  const pictureBox = inBar ? (isTV ? 'w-7 h-7' : 'w-10 h-10') : 'w-8 h-8';
+  const pictureShape = inBar ? 'rounded-full' : 'rounded-lg';
 
   return (
-    // At the head of the sidebar the menu anchors to the whole header row
-    // (its own relative box), not to the small picture, so it can open at the
-    // sidebar's left edge instead of hanging off the picture.
-    <div className={atSidebarTop ? '' : 'relative'} ref={menuRef}>
+    <div className="relative" ref={menuRef}>
       {/* Trigger Button */}
       {tv(() => setIsOpen((o) => !o), (
       <motion.button
@@ -201,15 +196,13 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
         tabIndex={isTV ? -1 : undefined}
         className={`${inBar
           // In the bar: a round picture in a solid pill (no blur), at least 44px to hit.
-          ? 'flex items-center gap-2 min-w-11 min-h-11 pl-1 pr-1 min-[1920px]:pr-2.5 rounded-2xl transition-all duration-200'
-          : atSidebarTop
-          ? 'flex items-center gap-1 min-w-11 min-h-11 pl-1 pr-2 rounded-2xl transition-all duration-200'
+          ? `flex items-center gap-2 ${isTV ? 'p-0.5 rounded-xl' : 'min-w-11 min-h-11 pl-1 pr-1 min-[1920px]:pr-2.5 rounded-2xl'} transition-all duration-200`
           : isCompact
           ? 'flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200'
           : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200'} ${isOpen ? 'panel-btn-open' : 'panel-btn'}`}
         style={{
           color: 'var(--color-text)',
-          ...(inBar || atSidebarTop ? { background: isOpen ? undefined : 'var(--color-surface)', border: '1px solid var(--color-surface-border)' } : {}),
+          ...(inBar ? { background: isOpen ? undefined : 'var(--color-surface)', border: '1px solid var(--color-surface-border)' } : {}),
         }}
       >
         {/* Current Mode Icon */}
@@ -259,7 +252,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
         </div>
 
         {/* In the bar the name only shows when there is room for it (wide screens) */}
-        {inBar && (
+        {inBar && !isTV && (
           <>
             <div className="hidden min-[1920px]:block text-left min-w-0 max-w-[11rem]">
               <p className="text-sm font-medium truncate">
@@ -275,14 +268,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             />
           </>
         )}
-        {atSidebarTop && (
-          <ChevronDownIcon
-            className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-            style={{ color: 'var(--color-text-muted)' }}
-          />
-        )}
 
-        {!collapsed && !isCompact && !roundPicture && (
+        {!collapsed && !isCompact && !inBar && (
           <>
             <div className="flex-1 text-left min-w-0">
               <p className="text-sm font-medium truncate">
@@ -313,7 +300,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             transition={{ duration: 0.15 }}
             className={
               `popup-panel absolute rounded-xl overflow-hidden z-50 ${dropdownPosition === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} ${
-                isCompact || atSidebarTop ? `${align === 'left' ? 'left-0' : 'right-0'} w-72 max-w-[calc(100vw-1.5rem)]` : 'left-0 right-0'
+                isCompact ? `${align === 'left' ? 'left-0' : 'right-0'} w-72 max-w-[calc(100vw-1.5rem)]` : 'left-0 right-0'
               }`
             }
           >

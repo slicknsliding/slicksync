@@ -29,17 +29,17 @@ const FLOAT_GAP = 8;
 // Fallback pin position for layouts with no `data-nebula-topbar` bar to
 // measure against (the sidebar Header, which has its own fixed chrome).
 const FALLBACK_FLOAT_TOP = 12;
-// Wherever there is a Nebula bar, the cluster docks INSIDE its row, just
-// left of the menu button / account picture (data-nebula-end), rather than
-// floating under it: the floating pair sat over the page's own controls - a
-// person's pills, the Users Add button, Discover's Show and Sort - and clicks
-// meant for them hit the bell instead. Phones first, then the PC too, in the
-// same spot.
-// Docked, the gap left between the cluster and that end group.
-const DOCK_END_GAP = 4;
-// Docked with nothing to sit beside, how far the cluster sits in from the
-// bar card's right edge: into the card's padding.
+// Wherever there is a Nebula bar, the cluster docks INSIDE its logo row,
+// at the far end from the hamburger, rather than floating under it: the
+// floating pair sat over the page's own controls - a person's pills, the
+// Users Add button, Discover's Show and Sort - and clicks meant for them hit
+// the bell instead. Phones first, then the PC too, in the same spot.
+// Docked, how far the cluster sits in from the bar card's right edge: into
+// the card's padding, so it isn't crowding the centred logo.
 const DOCK_EDGE_INSET = 8;
+// Docked beside the account picture (account in the bar): the gap left between
+// the cluster and it.
+const DOCK_END_GAP = 4;
 
 // The topbar's right-hand cluster: command palette, then notifications.
 // Grouped into one component because the resume-tour prompt deliberately
@@ -132,18 +132,12 @@ export function TopbarActions({
     // runs on each scroll frame, and returning a fresh object each time
     // would re-render the whole cluster (and the bell's subtree) for the
     // entire length of a scroll even when nothing moved.
-    // The bar's row holds the page links inline while they are showing (wide
-    // screen, top of the page), so there is no room beside the account
-    // picture for the cluster: dock only once those links have collapsed
-    // behind the menu button (under 1280px, or scrolled), and until then let
-    // the inline controls scroll away behind the bar with their heading.
-    const inlineNav = bar?.querySelector('[data-nebula-inline-nav]');
-    const canDock = !bar || !inlineNav || inlineNav.getClientRects().length === 0;
-    if (natural.top < floatTop && canDock) {
-      // Centred on the bar's row, just left of its menu button / account.
+    if (natural.top < floatTop) {
+      // Centred on the logo row, near the bar card's right edge.
       const row = document.querySelector('[data-nebula-logo-row]');
       const rr = row?.getBoundingClientRect();
       const card = row?.parentElement?.getBoundingClientRect();
+      // With the account in the bar, dock just left of it instead.
       const end = row?.querySelector('[data-nebula-end]')?.getBoundingClientRect();
       const edge = end && end.width > 0
         ? end.left - DOCK_END_GAP
@@ -198,19 +192,7 @@ export function TopbarActions({
     // containers, not just the window.
     window.addEventListener('scroll', onChange, { passive: true, capture: true });
     window.addEventListener('resize', onChange);
-    // Collapsing the links, opening the menu or crossing a width breakpoint
-    // moves the dock target without a scroll event, so follow the bar's own
-    // geometry and contents too.
-    const bar = document.querySelector('[data-nebula-topbar]');
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onChange);
-    const mutationObserver = new MutationObserver(onChange);
-    if (bar) {
-      resizeObserver?.observe(bar);
-      mutationObserver.observe(bar, { attributes: true, childList: true, subtree: true });
-    }
     return () => {
-      resizeObserver?.disconnect();
-      mutationObserver.disconnect();
       cancelAnimationFrame(frame);
       window.removeEventListener('scroll', onChange, { capture: true } as EventListenerOptions);
       window.removeEventListener('resize', onChange);
@@ -260,7 +242,6 @@ export function TopbarActions({
   const buttons = (
     <div
       ref={buttonsRef}
-      data-topbar-actions={pinned ? 'pinned' : 'inline'}
       className={`flex items-center ${floating ? 'gap-2' : 'gap-0.5'}`}
       // Above the bar (z-30) so docked buttons show on it.
       style={pinned ? { position: 'fixed', top: pinned.top, right: pinned.right, zIndex: 35 } : undefined}
