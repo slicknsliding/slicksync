@@ -270,8 +270,8 @@ export default function ListsPage() {
 
   // Jellyfin collections (Jellyfin servers and AIOStreams), next to Nuvio's: which catalogs show
   // up as collections in AIOStreams' apps and on a household's own Jellyfin
-  // server. Jellyfin's mark and colours, with "AIOStreams" in AIOStreams' own
-  // lavender and indigo.
+  // server. Jellyfin's mark and colours; AIOStreams runs a Jellyfin server, so
+  // "Jellyfin" covers both.
   const aiostreamsCollectionsButton = (
     <button
       type="button"
@@ -290,9 +290,7 @@ export default function ListsPage() {
         <JellyfinLogo />
       </span>
       <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate">
-        <span style={{ background: 'linear-gradient(90deg, #C58BDA, #4CC3EE)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Jellyfin</span>{' '}
-        <span style={{ color: 'rgb(212, 208, 255)' }}>| AIO</span>
-        <span style={{ color: 'rgb(159, 146, 255)' }}>Streams</span>
+        <span style={{ background: 'linear-gradient(90deg, #C58BDA, #4CC3EE)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Jellyfin</span>
       </span>
     </button>
   );
