@@ -21,7 +21,9 @@
       "Popups, menus and chart tooltips are solid and easier to read, with clearer edges. Faint text and the text on accent buttons are easier to read in every theme, and the bright themes keep their colours.",
       "\"Jellyfin\" replaces \"Jellyfin | AIOStreams\" wherever you pick how someone signs in, with a note that it is also for AIOStreams and AIOMetadata. Catalogs has a Jellyfin Collections pill, and the Jellyfin badge wears Jellyfin's own colours.",
       "Discover starts on Both, so a search or a browse finds movies and shows alike.",
-      "The Graveyard's option to also remove a title from someone's Stremio or Jellyfin library is a clearly marked switch: while it is on it says so beside the title, Wipe reads \"Wipe + app\", and the confirm names the person and the app."
+      "The Graveyard's option to also remove a title from someone's Stremio or Jellyfin library is a clearly marked switch: while it is on it says so beside the title, Wipe reads \"Wipe + app\", and the confirm names the person and the app.",
+      "Now Playing shows about where someone is while it plays (\"About 19:04 of 1:35:50\"), and the exact spot with Resume once they pause or stop. Nuvio cards on Now Playing and Continue Watching name the profile.",
+      "Discover's Highest rated is in score order, by the same IMDb score the title's own page shows - and the poster badges show that score too."
     ],
     "bugFixes": [
       "On an AIOStreams with its own sign-in page switched on, adding a household user, changing a PIN or giving someone their own sign-in address failed with \"Invalid addon password\". On the AIOStreams your SlickSync already signs in to for Now Playing, they work again with nothing more to enter. On any other one, they open that AIOStreams' own page - the only place it takes them - and anything else it refuses says why.",
@@ -44,7 +46,14 @@
       "A member's own picture shows in the top bar.",
       "Inside a dialog, the line under the selected tab sits under the right tab, and two open dialogs no longer share a title.",
       "Sync Now on a member's own page failed with an error. It syncs.",
-      "Someone who is the only person in their group could not load their settings, and their page said they had no group. It loads, with their group."
+      "Someone who is the only person in their group could not load their settings, and their page said they had no group. It loads, with their group.",
+      "A person's page no longer signs them out when the connection drops or the server has a hiccup - only when their sign-in has really ended.",
+      "A person's Home names their titles instead of showing codes like tt2661044 when the library hasn't loaded yet.",
+      "Cleared notifications stay cleared, even if a refresh was already on its way.",
+      "In Discover, searching by title keeps to the genre you picked.",
+      "A Continue Watching card whose episode picture won't load shows the show's artwork instead of an empty box.",
+      "On a phone, the section picker on Settings and Themes no longer sits in a dark box, and the floating account button is round.",
+      "Renaming a device on your page no longer zooms the page in on a phone, renaming is done right on the tile, and removing the device you're using turns its switch off."
     ]
   },
   {
