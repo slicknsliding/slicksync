@@ -8,6 +8,8 @@ export type PageArrangement = {
   order?: string[];
   hidden?: string[];
   folded?: string[];
+  /** Sections a page folds by default that were opened. */
+  unfolded?: string[];
 };
 
 export type MenuArrangement = {
@@ -112,7 +114,7 @@ export function withHidden(page: PageArrangement | undefined, key: string, hidde
 }
 
 export function withFolded(page: PageArrangement | undefined, key: string, folded: boolean): PageArrangement {
-  return { ...page, folded: toggle(page?.folded, key, folded) };
+  return { ...page, folded: toggle(page?.folded, key, folded), unfolded: toggle(page?.unfolded, key, !folded) };
 }
 
 /** Drops empty pieces so a page back at its default stores nothing. */
@@ -121,5 +123,6 @@ export function tidyPage(page: PageArrangement): PageArrangement | undefined {
   if (page.order?.length) out.order = page.order;
   if (page.hidden?.length) out.hidden = page.hidden;
   if (page.folded?.length) out.folded = page.folded;
+  if (page.unfolded?.length) out.unfolded = page.unfolded;
   return Object.keys(out).length ? out : undefined;
 }

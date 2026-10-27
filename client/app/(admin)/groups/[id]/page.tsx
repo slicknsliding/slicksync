@@ -11,6 +11,9 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { displayEmail } from '@/lib/providers';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { GroupV2 } from '@/components/v2/GroupV2';
 import { Button, Card, Avatar, AvatarColorSwatches, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -355,6 +358,9 @@ const GroupContentBreakdownChart = memo(function GroupContentBreakdownChart({
 // Sortable Addon Item Component with clean draggable card design
 export default function GroupDetailPage() {
   const { layoutMode } = useLayoutMode();
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
   const params = useParams();
   const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -881,6 +887,67 @@ export default function GroupDetailPage() {
     addon => !addons.some(groupAddon => groupAddon.id === addon.id)
   );
 
+  // v2's numbers strip: the last seven days of the same data the charts use.
+  const v2Watch = useMemo(() => {
+    const cutoff = new Date(Date.now() - 6 * 86400000);
+    const cutKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+    const perUser = new Map<string, number>();
+    let total = 0;
+    for (const day of watchTimeData) {
+      if (day.date < cutKey) continue;
+      for (const u of groupUsers) {
+        const m = Number(day[u.id]) || 0;
+        total += m;
+        perUser.set(u.id, (perUser.get(u.id) || 0) + m);
+      }
+    }
+    let top: { name: string; minutes: number } | null = null;
+    for (const u of groupUsers) {
+      const m = perUser.get(u.id) || 0;
+      if (m > 0 && (!top || m > top.minutes)) top = { name: u.username || u.name || 'Unknown', minutes: m };
+    }
+    let movies = 0;
+    let shows = 0;
+    for (const day of contentBreakdownData) {
+      if (day.date < cutKey) continue;
+      for (const u of groupUsers) {
+        movies += Number(day[`${u.id}_movies`]) || 0;
+        shows += Number(day[`${u.id}_series`]) || 0;
+      }
+    }
+    return {
+      weekMinutes: total,
+      top,
+      moviePercent: movies + shows > 0 ? Math.round((movies / (movies + shows)) * 100) : null,
+    };
+  }, [watchTimeData, contentBreakdownData, groupUsers]);
+
+  const chartsGrid = (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {isLoadingCharts ? (
+        <div className="col-span-2 text-center py-16">
+          <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
+            <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
+          </div>
+          <p className="text-muted">Loading chart data...</p>
+        </div>
+      ) : watchTimeData.length > 0 && groupUsers.length > 0 ? (
+        <>
+          <GroupWatchTimeChart data={watchTimeData} users={groupUsers} />
+          <GroupContentBreakdownChart data={contentBreakdownData} users={groupUsers} />
+        </>
+      ) : (
+        <div className="col-span-2 text-center py-16">
+          <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
+            <ChartBarIcon className="w-8 h-8 text-muted" />
+          </div>
+          <h3 className="text-lg font-medium mb-2 text-default">No Activity Data</h3>
+          <p className="text-muted">Watch time data will appear once users start streaming content.</p>
+        </div>
+      )}
+    </div>
+  );
+
   const detailActions = (
     <div className="flex items-center gap-3 flex-wrap justify-end">
       <div className="flex items-center gap-2">
@@ -929,8 +996,8 @@ export default function GroupDetailPage() {
               className="text-xl font-semibold"
             />
           }
-          subtitle={isLoading ? '' : (group?.description || '')}
-          actions={detailActions}
+          subtitle={v2 ? '' : (isLoading ? '' : (group?.description || ''))}
+          actions={v2 ? undefined : detailActions}
         />
       )}
 
@@ -938,11 +1005,48 @@ export default function GroupDetailPage() {
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
-          title={isLoading ? 'Loading...' : (group?.name || 'Group')}
-          subtitle={isLoading ? 'Groups' : (group?.description || 'Groups')}
-          actions={detailActions}
+          title={v2 ? 'Groups' : (isLoading ? 'Loading...' : (group?.name || 'Group'))}
+          subtitle={v2 ? undefined : (isLoading ? 'Groups' : (group?.description || 'Groups'))}
+          actions={v2 ? undefined : detailActions}
         />
       )}
+      {v2 && (
+        <>
+          <GroupV2
+            group={group}
+            isLoading={isLoading}
+            people={groupUsers}
+            addons={addons}
+            watch={v2Watch}
+            charts={chartsGrid}
+            isSyncing={isSyncing}
+            syncingUsers={syncingUsers}
+            usersSyncing={usersSyncing}
+            onSync={handleSync}
+            onEdit={() => setIsEditModalOpen(true)}
+            onChangePicture={() => setShowAvatarPicker(true)}
+            onToggleActive={handleToggleActive}
+            onClearMembers={() => setIsClearMembersModalOpen(true)}
+            onClearAddons={() => setIsClearAddonsModalOpen(true)}
+            onDelete={() => setIsDeleteModalOpen(true)}
+            onAddPerson={() => setIsAddMemberModalOpen(true)}
+            onAddAddon={() => setIsAddAddonModalOpen(true)}
+            onSyncUser={handleSyncUser}
+            onRemoveUser={handleRemoveUser}
+            onRemoveAddon={handleRemoveAddon}
+            onReorder={handleDragEnd}
+          />
+          <AvatarPickerModal
+            isOpen={showAvatarPicker}
+            onClose={() => setShowAvatarPicker(false)}
+            name={group?.name || 'Group'}
+            currentAvatarUrl={group?.avatarUrl}
+            currentColorIndex={group?.colorIndex ?? 0}
+            onSave={handleAvatarSave}
+          />
+        </>
+      )}
+      {!v2 && (<>
         {/* Group Hero Section */}
         <PageSection className="mb-8">
           <Card padding="lg">
@@ -1340,6 +1444,7 @@ export default function GroupDetailPage() {
             )}
           </div>
         </PageSection>
+      </>)}
       </div>
       </div>
 

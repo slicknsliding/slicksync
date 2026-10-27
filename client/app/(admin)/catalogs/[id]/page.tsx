@@ -17,6 +17,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { CatalogV2Head, CatalogV2Toolbar } from '@/components/v2/CatalogV2';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry, SmartCatalogRule } from '@/lib/api';
@@ -208,6 +211,11 @@ type SortKey = typeof SORT_OPTIONS[number]['key'];
 // IS a quick preview, unlike the list itself.
 export default function ListDetailPage() {
   const { layoutMode } = useLayoutMode();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const [searchQuery, setSearchQuery] = useState('');
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -298,13 +306,18 @@ export default function ListDetailPage() {
   const { watchedStatus, toggleWatched } = useWatchedStatusBatch((list?.items || []).map((i) => i.id), enableWatchedIndicators);
 
   const ratingsById = useRatingsBatch((list?.items || []).map((i) => i.id));
-  const sortedItems = !list ? [] : sortBy === 'default' ? list.items : [...list.items].sort((a, b) => {
+  const sortedAll = !list ? [] : sortBy === 'default' ? list.items : [...list.items].sort((a, b) => {
     if (sortBy === 'title') return a.name.localeCompare(b.name);
     if (sortBy === 'year-desc') return (Number(b.year) || 0) - (Number(a.year) || 0);
     if (sortBy === 'year-asc') return (Number(a.year) || 0) - (Number(b.year) || 0);
     const ratingOf = (i: CustomListItem) => parseFloat(ratingsById[i.id]?.imdbRating || '0') || 0;
     return ratingOf(b) - ratingOf(a);
   });
+
+  // v2's "Find a title": filters by name only; empty query (always, in
+  // Classic) leaves the list untouched.
+  const searchTerm = v2 ? searchQuery.trim().toLowerCase() : '';
+  const sortedItems = searchTerm ? sortedAll.filter((i) => i.name.toLowerCase().includes(searchTerm)) : sortedAll;
 
   const load = useCallback(() => {
     setIsLoading(true);
@@ -764,7 +777,7 @@ export default function ListDetailPage() {
   // itemsJson order, which reads as broken the next time sort resets to
   // "List order". Also off during select mode so a drag gesture can't
   // fight with tap-to-select.
-  const canReorder = sortBy === 'default' && !selectMode && sortedItems.length > 1 && !!list?.isOwner;
+  const canReorder = sortBy === 'default' && !selectMode && !searchTerm && sortedItems.length > 1 && !!list?.isOwner;
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!list || !canReorder) return;
@@ -1014,6 +1027,10 @@ export default function ListDetailPage() {
     </div>
   ) : backButton;
 
+  // v2 identity block (cover, name, pills, facts, buttons) once the catalog
+  // has loaded; loading / not-found keep the plain heading.
+  const v2Head = v2 && !!list && !isLoading && !notFound;
+
   return (
     <>
       {layoutMode !== 'nebula' && (
@@ -1024,15 +1041,39 @@ export default function ListDetailPage() {
               className="text-xl font-semibold"
             />
           }
-          subtitle={subtitle}
-          actions={detailActions}
+          subtitle={v2Head ? '' : subtitle}
+          actions={v2Head ? backButton : detailActions}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && (
-          <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
+          v2Head
+            ? <NebulaPageHeading title="Catalogs" leading={backButton} />
+            : <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
+        )}
+
+        {v2Head && list && (
+          <CatalogV2Head
+            list={list}
+            coverStyle={coverColorStyle}
+            handlers={{
+              onSuggest: handleOpenSuggest,
+              onRename: () => { setRenameValue(list.name); setRenaming(true); },
+              onCoverArt: () => setShowCoverPicker(true),
+              onContentRating: openPolicyModal,
+              onSmartRule: () => setSmartOpen(true),
+              onRefresh: handleOpenRefresh,
+              onRestoreRemoval: handleRestoreRemoval,
+              onToggleShared: handleToggleShared,
+              onDelete: () => setDeleting(true),
+              onShareCode: () => setShowShareCode(true),
+              onPublish: openShareLink,
+              onExportMdblist: () => setShowExportConfirm(true),
+              onExportSimkl: handleOpenExportSimkl,
+            }}
+          />
         )}
 
         {/* Cover banner - only rendered once a custom cover is actually set;
@@ -1052,7 +1093,7 @@ export default function ListDetailPage() {
             as Modal), while a second copy sits on top at its natural size
             (max-h/max-w-full only, no forced stretch) - crisp because it's
             never upscaled past its own resolution, however small. */}
-        {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
+        {!v2Head && list && (list.coverImageUrl || list.coverColorIndex !== null) && (
           <div className="relative mb-6 h-40 md:h-56 rounded-xl overflow-hidden bg-black">
             {list.coverImageUrl ? (
               <>
@@ -1075,7 +1116,7 @@ export default function ListDetailPage() {
           </div>
         )}
 
-        {list && !list.isOwner && (
+        {!v2Head && list && !list.isOwner && (
           <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-subtle border border-default">
             <ShareIcon className="w-4 h-4 text-muted shrink-0" />
             <p className="text-xs text-muted">
@@ -1105,7 +1146,36 @@ export default function ListDetailPage() {
             </Card>
           ) : list ? (
             <>
-              {list.items.length > 1 && (
+              {v2Head && (
+                <CatalogV2Toolbar
+                  isOwner={list.isOwner}
+                  query={searchQuery}
+                  onQuery={setSearchQuery}
+                  sortControl={(
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted">Sort:</span>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as SortKey)}
+                        aria-label="Sort list"
+                        className="px-2.5 py-1.5 rounded-lg text-[13px] font-medium bg-surface text-default border border-default cursor-pointer"
+                      >
+                        {SORT_OPTIONS.map((opt) => (
+                          <option key={opt.key} value={opt.key}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  selectMode={selectMode}
+                  onEnterSelect={() => setSelectMode(true)}
+                  onExitSelect={exitSelectMode}
+                  totalCount={sortedItems.length}
+                  selectedCount={selectedIds.size}
+                  onSelectAll={() => setSelectedIds(new Set(sortedItems.map((i) => i.id)))}
+                  onDeselectAll={() => setSelectedIds(new Set())}
+                />
+              )}
+              {!v2Head && list.items.length > 1 && (
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     {selectMode && list.isOwner ? (
@@ -1151,6 +1221,9 @@ export default function ListDetailPage() {
                   </div>
                 </div>
               )}
+              {v2Head && searchTerm && sortedItems.length === 0 && (
+                <p className="text-sm text-muted py-6">No title here matches &quot;{searchQuery.trim()}&quot;.</p>
+              )}
               {!selectMode && sortBy !== 'default' && (
                 <p className="text-xs text-subtle mb-3">Switch to List order to drag-reorder titles.</p>
               )}
@@ -1163,7 +1236,9 @@ export default function ListDetailPage() {
                   off-screen until the drag ends. */}
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToParentElement]}>
                 <SortableContext items={sortedItems.map((i) => i.id)} strategy={rectSortingStrategy}>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  <div className={v2Head
+                    ? 'grid grid-cols-3 min-[640px]:grid-cols-4 min-[768px]:grid-cols-6 min-[1700px]:grid-cols-8 min-[2300px]:grid-cols-10 min-[3000px]:grid-cols-12 gap-3'
+                    : 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3'}>
                     {sortedItems.map((item) => (
                       <CatalogGridCard
                         key={item.id}

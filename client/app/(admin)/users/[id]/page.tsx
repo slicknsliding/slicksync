@@ -11,6 +11,11 @@ import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { V2DetailHead, V2Numbers, V2ToolTile, V2Box, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2Button, V2Status, type V2Tone } from '@/components/v2/V2Bits';
+import { PillTool, CopyHistoryTool, TitleRows } from '@/components/v2/PersonV2';
 import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal, ColorPicker, DateTimePicker, InlineEdit, ToggleSwitch, Select, SyncBadge, Input, VersionBadge, ResourceBadge, UserAvatar } from '@/components/ui';
 import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -62,6 +67,10 @@ import {
   LinkIcon,
   MagnifyingGlassIcon,
   ChevronDownIcon,
+  ServerStackIcon,
+  Cog6ToothIcon,
+  UserCircleIcon,
+  ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -400,6 +409,19 @@ export default function UserDetailPage() {
 
   // Data state
   const [user, setUser] = useState<any>(null);
+
+  // Page design v2 (Themes → Page design): the same page and the same handlers,
+  // drawn as a header, a numbers strip and three sections the account can move,
+  // fold and hide. TV keeps Classic.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const hasAddons = !!user && hasAddonList(user);
+  const personKeys = useMemo(() => ['watching', ...(hasAddons ? ['addons'] : []), 'tools'], [hasAddons]);
+  const arrange = usePageArrangement('person', personKeys);
+  const [isTrackingOpen, setIsTrackingOpen] = useState(false);
+  const [isHistoryToolOpen, setIsHistoryToolOpen] = useState(false);
+  const importAnchorRef = useRef<HTMLElement | null>(null);
+  const headRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user?.traxAddonEnabled && !traxManifestUrl) {
@@ -1085,6 +1107,824 @@ export default function UserDetailPage() {
     </div>
   );
 
+  const renderSyncDebug = () => (
+                <div className="p-4 rounded-xl bg-surface border border-yellow-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-yellow-400">Sync Debug Info</h3>
+                    {syncPlan && (
+                      <Badge variant={syncPlan.alreadySynced ? 'success' : 'error'} size="sm">
+                        {syncPlan.alreadySynced ? 'Synced' : 'Unsynced'}
+                      </Badge>
+                    )}
+                  </div>
+                  {syncPlanLoading && <div className="text-sm text-muted">Loading...</div>}
+                  {syncPlanError && <div className="text-sm text-red-400">Error: {syncPlanError}</div>}
+                  {syncPlan && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="text-sm font-medium text-muted mb-2">Current Addons ({syncPlan.currentCount})</h4>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {syncPlan.current.map((addon, idx) => (
+                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
+                                <span className="text-primary">{addon.name}</span>
+                                <div className="text-muted truncate">{addon.transportUrl}</div>
+                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
+                                  FP: {addon.fingerprint.substring(0, 50)}...
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-medium text-muted mb-2">Desired Addons ({syncPlan.desiredCount})</h4>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {syncPlan.desired.map((addon, idx) => (
+                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
+                                <span className="text-green-400">{addon.name}</span>
+                                <div className="text-muted truncate">{addon.transportUrl}</div>
+                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
+                                  FP: {addon.fingerprint.substring(0, 50)}...
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={refreshSyncPlan}
+                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary-solid hover:text-white rounded transition-colors"
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
+                          copyToClipboard(text);
+                          toast.success('Copied to clipboard');
+                        }}
+                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary-solid hover:text-white rounded transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </>
+                  )}
+                </div>
+  );
+
+  const renderTrackingBody = () => (
+    <>
+                <div className="flex items-center justify-between gap-4 flex-wrap py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.simklConnected ? 'bg-success-muted' : 'bg-primary-muted'}`}>
+                      <ArrowPathIcon className={`w-5 h-5 ${user.simklConnected ? 'text-success' : 'text-primary'}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-default">SIMKL</h4>
+                        {user.simklConnected && <Badge variant="success" size="sm">Linked</Badge>}
+                      </div>
+                      <p className="text-sm text-muted">
+                        {user.simklConnected
+                          ? `Watch history syncs both ways with SIMKL${user.simklConnectedAt ? ` since ${new Date(user.simklConnectedAt).toLocaleDateString()}` : ''}.`
+                          : 'Pull watch history from SIMKL and push everything this user watches back to it - a two-way sync, checked every 30 minutes.'}
+                      </p>
+                    </div>
+                  </div>
+                  {user.simklConnected ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      isLoading={isDisconnectingSimkl}
+                      onClick={async () => {
+                        if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
+                        setIsDisconnectingSimkl(true);
+                        try {
+                          await api.disconnectSimkl(user.id);
+                          toast.success('SIMKL disconnected');
+                          setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to disconnect SIMKL');
+                        } finally {
+                          setIsDisconnectingSimkl(false);
+                        }
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                  ) : (
+                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setIsSimklModalOpen(true)}>
+                      Link SIMKL
+                    </Button>
+                  )}
+                </div>
+
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                {/* SlickTrax Addon - SlickSync AS a Stremio addon: one
+                    per-user manifest URL serving Continue Watching /
+                    Watchlist / Catalogs as live rows inside Stremio and
+                    Nuvio. Enabled here, installed by the next sync. */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.traxAddonEnabled ? 'bg-success-muted' : 'bg-primary-muted'}`}>
+                        <PuzzlePieceIcon className={`w-5 h-5 ${user.traxAddonEnabled ? 'text-success' : 'text-primary'}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-default">SlickTrax Addon</h4>
+                          {user.traxAddonEnabled && <Badge variant="success" size="sm">Enabled</Badge>}
+                        </div>
+                        <p className="text-sm text-muted">
+                          {user.traxAddonEnabled
+                            ? 'Continue Watching, Watchlist and Catalogs appear as rows inside Stremio/Nuvio. Kept installed by sync.'
+                            : 'Put SlickTrax inside the apps: Continue Watching, Watchlist and every Catalog as real rows on this user\'s devices.'}
+                        </p>
+                        {user.traxAddonEnabled && traxManifestUrl && (
+                          <button
+                            type="button"
+                            className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
+                            title="Copy manifest URL"
+                            onClick={async () => { (await copyToClipboard(traxManifestUrl)) ? toast.success('Manifest URL copied') : toast.error('Couldn’t copy the link', { line: 'Select the text and copy it by hand.' }); }}
+                          >
+                            {traxManifestUrl}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant={user.traxAddonEnabled ? 'ghost' : 'primary'}
+                      size="sm"
+                      isLoading={isTogglingTrax}
+                      onClick={handleToggleTraxAddon}
+                    >
+                      {user.traxAddonEnabled ? 'Disable' : 'Enable'}
+                    </Button>
+                  </div>
+
+                  {user.traxAddonEnabled && (
+                    <div className="pl-13">
+                      <TraxRowsEditor userId={user.id} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                {/* AIOStreams watch history - the Watch State exchange.
+                    See server/utils/watchState.js. */}
+                <WatchStateRow userId={user.id} />
+
+                {/* Played marks pushed to their real Jellyfin server; only
+                    shows for someone who has one. */}
+                <MarkPlayedRow userId={user.id} />
+
+                {/* Opt-in: Vault key changes reach their AIOStreams setup. */}
+                <AioRotateKeysRow userId={user.id} name={user.username || user.name || 'them'} />
+    </>
+  );
+
+  const renderHistoryBody = () => (
+    <>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    {/* Each service is linked straight to its own export
+                        page. Telling someone to "go to Settings -> Data"
+                        still leaves them hunting through a site they may
+                        not use often; the link just takes them there. */}
+                    <p className="text-sm text-muted mt-0.5">
+                      Bring in an export from another service &mdash; get yours from{' '}
+                      <a href="https://www.imdb.com/exports/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">IMDb</a>,{' '}
+                      <a href="https://letterboxd.com/settings/data/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Letterboxd</a>, or{' '}
+                      <a href="https://trakt.tv/settings/data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Trakt</a>.
+                    </p>
+                    <p className="text-sm text-muted mt-1">
+                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it and select every file inside at once; only the history and ratings JSON actually carry anything importable, everything else is skipped automatically. Netflix (Account &rarr; Viewing activity &rarr; Download all), TV Time, Plex/Tautulli and Movary CSV exports work through the same button too. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* A file chooser cannot be driven from a TV remote, so the import is left out there; Export CSV stays. */}
+                  {!isTV && (
+                    <>
+                      {!v2 && (
+                        <HistoryImportFlow
+                          ref={historyImportFlowRef}
+                          anchorRef={historyImportBtnRef}
+                          open={historyImportOpen}
+                          onOpen={() => setHistoryImportOpen(true)}
+                          onClose={() => setHistoryImportOpen(false)}
+                          send={(kind, file) => api.importUserHistory(params.id as string, file, kind === 'preview')}
+                          title="Import watch history"
+                          owner="their"
+                        />
+                      )}
+                      <Button
+                        ref={historyImportBtnRef}
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                        onClick={() => { importAnchorRef.current = historyImportBtnRef.current; historyImportFlowRef.current?.pick(); }}
+                      >
+                        Import history
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />}
+                    onClick={handleExportHistory}
+                    isLoading={isExportingHistory}
+                  >
+                    Export CSV
+                  </Button>
+                </div>
+    </>
+  );
+
+  const renderGroupAddonsCard = () => (
+                  <Card padding="lg">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/20">
+                          <PuzzlePieceIcon className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-default">Group Addons</h3>
+                          <p className="text-sm text-muted">
+                            {groupAddons.length} addon{groupAddons.length !== 1 ? 's' : ''} from your group
+                            {excludedAddonIds.size > 0 && ` • ${excludedAddonIds.size} excluded`}
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => refreshGroupAddons(true)} disabled={isRefreshingAddons} title="Refresh addons">
+                        <ArrowPathIcon className={`w-4 h-4 ${isRefreshingAddons ? 'animate-spin' : ''}`} />
+                      </Button>
+                    </div>
+
+                    {groupAddons.length > 0 ? (
+                      <DraggableList
+                        items={groupAddons.map(addon => addon.id)}
+                        onDragEnd={handleGroupAddonDragEnd}
+                        renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
+                          const addon = groupAddons.find(a => a.id === id);
+                          if (!addon) return null;
+                          const isExcluded = excludedAddonIds.has(addon.id);
+                          return (
+                            <motion.div
+                              ref={itemProps.ref}
+                              style={itemProps.style}
+                              className={`flex items-center gap-3 p-4 rounded-xl border transition-all group bg-surface-hover hover:bg-surface ${
+                                isExcluded ? 'opacity-50 border-default' : 'border-default hover:border-primary'
+                              } ${isDragging ? 'shadow-lg ring-2 ring-primary' : ''}`}
+                            >
+                              <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
+                                <Bars3Icon className="w-5 h-5 text-subtle" />
+                              </div>
+                              <Link
+                                href={`/addons/${addon.id}`}
+                                className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
+                                  {(addon as any).customLogo ? (
+                                    <img src={(addon as any).customLogo} alt={addon.name} className="w-6 h-6 object-contain" />
+                                  ) : addon.logo ? (
+                                    <img src={addon.logo} alt={addon.name} className="w-6 h-6 object-contain" />
+                                  ) : (
+                                    <PuzzlePieceIcon className="w-5 h-5 text-primary" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className={`font-medium truncate flex-1 min-w-0 ${isExcluded ? 'text-muted line-through' : 'text-default'}`}>
+                                      {addon.name}
+                                    </h4>
+                                    {addon.version && <VersionBadge version={addon.version} size="sm" />}
+                                    {(addon as any).isBackup && <Badge variant="warning" size="sm" title={`Primary (${(addon as any).primaryAddonName}) is offline`}>Backup</Badge>}
+                                    {isExcluded && <Badge variant="error" size="sm">Excluded</Badge>}
+                                  </div>
+                                  {(addon as any).isBackup && (addon as any).primaryAddonName && (
+                                    <p className="text-xs text-warning truncate mb-1">Primary offline: {(addon as any).primaryAddonName}</p>
+                                  )}
+                                  {addon.description && (
+                                    <p className="text-xs text-muted truncate mb-1">{addon.description}</p>
+                                  )}
+                                  {addon.resources && addon.resources.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                      {addon.resources.slice(0, 4).map((res: string) => (
+                                        <ResourceBadge key={res} resource={res} />
+                                      ))}
+                                      {addon.resources.length > 4 && (
+                                        <Badge variant="muted" size="sm" className="bg-surface">+{addon.resources.length - 4}</Badge>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </Link>
+                              <button
+                                onClick={() => handleToggleExclude(addon.id)}
+                                className={`p-2 rounded-lg transition-colors ${
+                                  isExcluded ? 'text-error bg-error-muted' : 'text-muted hover:text-error hover:bg-error-muted'
+                                }`}
+                              >
+                                {isExcluded ? <ArrowPathIcon className="w-4 h-4" /> : <XMarkIcon className="w-4 h-4" />}
+                              </button>
+                            </motion.div>
+                          );
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center py-8">
+                        <PuzzlePieceIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
+                        <p className="text-muted">No group addons assigned</p>
+                        <p className="text-sm text-subtle mt-1">Join a group to get addons synced</p>
+                      </div>
+                    )}
+                  </Card>
+  );
+
+  const renderAccountAddonsCard = () => (
+                  <Card padding="lg">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-secondary/20">
+                          <FolderIcon className="w-5 h-5 text-secondary" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-default">Account Addons</h3>
+                          <p className="text-sm text-muted">
+                            {providerAddonsLoading ? 'Loading addons...' : (<>
+                              {stremioAddons.length} addon{stremioAddons.length !== 1 ? 's' : ''} in your account
+                              {stremioAddons.length > 0 && ' • Drag to reorder'}
+                            </>)}
+                          </p>
+                        </div>
+                      </div>
+                      {stremioAddons.length > 0 && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleResetStremioAddons}
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+
+                    {stremioAddons.length > 0 ? (
+                      <DraggableList
+                        items={stremioAddons.map((addon) => addon.transportUrl)}
+                        onDragEnd={handleStremioAddonDragEnd}
+                        renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
+                          const index = stremioAddons.findIndex((a) => a.transportUrl === id);
+                          if (index === -1) return null;
+                          const addon = stremioAddons[index];
+                          const name = addon.manifest?.name || 'Unknown Addon';
+                          const version = addon.manifest?.version;
+                          const description = addon.manifest?.description;
+                          const logo = addon.manifest?.logo;
+                          const isProtected = protectedAddonNames.has(addon.manifest?.name || '');
+                          // Account Addons are raw entries from the provider's own addon
+                          // collection - no SlickSync id of their own, only a transportUrl.
+                          // GET /:id/group-addons also returns transportUrl per addon
+                          // (despite the Addon TS type's manifestUrl field, which this
+                          // endpoint doesn't actually populate) - match on that, through
+                          // the same canonicalizer the backend uses everywhere else that
+                          // compares two addon URLs, since they rarely match by exact
+                          // string equality (http vs https, trailing /manifest.json,
+                          // query strings, case). No match ⇒ not a SlickSync-managed
+                          // addon, stays unlinked rather than guessing.
+                          // A stream addon installed through their pause gate
+                          // (/trax/gate/<token>/<addon id>/...) names its addon.
+                          const canonicalTransportUrl = canonicalizeManifestUrl(addon.transportUrl);
+                          const gatedId = /\/trax\/gate\/[a-f0-9]+\/([^/?#]+)\//i.exec(addon.transportUrl || '')?.[1];
+                          const matchedAddon = groupAddons.find((ga) => (gatedId ? (ga as any).id === gatedId : canonicalizeManifestUrl((ga as any).transportUrl) === canonicalTransportUrl));
+                          const content = (
+                            <>
+                              <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
+                                {logo ? (
+                                  <img src={logo} alt={name} className="w-6 h-6 object-contain" />
+                                ) : (
+                                  <PuzzlePieceIcon className="w-5 h-5 text-primary" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-default truncate flex-1 min-w-0">{name}</h4>
+                                  {version && <VersionBadge version={version} size="sm" />}
+                                  {isProtected && (
+                                    <Badge variant="success" size="sm">
+                                      <ShieldCheckIcon className="w-3 h-3 mr-1" />
+                                      Protected
+                                    </Badge>
+                                  )}
+                                  {/* Cinemeta is the one addon on every
+                                      account whose parts are worth removing
+                                      individually - its catalogs sit at the
+                                      top of the home screen and its metadata
+                                      overrides addons installed to replace
+                                      it. The row says when it has been
+                                      patched, and the button leads to
+                                      putting it back. */}
+                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaPatched && (
+                                    <Badge variant="warning" size="sm">Patched</Badge>
+                                  )}
+                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaState?.installed && cinemetaState?.supported !== false && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCinemetaOpen(true); }}
+                                      className="text-xs px-2 py-0.5 rounded-md transition-colors shrink-0"
+                                      style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                                    >
+                                      {cinemetaPatched ? 'Edit patch' : 'Patch'}
+                                    </button>
+                                  )}
+                                </div>
+                                {description && <p className="text-xs text-muted truncate mb-1">{description}</p>}
+                                {addon.manifest?.resources && addon.manifest.resources.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5 mt-1">
+                                    {addon.manifest.resources.slice(0, 4).map((res: any) => {
+                                      const resName = typeof res === 'string' ? res : res.name;
+                                      return <ResourceBadge key={resName} resource={resName} />;
+                                    })}
+                                    {addon.manifest.resources.length > 4 && (
+                                      <Badge variant="muted" size="sm" className="bg-surface">+{addon.manifest.resources.length - 4}</Badge>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          );
+                          return (
+                            <motion.div
+                              ref={itemProps.ref}
+                              style={itemProps.style}
+                              className={`flex items-center gap-3 p-4 rounded-xl bg-surface-hover hover:bg-surface transition-all border border-default group ${
+                                isDragging ? 'shadow-lg ring-2 ring-primary' : ''
+                              }`}
+                            >
+                              <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
+                                <Bars3Icon className="w-5 h-5 text-subtle" />
+                              </div>
+                              {matchedAddon ? (
+                                <Link
+                                  href={`/addons/${matchedAddon.id}`}
+                                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {content}
+                                </Link>
+                              ) : (
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  {content}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handleToggleProtect(name)}
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    isProtected ? 'text-success hover:bg-success-muted' : 'text-muted hover:text-success hover:bg-success-muted'
+                                  }`}
+                                >
+                                  <ShieldCheckIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveStremioAddon(addon.transportUrl)}
+                                  className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </motion.div>
+                          );
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center py-8">
+                        <PuzzlePieceIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
+                        <p className="text-muted">No addons on their {user ? providerLabel(user) : ''} account</p>
+                        <p className="text-sm text-subtle mt-1">Sync the user to populate their addons</p>
+                      </div>
+                    )}
+                  </Card>
+  );
+
+  // ---- Page design v2 ----
+  const renderV2 = () => {
+    const name = user.username || user.name || 'User';
+    const groupName = groups.find((g) => g.id === (user.groupIds?.[0] || user.groupId))?.name;
+    const liveSession = userSessions.find((s: { endTime?: string | null; isActive?: boolean }) => !s.endTime || s.isActive);
+    const liveNow = metricsData?.nowPlaying?.find((n: { user: { id: string; username: string } }) => n.user.id === params.id || n.user.username === user.username);
+    const watchingTitle: string | undefined = liveSession?.item?.name || liveNow?.item?.name;
+    const watchingNow = !!watchingTitle || !!liveSession;
+    const needsFix = !!user.providerConnectionError;
+    let tone: V2Tone = 'ok';
+    let words = 'All synced';
+    if (needsFix) { tone = 'warn'; words = 'Needs a fix'; }
+    else if (user.isActive === false) { tone = 'off'; words = 'Switched off'; }
+    else if (watchingNow) { tone = 'live'; words = 'Watching now'; }
+
+    const email = hideSensitive && !showEmail ? '••••••••' : displayEmail(user.email);
+    const factBits = [
+      groupName ? `${groupName} group` : 'No group',
+      user.expiresAt ? `ends ${new Date(user.expiresAt).toLocaleDateString()}` : 'never ends',
+      user.createdAt ? `added ${new Date(user.createdAt).toLocaleDateString()}` : null,
+      `${formatMinutes(absoluteTotalMinutes)} watched in total`,
+      user.providerType === 'jellyfin' && (user.jellyfinServer || user.jellyfinUserName)
+        ? `${user.jellyfinUserName ? `${user.jellyfinUserName} on ` : ''}${user.jellyfinServer || ''}${user.aioConfigWatched ? ' · watched for changes' : ''}`
+        : null,
+    ].filter(Boolean) as string[];
+    const facts = (
+      <>
+        {factBits.join(' · ')}
+        {email && <span> · {email}</span>}
+        {hideSensitive && email && (
+          <button
+            type="button"
+            onClick={() => setShowEmail(!showEmail)}
+            className="ml-1.5 align-middle p-0.5 rounded text-muted hover:text-primary"
+            title={showEmail ? 'Hide email' : 'Show email'}
+            aria-label={showEmail ? 'Hide email' : 'Show email'}
+          >
+            {showEmail ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+          </button>
+        )}
+      </>
+    );
+
+    const more: V2MenuItem[] = [
+      { label: 'Import watch history', icon: <ArrowUpTrayIcon className="w-4 h-4" />, onClick: () => { importAnchorRef.current = headRef.current; historyImportFlowRef.current?.pick(); } },
+      { label: 'Import addons from their account', icon: <ArrowDownTrayIcon className="w-4 h-4" />, onClick: handleImport },
+      { label: user.isActive === false ? 'Switch on' : 'Switch off', icon: <BoltIcon className="w-4 h-4" />, onClick: handleToggleActive },
+      ...(!mergeInfo ? [{ label: 'Merge with another sign-in', icon: <LinkIcon className="w-4 h-4" />, onClick: openMergePicker }] : []),
+      { label: 'Edit details', icon: <PencilIcon className="w-4 h-4" />, onClick: () => setIsEditDetailsOpen(true) },
+      { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => setIsDeleteModalOpen(true) },
+    ];
+
+    const syncing = isSyncing;
+    const actions = (
+      <>
+        {needsFix && <V2Button primary onClick={() => setIsReconnectModalOpen(true)}>Fix sign-in</V2Button>}
+        {hasAddons && (
+          <V2Button primary={!needsFix} onClick={() => setIsSyncPreviewOpen(true)} disabled={syncing} icon={<ArrowPathIcon className={`w-4 h-4${syncing ? ' animate-spin' : ''}`} />}>
+            {syncing ? 'Syncing' : 'Sync'}
+          </V2Button>
+        )}
+        <LimitsButton id={user.id} name={name} size="md" onPickGroup={() => setIsEditDetailsOpen(true)} onReconnect={() => setIsReconnectModalOpen(true)} />
+        <CatchUpButton userId={user.id} name={name} hasServer={user.providerType === 'jellyfin'} />
+      </>
+    );
+
+    const lead = (
+      <button type="button" onClick={() => setShowAvatarPicker(true)} className="rounded-2xl transition-transform hover:scale-105" aria-label="Change picture" title="Change picture">
+        <UserAvatar
+          userId={user.id}
+          name={name}
+          email={user.email}
+          src={user.avatarUrl}
+          useGravatar={user.useGravatar}
+          size="2xl"
+          colorIndex={user.colorIndex || 0}
+          className="w-16 h-16 rounded-2xl"
+          avatarClassName="rounded-2xl"
+        />
+      </button>
+    );
+    const pill = (
+      <span className="inline-flex items-center gap-1.5">
+        <Badge variant={providerBadgeVariant(user)} size="sm">{providerLabel(user)}</Badge>
+        {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && <Badge variant="secondary" size="sm">Profile {user.nuvioProfileId}</Badge>}
+      </span>
+    );
+
+    const watchedLine = (m: number) => `${formatMinutes(Math.round(m))} watched`;
+    const topRows = userTopItems.map((it) => ({ key: it.id, name: it.name, poster: it.poster, type: it.type, line: watchedLine(it.watchTime) }));
+    const recentRows = userRecentActivity.map((s, i) => ({
+      key: `${s.id}-${i}`,
+      name: s.item.name,
+      poster: s.item.poster,
+      type: s.item.type,
+      live: !!s.isActive,
+      line: [
+        s.item.type === 'series' && s.item.season ? `S${s.item.season} E${s.item.episode}` : null,
+        new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        s.durationSeconds > 0 ? formatMinutes(Math.round(s.durationSeconds / 60)) : null,
+      ].filter(Boolean).join(' · '),
+    }));
+
+    const toolIcon = (I: React.ComponentType<React.SVGProps<SVGSVGElement>>) => <I className="w-[18px] h-[18px]" />;
+    const aio = user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams';
+    const realJellyfin = user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin';
+    const tiles: React.ReactNode[] = [];
+    if (user.providerType === 'jellyfin') tiles.push(<PillTool key="tv" icon={toolIcon(TvIcon)} title="Sign in a TV" line="Show a code on their TV"><SignInTvButton userId={user.id} name={name} /></PillTool>);
+    if (user.providerType === 'nuvio') tiles.push(<PillTool key="tv" icon={toolIcon(TvIcon)} title="Sign in a TV" line="Show a code on their Nuvio TV"><SignInNuvioTvButton userId={user.id} name={name} /></PillTool>);
+    if (!mergeInfo) tiles.push(<V2ToolTile key="merge" icon={toolIcon(ArrowsRightLeftIcon)} title="Same person elsewhere?" line="Merge with their Stremio, Nuvio, Jellyfin or AIOStreams sign-in" onClick={openMergePicker} />);
+    tiles.push(<V2ToolTile key="history" icon={toolIcon(ArrowUpTrayIcon)} title="History in and out" line="IMDb, Letterboxd, Trakt, Netflix… or take a copy" onClick={() => setIsHistoryToolOpen(true)} />);
+    tiles.push(<CopyHistoryTool key="copy" userId={user.id} icon={toolIcon(ArrowsRightLeftIcon)} />);
+    tiles.push(
+      <V2ToolTile
+        key="tracking"
+        icon={toolIcon(FilmIcon)}
+        title="Tracking"
+        line={`${user.simklConnected ? 'SIMKL linked' : 'SIMKL not linked'} · SlickTrax ${user.traxAddonEnabled ? 'on' : 'off'}`}
+        onClick={() => setIsTrackingOpen(true)}
+      />,
+    );
+    tiles.push(
+      <V2ToolTile
+        key="household"
+        icon={toolIcon(UserCircleIcon)}
+        title="Leave out of household numbers"
+        line="For a test or guest person: stops counting in household totals, Top Viewers and Wrapped"
+        state={(
+          <ToggleSwitch
+            checked={!!user.excludeFromHouseholdStats}
+            title="Leave out of household numbers"
+            onChange={async () => {
+              const v = !user.excludeFromHouseholdStats;
+              try {
+                await api.setHouseholdStats(user.id, v);
+                setUser((prev: typeof user) => (prev ? { ...prev, excludeFromHouseholdStats: v } : prev));
+                toast.success(v ? `${user.username} is left out of household numbers` : `${user.username} counts in household numbers again`);
+              } catch (err) {
+                toast.error((err as Error)?.message || 'Could not change that');
+              }
+            }}
+          />
+        )}
+      />,
+    );
+    if (aio) {
+      tiles.push(<PillTool key="aiohealth" icon={toolIcon(ShieldCheckIcon)} title="AIOStreams health" line="What AIOStreams says about their setup"><AioHealthButton userId={user.id} name={name} /></PillTool>);
+      tiles.push(<PillTool key="aiohistory" icon={toolIcon(ClockIcon)} title="AIOStreams history" line="Changes made to their setup"><AioHistoryButton userId={user.id} name={name} /></PillTool>);
+    }
+    if (realJellyfin) tiles.push(<PillTool key="devices" icon={toolIcon(TvIcon)} title="Devices" line="Where they are signed in on their server"><JellyfinDevicesButton userId={user.id} name={name} /></PillTool>);
+    tiles.push(
+      <V2ToolTile
+        key="debug"
+        icon={toolIcon(Cog6ToothIcon)}
+        title="Sync debug info"
+        line="What a sync would change, addon by addon"
+        state={showSyncDebug ? 'Hide' : 'Show'}
+        onClick={() => {
+          if (!showSyncDebug) refreshSyncPlan();
+          setShowSyncDebug(!showSyncDebug);
+        }}
+      />,
+    );
+
+    const sectionBody = (key: string) => {
+      if (key === 'watching') {
+        return (
+          <ArrangeSection
+            key={key}
+            arrange={arrange}
+            id="watching"
+            title="Watching"
+            meta={watchingTitle ? `Watching ${watchingTitle} now` : undefined}
+            actions={<Link href={`/activity?user=${encodeURIComponent(user.username || '')}&period=week`} className="text-[13px] text-muted hover:text-default">All activity</Link>}
+          >
+            {watchTimeData.length > 0 ? (
+              <>
+                <WatchTimeChart data={watchTimeData} />
+                <details className="v2-box v2-box-pad mt-3">
+                  <summary className="cursor-pointer text-sm text-muted">Movies and shows by day</summary>
+                  <div className="mt-3"><ContentBreakdownChart data={watchTimeData} /></div>
+                </details>
+              </>
+            ) : (
+              <V2Box><p className="text-muted text-sm text-center py-6">No watch time data available</p></V2Box>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <V2Box><b className="text-default">Most watched</b><TitleRows rows={topRows} empty="Nothing watched yet" /></V2Box>
+              <V2Box><b className="text-default">Recently watched</b><TitleRows rows={recentRows} empty="No recent activity" /></V2Box>
+            </div>
+          </ArrangeSection>
+        );
+      }
+      if (key === 'addons' && hasAddons) {
+        return (
+          <ArrangeSection
+            key={key}
+            arrange={arrange}
+            id="addons"
+            title="Addons"
+            meta={`${groupAddons.length} from ${groupName || 'their group'}${excludedAddonIds.size > 0 ? ` · ${excludedAddonIds.size} excluded` : ''} · ${providerAddonsLoading ? 'loading their own' : `${stremioAddons.length} of their own`}`}
+          >
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              {renderGroupAddonsCard()}
+              {renderAccountAddonsCard()}
+            </div>
+          </ArrangeSection>
+        );
+      }
+      if (key === 'tools') {
+        return (
+          <ArrangeSection key={key} arrange={arrange} id="tools" title="Tools" meta="used now and then">
+            <V2Tiles wide={2}>{tiles}</V2Tiles>
+            {showSyncDebug && <div className="mt-4">{renderSyncDebug()}</div>}
+            <div className="mt-4 empty:hidden"><HouseholdServersTile userId={user.id} username={user.username} /></div>
+            <div className="mt-4 empty:hidden"><NuvioServersTile userId={user.id} /></div>
+          </ArrangeSection>
+        );
+      }
+      return null;
+    };
+
+    return (
+      <>
+        <ArrangeBar arrange={arrange} />
+        <div ref={headRef}>
+          <V2DetailHead
+            lead={lead}
+            title={(
+              <InlineEdit
+                value={name}
+                onSave={handleUsernameUpdate}
+                placeholder="Enter username..."
+                maxLength={50}
+                className="text-2xl md:text-3xl font-bold font-display"
+              />
+            )}
+            pill={pill}
+            status={<V2Status tone={tone}>{words}</V2Status>}
+            facts={facts}
+            actions={actions}
+            more={more}
+          />
+        </div>
+        <div className="empty:hidden mb-4"><SignInOfferBanner userId={user.id} /></div>
+        {mergeInfo && (
+          <V2Box className="mb-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3 min-w-0">
+                <UserAvatar
+                  userId={`${params.id}-merged-donor`}
+                  name={mergeInfo.donorUsername || undefined}
+                  email={mergeInfo.donorEmail || undefined}
+                  src={mergeInfo.donorAvatarUrl ?? undefined}
+                  useGravatar={mergeInfo.donorUseGravatar}
+                  colorIndex={mergeInfo.donorColorIndex ?? undefined}
+                  size="md"
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold text-default">Merged with {mergeInfo.donorUsername || 'a second account'}</div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant={providerBadgeVariant({ providerType: mergeInfo.providerType })} size="sm">{providerLabel({ providerType: mergeInfo.providerType })}</Badge>
+                    <span className="text-sm text-muted">{mergeInfo.donorEmail || 'Its watch history now lives on this account'}</span>
+                  </div>
+                </div>
+              </div>
+              {mergeInfo.undoable ? (
+                <Button variant="secondary" size="sm" onClick={() => setIsUndoModalOpen(true)}>Undo merge</Button>
+              ) : (
+                <p className="text-xs text-muted max-w-xs text-right">Can’t be undone automatically (no archive on file)</p>
+              )}
+            </div>
+          </V2Box>
+        )}
+        <V2Numbers
+          items={[
+            { label: 'Today', value: isLoading ? '...' : formatMinutes(liveTodayMinutes) },
+            { label: 'This week', value: isLoading ? '...' : formatMinutes(liveWeekMinutes) },
+            { label: 'Streak', value: `${streaks?.currentStreak || 0} days`, sub: streaks?.longestStreak ? `best ${streaks.longestStreak}` : undefined },
+            { label: 'Per day', value: formatMinutes(Math.round(liveWeekMinutes / 7)), sub: 'this week' },
+          ]}
+        />
+        {arrange.shown.map((key) => sectionBody(key))}
+        <HiddenTray arrange={arrange} labelOf={(key) => (key === 'watching' ? 'Watching' : key === 'addons' ? 'Addons' : 'Tools')} />
+        <HistoryImportFlow
+          ref={historyImportFlowRef}
+          anchorRef={importAnchorRef}
+          open={historyImportOpen}
+          onOpen={() => setHistoryImportOpen(true)}
+          onClose={() => setHistoryImportOpen(false)}
+          send={(kind, file) => api.importUserHistory(params.id as string, file, kind === 'preview')}
+          title="Import watch history"
+          owner="their"
+        />
+        <AvatarPickerModal
+          isOpen={showAvatarPicker}
+          onClose={() => setShowAvatarPicker(false)}
+          name={name}
+          currentAvatarUrl={user.avatarUrl}
+          currentColorIndex={user.colorIndex || 0}
+          onSave={handleAvatarSave}
+          serverLabel={isJellyfin(user) ? providerLabel(user) : undefined}
+        />
+        <Modal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} title="Tracking" description="Link this person’s history to an external tracker" size="lg">
+          {renderTrackingBody()}
+        </Modal>
+        <Modal isOpen={isHistoryToolOpen} onClose={() => setIsHistoryToolOpen(false)} title="History in and out" size="lg">
+          {renderHistoryBody()}
+        </Modal>
+      </>
+    );
+  };
+
   return (
     <>
       {layoutMode !== 'nebula' && (
@@ -1098,7 +1938,7 @@ export default function UserDetailPage() {
               className="text-xl font-semibold"
             />
           }
-          actions={detailActions}
+          actions={v2 ? <ArrangeButton arrange={arrange} /> : detailActions}
         />
       )}
 
@@ -1106,9 +1946,9 @@ export default function UserDetailPage() {
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
-          title={isLoading ? 'Loading...' : (user?.username || user?.name || 'User')}
-          subtitle="Users"
-          actions={detailActions}
+          title={v2 ? 'Users' : isLoading ? 'Loading...' : (user?.username || user?.name || 'User')}
+          subtitle={v2 ? undefined : 'Users'}
+          actions={v2 ? <ArrangeButton arrange={arrange} /> : detailActions}
         />
       )}
         {/* Loading state */}
@@ -1134,6 +1974,8 @@ export default function UserDetailPage() {
           <div className="text-center py-16">
             <p className="text-muted">User not found</p>
           </div>
+        ) : v2 ? (
+          renderV2()
         ) : (
           <>
             {/* User Hero Section */}
@@ -1348,68 +2190,7 @@ export default function UserDetailPage() {
             {/* Sync Debug Section */}
             {showSyncDebug && (
               <PageSection className="mb-6">
-                <div className="p-4 rounded-xl bg-surface border border-yellow-500/30">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-yellow-400">Sync Debug Info</h3>
-                    {syncPlan && (
-                      <Badge variant={syncPlan.alreadySynced ? 'success' : 'error'} size="sm">
-                        {syncPlan.alreadySynced ? 'Synced' : 'Unsynced'}
-                      </Badge>
-                    )}
-                  </div>
-                  {syncPlanLoading && <div className="text-sm text-muted">Loading...</div>}
-                  {syncPlanError && <div className="text-sm text-red-400">Error: {syncPlanError}</div>}
-                  {syncPlan && (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-muted mb-2">Current Addons ({syncPlan.currentCount})</h4>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {syncPlan.current.map((addon, idx) => (
-                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
-                                <span className="text-primary">{addon.name}</span>
-                                <div className="text-muted truncate">{addon.transportUrl}</div>
-                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
-                                  FP: {addon.fingerprint.substring(0, 50)}...
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-muted mb-2">Desired Addons ({syncPlan.desiredCount})</h4>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {syncPlan.desired.map((addon, idx) => (
-                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
-                                <span className="text-green-400">{addon.name}</span>
-                                <div className="text-muted truncate">{addon.transportUrl}</div>
-                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
-                                  FP: {addon.fingerprint.substring(0, 50)}...
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={refreshSyncPlan}
-                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary-solid hover:text-white rounded transition-colors"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => {
-                          const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
-                          copyToClipboard(text);
-                          toast.success('Copied to clipboard');
-                        }}
-                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary-solid hover:text-white rounded transition-colors"
-                      >
-                        Copy
-                      </button>
-                    </>
-                  )}
-                </div>
+                {renderSyncDebug()}
               </PageSection>
             )}
 
@@ -1507,114 +2288,7 @@ export default function UserDetailPage() {
 
                 {openSections.tracking && (<div className="mt-4">
 
-                <div className="flex items-center justify-between gap-4 flex-wrap py-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.simklConnected ? 'bg-success-muted' : 'bg-primary-muted'}`}>
-                      <ArrowPathIcon className={`w-5 h-5 ${user.simklConnected ? 'text-success' : 'text-primary'}`} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-default">SIMKL</h4>
-                        {user.simklConnected && <Badge variant="success" size="sm">Linked</Badge>}
-                      </div>
-                      <p className="text-sm text-muted">
-                        {user.simklConnected
-                          ? `Watch history syncs both ways with SIMKL${user.simklConnectedAt ? ` since ${new Date(user.simklConnectedAt).toLocaleDateString()}` : ''}.`
-                          : 'Pull watch history from SIMKL and push everything this user watches back to it - a two-way sync, checked every 30 minutes.'}
-                      </p>
-                    </div>
-                  </div>
-                  {user.simklConnected ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      isLoading={isDisconnectingSimkl}
-                      onClick={async () => {
-                        if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
-                        setIsDisconnectingSimkl(true);
-                        try {
-                          await api.disconnectSimkl(user.id);
-                          toast.success('SIMKL disconnected');
-                          setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
-                        } catch (err: any) {
-                          toast.error(err.message || 'Failed to disconnect SIMKL');
-                        } finally {
-                          setIsDisconnectingSimkl(false);
-                        }
-                      }}
-                    >
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setIsSimklModalOpen(true)}>
-                      Link SIMKL
-                    </Button>
-                  )}
-                </div>
-
-                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
-
-                {/* SlickTrax Addon - SlickSync AS a Stremio addon: one
-                    per-user manifest URL serving Continue Watching /
-                    Watchlist / Catalogs as live rows inside Stremio and
-                    Nuvio. Enabled here, installed by the next sync. */}
-                <div className="py-3">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.traxAddonEnabled ? 'bg-success-muted' : 'bg-primary-muted'}`}>
-                        <PuzzlePieceIcon className={`w-5 h-5 ${user.traxAddonEnabled ? 'text-success' : 'text-primary'}`} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-default">SlickTrax Addon</h4>
-                          {user.traxAddonEnabled && <Badge variant="success" size="sm">Enabled</Badge>}
-                        </div>
-                        <p className="text-sm text-muted">
-                          {user.traxAddonEnabled
-                            ? 'Continue Watching, Watchlist and Catalogs appear as rows inside Stremio/Nuvio. Kept installed by sync.'
-                            : 'Put SlickTrax inside the apps: Continue Watching, Watchlist and every Catalog as real rows on this user\'s devices.'}
-                        </p>
-                        {user.traxAddonEnabled && traxManifestUrl && (
-                          <button
-                            type="button"
-                            className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
-                            title="Copy manifest URL"
-                            onClick={async () => { (await copyToClipboard(traxManifestUrl)) ? toast.success('Manifest URL copied') : toast.error('Couldn’t copy the link', { line: 'Select the text and copy it by hand.' }); }}
-                          >
-                            {traxManifestUrl}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant={user.traxAddonEnabled ? 'ghost' : 'primary'}
-                      size="sm"
-                      isLoading={isTogglingTrax}
-                      onClick={handleToggleTraxAddon}
-                    >
-                      {user.traxAddonEnabled ? 'Disable' : 'Enable'}
-                    </Button>
-                  </div>
-
-                  {user.traxAddonEnabled && (
-                    <div className="pl-13">
-                      <TraxRowsEditor userId={user.id} />
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
-
-                {/* AIOStreams watch history - the Watch State exchange.
-                    See server/utils/watchState.js. */}
-                <WatchStateRow userId={user.id} />
-
-                {/* Played marks pushed to their real Jellyfin server; only
-                    shows for someone who has one. */}
-                <MarkPlayedRow userId={user.id} />
-
-                {/* Opt-in: Vault key changes reach their AIOStreams setup. */}
-                <AioRotateKeysRow userId={user.id} name={user.username || user.name || 'them'} />
+                {renderTrackingBody()}
                 </div>)}
 
               </Card>
@@ -1694,58 +2368,7 @@ export default function UserDetailPage() {
                 <CopyHistoryTile userId={user.id} name={user.username} />
 
                 {openSections.history && (<div className="mt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    {/* Each service is linked straight to its own export
-                        page. Telling someone to "go to Settings -> Data"
-                        still leaves them hunting through a site they may
-                        not use often; the link just takes them there. */}
-                    <p className="text-sm text-muted mt-0.5">
-                      Bring in an export from another service &mdash; get yours from{' '}
-                      <a href="https://www.imdb.com/exports/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">IMDb</a>,{' '}
-                      <a href="https://letterboxd.com/settings/data/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Letterboxd</a>, or{' '}
-                      <a href="https://trakt.tv/settings/data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Trakt</a>.
-                    </p>
-                    <p className="text-sm text-muted mt-1">
-                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it and select every file inside at once; only the history and ratings JSON actually carry anything importable, everything else is skipped automatically. Netflix (Account &rarr; Viewing activity &rarr; Download all), TV Time, Plex/Tautulli and Movary CSV exports work through the same button too. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* A file chooser cannot be driven from a TV remote, so the import is left out there; Export CSV stays. */}
-                  {!isTV && (
-                    <>
-                      <HistoryImportFlow
-                        ref={historyImportFlowRef}
-                        anchorRef={historyImportBtnRef}
-                        open={historyImportOpen}
-                        onOpen={() => setHistoryImportOpen(true)}
-                        onClose={() => setHistoryImportOpen(false)}
-                        send={(kind, file) => api.importUserHistory(params.id as string, file, kind === 'preview')}
-                        title="Import watch history"
-                        owner="their"
-                      />
-                      <Button
-                        ref={historyImportBtnRef}
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
-                        onClick={() => historyImportFlowRef.current?.pick()}
-                      >
-                        Import history
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />}
-                    onClick={handleExportHistory}
-                    isLoading={isExportingHistory}
-                  >
-                    Export CSV
-                  </Button>
-                </div>
+                {renderHistoryBody()}
                 </div>)}
               </Card>
             </PageSection>
@@ -1992,105 +2615,7 @@ export default function UserDetailPage() {
               <>
                 {/* Group Addons */}
                 <PageSection delay={0.1} className="mb-8">
-                  <Card padding="lg">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/20">
-                          <PuzzlePieceIcon className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-default">Group Addons</h3>
-                          <p className="text-sm text-muted">
-                            {groupAddons.length} addon{groupAddons.length !== 1 ? 's' : ''} from your group
-                            {excludedAddonIds.size > 0 && ` • ${excludedAddonIds.size} excluded`}
-                          </p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => refreshGroupAddons(true)} disabled={isRefreshingAddons} title="Refresh addons">
-                        <ArrowPathIcon className={`w-4 h-4 ${isRefreshingAddons ? 'animate-spin' : ''}`} />
-                      </Button>
-                    </div>
-
-                    {groupAddons.length > 0 ? (
-                      <DraggableList
-                        items={groupAddons.map(addon => addon.id)}
-                        onDragEnd={handleGroupAddonDragEnd}
-                        renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
-                          const addon = groupAddons.find(a => a.id === id);
-                          if (!addon) return null;
-                          const isExcluded = excludedAddonIds.has(addon.id);
-                          return (
-                            <motion.div
-                              ref={itemProps.ref}
-                              style={itemProps.style}
-                              className={`flex items-center gap-3 p-4 rounded-xl border transition-all group bg-surface-hover hover:bg-surface ${
-                                isExcluded ? 'opacity-50 border-default' : 'border-default hover:border-primary'
-                              } ${isDragging ? 'shadow-lg ring-2 ring-primary' : ''}`}
-                            >
-                              <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
-                                <Bars3Icon className="w-5 h-5 text-subtle" />
-                              </div>
-                              <Link
-                                href={`/addons/${addon.id}`}
-                                className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
-                                  {(addon as any).customLogo ? (
-                                    <img src={(addon as any).customLogo} alt={addon.name} className="w-6 h-6 object-contain" />
-                                  ) : addon.logo ? (
-                                    <img src={addon.logo} alt={addon.name} className="w-6 h-6 object-contain" />
-                                  ) : (
-                                    <PuzzlePieceIcon className="w-5 h-5 text-primary" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <h4 className={`font-medium truncate flex-1 min-w-0 ${isExcluded ? 'text-muted line-through' : 'text-default'}`}>
-                                      {addon.name}
-                                    </h4>
-                                    {addon.version && <VersionBadge version={addon.version} size="sm" />}
-                                    {(addon as any).isBackup && <Badge variant="warning" size="sm" title={`Primary (${(addon as any).primaryAddonName}) is offline`}>Backup</Badge>}
-                                    {isExcluded && <Badge variant="error" size="sm">Excluded</Badge>}
-                                  </div>
-                                  {(addon as any).isBackup && (addon as any).primaryAddonName && (
-                                    <p className="text-xs text-warning truncate mb-1">Primary offline: {(addon as any).primaryAddonName}</p>
-                                  )}
-                                  {addon.description && (
-                                    <p className="text-xs text-muted truncate mb-1">{addon.description}</p>
-                                  )}
-                                  {addon.resources && addon.resources.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mt-1">
-                                      {addon.resources.slice(0, 4).map((res: string) => (
-                                        <ResourceBadge key={res} resource={res} />
-                                      ))}
-                                      {addon.resources.length > 4 && (
-                                        <Badge variant="muted" size="sm" className="bg-surface">+{addon.resources.length - 4}</Badge>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </Link>
-                              <button
-                                onClick={() => handleToggleExclude(addon.id)}
-                                className={`p-2 rounded-lg transition-colors ${
-                                  isExcluded ? 'text-error bg-error-muted' : 'text-muted hover:text-error hover:bg-error-muted'
-                                }`}
-                              >
-                                {isExcluded ? <ArrowPathIcon className="w-4 h-4" /> : <XMarkIcon className="w-4 h-4" />}
-                              </button>
-                            </motion.div>
-                          );
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center py-8">
-                        <PuzzlePieceIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
-                        <p className="text-muted">No group addons assigned</p>
-                        <p className="text-sm text-subtle mt-1">Join a group to get addons synced</p>
-                      </div>
-                    )}
-                  </Card>
+                  {renderGroupAddonsCard()}
                 </PageSection>
 
                 {/* Account Addons - the provider's own addon collection
@@ -2098,169 +2623,7 @@ export default function UserDetailPage() {
                     not Stremio-specific despite the section's old name -
                     this same list renders for Nuvio users too. */}
                 <PageSection delay={0.2}>
-                  <Card padding="lg">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-secondary/20">
-                          <FolderIcon className="w-5 h-5 text-secondary" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-default">Account Addons</h3>
-                          <p className="text-sm text-muted">
-                            {providerAddonsLoading ? 'Loading addons...' : (<>
-                              {stremioAddons.length} addon{stremioAddons.length !== 1 ? 's' : ''} in your account
-                              {stremioAddons.length > 0 && ' • Drag to reorder'}
-                            </>)}
-                          </p>
-                        </div>
-                      </div>
-                      {stremioAddons.length > 0 && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleResetStremioAddons}
-                        >
-                          Clear All
-                        </Button>
-                      )}
-                    </div>
-
-                    {stremioAddons.length > 0 ? (
-                      <DraggableList
-                        items={stremioAddons.map((addon) => addon.transportUrl)}
-                        onDragEnd={handleStremioAddonDragEnd}
-                        renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
-                          const index = stremioAddons.findIndex((a) => a.transportUrl === id);
-                          if (index === -1) return null;
-                          const addon = stremioAddons[index];
-                          const name = addon.manifest?.name || 'Unknown Addon';
-                          const version = addon.manifest?.version;
-                          const description = addon.manifest?.description;
-                          const logo = addon.manifest?.logo;
-                          const isProtected = protectedAddonNames.has(addon.manifest?.name || '');
-                          // Account Addons are raw entries from the provider's own addon
-                          // collection - no SlickSync id of their own, only a transportUrl.
-                          // GET /:id/group-addons also returns transportUrl per addon
-                          // (despite the Addon TS type's manifestUrl field, which this
-                          // endpoint doesn't actually populate) - match on that, through
-                          // the same canonicalizer the backend uses everywhere else that
-                          // compares two addon URLs, since they rarely match by exact
-                          // string equality (http vs https, trailing /manifest.json,
-                          // query strings, case). No match ⇒ not a SlickSync-managed
-                          // addon, stays unlinked rather than guessing.
-                          // A stream addon installed through their pause gate
-                          // (/trax/gate/<token>/<addon id>/...) names its addon.
-                          const canonicalTransportUrl = canonicalizeManifestUrl(addon.transportUrl);
-                          const gatedId = /\/trax\/gate\/[a-f0-9]+\/([^/?#]+)\//i.exec(addon.transportUrl || '')?.[1];
-                          const matchedAddon = groupAddons.find((ga) => (gatedId ? (ga as any).id === gatedId : canonicalizeManifestUrl((ga as any).transportUrl) === canonicalTransportUrl));
-                          const content = (
-                            <>
-                              <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
-                                {logo ? (
-                                  <img src={logo} alt={name} className="w-6 h-6 object-contain" />
-                                ) : (
-                                  <PuzzlePieceIcon className="w-5 h-5 text-primary" />
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium text-default truncate flex-1 min-w-0">{name}</h4>
-                                  {version && <VersionBadge version={version} size="sm" />}
-                                  {isProtected && (
-                                    <Badge variant="success" size="sm">
-                                      <ShieldCheckIcon className="w-3 h-3 mr-1" />
-                                      Protected
-                                    </Badge>
-                                  )}
-                                  {/* Cinemeta is the one addon on every
-                                      account whose parts are worth removing
-                                      individually - its catalogs sit at the
-                                      top of the home screen and its metadata
-                                      overrides addons installed to replace
-                                      it. The row says when it has been
-                                      patched, and the button leads to
-                                      putting it back. */}
-                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaPatched && (
-                                    <Badge variant="warning" size="sm">Patched</Badge>
-                                  )}
-                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaState?.installed && cinemetaState?.supported !== false && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCinemetaOpen(true); }}
-                                      className="text-xs px-2 py-0.5 rounded-md transition-colors shrink-0"
-                                      style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
-                                    >
-                                      {cinemetaPatched ? 'Edit patch' : 'Patch'}
-                                    </button>
-                                  )}
-                                </div>
-                                {description && <p className="text-xs text-muted truncate mb-1">{description}</p>}
-                                {addon.manifest?.resources && addon.manifest.resources.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mt-1">
-                                    {addon.manifest.resources.slice(0, 4).map((res: any) => {
-                                      const resName = typeof res === 'string' ? res : res.name;
-                                      return <ResourceBadge key={resName} resource={resName} />;
-                                    })}
-                                    {addon.manifest.resources.length > 4 && (
-                                      <Badge variant="muted" size="sm" className="bg-surface">+{addon.manifest.resources.length - 4}</Badge>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </>
-                          );
-                          return (
-                            <motion.div
-                              ref={itemProps.ref}
-                              style={itemProps.style}
-                              className={`flex items-center gap-3 p-4 rounded-xl bg-surface-hover hover:bg-surface transition-all border border-default group ${
-                                isDragging ? 'shadow-lg ring-2 ring-primary' : ''
-                              }`}
-                            >
-                              <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
-                                <Bars3Icon className="w-5 h-5 text-subtle" />
-                              </div>
-                              {matchedAddon ? (
-                                <Link
-                                  href={`/addons/${matchedAddon.id}`}
-                                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {content}
-                                </Link>
-                              ) : (
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  {content}
-                                </div>
-                              )}
-                              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => handleToggleProtect(name)}
-                                  className={`p-2 rounded-lg transition-colors ${
-                                    isProtected ? 'text-success hover:bg-success-muted' : 'text-muted hover:text-success hover:bg-success-muted'
-                                  }`}
-                                >
-                                  <ShieldCheckIcon className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleRemoveStremioAddon(addon.transportUrl)}
-                                  className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors"
-                                >
-                                  <XMarkIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </motion.div>
-                          );
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center py-8">
-                        <PuzzlePieceIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
-                        <p className="text-muted">No addons on their {user ? providerLabel(user) : ''} account</p>
-                        <p className="text-sm text-subtle mt-1">Sync the user to populate their addons</p>
-                      </div>
-                    )}
-                  </Card>
+                  {renderAccountAddonsCard()}
                 </PageSection>
               </>
             )}

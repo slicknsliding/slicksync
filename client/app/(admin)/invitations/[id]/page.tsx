@@ -9,6 +9,13 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { avatarColorFill } from '@/components/ui/Avatar';
+import { V2DetailHead } from '@/components/v2/V2Detail';
+import { V2Button } from '@/components/v2/V2Bits';
+import { InviteV2, InviteStatus, inviteEnds, type InviteState } from '@/components/v2/InviteV2';
 import { Button, Card, Badge, ConfirmModal, Modal, UserAvatar } from '@/components/ui';
 import { EditInvitationForm } from '@/components/invitations/EditInvitationForm';
 import { displayEmail } from '@/lib/providers';
@@ -56,6 +63,10 @@ export default function InvitationDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const { layoutMode } = useLayoutMode();
   const isNebula = layoutMode === 'nebula';
+  const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const arrange = usePageArrangement('invite', useMemo(() => ['link', 'people'], []));
 
   // Fetch invitation data
   useEffect(() => {
@@ -209,6 +220,17 @@ export default function InvitationDetailPage() {
   const code = invitation.code || invitation.inviteCode || '';
   const group = groups.find(g => g.name === invitation.groupName);
 
+  const inviteUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${code}`;
+  const usedCount = invitation.currentUses || invitation.uses || 0;
+  const maxCount = typeof invitation.maxUses === 'number' && invitation.maxUses > 0 ? invitation.maxUses : null;
+  const inviteState: InviteState = isExpired ? 'ended' : isFull ? 'full' : invitation.isActive === false ? 'off' : 'open';
+  const groupGone = !!invitation.groupName && !group;
+  const v2Facts = [
+    groupGone ? 'Its group is gone' : invitation.groupName ? `Joins ${invitation.groupName}` : 'Joins no group',
+    maxCount ? `${usedCount} of ${maxCount} used` : `${usedCount} used`,
+    inviteEnds(invitation.expiresAt),
+  ].join(' · ');
+
   const detailActions = (
     <div className="flex items-center gap-2">
       <Button
@@ -243,7 +265,7 @@ export default function InvitationDetailPage() {
               className="text-xl font-semibold"
             />
           }
-          actions={detailActions}
+          actions={v2 ? undefined : detailActions}
         />
       )}
 
@@ -251,16 +273,58 @@ export default function InvitationDetailPage() {
       <div className={isNebula ? 'mx-auto' : ''} style={isNebula ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {isNebula && (
           <NebulaPageHeading
-            title={invitation.name || code}
-            subtitle="Invitations"
+            title={v2 ? 'Invitations' : invitation.name || code}
+            subtitle={v2 ? undefined : 'Invitations'}
             leading={
               <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
                 Back
               </Button>
             }
-            actions={detailActions}
+            actions={v2 ? undefined : detailActions}
           />
         )}
+        {v2 ? (
+          <>
+            <V2DetailHead
+              lead={<span style={{ width: 14, height: 58, borderRadius: 6, background: group?.colorIndex !== undefined ? avatarColorFill(group.colorIndex) : 'var(--color-primary)' }} />}
+              title={<span className="font-mono tracking-[0.06em]">{code}</span>}
+              status={<InviteStatus state={inviteState} />}
+              facts={v2Facts}
+              actions={(
+                <>
+                  <ArrangeButton arrange={arrange} />
+                  <V2Button primary icon={copiedLink ? <CheckIcon className="w-4 h-4" /> : <ClipboardIcon className="w-4 h-4" />} onClick={handleCopyLink}>
+                    {copiedLink ? 'Copied!' : 'Copy link'}
+                  </V2Button>
+                  <V2Button icon={<PencilIcon className="w-4 h-4" />} onClick={() => setEditOpen(true)}>Edit</V2Button>
+                </>
+              )}
+              more={[{ label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => setDeleteConfirmOpen(true) }]}
+              below={invitation.groupName && !group ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm text-warning">
+                  <span className="inline-flex items-start gap-1.5">
+                    <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{invitation.groupName} was deleted, so people who join won&apos;t be put in a group.</span>
+                  </span>
+                  <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Pick a group</Button>
+                </div>
+              ) : undefined}
+            />
+            <ArrangeBar arrange={arrange} />
+            <InviteV2
+              arrange={arrange}
+              inviteUrl={inviteUrl}
+              used={usedCount}
+              max={maxCount}
+              requests={invitation.requests || []}
+              onAccept={handleAcceptRequest}
+              onReject={handleRejectRequest}
+              onRemove={(request) => setDeleteUserConfirm({ open: true, request })}
+            />
+            <HiddenTray arrange={arrange} labelOf={(id) => (id === 'link' ? 'Invite link' : 'People who used it')} />
+          </>
+        ) : (
+        <>
         {/* Hero Section - Invitation Info */}
         <PageSection className="mb-8">
           <Card padding="lg">
@@ -547,6 +611,8 @@ export default function InvitationDetailPage() {
             )}
           </Card>
         </PageSection>
+        </>
+        )}
       </div>
       </div>
 

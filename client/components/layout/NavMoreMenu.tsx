@@ -43,12 +43,19 @@ export function NavMoreMenu({ items, isActive, onNavigate, compact, tight }: {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btnRef.current?.focus(); } };
     document.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', close, { passive: true });
+    // Scrolling moves the menu with its button; it closes only once the
+    // button has left the screen.
+    const follow = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
+      setPos({ top: Math.round(r.bottom + 6), left: Math.round(Math.min(Math.max(8, r.left), window.innerWidth - 220 - 8)) });
+    };
+    window.addEventListener('scroll', follow, { passive: true });
     window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('pointerdown', onDown);
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', close);
+      window.removeEventListener('scroll', follow);
       window.removeEventListener('resize', close);
     };
   }, [open]);

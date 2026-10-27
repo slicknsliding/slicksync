@@ -120,12 +120,24 @@ export function SectionMenu({ arrange, id, label, noun = 'section' }: { arrange:
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btnRef.current?.focus(); } };
     document.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', close, { passive: true });
+    // Scrolling moves the menu with its button (a tap often nudges the page);
+    // it closes only once the button has left the screen.
+    const follow = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
+      const height = menuRef.current?.offsetHeight || 220;
+      const below = r.bottom + 6 + height <= window.innerHeight - 8;
+      setPos({
+        top: Math.round(below ? r.bottom + 6 : Math.max(8, r.top - 6 - height)),
+        left: Math.round(Math.min(Math.max(8, r.right - 240), window.innerWidth - 240 - 8)),
+      });
+    };
+    window.addEventListener('scroll', follow, { passive: true });
     window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('pointerdown', onDown);
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', close);
+      window.removeEventListener('scroll', follow);
       window.removeEventListener('resize', close);
     };
   }, [open]);

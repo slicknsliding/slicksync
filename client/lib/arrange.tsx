@@ -118,14 +118,23 @@ export function useArrangement() {
  * default order; `arranging` is whether the page is in Arrange mode (the
  * page's own state, not saved).
  */
-export function usePageArrangement(pageId: string, keys: string[]) {
+export function usePageArrangement(pageId: string, keys: string[], opts: { defaultFolded?: string[] } = {}) {
   const { arrangement, update } = useArrangement();
   const page = arrangement.pages?.[pageId];
   const [arranging, setArranging] = useState(false);
   const keysKey = keys.join('\u0000');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const { shown, hidden } = useMemo(() => arrangeKeys(keys, page), [keysKey, page]);
-  const folded = useMemo(() => new Set(page?.folded || []), [page]);
+  // Folded: what was folded, plus the page's own folded-by-default sections
+  // unless they were opened.
+  const defaultFoldedKey = (opts.defaultFolded || []).join(',');
+  const folded = useMemo(() => {
+    const set = new Set(page?.folded || []);
+    const opened = new Set(page?.unfolded || []);
+    for (const k of opts.defaultFolded || []) if (!opened.has(k)) set.add(k);
+    return set;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, defaultFoldedKey]);
 
   const setPage = useCallback((fn: (p: PageArrangement | undefined) => PageArrangement) => {
     update((prev) => {
