@@ -5393,6 +5393,8 @@ export interface ContinueWatchingItem {
   userId: string;
   username: string;
   providerType?: string;
+  /** Nuvio cards: the profile it is watched under. */
+  profileLabel?: string | null;
   // 'movie' entries are in-progress movies (resume always true, nextEpisode/
   // lastWatched always null). For 'series', nextEpisode is the episode the
   // card opens - the in-progress one when resume=true, the next unwatched
@@ -5566,6 +5568,11 @@ export interface MetricsData {
     // item id to link to (e.g. an unmatched proxy-only entry).
     stremioAppUrl?: string;
     nuvioAppUrl?: string;
+    // When playback stood at lastPosition (live proxy rows), in ms - the
+    // basis for the card's "About 19:04 of 1:35:50" while it plays.
+    positionAt?: number | null;
+    // The Nuvio (or AIOStreams) profile it is playing under.
+    profileLabel?: string | null;
     // Proxy-sourced entries only: elapsed watch time we can actually stand
     // behind (seconds), frozen once proxy traffic goes quiet rather than
     // climbing forever off raw wall-clock time - see the comment in

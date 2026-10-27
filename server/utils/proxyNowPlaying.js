@@ -414,6 +414,12 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // liveness signal, not something the proxy actually knows.
       lastPosition: existingTitleMatches ? (existing.lastPosition ?? null) : null,
       totalDuration: existingTitleMatches ? (existing.totalDuration ?? null) : null,
+      // When playback stood at lastPosition: the checkpoint's own time, or the
+      // stream's start if it began after that. The card adds the time played
+      // since, as "About 19:04 of 1:35:50", while the stream is live.
+      positionAt: existingTitleMatches && typeof existing.lastPosition === 'number' && typeof existing.reportedAtTimestamp === 'number'
+        ? Math.max(existing.reportedAtTimestamp, earliestStartTime.getTime())
+        : null,
       ...(existingTitleMatches && existing.stremioAppUrl ? { stremioAppUrl: existing.stremioAppUrl, nuvioAppUrl: existing.nuvioAppUrl } : {}),
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.

@@ -2959,6 +2959,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           // this is a live proxy stream and its timer still running.
           lastPosition: m.lastPosition ?? null,
           totalDuration: m.totalDuration ?? null,
+          ...(typeof m.positionAt === 'number' ? { positionAt: m.positionAt } : {}),
           ...(typeof m.reportedAtTimestamp === 'number' ? { reportedAtTimestamp: m.reportedAtTimestamp } : {}),
           ...(m.paused === true ? { paused: true } : {}),
           ...(typeof m.playingUntilTimestamp === 'number' ? { playingUntilTimestamp: m.playingUntilTimestamp } : {}),

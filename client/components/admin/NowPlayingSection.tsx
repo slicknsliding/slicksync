@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Badge, UserAvatar } from '@/components/ui';
 import { PlaybackDot, PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
-import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
+import { NowPlayingPosition, ProfileChip } from '@/components/ui/NowPlayingPosition';
+import { FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
   user: {
@@ -47,6 +48,10 @@ interface NowPlayingItem {
   totalDuration?: number | null;
   stremioAppUrl?: string | null;
   nuvioAppUrl?: string | null;
+  /** When playback stood at lastPosition (live proxy rows), in ms. */
+  positionAt?: number | null;
+  /** The Nuvio (or AIOStreams) profile it is playing under. */
+  profileLabel?: string | null;
   device?: { name: string | null; client: string | null } | null;
 }
 
@@ -76,15 +81,6 @@ export function NowPlayingSection({ items, now }: NowPlayingSectionProps) {
       </div>
     );
   }
-
-  // 3725 -> "1:02:05", 48 -> "0:48"
-  const formatClock = (totalSeconds: number) => {
-    const t = Math.max(0, Math.floor(totalSeconds));
-    const h = Math.floor(t / 3600);
-    const m = Math.floor((t % 3600) / 60);
-    const sec = String(t % 60).padStart(2, '0');
-    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
-  };
 
   // How long this has been playing, worked out the way the Activity page
   // does: a stream the proxy is still confirming counts up from when it
@@ -158,6 +154,7 @@ export function NowPlayingSection({ items, now }: NowPlayingSectionProps) {
             <p className={`font-medium truncate ${item.item.titlePending ? 'text-muted' : 'text-default'}`}>{item.item.name}</p>
             <div className="flex items-center gap-2 text-sm text-muted">
               <span className="truncate">{item.user.username}</span>
+              <ProfileChip label={item.profileLabel} />
               {item.item.type === 'series' && item.item.season && item.item.episode && (
                 <>
                   <span>•</span>
@@ -174,41 +171,7 @@ export function NowPlayingSection({ items, now }: NowPlayingSectionProps) {
               <p className="text-xs text-subtle mt-0.5">Watching for {watchingFor(item)}</p>
             )}
             <PlaybackFreshnessLine row={item} />
-            {typeof item.lastPosition === 'number' && typeof item.totalDuration === 'number' && item.totalDuration > 0 && (item.stremioAppUrl || item.nuvioAppUrl) && (
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <span className="text-xs text-subtle">
-                  {/* The position is the provider's last checkpoint, written
-                      at pause or stop - while the proxy shows the stream
-                      live it is where playback last stood, not a pause. */}
-                  {item.source === 'aiostreams-proxy' ? 'Last known position' : 'Paused at'}{' '}
-                  {formatClock(item.lastPosition / 1000)} of {formatClock(item.totalDuration / 1000)}
-                  {' '}({Math.round((item.lastPosition / item.totalDuration) * 100)}%)
-                </span>
-                {item.stremioAppUrl && (
-                  <a
-                    href={item.stremioAppUrl}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors"
-                    style={{ background: 'rgba(167, 139, 250, 0.15)', color: 'rgb(196, 181, 253)', border: '1px solid rgba(167, 139, 250, 0.25)' }}
-                  >
-                    <PlayIcon className="w-3 h-3" />
-                    Resume in Stremio
-                  </a>
-                )}
-                {item.nuvioAppUrl && (
-                  <a
-                    href={item.nuvioAppUrl}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors"
-                    style={{
-                      background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
-                      color: 'rgb(186, 208, 240)', border: '1px solid rgba(255, 152, 0, 0.18)',
-                    }}
-                  >
-                    <PlayIcon className="w-3 h-3" />
-                    Resume in Nuvio
-                  </a>
-                )}
-              </div>
-            )}
+            <NowPlayingPosition row={item} />
           </div>
 
           {/* Live indicator and Time Ago */}

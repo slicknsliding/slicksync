@@ -415,9 +415,26 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
 
   // Merge, most recently watched first, and re-cap - movies compete for the
   // same row as shows rather than getting bolted onto the end.
-  return [...results, ...movieEntries]
+  const merged = [...results, ...movieEntries]
     .sort((a, b) => new Date(b.lastWatchedAt).getTime() - new Date(a.lastWatchedAt).getTime())
     .slice(0, limit)
+
+  // A Nuvio card names the profile, as the history cards do: the one that
+  // person's watch history last recorded.
+  const nuvioIds = [...new Set(merged.filter((e) => e.providerType === 'nuvio').map((e) => e.userId))]
+  if (nuvioIds.length) {
+    try {
+      const labels = await prisma.watchActivity.findMany({
+        where: { accountId: accountIdValue, userId: { in: nuvioIds }, profileLabel: { not: null } },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['userId'],
+        select: { userId: true, profileLabel: true },
+      })
+      const byUser = new Map(labels.map((l) => [l.userId, l.profileLabel]))
+      for (const e of merged) if (byUser.has(e.userId)) e.profileLabel = byUser.get(e.userId)
+    } catch { /* the cards show without it */ }
+  }
+  return merged
 }
 
 /**

@@ -316,7 +316,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
           </p>
           <div className="flex items-center gap-1 mt-0.5">
-            <p className="text-[10px] text-subtle truncate">{item.username}</p>
+            <p className="text-[10px] text-subtle truncate">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
             {item.providerType && (
               <Badge variant={providerBadgeVariant(item)} size="sm" className="shrink-0">
                 {providerTypeLabel(item.providerType)}
