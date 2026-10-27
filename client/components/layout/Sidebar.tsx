@@ -184,6 +184,31 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     window.location.href = '/login?mode=admin';
   };
 
+  return (
+    <SidebarFrame
+      sections={navigationSections}
+      homeHref="/"
+      isOpen={isOpen}
+      onClose={onClose}
+      isItemActive={isItemActive}
+      account={<PanelSwitcher mode="admin" userInfo={accountInfo} onLogout={handleLogout} />}
+    />
+  );
+}
+
+/**
+ * The sidebar itself, for the admin pages (Sidebar) and a person's own pages
+ * (PersonSidebar): logo, the sections of links, the version, and the account
+ * button at the foot.
+ */
+export function SidebarFrame({ sections, homeHref, isOpen = false, onClose, isItemActive, account }: {
+  sections: typeof navigationSections;
+  homeHref: string;
+  isOpen?: boolean;
+  onClose?: () => void;
+  isItemActive: (href: string) => boolean;
+  account: React.ReactNode;
+}) {
   const handleNavigate = () => {
     if (onClose) {
       onClose();
@@ -240,7 +265,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           className="p-5 hidden md:block"
           style={{ borderBottom: '1px solid var(--color-surface-border)' }}
         >
-          <Link href="/" className="flex items-center gap-3">
+          <Link href={homeHref} className="flex items-center gap-3">
             <motion.div
               whileHover={{ scale: 1.08, rotate: 3 }}
               transition={{ duration: 0.2 }}
@@ -280,7 +305,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             dragging moved the page instead once the list had little/no
             room left to scroll in that direction. */}
         <nav className="flex-1 p-3 space-y-5 overflow-y-auto overscroll-contain custom-scrollbar">
-          {navigationSections.map((section, sectionIndex) => (
+          {sections.map((section, sectionIndex) => (
             <NavSection key={section.id} label={section.label} delay={sectionIndex * 0.1}>
               {section.items.map((item) => {
                 const itemIndex = globalIndex++;
@@ -322,11 +347,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
           <div className="w-full min-w-0">
-            <PanelSwitcher
-              mode="admin"
-              userInfo={accountInfo}
-              onLogout={handleLogout}
-            />
+            {account}
           </div>
         </div>
       </motion.aside>

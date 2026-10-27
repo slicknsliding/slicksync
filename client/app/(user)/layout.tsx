@@ -7,6 +7,8 @@ import { UserAuthGate } from '@/components/user/UserAuthGate';
 import { PersonTopbar } from '@/components/user/PersonTopbar';
 import { UserPageContainer } from '@/components/user/UserPageContainer';
 import { UserMobileMenuContext } from '@/lib/hooks/useUserMobileMenu';
+import { PersonSidebar } from '@/components/user/PersonSidebar';
+import { useLayoutMode } from '@/lib/layout-mode';
 
 /**
  * User panel layout: the same top bar as the admin pages (PersonTopbar)
@@ -21,6 +23,9 @@ export default function UserLayout({
 }) {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Original layout: the sidebar from tablets up; phones keep the top bar.
+  const { layoutMode } = useLayoutMode();
+  const sidebar = layoutMode === 'current';
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -63,8 +68,9 @@ export default function UserLayout({
           <div className="relative min-h-screen">
             {/* The collapsed nav opens inside the bar, so nothing locks the page
                 behind it the way the old side drawer did. */}
-            <PersonTopbar />
-            <UserPageContainer>
+            {sidebar && <PersonSidebar />}
+            {sidebar ? <div className="md:hidden"><PersonTopbar /></div> : <PersonTopbar />}
+            <UserPageContainer sidebar={sidebar}>
               {children}
             </UserPageContainer>
           </div>
