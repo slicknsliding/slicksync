@@ -379,3 +379,31 @@ test('a person alone in their group still gets their page', async () => {
     data.group.rows.splice(data.group.rows.findIndex((g) => g.id === 'gSolo'), 1)
   }
 })
+
+test('a database outage keeps the sign-in: the check answers 503, not 401', async () => {
+  const realFind = data.user.findUnique
+  data.user.findUnique = async () => { throw Object.assign(new Error('Can\'t reach database server at db:5432'), { code: 'P1001' }) }
+  try {
+    for (const [route, id, provider] of [['/validate-nuvio', 'nA', 'nuvio'], ['/validate-jellyfin', 'jA', 'jellyfin']]) {
+      const r = await call('POST', route, { key: session(id, provider), body: { userId: id } })
+      assert.equal(r.status, 503, route)
+      assert.equal(r.body.error, 'SERVICE_UNAVAILABLE')
+      assert.ok(!JSON.stringify(r.body).includes('db:5432'), 'no database address in the answer')
+    }
+  } finally { data.user.findUnique = realFind }
+  // A sign-in that is really wrong is still refused.
+  assert.equal((await call('POST', '/validate-nuvio', { key: 'not-a-session', body: { userId: 'nA' } })).status, 401)
+})
+
+test('outage or refusal: what counts as could-not-check', () => {
+  const { isOutage } = require('../server/utils/outage')
+  assert.ok(isOutage(Object.assign(new Error('x'), { code: 'P1001' })))
+  assert.ok(isOutage(Object.assign(new Error('x'), { name: 'PrismaClientInitializationError' })))
+  assert.ok(isOutage(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } })))
+  assert.ok(isOutage(new Error('HTTP 503')))
+  assert.ok(isOutage(Object.assign(new Error('x'), { status: 502 })))
+  assert.ok(!isOutage(new Error('Invalid or expired Stremio auth key')))
+  assert.ok(!isOutage(new Error('USER_NOT_FOUND')))
+  assert.ok(!isOutage(Object.assign(new Error('x'), { code: 'P2025' })))
+  assert.ok(!isOutage(Object.assign(new Error('x'), { status: 401 })))
+})

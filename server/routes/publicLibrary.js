@@ -1,5 +1,6 @@
 const express = require('express');
 const { publicMessage } = require('../utils/publicError');
+const { isOutage, OUTAGE_ANSWER } = require('../utils/outage');
 const jwt = require('jsonwebtoken');
 const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
@@ -670,6 +671,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       console.error('Error validating user:', error);
+      if (isOutage(error)) return res.status(503).json(OUTAGE_ANSWER);
       
       // Handle specific errors
       if (error?.message === 'USER_NOT_FOUND') {
@@ -873,6 +875,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       console.error('Error validating Nuvio user:', error);
+      if (isOutage(error)) return res.status(503).json(OUTAGE_ANSWER);
 
       if (error?.message === 'USER_NOT_FOUND') {
         return res.status(403).json({
@@ -982,6 +985,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       console.error('Error validating a Jellyfin session:', error?.message);
+      if (isOutage(error)) return res.status(503).json(OUTAGE_ANSWER);
       res.status(401).json({ error: 'Validation failed', message: 'Invalid session' });
     }
   });
