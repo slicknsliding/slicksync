@@ -2,7 +2,7 @@
   {
     "version": "1.102.0",
     "date": "2026-10-22",
-    "title": "1.102.0 - Your Jellyfin server, given to groups like an addon",
+    "title": "1.102.0 - Your Jellyfin server for groups, a fuller member page, and a calmer look",
     "features": [
       "Add a Jellyfin server on the Addons page: Add now asks whether you're adding an addon or a Jellyfin server. Type the address, give it a display name, connect as an administrator with Quick Connect, an API key or a username (the password is optional), and give it to groups. Servers your people already sign in with are listed first; if one of them is an administrator there, SlickSync connects with their sign-in and there's nothing to type. Everyone in them gets their own account on the server, named after them - or is linked to the one they already have there.",
       "Any Jellyfin app signs in with it: Odin, Swiftfin, Infuse, Findroid and the rest. The person chooses Quick Connect in the app, and the code goes in on their page here. Apps without Quick Connect use the account name and the password shown under Show password on their page.",
@@ -10,7 +10,18 @@
       "A title's details open on one picture: the scene at the top now reaches past the title and ratings, then fades into a plain panel.",
       "Household users added on AIOStreams' or AIOMetadata's own page show up on the household card by themselves - within about 20 seconds, or as soon as you open it.",
       "The AIOStreams and AIOMetadata profiles card shows the configuration's main user too, as the first profile marked Main, like the Nuvio profiles card. The others say whose they are, and whether they're merged or separated.",
-      "An AIOStreams or AIOMetadata addon whose configuration someone also signs in to as a Jellyfin server says so on its card, with who - tap it for the address and a way to its profiles."
+      "An AIOStreams or AIOMetadata addon whose configuration someone also signs in to as a Jellyfin server says so on its card, with who - tap it for the address and a way to its profiles.",
+      "Each person's own page: change your own picture (a colour, a link or an upload - GIFs keep moving), switch between the profiles of your Nuvio login, see your own Continue Watching on Home, and give your notification devices names or remove them.",
+      "Continue Watching on your page resumes where you left off: Stremio and Nuvio open the app at the title, and on Jellyfin or AIOStreams you choose the app it opens in - Swiftfin, Streamyfin, Infuse, the AIOStreams app or any app through a Shortcut - remembered on each device.",
+      "Import your own watch history from your page: a Trakt export or a CSV, with a preview of what will be added, what is already there and what is skipped before anything changes. Importing the same file again adds nothing. The import on a person's page shows the same preview.",
+      "Now Playing says how fresh each card is: \"Live · updated 8 s ago\" while the stream is still being confirmed, \"Playing · started 12 min ago\" for the AIOStreams apps, \"Paused · 2 min ago\" when the player says so, and \"Last seen\" otherwise.",
+      "Coming up on Home is a strip of the dates that have episodes - pick one to see just that day, with today marked.",
+      "Settings: \"Find a setting\" jumps to any setting by name, and on phones the sections open as tiles. Tasks opens on four tiles: Everyday tools, Data & templates, Backup & recovery, and Schedules & health.",
+      "Your account button floats at the bottom left as before, or sits in the top bar - Themes → Layout → Account button, for Top Navi.",
+      "Popups, menus and chart tooltips are solid and easier to read, with clearer edges. Faint text and the text on accent buttons are easier to read in every theme, and the bright themes keep their colours.",
+      "\"Jellyfin\" replaces \"Jellyfin | AIOStreams\" wherever you pick how someone signs in, with a note that it is also for AIOStreams and AIOMetadata. Catalogs has a Jellyfin Collections pill, and the Jellyfin badge wears Jellyfin's own colours.",
+      "Discover starts on Both, so a search or a browse finds movies and shows alike.",
+      "The Graveyard's option to also remove a title from someone's Stremio or Jellyfin library is a clearly marked switch: while it is on it says so beside the title, Wipe reads \"Wipe + app\", and the confirm names the person and the app."
     ],
     "bugFixes": [
       "On an AIOStreams with its own sign-in page switched on, adding a household user, changing a PIN or giving someone their own sign-in address failed with \"Invalid addon password\". On the AIOStreams your SlickSync already signs in to for Now Playing, they work again with nothing more to enter. On any other one, they open that AIOStreams' own page - the only place it takes them - and anything else it refuses says why.",
@@ -27,7 +38,11 @@
       "Pages and scripts an addon serves through the addon proxy or stream links download instead of opening on SlickSync's own address.",
       "Addresses SlickSync fetches are checked at the moment it connects, and calls to a saved Jellyfin server follow the same rules.",
       "An invite that makes Jellyfin accounts keeps its limit of 10 people waiting even when many ask at once, and removes the account of a request you reject.",
-      "On shared instances, proxy logs, merging people and linking addons to groups only ever reach your own account."
+      "On shared instances, proxy logs, merging people and linking addons to groups only ever reach your own account.",
+      "Now Playing could show a stream's scrambled file name instead of a title. It shows the title the person's app reports, or \"Title not known yet\" until there is one.",
+      "A person's page no longer waits for their Stremio addons to load before showing everything else.",
+      "A member's own picture shows in the top bar.",
+      "Inside a dialog, the line under the selected tab sits under the right tab, and two open dialogs no longer share a title."
     ]
   },
   {
