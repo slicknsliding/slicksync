@@ -14,7 +14,7 @@ kept in sync across every profile — on **Nuvio**, **Stremio**, **Jellyfin**, *
 [![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org) [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet?style=flat-square)](https://github.com/iamneur0/syncio)
 
-[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-whats-new-since-syncio) &nbsp;·&nbsp; [**Jellyfin | AIOStreams**](#-jellyfin-aiostreams-and-aiometadata) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
+[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-whats-new-since-syncio) &nbsp;·&nbsp; [**Jellyfin**](#-jellyfin-aiostreams-and-aiometadata) &nbsp;·&nbsp; [**AIOSync**](#-aiosync) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
 
 </div>
 
@@ -154,7 +154,7 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 
 ### Collections
 
-**Catalogs → Jellyfin | AIOStreams** — one page for both.
+**Catalogs → Jellyfin Collections** — one page for Jellyfin servers and AIOStreams.
 
 - **AIOStreams Collections** — each collection opens as its own page with its titles: search to add, add from Discover, drag to reorder; everything saves as you go.
 - **Per profile**, like Nuvio Collections — give a household profile collections of its own and SlickSync sets that profile up in AIOStreams so its apps load them.
@@ -173,6 +173,18 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 
 ---
 
+# 🔁 AIOSync
+
+**One watch history across every app a person uses** — Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata, in any direction.
+
+- **Copy watch history** — watched titles and resume points from one sign-in or profile to another, for the same person or between two people. Choose what to copy (watched, resume points, and the library between Stremio and Nuvio) and how far back, check every title before it copies, and **undo** any copy for 7 days.
+- **Nothing goes backwards** — a title already further along where it lands stays as it is, and nothing is ever removed.
+- **Keep in step** — switch it on per person and whatever they finish or stop part-way on one app shows up on the others within minutes. Each sign-in or profile sends and receives, only receives (a Kids profile that shouldn't push into a parent's history), or is left out. A sign-in that can't be reached for a while catches up once it's back.
+- **Titles without an id** — where a Jellyfin library names a title only, pick the right match and it copies too.
+- Open it from **Tasks → AIOSync** or the AIOSync tile on a person's page; Tasks lists who is kept in step with whom.
+
+---
+
 # 📚 Everything else
 
 <details>
@@ -182,10 +194,10 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - **History &amp; Watch Time** come from each provider's own library state, including sources the proxy can't see.
 - **Real completion tracking** — finished vs. started-and-dropped, plus **rewatch counts**, and per-day entries for a series rewatched across several days. You choose when something counts as finished (75–98%).
 - **Activity filters** — person, the app it was watched on, profile, movies or shows, finished or not, and any date range; **Copy link** shares the exact view.
-- **Airing Calendar** — a date-grouped agenda of upcoming episodes for everything anyone's actively watching.
+- **Coming up** — the airing dates of everything anyone's actively watching as a strip on Home; pick a date to see its episodes.
 - Correct-or-nothing posters, with optional **RPDB** rating-embedded art.
 - Explicit per-account timezone so "today" means the same thing to every background job.
-- **The Graveyard** — bury a title to keep it out of Continue Watching, dig it up any time, or wipe it (optionally reaching the device's own library too).
+- **The Graveyard** — bury a title to keep it out of Continue Watching, dig it up any time, or wipe it — optionally removing it from the person's Stremio or Jellyfin library too, behind a clearly marked warning.
 - **Watching Together** — an alert the moment someone starts an episode past the shared frontier.
 - **Device claims** — on a shared login, claim a device and its activity is attributed to the right person.
 - **Leave someone out of household numbers** — a test or guest person keeps their own page but stops counting toward totals, charts, Top Viewers and the year in review.
