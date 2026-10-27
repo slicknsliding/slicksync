@@ -42,7 +42,9 @@
       "Now Playing could show a stream's scrambled file name instead of a title. It shows the title the person's app reports, or \"Title not known yet\" until there is one.",
       "A person's page no longer waits for their Stremio addons to load before showing everything else.",
       "A member's own picture shows in the top bar.",
-      "Inside a dialog, the line under the selected tab sits under the right tab, and two open dialogs no longer share a title."
+      "Inside a dialog, the line under the selected tab sits under the right tab, and two open dialogs no longer share a title.",
+      "Sync Now on a member's own page failed with an error. It syncs.",
+      "Someone who is the only person in their group could not load their settings, and their page said they had no group. It loads, with their group."
     ]
   },
   {
