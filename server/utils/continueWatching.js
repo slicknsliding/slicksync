@@ -552,9 +552,11 @@ async function getBuriedShows(prisma, accountId) {
   }
   const users = await prisma.user.findMany({
     where: { id: { in: [...new Set(dismissed.map((d) => d.userId))] } },
-    select: { id: true, username: true },
+    select: { id: true, username: true, providerType: true },
   })
   const userMap = new Map(users.map((u) => [u.id, u.username]))
+  // Which app a wipe can also reach - the Graveyard names it before erasing.
+  const providerMap = new Map(users.map((u) => [u.id, u.providerType]))
 
   // Movie burials have no episode rows - name and poster come from the
   // movie history instead (a buried movie used to list as its bare tt id).
@@ -569,7 +571,9 @@ async function getBuriedShows(prisma, accountId) {
     const movie = movieByKey.get(`${d.userId}:${d.showId}`) || null
     return {
       userId: d.userId,
-      username: userMap.get(d.userId) || 'Unknown',
+      // The person was deleted after the burial.
+      username: userMap.get(d.userId) || 'Removed person',
+      providerType: providerMap.get(d.userId) || null,
       showId: d.showId,
       showName: hist?.showName || movie?.itemName || d.showId,
       poster: hist?.poster || movie?.poster || null,

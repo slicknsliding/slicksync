@@ -3065,7 +3065,7 @@ class ApiClient {
    * here too - both gestures mean "done with this"). */
   async getBuriedShows() {
     return this.fetch<{
-      userId: string; username: string; showId: string; showName: string;
+      userId: string; username: string; providerType: string | null; showId: string; showName: string;
       poster: string | null; lastSeason: number | null; lastEpisode: number | null;
       lastWatchedAt: string | null; episodesWatched: number; buriedAt: string;
     }[]>('/users/graveyard');

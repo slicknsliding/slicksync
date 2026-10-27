@@ -2191,7 +2191,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Shows whose last watched episode is marked finished are not listed. Finishing something is not abandoning it.',
       'Burying uses the same dismissal as Continue Watching, so a buried show will not resurface there either - and shows dismissed from Continue Watching rest in the graveyard too. Dig up returns a show to wherever it belongs: Continue Watching if recent, Unfinished if not.',
       'Wipe is the permanent option: it deletes every watched episode of that show for that person, so watch time and stats stop counting it. The button asks a second time and names exactly how many episodes it is about to erase. The erased rows land in the Trash first, so even a wipe can be undone for 30 days from Tasks → Recent Changes.',
-      'The "also remove from the account\'s library" checkbox above the graveyard makes a wipe reach the device too: the title is dropped from the provider account\'s own library, so it disappears from the device\'s home screen, not just from SlickSync. It applies to single and bulk wipes alike, and is skipped automatically for accounts whose library can\'t be edited from outside.',
+      'The "Also remove it from their apps" switch above the graveyard makes a wipe reach the person\'s app too: the title is deleted from their Stremio or Jellyfin library, so it leaves their home screen, and that can\'t be undone in the app. While it\'s on, the switch and a pill beside the title turn red, the button reads "Wipe + app", and the confirm names the person and the app. It applies to single and bulk wipes alike and is skipped for Nuvio, whose library can\'t be edited from outside.',
     ],
     related: ['now-playing-continue-watching', 'rewatch-completion', 'trash-and-undo'],
   },
