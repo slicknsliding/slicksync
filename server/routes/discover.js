@@ -132,13 +132,13 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
   // answer, never paged: nextSkip is always null.
   router.get('/search', async (req, res) => {
     try {
-      const { type = 'movie', query } = req.query
+      const { type = 'movie', query, genre } = req.query
       if (type !== 'movie' && type !== 'series' && type !== 'both') {
         return res.status(400).json({ error: 'type must be movie, series or both' })
       }
       const send = (items) => (req.query.paged ? res.json({ items, nextSkip: null }) : res.json(items))
       if (!query || !query.trim()) return send([])
-      const { parseFacets, matchesFacets, interleave } = require('../utils/discoverFacets')
+      const { parseFacets, matchesFacets, matchesGenre, interleave } = require('../utils/discoverFacets')
       const facets = parseFacets(req.query)
       const base = await lumiereFor(req)
       const searchOne = async (oneType) => {
@@ -159,7 +159,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       const items = type === 'both'
         ? interleave(...(await Promise.all([searchOne('movie'), searchOne('series')])))
         : await searchOne(type)
-      const shown = facets ? items.filter((i) => matchesFacets(i, facets)) : items
+      const shown = items.filter((i) => matchesGenre(i, genre) && matchesFacets(i, facets))
       send(shown)
       warmShown(shown)
     } catch (error) {

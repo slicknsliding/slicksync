@@ -285,7 +285,7 @@ export default function DiscoverPage() {
     setHasMore(true);
     loadMoreLock.current = false;
     setIsLoadingMore(false);
-    api.discoverPage(kind, debouncedQuery ? { query: debouncedQuery, ...facets } : { catalog, genre: genre || undefined, ...facets })
+    api.discoverPage(kind, debouncedQuery ? { query: debouncedQuery, genre: genre || undefined, ...facets } : { catalog, genre: genre || undefined, ...facets })
       .then(({ items: results, nextSkip }) => {
         if (cancelled) return;
         itemsRef.current = uniqueById(results);

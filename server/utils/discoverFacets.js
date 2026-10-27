@@ -56,6 +56,15 @@ function ratingOf(item) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+/** A search has no catalog genre to ask for, so the picked genre is matched
+ * against each title's own genres ("Science Fiction" and "Sci-Fi" are one). */
+function matchesGenre(item, genre) {
+  if (!genre) return true
+  const { genreSlug } = require('./lumiere')
+  const want = genreSlug(genre)
+  return Array.isArray(item?.genres) && item.genres.some((g) => typeof g === 'string' && genreSlug(g) === want)
+}
+
 /** Whether one item passes every filter that is on. */
 function matchesFacets(item, facets) {
   if (!facets) return true
@@ -137,5 +146,5 @@ function interleave(a, b) {
 
 module.exports = {
   DECADES, LENGTHS, FILTERED_TARGET, FILTERED_MAX_PAGES, BOTH_SPLIT,
-  parseFacets, matchesFacets, minutesOf, yearOf, ratingOf, takeFresh, filteredPage, bothPage, interleave,
+  parseFacets, matchesFacets, matchesGenre, minutesOf, yearOf, ratingOf, takeFresh, filteredPage, bothPage, interleave,
 }

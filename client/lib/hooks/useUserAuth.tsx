@@ -126,10 +126,23 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
           setErrorCode(result.errorCode || null);
         }
       } catch (err) {
-        // Failed to validate - clear storage
-        localStorage.removeItem(STORAGE_KEY);
-        if (err instanceof UserApiError) {
-          setError(err.message);
+        // Only the server saying no (401/403/404) ends a session. A dropped
+        // connection, a rate limit or a server hiccup keeps it: the saved
+        // sign-in is used as it is, and every request it makes is still
+        // checked by the server.
+        const rejected = err instanceof UserApiError && [401, 403, 404].includes(err.status);
+        let stored: StoredAuth | null = null;
+        try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { /* unreadable: start over */ }
+        if (!rejected && stored?.userId && stored.authKey) {
+          setUserId(stored.userId);
+          setProvider(stored.provider || 'stremio');
+          setAuthKey(stored.authKey);
+          setUserInfo(stored.userInfo);
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+          if (err instanceof UserApiError) {
+            setError(err.message);
+          }
         }
       } finally {
         setIsLoading(false);

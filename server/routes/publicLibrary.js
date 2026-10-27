@@ -2570,12 +2570,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       console.log('Loading library cache for account:', user.accountId);
       const libraryCache = getCachedLibrary(user.accountId || DEFAULT_ACCOUNT_ID, user) || [];
       console.log('Library cache items:', libraryCache.length);
-      const libraryItemMap = new Map();
-      libraryCache.forEach(item => {
-        if (item._id || item.id) {
-          libraryItemMap.set(item._id || item.id, item);
-        }
-      });
+      // Titles the cache doesn't hold yet are looked up, so a cold cache
+      // never shows ids in place of names.
+      const { portalActivityMetadata } = require('../utils/portalActivityMetadata');
+      const libraryItemMap = await portalActivityMetadata(libraryCache, watchActivities);
       console.log('Library item map size:', libraryItemMap.size);
 
       // Helper function to extract season/episode from itemId

@@ -87,6 +87,13 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     }
     return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   });
+  // Set only by Clear all. Stored bell notifications made before it stay
+  // hidden even if a poll that started before the clear lands after it.
+  const [clearedBefore, setClearedBefore] = useState<Date | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const at = new Date(localStorage.getItem('notifications-cleared-before') || '');
+    return Number.isNaN(at.getTime()) ? null : at;
+  });
 
   // Phones swipe a row left to dismiss it instead of the X. Not TVs: a remote
   // can't swipe, so they keep the button.
@@ -361,20 +368,23 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // carry server-side read state; readIds is layered on top only as an
     // optimistic client override so "Mark all read" reflects instantly before
     // the next poll. The lastChecked window doesn't apply - these are already
-    // time-bounded by the server query and cleared via server-side delete.
-    storedNotifications.forEach((n) => {
-      const id = `stored-${n.id}`;
-      items.push({
-        id,
-        type: n.type,
-        title: n.title,
-        message: n.body,
-        timestamp: new Date(n.createdAt),
-        read: n.read || readIds.has(id),
-        poster: n.poster || undefined,
-        data: { url: n.url },
+    // time-bounded by the server query and cleared via server-side delete;
+    // only what came before the last Clear all is held back.
+    storedNotifications
+      .filter((n) => !clearedBefore || new Date(n.createdAt) > clearedBefore)
+      .forEach((n) => {
+        const id = `stored-${n.id}`;
+        items.push({
+          id,
+          type: n.type,
+          title: n.title,
+          message: n.body,
+          timestamp: new Date(n.createdAt),
+          read: n.read || readIds.has(id),
+          poster: n.poster || undefined,
+          data: { url: n.url },
+        });
       });
-    });
 
     // Add recent activities
     combinedActivities
@@ -474,7 +484,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
-  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, storedNotifications, lastChecked, pendingRequests, dismissedIds, readIds]);
+  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, storedNotifications, clearedBefore, lastChecked, pendingRequests, dismissedIds, readIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -508,8 +518,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const handleClearAll = () => {
     const now = new Date();
     setLastChecked(now);
+    setClearedBefore(now);
     if (typeof window !== 'undefined') {
       localStorage.setItem('notifications-last-checked', now.toISOString());
+      localStorage.setItem('notifications-cleared-before', now.toISOString());
     }
     // Nothing before `now` will ever be shown again anyway (see the
     // lastChecked filter above), so the individually-dismissed and
