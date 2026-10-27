@@ -29,7 +29,7 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
-const { jfRequest, authorizationHeader, deviceIdFor, restrictsPrivateAddresses } = require('../providers/jellyfinAuth')
+const { jfRequest, authorizationHeader, deviceIdFor, restrictsPrivateAddresses, guardedFetch } = require('../providers/jellyfinAuth')
 
 const AVATAR_DIR = path.join(process.cwd(), 'data', 'avatars')
 const MAX_BYTES = 3 * 1024 * 1024
@@ -268,7 +268,9 @@ async function pushJellyfin(prisma, decrypt, accountId, person, img) {
   const base = String(person.jellyfinServerUrl || '').replace(/\/+$/, '')
   const url = `${base}/UserImage?userId=${encodeURIComponent(person.jellyfinUserId)}`
   const send = async (tok) => {
-    const res = await fetch(url, img
+    // The address is one the person typed in: on a public instance it may
+    // not lead (or redirect) to this server's own network.
+    const res = await guardedFetch(url, img
       ? { method: 'POST', headers: { Authorization: authorizationHeader({ token: tok, deviceId: deviceIdFor(person.jellyfinServerUrl, person.jellyfinUserId) }), 'Content-Type': img.type }, body: img.buf.toString('base64'), signal: AbortSignal.timeout(15000) }
       : { method: 'DELETE', headers: { Authorization: authorizationHeader({ token: tok, deviceId: deviceIdFor(person.jellyfinServerUrl, person.jellyfinUserId) }) }, signal: AbortSignal.timeout(15000) })
     return res.status

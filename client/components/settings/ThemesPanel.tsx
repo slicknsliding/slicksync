@@ -11,7 +11,7 @@ import {
   RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId,
   THEME_REAL_COLORS, encodeThemeShareCode, decodeThemeShareCode,
 } from '@/lib/theme';
-import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
+import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId, accountButtonMeta, accountButtonIds, AccountButtonId } from '@/lib/layout-mode';
 import { copyToClipboard } from '@/lib/clipboard';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
@@ -23,6 +23,7 @@ import {
   TrashIcon,
   SparklesIcon,
   Squares2X2Icon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 
 // Memoized theme card component
@@ -382,6 +383,82 @@ const LayoutModeCard = memo(function LayoutModeCard({
   );
 });
 
+// Account button card - where the picture and account menu live in Top Navi:
+// at the right end of the bar, or a floating pill bottom left (the default).
+// Original always keeps it at the foot of the sidebar, so it has no choice.
+// Same drawn-preview language as LayoutModeCard: shape, not colour.
+const AccountButtonCard = memo(function AccountButtonCard({
+  choice,
+  isSelected,
+  onSelect,
+}: {
+  choice: AccountButtonId;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const meta = accountButtonMeta[choice];
+  const dot = (size: number) => (
+    <span
+      className="rounded-full shrink-0"
+      style={{ width: size, height: size, background: 'var(--color-primary)', boxShadow: '0 0 0 1.5px var(--color-primary-muted)' }}
+    />
+  );
+
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      className={`relative p-3 rounded-xl border-2 transition-all text-left w-full card ${
+        isSelected ? 'border-primary bg-primary-muted' : 'border-default'
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center bg-primary z-10">
+          <CheckIcon className="w-3 h-3" style={{ color: 'var(--color-bg)' }} />
+        </div>
+      )}
+
+      <div
+        className="relative w-full h-20 rounded-lg mb-2 overflow-hidden border border-default"
+        style={{ backgroundColor: 'var(--color-bg)' }}
+      >
+        <div className="h-full flex flex-col p-1.5 gap-1.5">
+          <div className="relative h-5 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface)' }}>
+            <div className="w-6 h-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))' }} />
+            {choice === 'a' && <span className="absolute right-1">{dot(9)}</span>}
+          </div>
+          <div className="flex-1 flex gap-1">
+            <div className="flex-1 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.8 }} />
+            <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+            <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+          </div>
+          {choice === 'b' && (
+            <span
+              className="absolute left-2 bottom-2 w-5 h-3.5 rounded-full flex items-center pl-[3px]"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+            >
+              {dot(7)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <p className="font-medium text-sm text-default">
+        {meta.name}
+        {choice === 'b' && (
+          <span className="ml-1.5 align-[1px] text-[10.5px] font-semibold px-1.5 rounded-full bg-secondary-muted text-secondary">Default</span>
+        )}
+      </p>
+      <p className="text-xs text-muted">
+        {meta.description}
+      </p>
+    </motion.button>
+  );
+});
+
 // The whole Themes UI, extracted from what used to be its own page so it can
 // live inside Settings as a section (user's call - it is a preference, and it
 // was the only preference living outside Settings). `embedded` drops the page
@@ -393,7 +470,7 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
     saveCustomTheme, updateCustomTheme, deleteCustomTheme,
     previewCustom, cancelPreview,
   } = useTheme();
-  const { layoutMode, setLayoutMode } = useLayoutMode();
+  const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
   const { viewMode, setViewMode } = useDefaultViewMode();
   // Confirmation modal for deleting a saved custom theme.
   const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
@@ -532,6 +609,31 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 />
               ))}
             </div>
+
+            {/* Account button - Top Navi only. Original always keeps it at the
+                foot of the sidebar, so there is nothing to choose there. */}
+            {layoutMode === 'nebula' && (
+              <>
+                <div className="mt-5 mb-2 flex flex-wrap items-baseline gap-x-2">
+                  <h4 className="text-sm font-semibold text-default">Account button</h4>
+                  <p className="text-xs text-muted">Where your picture and account menu live in Top Navi</p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {[...accountButtonIds].reverse().map((id) => (
+                    <AccountButtonCard
+                      key={id}
+                      choice={id}
+                      isSelected={accountButton === id}
+                      onSelect={() => setAccountButton(id)}
+                    />
+                  ))}
+                </div>
+                <p className="flex items-center gap-2 text-xs text-muted mt-2.5">
+                  <InformationCircleIcon className="w-4 h-4 shrink-0 text-secondary" />
+                  <span>On a TV the account button is always in the bar, because a remote cannot reach a floating pill.</span>
+                </p>
+              </>
+            )}
 
             {/* Moved here from Settings -> Other Settings - a display
                 arrangement choice belongs alongside Layout, not off on its
@@ -1019,7 +1121,7 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                       onClick={() => { setBuilderRadius(id); previewCustom({ ...buildDraft(), radius: id }); }}
                       className={`px-3 py-1.5 text-sm transition-colors ${
                         builderRadius === id
-                          ? 'bg-primary text-white'
+                          ? 'bg-primary-solid text-white'
                           : 'bg-surface-hover text-muted hover:text-default'
                       }`}
                       style={{
@@ -1053,7 +1155,7 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                           style={f.family ? { fontFamily: f.family } : undefined}
                           className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
                             builderFont === f.id
-                              ? 'bg-primary text-white'
+                              ? 'bg-primary-solid text-white'
                               : 'bg-surface-hover text-muted hover:text-default'
                           }`}
                         >
@@ -1073,7 +1175,7 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                           onClick={() => { setBuilderTextScale(id); previewCustom({ ...buildDraft(), textScale: id }); }}
                           className={`px-3 py-1.5 rounded-lg transition-colors ${
                             builderTextScale === id
-                              ? 'bg-primary text-white'
+                              ? 'bg-primary-solid text-white'
                               : 'bg-surface-hover text-muted hover:text-default'
                           }`}
                           style={{ fontSize: `${13 * TEXT_SCALE_FACTORS[id]}px` }}

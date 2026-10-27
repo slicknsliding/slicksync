@@ -76,8 +76,7 @@ export function ComboBox({ value, onChange, onBlur, options, placeholder, classN
 
       {isOpen && options.length > 0 && (
         <div
-          className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg shadow-lg py-1"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+          className="popup-panel absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg py-1"
         >
           {options.map((opt) => (
             <button

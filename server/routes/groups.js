@@ -7,7 +7,7 @@ const { handleDatabaseError, sendError } = require('../utils/handlers');
 const { findGroupById } = require('../utils/helpers');
 const { responseUtils, dbUtils } = require('../utils/routeUtils');
 const { createdAtFromCuid } = require('../utils/dateUtils');
-const { removeUserFromGroup, setGroupMembers } = require('../utils/helpers/database');
+const { removeUserFromGroup, setGroupMembers, idsInAccount } = require('../utils/helpers/database');
 
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUserToGroup, getDecryptedManifestUrl, manifestUrlHmac, decrypt, createProvider }) => {
@@ -53,6 +53,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
   // from "already synced" to the normal check, so the group's new order
   // never actually got pushed down - reported as addons/reorder silently
   // not syncing to local user accounts.
+  // A Jellyfin server given to the group (utils/jellyfinHouseholdServers.js)
+  // never stops the addon sync.
+  async function syncHouseholdServers(prismaDep, accountId, groupId) {
+    try {
+      const changes = await require('../utils/jellyfinHouseholdServers').syncForGroup(prismaDep, accountId || 'default', groupId)
+      for (const c of changes) if (c.action !== 'failed') console.log(`[JellyfinServers] ${c.server}: ${c.name} ${c.action}`)
+    } catch (e) {
+      console.warn('[JellyfinServers] group sync step failed:', e?.message)
+    }
+  }
+
   async function syncGroupUsers(groupId, req, { forcePush = false } = {}) {
     // Load group with scoped account
     const group = await prisma.group.findFirst({
@@ -62,6 +73,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     if (!group) {
       return { error: 'Group not found', groupId }
     }
+
+    // Jellyfin servers given to this group: accounts for whoever is in it.
+    await syncHouseholdServers(prisma, getAccountId(req), groupId)
 
     // Parse userIds array from stored JSON
     let userIds = []
@@ -316,7 +330,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           accountId: getAccountId(req)
         },
         include: {
-          addons: { include: { addon: true } }
+          addons: { where: { addon: { accountId: getAccountId(req) } }, include: { addon: true } }
         }
       });
 
@@ -379,7 +393,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           accountId: getAccountId(req)
         },
         include: {
-          addons: { include: { addon: true } }
+          addons: { where: { addon: { accountId: getAccountId(req) } }, include: { addon: true } }
         }
       });
 
@@ -541,7 +555,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       const { period = '30d' } = req.query;
 
       const group = await findGroupById(prisma, id, accountId, {
-        addons: { where: { isEnabled: true }, include: { addon: true } },
+        addons: { where: { isEnabled: true, addon: { accountId } }, include: { addon: true } },
       });
       if (!group) return sendError(res, 404, 'Group not found');
 
@@ -641,6 +655,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       })
       if (!group) return responseUtils.notFound(res, 'Group')
 
+      // Every addon must be this account's own: a foreign id would link
+      // another household's addon (and its url) into this group. Checked
+      // before anything is written.
+      if (addonIds !== undefined && !await idsInAccount(prisma, 'addon', Array.isArray(addonIds) ? addonIds : [], getAccountId(req))) {
+        return responseUtils.badRequest(res, 'One or more addons were not found')
+      }
+
       // Update basic fields (ignore empty strings)
       const nextName = (typeof name === 'string' && name.trim() === '') ? undefined : name
       const nextDesc = (typeof description === 'string' && description.trim() === '') ? undefined : description
@@ -699,7 +720,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       // Sync addons only if addonIds is explicitly provided
       if (addonIds !== undefined) {
         const desiredAddonIds = Array.isArray(addonIds) ? addonIds : []
-        
+
         // Remove all existing addon associations
         await prisma.groupAddon.deleteMany({
           where: { groupId: id }
@@ -1326,7 +1347,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       const { id } = req.params
       const group = await prisma.group.findFirst({
         where: { id, accountId: getAccountId(req) },
-        include: { addons: { include: { addon: true } } }
+        include: { addons: { where: { addon: { accountId: getAccountId(req) } }, include: { addon: true } } }
       })
       if (!group) return responseUtils.notFound(res, 'Group')
 
@@ -1560,6 +1581,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     // Load group
     const group = await prismaDep.group.findFirst({ where: { id: groupId, accountId: getAccountIdDep(reqDep) }, select: { id: true, userIds: true, name: true } })
     if (!group) return { error: 'Group not found', groupId }
+    await syncHouseholdServers(prismaDep, getAccountIdDep(reqDep), groupId)
     // Parse users
     let userIds = []
     try { userIds = Array.isArray(group.userIds) ? group.userIds : JSON.parse(group.userIds || '[]') } catch {}

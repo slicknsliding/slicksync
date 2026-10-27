@@ -16,10 +16,11 @@ const MAX_LOG_SIZE = 10 * 1024 * 1024;
 /**
  * Log a proxy request to file
  */
-function logProxyRequest({ addon, path: requestPath, url, upstreamUrl, method, ip, userAgent, statusCode, cacheHit, responseTimeMs, error }) {
+function logProxyRequest({ addon, accountId, path: requestPath, url, upstreamUrl, method, ip, userAgent, statusCode, cacheHit, responseTimeMs, error }) {
   const timestamp = new Date().toISOString();
   const logEntry = {
     timestamp,
+    accountId: accountId || addon?.accountId || null,
     addonId: addon?.id,
     addonName: addon?.name,
     proxyUuid: addon?.proxyUuid,
@@ -69,12 +70,21 @@ async function rotateLogIfNeeded() {
  * @param {Object} options - Filter options
  * @param {string} options.addonId - Filter by addon ID
  * @param {string} options.proxyUuid - Filter by proxy UUID
+ * @param {string} options.accountId - Only entries belonging to this account (see accountAddonIds)
+ * @param {Iterable<string>} options.accountAddonIds - The account's addon ids: entries written before accountId was
+ *   recorded are attributed by their addonId
+ * @param {boolean} options.includeUnattributed - Also keep entries tied to no addon or account (single-account installs only)
+ * @param {string} options.accountId - Only entries belonging to this account (see accountAddonIds)
+ * @param {Iterable<string>} options.accountAddonIds - The account's addon ids: entries written before accountId was
+ *   recorded are attributed by their addonId
+ * @param {boolean} options.includeUnattributed - Also keep entries tied to no addon or account (single-account installs only)
  * @param {number} options.limit - Max number of entries to return (default 100)
  * @param {number} options.offset - Number of entries to skip (default 0)
  * @returns {Promise<{logs: Array, total: number}>}
  */
 async function readProxyLogs(options = {}) {
-  const { addonId, proxyUuid, limit = 100, offset = 0 } = options;
+  const { addonId, proxyUuid, accountId, accountAddonIds, includeUnattributed = false, limit = 100, offset = 0 } = options;
+  const ownAddonIds = new Set(accountAddonIds || []);
 
   try {
     // Check if file exists
@@ -99,6 +109,20 @@ async function readProxyLogs(options = {}) {
       .reverse();
 
     // Apply filters
+    if (accountId) {
+      logs = logs.filter(log => {
+        if (log.accountId) return log.accountId === accountId;
+        if (log.addonId) return ownAddonIds.has(log.addonId);
+        return includeUnattributed;
+      });
+    }
+    if (accountId) {
+      logs = logs.filter(log => {
+        if (log.accountId) return log.accountId === accountId;
+        if (log.addonId) return ownAddonIds.has(log.addonId);
+        return includeUnattributed;
+      });
+    }
     if (addonId) {
       logs = logs.filter(log => log.addonId === addonId);
     }

@@ -37,11 +37,11 @@ interface NotificationsDropdownProps {
   floating?: boolean;
 }
 
-/** Each floating topbar icon's own round backdrop - shared with TopbarActions. */
+/** Each floating topbar icon's own round backdrop - shared with TopbarActions.
+ *  Solid: an opaque surface reads over any poster, and there is nothing
+ *  worth blurring behind a 40px circle. */
 export const FLOATING_ICON_STYLE: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-  backdropFilter: 'blur(18px)',
-  WebkitBackdropFilter: 'blur(18px)',
+  background: 'var(--color-surface)',
   border: '1px solid var(--color-surface-border)',
   boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
 };
@@ -86,6 +86,13 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       return stored ? new Date(stored) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default to 7 days ago
     }
     return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  });
+  // Set only by Clear all. Stored bell notifications made before it stay
+  // hidden even if a poll that started before the clear lands after it.
+  const [clearedBefore, setClearedBefore] = useState<Date | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const at = new Date(localStorage.getItem('notifications-cleared-before') || '');
+    return Number.isNaN(at.getTime()) ? null : at;
   });
 
   // Phones swipe a row left to dismiss it instead of the X. Not TVs: a remote
@@ -361,20 +368,23 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // carry server-side read state; readIds is layered on top only as an
     // optimistic client override so "Mark all read" reflects instantly before
     // the next poll. The lastChecked window doesn't apply - these are already
-    // time-bounded by the server query and cleared via server-side delete.
-    storedNotifications.forEach((n) => {
-      const id = `stored-${n.id}`;
-      items.push({
-        id,
-        type: n.type,
-        title: n.title,
-        message: n.body,
-        timestamp: new Date(n.createdAt),
-        read: n.read || readIds.has(id),
-        poster: n.poster || undefined,
-        data: { url: n.url },
+    // time-bounded by the server query and cleared via server-side delete;
+    // only what came before the last Clear all is held back.
+    storedNotifications
+      .filter((n) => !clearedBefore || new Date(n.createdAt) > clearedBefore)
+      .forEach((n) => {
+        const id = `stored-${n.id}`;
+        items.push({
+          id,
+          type: n.type,
+          title: n.title,
+          message: n.body,
+          timestamp: new Date(n.createdAt),
+          read: n.read || readIds.has(id),
+          poster: n.poster || undefined,
+          data: { url: n.url },
+        });
       });
-    });
 
     // Add recent activities
     combinedActivities
@@ -474,7 +484,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
-  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, storedNotifications, lastChecked, pendingRequests, dismissedIds, readIds]);
+  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, storedNotifications, clearedBefore, lastChecked, pendingRequests, dismissedIds, readIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -508,8 +518,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const handleClearAll = () => {
     const now = new Date();
     setLastChecked(now);
+    setClearedBefore(now);
     if (typeof window !== 'undefined') {
       localStorage.setItem('notifications-last-checked', now.toISOString());
+      localStorage.setItem('notifications-cleared-before', now.toISOString());
     }
     // Nothing before `now` will ever be shown again anyway (see the
     // lastChecked filter above), so the individually-dismissed and
@@ -615,7 +627,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
           // "eleven things are waiting" are different amounts of urgency.
           <span
             className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold leading-none"
-            style={{ background: 'var(--color-primary)', color: '#fff' }}
+            style={{ background: 'var(--color-primary-solid)', color: '#fff' }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
@@ -655,7 +667,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   after) so the panel's own background naturally covers its
                   bottom half, same trick as any CSS speech-bubble tail. */}
               <div
-                className="absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t border-default"
+                className="popup-caret absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t"
                 style={{ background: 'var(--color-surface)' }}
               />
               {/* Plain div, not <Card> - Card's Nebula mode auto-applies a
@@ -669,8 +681,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   layout mode - a floating overlay always needs strong
                   contrast, that's not a Nebula-vs-Current distinction. */}
               <div
-                className="shadow-xl border border-default max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
-                style={{ background: 'var(--color-surface)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+                className="popup-panel max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-default">

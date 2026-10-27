@@ -824,14 +824,14 @@ export default function SuperAdminPage() {
                 <button
                   type="button"
                   onClick={() => setBroadcastTarget('all')}
-                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'all' ? 'bg-primary text-white' : 'text-muted'}`}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'all' ? 'bg-primary-solid text-white' : 'text-muted'}`}
                 >
                   All accounts ({accounts.filter((a) => !a.disabled).length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastTarget('selected')}
-                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'selected' ? 'bg-primary text-white' : 'text-muted'}`}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'selected' ? 'bg-primary-solid text-white' : 'text-muted'}`}
                 >
                   Selected only ({selectedIds.size})
                 </button>

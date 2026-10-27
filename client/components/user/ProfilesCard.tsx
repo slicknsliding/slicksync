@@ -324,7 +324,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
                   <span data-profile-circle className="relative transition-transform group-hover:scale-105">
                     <ProfileMark profile={profile} size={64} />
                     {profile.index === 1 && (
-                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary text-white">
+                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary-solid text-white">
                         Main
                       </span>
                     )}
@@ -360,13 +360,13 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
               initial={{ opacity: 0, y: placement.above ? 4 : -4, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.12 }}
-              className="fixed z-[9999] rounded-2xl border border-default bg-surface shadow-2xl backdrop-blur-xl p-1.5"
+              className="popup-panel fixed z-[9999] rounded-2xl p-1.5"
               style={{ left: placement.left, top: placement.top, bottom: placement.bottom, width: POPOVER_WIDTH, transformOrigin: `${placement.arrowX}px ${placement.above ? '100%' : '0%'}` }}
             >
               {/* The pointer to the circle it belongs to. */}
               <span
                 aria-hidden
-                className="absolute w-3 h-3 rotate-45 bg-surface border-default"
+                className="popup-caret absolute w-3 h-3 rotate-45 bg-surface"
                 style={{
                   left: placement.arrowX - 6,
                   ...(placement.above

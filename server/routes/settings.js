@@ -18,7 +18,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
   const router = express.Router();
 
   const ensureDefaultAccount = async () => {
-    const privatePassword = process.env.PRIVATE_ACCOUNT_PASSWORD || 'private-mode'
+    // Only ever seeded as a placeholder (sign-in doesn't use it), so unless the
+    // operator set one it is random rather than a well-known word.
+    const privatePassword = require('../utils/auth').defaultAccountPassword()
     const defaultSyncPayload = JSON.stringify({ enabled: false, frequency: '0', safe: true, mode: 'normal', webhookUrl: null, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false })
 
     let account = await prisma.appAccount.findUnique({ where: { id: DEFAULT_ACCOUNT_ID } })

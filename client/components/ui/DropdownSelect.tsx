@@ -214,15 +214,13 @@ export function DropdownSelect({ value, onChange, options, ariaLabel, className,
           ref={panelRef}
           role="listbox"
           aria-label={ariaLabel}
-          className="rounded-lg shadow-xl py-1 overflow-y-auto overscroll-contain"
+          className="popup-panel rounded-lg py-1 overflow-y-auto overscroll-contain"
           style={{
             position: 'fixed',
             left: rect.left,
             top: rect.top,
             width: rect.width,
             maxHeight: rect.maxHeight,
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-surface-border)',
             // Above the app's own layered chrome (modals sit at z-50).
             zIndex: 60,
           }}

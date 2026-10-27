@@ -20,11 +20,13 @@ import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { copyToClipboard } from '@/lib/clipboard';
 import { userAuth, userExport, getUserApiKey } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
-import { ToggleSwitch, Avatar, ConfirmModal } from '@/components/ui';
+import { ToggleSwitch, ConfirmModal } from '@/components/ui';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
 import { toast } from '@/components/ui/Toast';
 import { providerTypeLabel } from '@/lib/providers';
 import { PersonPushRow } from '@/components/user/PersonPushRow';
+import { ProfilePictureEditor } from '@/components/user/ProfilePictureEditor';
+import { HistoryImportTile } from '@/components/user/HistoryImportTile';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -499,26 +501,8 @@ export default function UserSettingsPage() {
           </div>
 
           <div className="p-6 space-y-4">
-            {/* Avatar and name */}
-            <div className="flex items-center gap-4">
-              <Avatar 
-                name={userInfo?.username || 'User'}
-                email={userInfo?.email}
-                useGravatar={userInfo?.useGravatar}
-                colorIndex={userInfo?.colorIndex || 0}
-                size="xl"
-                showRing
-                className="w-16 h-16"
-              />
-              <div>
-                <h3 className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>
-                  {userInfo?.username}
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                  {userInfo?.email}
-                </p>
-              </div>
-            </div>
+            {/* Their picture (the avatar is the button) and name */}
+            <ProfilePictureEditor name={userInfo?.username || 'User'} email={userInfo?.email} />
 
             {/* Details grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
@@ -728,6 +712,9 @@ export default function UserSettingsPage() {
                 {isExportingMyData ? 'Exporting...' : 'Download'}
               </button>
             </div>
+
+            {/* Bring a watch history in from another service (their own, SlickSync's history only) */}
+            {userId && authKey && <HistoryImportTile userId={userId} authKey={authKey} />}
           </div>
         </motion.div>
 

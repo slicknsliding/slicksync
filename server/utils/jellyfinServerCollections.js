@@ -21,7 +21,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { jfRequest, deviceIdFor, displayServer, authorizationHeader, restrictsPrivateAddresses } = require('../providers/jellyfinAuth')
+const { jfRequest, deviceIdFor, displayServer, authorizationHeader, restrictsPrivateAddresses, guardedFetch } = require('../providers/jellyfinAuth')
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000
 const INDEX_TTL_MS = 5 * 60 * 1000
@@ -212,7 +212,7 @@ async function readCover(url) {
 
 /** Put a picture on a collection (administrator only in Jellyfin). */
 async function setCollectionPicture(s, collectionId, cover) {
-  const res = await fetch(`${s.base}/Items/${encodeURIComponent(collectionId)}/Images/Primary`, {
+  const res = await guardedFetch(`${s.base}/Items/${encodeURIComponent(collectionId)}/Images/Primary`, {
     method: 'POST',
     headers: { Authorization: authorizationHeader({ token: s.token, deviceId: s.deviceId }), 'Content-Type': cover.type },
     body: cover.bytes.toString('base64'),
@@ -421,4 +421,4 @@ function scheduleServerCollections(prisma, decrypt) {
   timer = setInterval(run, SYNC_INTERVAL_MS)
 }
 
-module.exports = { serverDisplayName, serversFor, describeServer, setCatalog, syncServer, scheduleServerCollections, serverKeyOf, syncOne, findActor, sessionFor, call }
+module.exports = { serverDisplayName, serversFor, describeServer, setCatalog, syncServer, scheduleServerCollections, serverKeyOf, syncOne, findActor, sessionFor, call, setCollectionPicture }

@@ -29,7 +29,7 @@
 // native session lingers as "active" after the provider's final checkpoint.
 // Kept at the same ~5min margin above that window as before (was 20 vs 15).
 const RECENTLY_CLOSED_MS = 23 * 60 * 1000
-const { proxyDisplayTitle } = require('./proxyTitle')
+const { proxyDisplayTitle, isOpaqueStreamName, TITLE_PENDING_NAME } = require('./proxyTitle')
 // Same title or not - by IMDb id where both sides have one, else by the
 // tidied name. See titleMatch.js for why "contains" was not good enough.
 const { normalizeTitle, pairMatches } = require('./titleMatch')
@@ -64,6 +64,30 @@ const announcedDevices = new Set()
 
 /** How a proxy row is known, for comparing against a library title. */
 const describe = (row) => ({ id: row.metadataItemId || null, titles: [proxyDisplayTitle(row), row.displayName].filter(Boolean) })
+
+// How far before the stream opened a native session may have started or
+// last been written and still be this viewing (the provider's own clock and
+// its checkpoint cadence run a little apart from the proxy's).
+const OPAQUE_BORROW_SLACK_MS = 2 * 60 * 1000
+
+/**
+ * The one native session of a person that is evidently the same viewing as a
+ * proxy stream with no readable title: written or started at or after the
+ * stream's start minus 2 minutes, and not finished. None or several -> null
+ * (a film they just finished or a second candidate must never be shown as
+ * the proxied content).
+ */
+function borrowForOpaqueStream(sessions, streamStart) {
+  const { hasReachedEnd } = require('./sessionTracker')
+  const since = streamStart.getTime() - OPAQUE_BORROW_SLACK_MS
+  const candidates = sessions.filter((np) => {
+    if (!np.item || hasReachedEnd(np.lastPosition, np.totalDuration)) return false
+    const started = np.watchedAtTimestamp ?? (np.startTime ? new Date(np.startTime).getTime() : null)
+    const stamps = [started, np.reportedAtTimestamp].filter((t) => Number.isFinite(t))
+    return stamps.length > 0 && Math.max(...stamps) >= since
+  })
+  return candidates.length === 1 ? candidates[0] : null
+}
 
 async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPlaying, { isConfirming } = {}) {
   let proxySessions
@@ -346,7 +370,21 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // as if it were the proxied content. User identity (avatar/username/
     // email) is about the person, not the content, so any of their entries
     // can supply it.
-    const existing = theirSessions.find((np) => pairMatches(described, np.item)) || null
+    let existing = theirSessions.find((np) => pairMatches(described, np.item)) || null
+    // A stream whose only name is an opaque id (a usenet or cache hash the
+    // lookup could not match) can never match by title. Native may still be
+    // showing THIS viewing under its real name - borrow it only when exactly
+    // one of their sessions is evidently this one (see borrowForOpaqueStream).
+    // Otherwise the card says the title is not known yet; it never prints the id.
+    const titlePending = !existing && !representative.metadataItemId && !representative.metadataName &&
+      isOpaqueStreamName(proxyDisplayTitle(representative))
+    if (titlePending) {
+      existing = borrowForOpaqueStream(theirSessions, earliestStartTime)
+      if (existing) {
+        // The native entry is now this card; it must not also be listed below.
+        coveredByUser.get(user.id).push({ id: existing.item.id || null, titles: [existing.item.name].filter(Boolean) })
+      }
+    }
     const existingTitleMatches = !!existing
 
     result.push({
@@ -361,10 +399,11 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       item: existingTitleMatches ? existing.item : {
         // The matched title's id, type and name where the lookup found one.
         id: representative.metadataItemId || null,
-        name: proxyDisplayTitle(representative) || 'Unknown',
+        name: titlePending ? TITLE_PENDING_NAME : (proxyDisplayTitle(representative) || 'Unknown'),
         type: representative.metadataItemType || null,
-        year: ((representative.displayName || '').match(/\((\d{4})\)\s*$/) || [])[1] || null,
-        poster: representative.posterUrl || null,
+        year: titlePending ? null : (((representative.displayName || '').match(/\((\d{4})\)\s*$/) || [])[1] || null),
+        ...(titlePending ? { titlePending: true } : {}),
+        poster: titlePending ? null : (representative.posterUrl || null),
         season: null,
         episode: null,
       },
@@ -375,6 +414,12 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // liveness signal, not something the proxy actually knows.
       lastPosition: existingTitleMatches ? (existing.lastPosition ?? null) : null,
       totalDuration: existingTitleMatches ? (existing.totalDuration ?? null) : null,
+      // When playback stood at lastPosition: the checkpoint's own time, or the
+      // stream's start if it began after that. The card adds the time played
+      // since, as "About 19:04 of 1:35:50", while the stream is live.
+      positionAt: existingTitleMatches && typeof existing.lastPosition === 'number' && typeof existing.reportedAtTimestamp === 'number'
+        ? Math.max(existing.reportedAtTimestamp, earliestStartTime.getTime())
+        : null,
       ...(existingTitleMatches && existing.stremioAppUrl ? { stremioAppUrl: existing.stremioAppUrl, nuvioAppUrl: existing.nuvioAppUrl } : {}),
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
@@ -394,6 +439,10 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // confidently incorrect guess.
       lastActivityAt: representative.lastSeenAt.toISOString(),
       lastActivityAtTimestamp: representative.lastSeenAt.getTime(),
+      // When this stream was last reconfirmed live (the poll cycle that
+      // found it still open) - what the "Live - updated 8 s ago" label on the
+      // cards counts from. Display only; nothing here merges on it.
+      reportedAtTimestamp: mostRecentPollConfirmation.getTime(),
       // Elapsed time we can actually stand behind, in seconds - real
       // wall-clock elapsed while the connection is confirmed live, but
       // frozen once we can no longer confirm that rather than continuing to

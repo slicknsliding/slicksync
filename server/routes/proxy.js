@@ -1,6 +1,7 @@
 const express = require('express');
 const { logProxyRequest } = require('../utils/proxyLogger');
 const streamProxyFactory = require('./streamProxy');
+const { isSafeContentType, applyProxiedBodyHeaders } = streamProxyFactory;
 const { safeFetch, instancePolicy } = require('../utils/safeUrl');
 
 // In-memory cache for proxied responses (60s TTL).
@@ -176,6 +177,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
         try {
         logProxyRequest({
           addon,
+          accountId: addon.accountId,
           path: '/manifest.json',
           url: requestUrl,
           upstreamUrl,
@@ -257,7 +259,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       // Rewrite all URLs in manifest to point to proxy
       const rewrittenManifest = rewriteUrls(manifestData, originalBaseUrl, proxyBaseUrl, uuid);
 
-      res.set('Content-Type', 'application/json');
+      res.set('Content-Type', applyProxiedBodyHeaders(res, 'application/json'));
       res.send(rewrittenManifest);
     } catch (error) {
       console.error('Error serving proxy manifest:', error);
@@ -284,6 +286,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
         try {
         logProxyRequest({
           addon,
+          accountId: addon.accountId,
           path: `/${path}`,
           url: requestUrl,
           upstreamUrl: upstreamUrl,
@@ -362,7 +365,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       const cached = getCachedProxy(cacheKey);
       if (cached) {
         cacheHit = true;
-        res.set('Content-Type', cached.contentType);
+        res.set('Content-Type', applyProxiedBodyHeaders(res, cached.contentType));
         res.set('X-Proxy-Cache', 'HIT');
         res.send(cached.data);
         return;
@@ -406,8 +409,10 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       // kind that is big and is not asked for twice in a minute.
       let cacheable = false;
 
-      // Only rewrite URLs for JSON and text content types
-      if (contentType.includes('json') || contentType.includes('text')) {
+      // Only rewrite URLs for JSON and text content types. A type that is not
+      // safe to show on our origin (HTML, JS, SVG...) is not read as text: it
+      // goes out as an attachment below and is never cached.
+      if (isSafeContentType(contentType) && (contentType.includes('json') || contentType.includes('text'))) {
         cacheable = true;
         const text = await upstreamResponse.text();
         let processedData = rewriteUrls(text, originalBaseUrl, proxyBaseUrl, uuid);
@@ -436,7 +441,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
         setCachedProxy(cacheKey, responseData, contentType);
       }
 
-      res.set('Content-Type', contentType);
+      res.set('Content-Type', applyProxiedBodyHeaders(res, contentType));
       res.set('X-Proxy-Cache', 'MISS');
       res.send(responseData);
     } catch (error) {

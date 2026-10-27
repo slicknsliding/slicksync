@@ -3,6 +3,8 @@
 // Otherwise use the explicit URL (useful for production or different ports)
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+import type { HistoryImportFileResult } from './user-api';
+
 // One entry in a cast member's filmography, as /api/discover/person returns it.
 /** One of a person's SlickTrax rows - see server/routes/traxAddon.js orderedTraxRows. */
 export interface TraxRow { key: string; name: string; hidden: boolean }
@@ -2119,10 +2121,11 @@ class ApiClient {
       `/addons/${encodeURIComponent(addonId)}/unvaultify`, { method: 'POST' });
   }
 
-  async importUserHistory(userId: string, file: File) {
+  // dryRun reports what would be added without writing anything (a preview).
+  async importUserHistory(userId: string, file: File, dryRun = false) {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/import-history`, {
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/import-history${dryRun ? '?dryRun=1' : ''}`, {
       method: 'POST',
       body: formData,
       credentials: 'include',
@@ -2130,9 +2133,10 @@ class ApiClient {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Import failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      // The status rides along so a caller can tell "nothing importable in that file" (400) from a real failure.
+      throw Object.assign(new Error(error.error || `HTTP ${response.status}`), { status: response.status });
     }
-    return response.json() as Promise<{ imported: number; skipped: number; skippedEpisodes?: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
+    return response.json() as Promise<HistoryImportFileResult & { imported: number }>;
   }
 
   // Letterboxd-import-compatible CSV export for one household member - a
@@ -2640,6 +2644,89 @@ class ApiClient {
     return this.fetch<{ ok: boolean }>(`/jellyfin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
   }
 
+  // Jellyfin servers on the Addons page, given to groups like an addon.
+  async householdServers() {
+    return this.fetch<{ servers: HouseholdServer[] }>('/jellyfin/household-servers');
+  }
+
+  /** AIOStreams/AIOMetadata configurations someone signs in to as a Jellyfin server, keyed host|config id. */
+  async configServerLinks() {
+    return this.fetch<{ links: ConfigServerLink[] }>('/jellyfin/household-servers/config-links');
+  }
+
+  async householdServersKnown() {
+    return this.fetch<{ servers: KnownHouseholdServer[] }>('/jellyfin/household-servers/known');
+  }
+
+  async checkHouseholdServer(serverUrl: string) {
+    return this.fetch<import('@/components/jellyfin/JellyfinSignIn').JellyfinServerInfo & { suggestedName: string }>('/jellyfin/household-servers/check', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl }),
+    });
+  }
+
+  async householdServerQuickConnect(serverUrl: string) {
+    return this.fetch<{ code: string; secret: string; device: string; serverUrl: string }>('/jellyfin/household-servers/quick-connect', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl }),
+    });
+  }
+
+  async householdServerQuickConnectStatus(params: { serverUrl: string; secret: string; device: string }) {
+    return this.fetch<{ authenticated: boolean; expired?: boolean }>('/jellyfin/household-servers/quick-connect-status', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  async addHouseholdServer(data: {
+    serverUrl: string;
+    name: string;
+    groupIds: string[];
+    method: 'quickconnect' | 'apikey' | 'username' | 'person';
+    personId?: string;
+    apiKey?: string;
+    username?: string;
+    password?: string;
+    secret?: string;
+    device?: string;
+  }) {
+    return this.fetch<{ id: string; name: string; changes: HouseholdServerChange[] }>('/jellyfin/household-servers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateHouseholdServer(id: string, data: { name?: string; groupIds?: string[] }) {
+    return this.fetch<{ id: string; name: string; groupIds: string[] }>(`/jellyfin/household-servers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeHouseholdServer(id: string) {
+    return this.fetch<{ removed: boolean }>(`/jellyfin/household-servers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async syncHouseholdServer(id: string) {
+    return this.fetch<{ changes: HouseholdServerChange[] }>(`/jellyfin/household-servers/${encodeURIComponent(id)}/sync`, { method: 'POST' });
+  }
+
+  async personHouseholdServers(personId: string) {
+    return this.fetch<{ servers: PersonHouseholdServer[] }>(`/jellyfin/household-servers/people/${encodeURIComponent(personId)}`);
+  }
+
+  async approveHouseholdServerCode(serverId: string, personId: string, code: string) {
+    return this.fetch<{ approved: boolean; userName: string }>(`/jellyfin/household-servers/${encodeURIComponent(serverId)}/people/${encodeURIComponent(personId)}/quick-connect`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async householdServerPassword(serverId: string, personId: string) {
+    return this.fetch<{ userName: string; password: string }>(`/jellyfin/household-servers/${encodeURIComponent(serverId)}/people/${encodeURIComponent(personId)}/password`, { method: 'POST' });
+  }
+
   // "Their servers in Nuvio" - their Jellyfin / AIOStreams / AIOMetadata in their Nuvio profile.
   async getNuvioMediaServers(userId: string) {
     return this.fetch<NuvioServersState>(`/nuvio/users/${encodeURIComponent(userId)}/media-servers`);
@@ -2676,7 +2763,7 @@ class ApiClient {
   }
 
   async getHousehold(userId: string) {
-    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean; canPin?: boolean; personal?: Record<string, HouseholdPersonal> | null }>(
+    return this.fetch<{ profiles: HouseholdProfile[]; partOf: { profileId: string; name: string; owner: { id: string; username: string } } | null; kind: string | null; canManage?: boolean; canPin?: boolean; personal?: Record<string, HouseholdPersonal> | null; managedOn?: string | null; main?: { name: string; avatarUrl: string | null; limitId: string } | null }>(
       `/jellyfin/users/${encodeURIComponent(userId)}/household`
     );
   }
@@ -2978,7 +3065,7 @@ class ApiClient {
    * here too - both gestures mean "done with this"). */
   async getBuriedShows() {
     return this.fetch<{
-      userId: string; username: string; showId: string; showName: string;
+      userId: string; username: string; providerType: string | null; showId: string; showName: string;
       poster: string | null; lastSeason: number | null; lastEpisode: number | null;
       lastWatchedAt: string | null; episodesWatched: number; buriedAt: string;
     }[]>('/users/graveyard');
@@ -4013,6 +4100,63 @@ export interface AioCollectionsView {
   linked: boolean;
   collections: AioCollection[];
   catalogs: { id: string; name: string; titles: number; cover: string | null }[];
+}
+
+/** A Jellyfin server on the Addons page (server/utils/jellyfinHouseholdServers.js). */
+export interface HouseholdServer {
+  id: string;
+  name: string;
+  address: string;
+  groupIds: string[];
+  groups: { id: string; name: string }[];
+  /** Everyone in its groups. */
+  people: number;
+  withAccounts: number;
+  /** Get an account on the next sync. */
+  waiting: number;
+  lastSyncAt: string | null;
+}
+
+/** An AIOStreams or AIOMetadata configuration someone here also signs in to as a Jellyfin server. */
+export interface ConfigServerLink {
+  key: string;
+  personId: string;
+  personName: string;
+  kind: 'aiostreams' | 'aiometadata';
+  address: string;
+  profiles: number;
+}
+
+/** A Jellyfin server people here already sign in with, not added on the Addons page yet. */
+export interface KnownHouseholdServer {
+  url: string;
+  address: string;
+  name: string;
+  people: string[];
+  /** Someone here who is an administrator there: SlickSync connects with their sign-in. */
+  admin: { id: string; name: string } | null;
+}
+
+export interface HouseholdServerChange {
+  action: 'made' | 'linked' | 'on' | 'off' | 'unlinked' | 'failed';
+  personId?: string;
+  name: string;
+  server?: string;
+  detail?: string;
+}
+
+/** A Jellyfin server a person has (or gets on the next sync) an account on. */
+export interface PersonHouseholdServer {
+  id: string;
+  name: string;
+  address: string;
+  groups: string[];
+  userName: string | null;
+  made: boolean;
+  own: boolean;
+  waiting: boolean;
+  tracked: boolean;
+  hasPassword: boolean;
 }
 
 /** One household user on an AIOStreams or AIOMetadata sign-in, as a profile. */
@@ -5249,6 +5393,8 @@ export interface ContinueWatchingItem {
   userId: string;
   username: string;
   providerType?: string;
+  /** Nuvio cards: the profile it is watched under. */
+  profileLabel?: string | null;
   // 'movie' entries are in-progress movies (resume always true, nextEpisode/
   // lastWatched always null). For 'series', nextEpisode is the episode the
   // card opens - the in-progress one when resume=true, the next unwatched
@@ -5406,7 +5552,7 @@ export interface MetricsData {
   };
   nowPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
-    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number };
+    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean };
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)
@@ -5422,6 +5568,11 @@ export interface MetricsData {
     // item id to link to (e.g. an unmatched proxy-only entry).
     stremioAppUrl?: string;
     nuvioAppUrl?: string;
+    // When playback stood at lastPosition (live proxy rows), in ms - the
+    // basis for the card's "About 19:04 of 1:35:50" while it plays.
+    positionAt?: number | null;
+    // The Nuvio (or AIOStreams) profile it is playing under.
+    profileLabel?: string | null;
     // Proxy-sourced entries only: elapsed watch time we can actually stand
     // behind (seconds), frozen once proxy traffic goes quiet rather than
     // climbing forever off raw wall-clock time - see the comment in
@@ -5429,6 +5580,13 @@ export interface MetricsData {
     // instead of computing `now - watchedAtTimestamp` for proxy entries.
     elapsedSeconds?: number;
     elapsedFrozen?: boolean;
+    // When this row was last reconfirmed live / its provider checkpoint
+    // saved (ms) - the freshness line counts from it. `paused` is set only
+    // when the player itself reported a pause.
+    reportedAtTimestamp?: number;
+    paused?: boolean;
+    // AIOStreams apps: until when "Playing" is believable (server's estimate).
+    playingUntilTimestamp?: number;
     // The device and app it's playing on, when the server reports them
     // (a Jellyfin server's sessions do).
     device?: { name: string | null; client: string | null } | null;

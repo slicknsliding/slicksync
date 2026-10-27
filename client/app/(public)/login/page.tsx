@@ -851,10 +851,12 @@ function LoginContent() {
                           : 'text-muted hover:text-default'
                           }`}
                       >
-                        Jellyfin | AIOStreams
+                        Jellyfin
                       </button>
                     </div>
                   )}
+                  {/* AIOStreams and AIOMetadata run Jellyfin-compatible servers and sign in here. */}
+                  {INSTANCE_TYPE === 'public' && <p className="text-xs text-center -mt-5" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>}
 
                   {adminLoginType === 'jellyfin' ? (
                     <div className="space-y-4">
@@ -905,7 +907,7 @@ function LoginContent() {
                         disabled={twoFactorVerifying || twoFactorCode.trim().length < 6}
                         className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                         style={{
-                          background: 'var(--color-primary)',
+                          background: 'var(--color-primary-solid)',
                           color: 'white',
                           opacity: twoFactorVerifying || twoFactorCode.trim().length < 6 ? 0.5 : 1,
                         }}
@@ -1001,7 +1003,7 @@ function LoginContent() {
                         disabled={adminLoading || !adminUsername || !adminPassword}
                         className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                         style={{
-                          background: 'var(--color-primary)',
+                          background: 'var(--color-primary-solid)',
                           color: 'white',
                           opacity: adminLoading || !adminUsername || !adminPassword ? 0.5 : 1,
                         }}
@@ -1088,7 +1090,7 @@ function LoginContent() {
                         disabled={!oauthLink || isExpired || isAuthenticating}
                         className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                         style={{
-                          background: 'var(--color-primary)',
+                          background: 'var(--color-primary-solid)',
                           color: 'white',
                           opacity: !oauthLink || isExpired || isAuthenticating ? 0.5 : 1,
                         }}
@@ -1198,7 +1200,7 @@ function LoginContent() {
                         disabled={!nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating}
                         className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                         style={{
-                          background: 'var(--color-primary)',
+                          background: 'var(--color-primary-solid)',
                           color: 'white',
                           opacity: !nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating ? 0.5 : 1,
                         }}
@@ -1349,9 +1351,11 @@ function LoginContent() {
                         : 'text-muted hover:text-default'
                         }`}
                     >
-                      Jellyfin | AIOStreams
+                      Jellyfin
                     </button>
                   </div>
+                  {/* AIOStreams and AIOMetadata run Jellyfin-compatible servers and sign in here. */}
+                  <p className="text-xs text-center -mt-5" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>
 
                   {userLoginType === 'jellyfin' ? (
                   <>
@@ -1378,7 +1382,7 @@ function LoginContent() {
                     disabled={!oauthLink || isExpired || isAuthenticating}
                     className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                     style={{
-                      background: 'var(--color-primary)',
+                      background: 'var(--color-primary-solid)',
                       color: 'white',
                       opacity: !oauthLink || isExpired || isAuthenticating ? 0.5 : 1,
                     }}
@@ -1541,7 +1545,7 @@ function LoginContent() {
                     disabled={!nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating}
                     className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                     style={{
-                      background: 'var(--color-primary)',
+                      background: 'var(--color-primary-solid)',
                       color: 'white',
                       opacity: !nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating ? 0.5 : 1,
                     }}

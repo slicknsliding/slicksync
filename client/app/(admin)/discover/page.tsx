@@ -112,7 +112,8 @@ export default function DiscoverPage() {
   const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
 
   const [address] = useState(personFromAddress);
-  const [kind, setKind] = useState<Kind>('movie');
+  // Both by default, so a search or a browse finds movies and shows alike.
+  const [kind, setKind] = useState<Kind>('both');
   const [lens, setLens] = useState<Lens>(address ? 'people' : 'titles');
   // Trending first where there is a LumiereDB to rank it - the server
   // answers Popular for it without one, and the effect below says so.
@@ -284,7 +285,7 @@ export default function DiscoverPage() {
     setHasMore(true);
     loadMoreLock.current = false;
     setIsLoadingMore(false);
-    api.discoverPage(kind, debouncedQuery ? { query: debouncedQuery, ...facets } : { catalog, genre: genre || undefined, ...facets })
+    api.discoverPage(kind, debouncedQuery ? { query: debouncedQuery, genre: genre || undefined, ...facets } : { catalog, genre: genre || undefined, ...facets })
       .then(({ items: results, nextSkip }) => {
         if (cancelled) return;
         itemsRef.current = uniqueById(results);
@@ -592,8 +593,21 @@ export default function DiscoverPage() {
 
   const shownItems = useMemo(() => {
     const kept = keepByWatched(items);
-    return sort === 'az' && !debouncedQuery ? [...kept].sort((a, b) => a.name.localeCompare(b.name)) : kept;
-  }, [items, keepByWatched, sort, debouncedQuery]);
+    if (debouncedQuery) return kept;
+    if (sort === 'az') return [...kept].sort((a, b) => a.name.localeCompare(b.name));
+    // Cinemeta's rated list is not strictly in score order. Everything loaded
+    // is put in order by the IMDb score the title's own page shows (the same
+    // batch as the poster badges), the catalog's score until that arrives,
+    // and titles with no score last.
+    if (sort === 'rated') {
+      const score = (i: DiscoverItem) => {
+        const n = Number.parseFloat(ratingsById[i.id]?.imdbRating ?? i.imdbRating ?? '');
+        return Number.isFinite(n) ? n : -1;
+      };
+      return [...kept].sort((a, b) => score(b) - score(a));
+    }
+    return kept;
+  }, [items, keepByWatched, sort, debouncedQuery, ratingsById]);
   const shownWatchlist = useMemo(() => {
     const kept = keepByWatched(watchlistItems);
     return watchlistSort === 'first' ? [...kept].reverse() : kept;
@@ -722,7 +736,7 @@ export default function DiscoverPage() {
       )}
       <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         <button type="button" onClick={clearFilters} disabled={filterCount === 0} className="text-sm font-medium disabled:opacity-40" style={{ color: 'var(--color-primary)' }}>Clear all</button>
-        <button type="button" onClick={() => filtersPop.setOpen(false)} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--color-primary)' }}>Done</button>
+        <button type="button" onClick={() => filtersPop.setOpen(false)} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--color-primary-solid)' }}>Done</button>
       </div>
     </>
   );
@@ -900,7 +914,7 @@ export default function DiscoverPage() {
                       <AdjustmentsHorizontalIcon className="w-5 h-5 sm:w-4 sm:h-4" />
                       <span className={sortOptions ? 'hidden sm:inline' : ''}>Filters</span>
                       {filterCount > 0 && (
-                        <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary)' }}>{filterCount}</span>
+                        <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary-solid)' }}>{filterCount}</span>
                       )}
                     </button>
                     {filtersPop.open && (

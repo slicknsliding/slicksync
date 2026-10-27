@@ -92,6 +92,9 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Bungee&family=Bangers&family=Press+Start+2P&family=Permanent+Marker&family=Luckiest+Guy&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
           media="print"
+          // The script below switches media to "all" before React hydrates;
+          // that difference is the point, not a bug.
+          suppressHydrationWarning
         />
         <script
           dangerouslySetInnerHTML={{

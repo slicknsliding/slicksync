@@ -130,8 +130,9 @@ async function matchWithLumiere(base, title, year) {
 // id column (IMDb's own export, or a Letterboxd row someone enriched) is
 // trusted outright; otherwise the account's LumiereDB when there is one,
 // then an OMDb title+year search, the same resolution path listImport.js's
-// own title-based imports already use.
-async function resolveRowToImdbItem(row, colMap, omdbApiKey, lumiereBase = '') {
+// own title-based imports already use. `budget` ({ omdbLeft, capped }) limits
+// the OMDb searches one run may make.
+async function resolveRowToImdbItem(row, colMap, omdbApiKey, lumiereBase = '', budget = null) {
   const rawId = colMap.imdbId ? row[colMap.imdbId] : null
   if (rawId && /^tt\d+$/.test(rawId.trim())) {
     return { imdbId: rawId.trim(), title: colMap.title ? row[colMap.title] : null, year: colMap.year ? row[colMap.year] : null }
@@ -144,6 +145,12 @@ async function resolveRowToImdbItem(row, colMap, omdbApiKey, lumiereBase = '') {
     if (matched) return matched
   }
   if (!omdbApiKey) return null
+  // A run with a lookup allowance (a member's import) spends from it; once
+  // spent, the row is left unresolved and the run says so.
+  if (budget) {
+    if (budget.omdbLeft <= 0) { budget.capped = true; return null }
+    budget.omdbLeft--
+  }
   try {
     require('./omdbMeter').recordOmdbRequest(omdbApiKey)
     const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${year ? `&y=${encodeURIComponent(year)}` : ''}`

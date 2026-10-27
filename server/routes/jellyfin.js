@@ -2,6 +2,7 @@ const express = require('express');
 const { signInFromBody, rememberSignIn, jellyfinFields, findJellyfinUser, mountSignInSteps, sendError } = require('../utils/jellyfinConnect');
 const { serverKindLabel } = require('../providers/jellyfinAuth');
 const household = require('../utils/jellyfinProfiles');
+const { buildOpenTargets, validTitleId } = require('../utils/openTargets');
 
 // Admin side of Jellyfin-compatible servers: Add User and reconnecting a
 // person whose sign-in stopped working. See utils/jellyfinConnect.js for the
@@ -11,6 +12,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
 
   // POST /probe, /quick-connect, /quick-connect-status
   mountSignInSteps(router);
+
+  // Jellyfin servers on the Addons page, given to groups like an addon.
+  router.use('/household-servers', require('./jellyfinHouseholdServers')({ prisma, getAccountId }));
 
   // Sign in and either add a new person or reconnect an existing one.
   router.post('/connect', async (req, res) => {
@@ -587,13 +591,12 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
   // address and id, who uses it (their user id there - Swiftfin's link names
   // the user), and the server's own item for this title. On a real Jellyfin,
   // also the devices each of them has open in a Jellyfin app, for Play on.
-  const openItemCache = new Map() // "<address>|<id>|<type>" -> { at, itemId }
   router.get('/open-targets', async (req, res) => {
     try {
       const accountId = getAccountId(req)
       const id = String(req.query.id || '')
       const type = req.query.type === 'movie' ? 'movie' : 'series'
-      if (!/^(tt\d+|tmdb:\d+|tvdb:\d+|kitsu:\d+)$/.test(id)) return res.json({ servers: [], devices: [] })
+      if (!validTitleId(id)) return res.json({ servers: [], devices: [] })
       const people = await prisma.user.findMany({ where: { accountId } })
       const creds = await prisma.userProviderCredential.findMany({ where: { userId: { in: people.map((p) => p.id) }, providerType: 'jellyfin' } }).catch(() => [])
       const rows = [
@@ -606,51 +609,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const { makeCreateProvider } = require('../providers')
       const create = makeCreateProvider({ prisma, encrypt })
       const providerFor = (row) => create(row, { decrypt: (t) => decrypt(t, req), req })
-      const { encodePackedId } = require('../providers/jellyfin')
-      const servers = new Map()
-      const devices = []
-      for (const row of rows) {
-        const address = String(row.jellyfinServerUrl).replace(/\/+$/, '')
-        const kind = row.jellyfinServerKind || 'jellyfin'
-        let s = servers.get(address)
-        if (!s) {
-          s = { address, kind, serverId: row.jellyfinServerId || null, people: [], itemId: null }
-          servers.set(address, s)
-          if (kind === 'aiostreams' || kind === 'aiometadata') {
-            s.itemId = encodePackedId({ kind: type, base: id }) || null
-          } else {
-            const key = `${address}|${id}|${type}`
-            const hit = openItemCache.get(key)
-            if (hit && Date.now() - hit.at < 10 * 60 * 1000) s.itemId = hit.itemId
-            else {
-              s.itemId = await providerFor(row)?.findItem(id, type).catch(() => null) || null
-              openItemCache.set(key, { at: Date.now(), itemId: s.itemId })
-              if (openItemCache.size > 2000) openItemCache.delete(openItemCache.keys().next().value)
-            }
-          }
-        }
-        if (!s.people.some((x) => x.userId === row.jellyfinUserId)) s.people.push({ name: row.username, userId: row.jellyfinUserId || null })
-        if (kind === 'jellyfin' && s.itemId) {
-          const list = await providerFor(row)?.controllableSessions().catch(() => []) || []
-          for (const d of list) devices.push({ personId: row.id, credentialId: row.__credentialId || null, person: row.username, address, itemId: s.itemId, sessionId: d.id, device: d.device, client: d.client })
-        }
-      }
-      // Infuse opens a title by its TMDB id; Cinemeta carries it for IMDb ids.
-      let tmdbId = id.startsWith('tmdb:') ? id.slice(5) : null
-      if (!tmdbId && /^tt\d+$/.test(id) && servers.size) {
-        const key = `tmdb|${type}|${id}`
-        const hit = openItemCache.get(key)
-        if (hit && Date.now() - hit.at < 24 * 60 * 60 * 1000) tmdbId = hit.itemId
-        else {
-          try {
-            const r = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${id}.json`, { signal: AbortSignal.timeout(5000) })
-            const m = r.ok ? (await r.json())?.meta : null
-            tmdbId = m?.moviedb_id ? String(m.moviedb_id) : null
-          } catch { tmdbId = null }
-          openItemCache.set(key, { at: Date.now(), itemId: tmdbId })
-        }
-      }
-      res.json({ servers: [...servers.values()], devices, tmdbId })
+      res.json(await buildOpenTargets({ rows, id, type, providerFor }))
     } catch (error) {
       console.warn('[jellyfin] open targets failed:', error?.message)
       res.json({ servers: [], devices: [] })
@@ -716,6 +675,13 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const accountId = getAccountId(req);
       const person = await prisma.user.findFirst({ where: { id: String(req.params.id), accountId }, select: { id: true, providerType: true, jellyfinServerKind: true } });
       if (!person) return res.status(404).json({ error: 'User not found' });
+      // Anyone added on the server's own page since: picked up as the card opens.
+      let main = null;
+      if (person.providerType === 'jellyfin') {
+        const owner = await prisma.user.findFirst({ where: { id: person.id } });
+        await household.refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs: 10 * 1000 }).catch((e) => console.warn('[Jellyfin] household check failed:', e?.message));
+        main = await household.describeMain(decrypt, owner).catch(() => null);
+      }
       const profiles = person.providerType === 'jellyfin' ? await household.describeHousehold(prisma, person.id) : [];
       const membership = await prisma.jellyfinProfile.findFirst({ where: { ownUserId: person.id, accountId } });
       let partOf = null;
@@ -733,7 +699,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const personal = full.jellyfinServerKind === 'aiostreams' && profiles.length
         ? await require('../utils/aioHousehold').personalSettings(decrypt, { ...full, accountId }, profiles)
         : null;
-      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin, personal });
+      // A protected AIOStreams takes these changes only on its own page.
+      const managedOn = canManage ? await require('../utils/aioHousehold').protectedPage(full) : null;
+      res.json({ profiles, partOf, kind: person.jellyfinServerKind || null, canManage, canPin, personal, managedOn, main });
     } catch (error) {
       sendError(res, error, 'Could not read the household');
     }

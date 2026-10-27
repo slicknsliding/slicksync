@@ -264,7 +264,7 @@ export function AvatarPickerModal({
   const filterButtonClass = (active: boolean) =>
     `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? '' : 'hover:bg-surface-hover'}`;
   const filterButtonStyle = (active: boolean) => ({
-    background: active ? 'var(--color-primary)' : 'var(--color-surface-hover)',
+    background: active ? 'var(--color-primary-solid)' : 'var(--color-surface-hover)',
     color: active ? 'white' : 'var(--color-text-muted)',
   });
 

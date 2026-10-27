@@ -2,17 +2,19 @@
 
 // The Nebula top bar, shared by the admin pages (NebulaTopbar) and a person's
 // own pages (components/user/PersonTopbar): logo, rows of nav pills that
-// collapse behind a hamburger once scrolled, and the account button fixed
-// bottom-left. Each caller passes its own rows, home address, open/closed
-// state for the collapsed nav, and account button - so the two bars can't
-// drift apart. Colors come from the active theme's CSS variables.
+// collapse behind a hamburger once scrolled, and the account button (floating
+// bottom-left, or at the right end of the logo row - the person's choice in
+// Settings -> Themes). Each caller passes its own rows, home address,
+// open/closed state for the collapsed nav, and account button - so the two
+// bars can't drift apart. Colors come from the active theme's CSS variables.
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ComponentType, Fragment, ReactNode, useEffect, useState } from 'react';
+import { ComponentType, Fragment, ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { AccountPlacementContext, useAccountPlacement } from '@/lib/layout-mode';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { ScrollRow } from '@/components/ui/ScrollRow';
@@ -33,7 +35,7 @@ export type NebulaNavSection = {
 
 /**
  * The Nebula top bar itself - logo, rows of nav pills that collapse behind a
- * hamburger once scrolled, and the account button fixed bottom-left - shared
+ * hamburger once scrolled, and the account button - shared
  * by the admin pages (NebulaTopbar below) and a person's own pages
  * (components/user/PersonTopbar), so the two can't drift apart. Each passes
  * its own nav rows, home address, open/closed state for the collapsed nav,
@@ -54,6 +56,12 @@ export function NebulaBar({
   const router = useRouter();
   const isTV = useIsTV();
   const reduceMotion = useReducedMotion();
+  const navId = useId();
+  const barRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  // Where the account button sits: 'float' (bottom-left pill, the default) or
+  // 'bar' (right end of the logo row). TV is always 'bar'.
+  const placement = useAccountPlacement();
   // Reuses the same open/close state Original layout's Sidebar drawer
   // already gets from AdminClientLayout - the two never render at once
   // (Sidebar is hidden on exactly the pages that render this component
@@ -118,8 +126,30 @@ export function NebulaBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScrolled]);
 
+  // While the collapsed nav is open: Escape closes it and hands focus back to
+  // its button, and so does a press anywhere outside the bar. pointerdown, not
+  // mousedown - iOS Safari sends no mouse events for a tap on something that
+  // isn't itself clickable.
+  useEffect(() => {
+    if (!mobileNavOpen || isTV) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      closeMobileNav();
+      menuButtonRef.current?.focus();
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) closeMobileNav();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [mobileNavOpen, isTV, closeMobileNav]);
+
   return (
-    <>
+    <AccountPlacementContext.Provider value={placement}>
       {/* Account/profile access, fixed bottom-left, on every viewport size -
           mirrors where the sidebar's own "Administrator" panel switcher
           lives in Current mode (bottom of the nav). Deliberately
@@ -130,6 +160,7 @@ export function NebulaBar({
           on short pages, but that traded away the "always there" behavior
           this is for - reverted. dropdownPosition="up" (the default) is
           correct since this sits at the BOTTOM of the screen. */}
+      {placement === 'float' && (
       <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2">
         {/* TorBox referral used to float here as its own pill above the
             panel switcher - needed its own size/position pass on every
@@ -139,11 +170,12 @@ export function NebulaBar({
             ("System" group, alongside Tasks/Settings/Themes/Changelog) - one
             stable spot instead of a floating badge. */}
         <div
-          className="rounded-2xl p-1.5"
+          className="rounded-full p-1"
+          // Solid, no blur: there is nothing for a blur to show but the page
+          // scrolling past. Round, hugging the round picture - a square tile
+          // read as a box around a circle.
           style={{
-            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
+            background: 'var(--color-surface)',
             border: '1px solid var(--color-surface-border)',
             boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
           }}
@@ -151,6 +183,7 @@ export function NebulaBar({
           {account}
         </div>
       </div>
+      )}
     {/* Sticky, not the page's own scrolling content - previously scrolled
         away with everything else, so reaching another page (or even
         Movies/Series, Watchlist, etc. on Discover) meant scrolling all the
@@ -166,6 +199,7 @@ export function NebulaBar({
         than hardcoded because this bar's height changes - it collapses its
         nav links into a hamburger once scrolled. */}
     <div
+      ref={barRef}
       data-nebula-topbar
       className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 py-4 md:px-6 md:py-6 sticky top-0 z-30'}
     >
@@ -228,10 +262,12 @@ export function NebulaBar({
               hamburger's own width pushing it off-center. */}
           {!isTV && isScrolled && (
             <button
+              ref={menuButtonRef}
               onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
               className="absolute left-0 p-2 rounded-lg hover:bg-surface-hover transition-colors"
               aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileNavOpen}
+              aria-controls={navId}
             >
               {mobileNavOpen ? (
                 <XMarkIcon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
@@ -240,7 +276,7 @@ export function NebulaBar({
               )}
             </button>
           )}
-          <Link href={homeHref} className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : 'flex items-center gap-2 md:gap-4 justify-center min-w-0'}>
+          <Link href={homeHref} aria-label="SlickSync home" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : 'flex items-center gap-2 md:gap-4 justify-center min-w-0'}>
             <div
               className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
               style={{
@@ -251,7 +287,9 @@ export function NebulaBar({
               <SlickSyncLogo className={isTV ? 'w-4 h-4' : 'w-7 h-7 md:w-11 md:h-11'} />
             </div>
             <b
-              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : 'text-xl md:text-4xl font-bold font-display tracking-tight whitespace-nowrap'}
+              // Account in the bar, scrolled, on a phone: the docked bell and
+              // palette need the room beside the logo, so the wordmark steps aside.
+              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : `text-xl md:text-4xl font-bold font-display tracking-tight whitespace-nowrap${placement === 'bar' && isScrolled ? ' max-md:hidden' : ''}`}
               style={{
                 background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
                 WebkitBackgroundClip: 'text',
@@ -262,6 +300,14 @@ export function NebulaBar({
               SlickSync
             </b>
           </Link>
+          {/* Account in the bar: the right end of this row, mirroring the
+              hamburger at the left. data-nebula-end lets TopbarActions dock
+              its cluster just left of it. */}
+          {placement === 'bar' && (
+            <div data-nebula-end className="absolute right-0 flex items-center">
+              {account}
+            </div>
+          )}
         </div>
         {/* TV: always shown inline, collapse behavior disabled entirely -
             confirmed live this was actively broken on a real TV. Scrolling
@@ -283,6 +329,8 @@ export function NebulaBar({
             <AnimatePresence initial={false}>
               {navVisible && (
                 <motion.nav
+                  id={navId}
+                  aria-label="Main navigation"
                   // Animate every reveal, including scrolling back to the top.
                   // AnimatePresence skips only the bar's first render.
                   initial={isTV ? false : { height: 0, opacity: 0 }}
@@ -323,6 +371,7 @@ export function NebulaBar({
                     href={link.href}
                     tabIndex={isTV ? -1 : undefined}
                     onClick={closeMobileNav}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`${isTV ? 'nav-item-hover-pill flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap' : 'nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap'} ${isActive ? 'nebula-link-on' : 'text-muted'}`}
                   >
                     <Icon className={isTV ? 'w-3.5 h-3.5 shrink-0' : 'w-4 h-4 shrink-0'} />
@@ -369,6 +418,6 @@ export function NebulaBar({
         })()}
       </div>
     </div>
-    </>
+    </AccountPlacementContext.Provider>
   );
 }

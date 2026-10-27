@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -170,6 +171,9 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // (needed to suppress the native menu) blocked the FIRST card's "close on
   // outside click" listener from ever firing, orphaning it open. A single
   // shared "which card owns the open menu" value fixes that by construction.
+  // Episode still, then the show's artwork, then its poster - the next one
+  // when a picture fails to load, so the card never sits empty.
+  const { url: artwork, onError: onArtworkError } = useArtworkFallback([item.nextEpisode?.thumbnail, item.background, item.poster]);
   const { position, handleContextMenu, setExternalClose } = useContextMenu();
   // Registers the REAL close (onClose below) for cross-section/cross-page
   // closing - onMenuOpenChange is the lifted state that actually drives
@@ -240,11 +244,12 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               and only then the portrait poster as a last resort - a portrait
               poster forced into a 16:9 frame is what caused the "too zoomed
               in" hard crop. */}
-          {(item.nextEpisode?.thumbnail || item.background || item.poster) ? (
+          {artwork ? (
             <img
               // Through the server's image cache at the card's size, like
               // every poster grid - not the full-size original each launch.
-              src={cachedImageUrl(item.nextEpisode?.thumbnail || item.background || item.poster) || ''}
+              src={cachedImageUrl(artwork) || ''}
+              onError={onArtworkError}
               alt={item.showName}
               draggable={false}
               loading={priority ? 'eager' : 'lazy'}
@@ -311,7 +316,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
           </p>
           <div className="flex items-center gap-1 mt-0.5">
-            <p className="text-[10px] text-subtle truncate">{item.username}</p>
+            <p className="text-[10px] text-subtle truncate">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
             {item.providerType && (
               <Badge variant={providerBadgeVariant(item)} size="sm" className="shrink-0">
                 {providerTypeLabel(item.providerType)}
@@ -971,7 +976,7 @@ export default function DashboardPage() {
                             <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
                               {np.user.username.split(' ')[0]}
                             </span>{' '}
-                            {np.isLive ? 'is watching' : 'watched'} {np.item.name}
+                            {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                             {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                               <span className="text-subtle ml-1">
                                 {np.item.season !== undefined && np.item.season > 0
@@ -1306,7 +1311,7 @@ export default function DashboardPage() {
                           <span className="font-medium text-default">
                             {np.user.username.split(' ')[0]}
                           </span>{' '}
-                          {np.isLive ? 'is watching' : 'watched'} {np.item.name}
+                          {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                           {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                             <span className="text-subtle ml-1">
                               {np.item.season !== undefined && np.item.season > 0

@@ -78,6 +78,9 @@ html.slick {
   --color-primary-hover: #a394d8;
   --color-primary-muted: rgba(139, 126, 200, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #796abf;
+  --color-primary-solid-hover: #6f62b0;
   /* Secondary accent - muted teal */
   --color-secondary: #5fd4c4;
   --color-secondary-muted: rgba(95, 212, 196, 0.15);
@@ -117,12 +120,17 @@ html.velvet {
   /* Text */
   --color-text: #f5eef0;
   --color-text-muted: #c3a3ae;
-  --color-text-subtle: #96788a;
+  --color-text-subtle: #997b8c;
   /* Primary accent - dusty rose-mauve */
   --color-primary: #b8869e;
   --color-primary-hover: #cc9db3;
   --color-primary-muted: rgba(184, 134, 158, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #b8869e;
+  --color-primary-solid-hover: #cc9db3;
+  /* A bright accent keeps its colour; the text on it goes dark instead. */
+  --color-on-primary-solid: #14131f;
   /* Secondary accent - warm gold-tan */
   --color-secondary: #d4a574;
   --color-secondary-muted: rgba(212, 165, 116, 0.15);
@@ -163,12 +171,15 @@ html.nebula {
   /* Text */
   --color-text: #f0f6fc;
   --color-text-muted: #8b949e;
-  --color-text-subtle: #6e7681;
+  --color-text-subtle: #828892;
   /* Primary accent - soft periwinkle-violet (same as Slick) */
   --color-primary: #8b7ec8;
   --color-primary-hover: #a394d8;
   --color-primary-muted: rgba(139, 126, 200, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #796abf;
+  --color-primary-solid-hover: #6f62b0;
   /* Secondary accent - muted teal (same as Slick) */
   --color-secondary: #5fd4c4;
   --color-secondary-muted: rgba(95, 212, 196, 0.15);
@@ -193,6 +204,8 @@ html.nebula {
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
+  /* Border for popups, menus, dropdowns and modal panels (18% of the text colour). */
+  --color-popup-border: color-mix(in srgb, var(--color-text) 18%, transparent);
 }
 
 /* Midnight Theme - Deep blue-black with warm amber accents */
@@ -208,12 +221,17 @@ html.midnight {
   /* Text */
   --color-text: #f0f6fc;
   --color-text-muted: #8b949e;
-  --color-text-subtle: #6e7681;
+  --color-text-subtle: #7f8892;
   /* Primary accent - warm amber/gold */
   --color-primary: #f0a500;
   --color-primary-hover: #ffb627;
   --color-primary-muted: rgba(240, 165, 0, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #f0a500;
+  --color-primary-solid-hover: #ffb627;
+  /* A bright accent keeps its colour; the text on it goes dark instead. */
+  --color-on-primary-solid: #14131f;
   /* Secondary accent - amber variant */
   --color-secondary: #d4a500;
   --color-secondary-muted: rgba(212, 165, 0, 0.15);
@@ -250,11 +268,16 @@ html.ember {
   --color-surface-border: rgba(255, 237, 227, 0.1);
   --color-text: #ffeee3;
   --color-text-muted: #a69b94;
-  --color-text-subtle: #7d7470;
+  --color-text-subtle: #938983;
   --color-primary: #ff5722;
   --color-primary-hover: #ff7043;
   --color-primary-muted: rgba(255, 87, 34, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #ff5722;
+  --color-primary-solid-hover: #ff7043;
+  /* A bright accent keeps its colour; the text on it goes dark instead. */
+  --color-on-primary-solid: #14131f;
   --color-secondary: #ffab40;
   --color-secondary-muted: rgba(255, 171, 64, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
@@ -283,11 +306,16 @@ html.nord {
   --color-surface-border: rgba(236, 239, 244, 0.1);
   --color-text: #eceff4;
   --color-text-muted: #d8dee9;
-  --color-text-subtle: #4c566a; /* FIXED: was green #a3be8c, now Polar Night 4 */
+  --color-text-subtle: #a7aebd; /* was green #a3be8c, then Polar Night 4 #4c566a (1.4:1); lifted to 4.5:1 */
   --color-primary: #88c0d0;
   --color-primary-hover: #8fbcbb;
   --color-primary-muted: rgba(136, 192, 208, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #88c0d0;
+  --color-primary-solid-hover: #8fbcbb;
+  /* A bright accent keeps its colour; the text on it goes dark instead. */
+  --color-on-primary-solid: #14131f;
   --color-secondary: #81a1c1;
   --color-secondary-muted: rgba(129, 161, 193, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
@@ -321,6 +349,9 @@ html.verdant {
   --color-primary-hover: #66bb6a;
   --color-primary-muted: rgba(76, 175, 80, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #3a853d;
+  --color-primary-solid-hover: #357a38;
   --color-secondary: #26a69a;
   --color-secondary-muted: rgba(38, 166, 154, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
@@ -349,11 +380,14 @@ html.slate {
   --color-surface-border: rgba(250, 250, 250, 0.1);
   --color-text: #fafafa;
   --color-text-muted: #a1a1aa;
-  --color-text-subtle: #71717a;
+  --color-text-subtle: #8d8d96;
   --color-primary: #3b82f6;
   --color-primary-hover: #60a5fa;
   --color-primary-muted: rgba(59, 130, 246, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #3473da;
+  --color-primary-solid-hover: #306ac8;
   --color-secondary: #60a5fa;
   --color-secondary-muted: rgba(96, 165, 250, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
@@ -382,11 +416,16 @@ html.rose {
   --color-surface-border: rgba(255, 230, 235, 0.1);
   --color-text: #fce7ed;
   --color-text-muted: #c4a3ab;
-  --color-text-subtle: #957980;
+  --color-text-subtle: #9f8289;
   --color-primary: #f472b6;
   --color-primary-hover: #f9a8d4;
   --color-primary-muted: rgba(244, 114, 182, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #f472b6;
+  --color-primary-solid-hover: #f9a8d4;
+  /* A bright accent keeps its colour; the text on it goes dark instead. */
+  --color-on-primary-solid: #14131f;
   --color-secondary: #ec4899;
   --color-secondary-muted: rgba(236, 72, 153, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
@@ -418,12 +457,15 @@ html.daylight {
   /* Text */
   --color-text: #111827;
   --color-text-muted: #4b5563;
-  --color-text-subtle: #9ca3af;
+  --color-text-subtle: #6f7784;
   /* Primary accent - blue */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-primary-muted: rgba(37, 99, 235, 0.12);
   --color-primaryMuted: var(--color-primary-muted);
+  /* Fill behind white text (buttons, active tabs, chips, tick badges, toggles). Text/links keep --color-primary. */
+  --color-primary-solid: #2563eb;
+  --color-primary-solid-hover: #1d4ed8;
   /* Secondary accent - blue shade */
   --color-secondary: #3b82f6;
   --color-secondary-muted: rgba(59, 130, 246, 0.12);
@@ -523,8 +565,8 @@ body {
     transition: background 0.12s ease, color 0.12s ease;
   }
   .rail-item-on {
-    background: var(--color-primary) !important;
-    color: #fff !important;
+    background: var(--color-primary-solid) !important;
+    color: var(--color-on-primary-solid, #fff) !important;
     box-shadow: 0 6px 18px -10px var(--color-primary) !important;
   }
   .rail-item-warm,
@@ -557,6 +599,10 @@ body {
   .bg-surface { background-color: var(--color-surface); }
   .bg-surface-hover { background-color: var(--color-surface-hover); }
   .bg-primary { background-color: var(--color-primary); }
+  /* Fill behind white text; .bg-primary stays for dots, bars and tints. */
+  .bg-primary-solid { background-color: var(--color-primary-solid); }
+  .hover\:bg-primary-solid:hover { background-color: var(--color-primary-solid); }
+  .hover\:bg-primary-solid-hover:hover { background-color: var(--color-primary-solid-hover); }
   .bg-primary-muted { background-color: var(--color-primary-muted); }
   .bg-secondary-muted { background-color: var(--color-secondary-muted); }
   .bg-success { background-color: var(--color-success); }
@@ -569,6 +615,7 @@ body {
   /* ----- Border Colors ----- */
   .border-default { border-color: var(--color-surface-border); }
   .border-primary { border-color: var(--color-primary); }
+  .border-primary-solid { border-color: var(--color-primary-solid); }
   .border-success { border-color: var(--color-success); }
   .border-error { border-color: var(--color-error); }
   .border-warning { border-color: var(--color-warning); }
@@ -1332,7 +1379,7 @@ body {
    after another was picked). Same colours as the inline versions had. */
 .row-hl { background: var(--color-surface-hover); }
 .tab-drop-over { box-shadow: 0 0 0 2px var(--color-primary); background: var(--color-primary-muted); border-radius: 0.5rem; }
-.seg-on { background: var(--color-primary); color: white; }
+.seg-on { background: var(--color-primary-solid); color: var(--color-on-primary-solid, #fff); }
 .seg-on-secondary { background: var(--color-secondary); color: white; }
 .seg-off { background: transparent; color: var(--color-text-muted); }
 .seg-off-subtle { background: var(--color-subtle); color: var(--color-text-muted); }
@@ -1349,7 +1396,7 @@ body {
 .tint-lbl-on { color: var(--tint); }
 .ep-watched, .ep-watched:hover { background: color-mix(in srgb, var(--color-success) 8%, transparent); }
 .ep-unwatched, .ep-unwatched:hover { background: transparent; }
-.tgl-on { background: var(--color-primary); border: 1px solid var(--color-surface-border); }
+.tgl-on { background: var(--color-primary-solid); border: 1px solid var(--color-surface-border); }
 .tgl-off { background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
 .tgl-knob-on { background: white; }
 .tgl-knob-off { background: var(--color-text-muted); }
@@ -1357,8 +1404,8 @@ body {
    pass, a faint glow, rendered correctly but was too subtle to see) and
    the glow ring is always on, re-coloured by whatever theme is active. */
 .selcb-on {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
+  background-color: var(--color-primary-solid);
+  border-color: var(--color-primary-solid);
   box-shadow: 0 0 14px var(--color-primary-muted), 0 0 0 1px var(--color-primary);
 }
 .selcb-off {
@@ -1406,7 +1453,7 @@ body {
 .usage-glow-ok { box-shadow: 0 0 20px var(--color-primary-muted); }
 .opt-row-on { background: color-mix(in srgb, var(--color-primary) 15%, transparent); border: 1px solid var(--color-primary); }
 .opt-row-off { background: var(--color-subtle); border: 1px solid var(--color-surface-border); }
-.opt-box-on { background: var(--color-primary); border: none; }
+.opt-box-on { background: var(--color-primary-solid); border: none; }
 .opt-box-off { background: transparent; border: 2px solid var(--color-surface-border); }
 .opt-card-on { background: var(--color-primary-muted); border-color: var(--color-primary); }
 .opt-card-off { background: var(--color-surface); border-color: var(--color-surface-border); }
@@ -1424,7 +1471,7 @@ body {
 .panel-btn:hover { background: var(--color-surface-hover); }
 .panel-btn-open { background: var(--color-surface-elevated); }
 .side-link-over, .side-link-over:hover { background: var(--color-primary-muted); box-shadow: 0 0 0 2px var(--color-primary); }
-.auth-opt-on { background: var(--color-primary); border: 1px solid var(--color-primary); }
+.auth-opt-on { background: var(--color-primary-solid); border: 1px solid var(--color-primary-solid); }
 .auth-opt-off { background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
 .auth-opt-on .ao-icon, .auth-opt-on .ao-icon-grad { background: rgba(255,255,255,0.2); }
 .auth-opt-off .ao-icon { background: var(--color-subtle); }
@@ -1436,7 +1483,7 @@ body {
 .auth-opt-on .ao-sub { color: rgba(255,255,255,0.8); }
 .auth-opt-off .ao-sub { color: var(--color-text-muted); }
 .auth-opt-on .ao-badge { background: rgba(255,255,255,0.3); color: white; }
-.auth-opt-off .ao-badge { background: var(--color-primary); color: white; }
+.auth-opt-off .ao-badge { background: var(--color-primary-solid); color: var(--color-on-primary-solid, #fff); }
 .oauth-bar-done { background: linear-gradient(90deg, var(--color-primary), var(--color-secondary)); }
 .oauth-bar-wait { background: linear-gradient(90deg, transparent, var(--color-primary), transparent); }
 .slot-on { border: 2px solid var(--slot); background: color-mix(in srgb, var(--slot) 9%, var(--color-surface)); box-shadow: 0 10px 30px -18px var(--slot); }
@@ -1468,3 +1515,138 @@ body {
 .hov-outline-row:hover { background: var(--color-surface-hover); border-color: var(--color-text-subtle); }
 .hov-amber-add { background: transparent; border-color: var(--color-surface-border); }
 .hov-amber-add:hover:not(:disabled) { background: rgba(245, 158, 11, 0.04); border-color: rgba(245, 158, 11, 0.4); }
+
+/* Coming up: date tiles. Selected, today, hover and press stay distinct. */
+.airing-date {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  min-height: 5rem;
+  padding: 0.5rem 0;
+  border-radius: 1rem;
+  line-height: 1.25;
+  color: var(--color-text-muted);
+  background: var(--color-surface-hover);
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+}
+.airing-date-all {
+  width: 6rem;
+  gap: 0.25rem;
+}
+.airing-date .font-display { color: var(--color-text); }
+.airing-date-today {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-secondary) 70%, transparent);
+}
+.airing-date[aria-pressed="true"] {
+  color: var(--color-primary);
+  background: var(--color-primary-muted);
+  box-shadow: inset 0 0 0 1.5px var(--color-primary);
+}
+.airing-date[aria-pressed="true"] .font-display { color: var(--color-primary); }
+.airing-date-count {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.5rem;
+  padding: 0 0.3125rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1rem;
+  color: var(--color-on-primary-solid, #fff);
+  background: var(--color-primary-solid);
+}
+@media (hover: hover) {
+  .airing-date:hover {
+    background: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface));
+  }
+}
+.airing-date:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.airing-date:active {
+  background: color-mix(in srgb, var(--color-primary) 35%, var(--color-surface));
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .airing-date { transition: none; }
+  .airing-date:active { transform: none; }
+}
+/* Touch swipes the strip; the arrow buttons would only sit on top of tiles. */
+@media (pointer: coarse) {
+  .airing-strip button[aria-label^="Scroll"] { display: none; }
+}
+
+/* ===== Solid popups =====
+   Menus, dropdowns, anchored popups, modal panels and the small floating
+   surfaces are opaque: the surface colour, a clear border, a deep soft
+   shadow, and no blur (there is nothing behind them worth blurring, and the
+   blur was costing a repaint). Unlayered on purpose so a leftover Tailwind
+   shadow or border utility cannot dilute it. Looks are classes, never inline
+   colours, so a colour-freezing browser extension cannot strand them. */
+.popup-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-popup-border);
+  box-shadow: 0 20px 50px -14px rgba(0, 0, 0, 0.85), 0 3px 10px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* The small rotated square that points a popup at its button. */
+.popup-caret { border-color: var(--color-popup-border); }
+/* Close button on a modal panel, and round buttons / badges that sit over
+   artwork: a solid chip instead of a see-through one. */
+.modal-close-btn { color: var(--color-text-muted); background: var(--color-bg-muted); }
+.modal-close-btn:hover { color: var(--color-text); }
+.art-btn { color: var(--color-text); background: var(--color-bg-muted); }
+.art-badge {
+  color: var(--color-text);
+  background: var(--color-bg-subtle);
+  box-shadow: 0 0 0 1px var(--color-popup-border), 0 4px 12px -4px rgba(0, 0, 0, 0.6);
+}
+
+/* ===== Keyboard focus =====
+   One ring in the accent colour for anything that takes focus. In the base
+   layer at zero specificity, so a component that draws its own focus look
+   (focus:outline-none, the TV focus scale, inputs) still wins. */
+@layer base {
+  :where(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], summary, input, textarea, select, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+/* Motion off for anyone who asks the system for it. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Text on the solid accent fill. Unlayered so it wins over a text-white
+   utility on the same element: most themes keep white, the bright-accent
+   themes set --color-on-primary-solid dark. */
+.bg-primary-solid,
+.hover\:bg-primary-solid:hover,
+.hover\:bg-primary-solid-hover:hover {
+  color: var(--color-on-primary-solid, #fff);
+}
+
+/* Graveyard: "also remove it from their apps" - a warning that turns red when on. */
+.wipe-app-opt { display: flex; align-items: flex-start; gap: 0.75rem; width: 100%; margin-top: 0.875rem; padding: 0.75rem 0.875rem; border-radius: 0.75rem; border: 1px solid var(--color-surface-border); background: var(--color-bg); cursor: pointer; }
+.wipe-app-opt-on { border-color: color-mix(in srgb, var(--color-error) 55%, transparent); background: color-mix(in srgb, var(--color-error) 8%, transparent); }
+.wipe-app-mark { flex: none; width: 1.875rem; height: 1.875rem; border-radius: 0.5625rem; display: flex; align-items: center; justify-content: center; font-weight: 700; background: color-mix(in srgb, var(--color-warning) 16%, transparent); color: var(--color-warning); }
+.wipe-app-opt-on .wipe-app-mark { background: color-mix(in srgb, var(--color-error) 18%, transparent); color: var(--color-error); }
+.wipe-app-strong { color: var(--color-error); font-weight: 600; }
+.wipe-app-switch { flex: none; margin-left: auto; margin-top: 0.25rem; width: 2.5rem; height: 1.375rem; border-radius: 999px; background: var(--color-bg-muted); position: relative; }
+.wipe-app-switch i { position: absolute; top: 3px; left: 3px; width: 1rem; height: 1rem; border-radius: 50%; background: var(--color-text-muted); transition: left 0.15s ease; }
+.wipe-app-opt-on .wipe-app-switch { background: var(--color-error); }
+.wipe-app-opt-on .wipe-app-switch i { left: 1.3125rem; background: #fff; }
+.wipe-app-pill { display: inline-block; margin-left: 0.5rem; vertical-align: 2px; font-size: 0.6875rem; font-weight: 500; padding: 0.125rem 0.5rem; border-radius: 999px; color: var(--color-error); background: color-mix(in srgb, var(--color-error) 14%, transparent); border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent); }
+.wipe-app-label { color: var(--color-error); }

@@ -79,7 +79,7 @@ async function fillNames(items, { getName, setName, getId, getType }, fetchImpl 
 /**
  * Saved rows whose title is only an id get their real title: history,
  * viewings, ratings and reactions, the AIOStreams cursor, and the bell's
- * notifications ("VIFOY watched tt4468740"). Safe to run any time.
+ * notifications ("MAIN watched tt4468740"). Safe to run any time.
  */
 async function repairStoredNames(prisma, fetchImpl = fetch) {
   let fixed = 0

@@ -1,6 +1,6 @@
 {
   "name": "slicksync",
-  "version": "1.101.0",
+  "version": "1.102.0",
   "description": "SlickSync - Nuvio and Stremio addon, user and credential management",
   "main": "server/index.js",
   "scripts": {
@@ -63,6 +63,7 @@
   "overrides": {
     "qs": "^6.16.0",
     "proxy-addr": "^2.0.8",
-    "body-parser": "^1.20.6"
+    "body-parser": "^1.20.6",
+    "node-fetch": "2.7.0"
   }
 }

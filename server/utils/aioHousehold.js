@@ -79,6 +79,30 @@ async function save(prisma, owner, access, config) {
   }
 }
 
+// Whether an AIOStreams is protected - it only saves configuration changes
+// made while signed in on its own page, so SlickSync can't make them - and
+// where that page is. Its public status says so; checked now and then.
+const protectedSeen = new Map()
+const PROTECTED_TTL_MS = 10 * 60 * 1000
+
+async function protectedPage(owner) {
+  if (owner?.jellyfinServerKind !== 'aiostreams') return null
+  const base = instanceBase(owner.jellyfinServerUrl)
+  if (!base) return null
+  const hit = protectedSeen.get(base)
+  if (hit && Date.now() - hit.at < PROTECTED_TTL_MS) return hit.page
+  let page = null
+  try {
+    const res = await safeFetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(15000) }, instancePolicy())
+    const body = await res.json()
+    if (body?.data?.settings?.protected === true) page = `${base}/stremio/configure`
+  } catch { /* unknown: offered as usual, and a refusal says why */ }
+  // This install's own AIOStreams, which it already signs in to: it can save there.
+  if (page && await require('./aiostreamsConfig').ownInstanceSession(base)) page = null
+  protectedSeen.set(base, { at: Date.now(), page })
+  return page
+}
+
 async function maxPersonas(owner) {
   try {
     const res = await safeFetch(`${instanceBase(owner.jellyfinServerUrl)}/api/v1/status`, { signal: AbortSignal.timeout(15000) }, instancePolicy())
@@ -237,4 +261,4 @@ async function setPersonaPin(prisma, decrypt, encrypt, owner, profile, pin) {
   return { tracked }
 }
 
-module.exports = { addPersona, setPersonaPin, setPersonaSeparation, personalSettings, personaUserId, canManage }
+module.exports = { protectedPage, addPersona, setPersonaPin, setPersonaSeparation, personalSettings, personaUserId, canManage }

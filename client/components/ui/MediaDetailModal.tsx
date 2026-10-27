@@ -1017,8 +1017,10 @@ export function MediaDetailModal({
     onClose();
   }, [onClose]);
 
+  // One picture: the one at the top, reaching down past the title and
+  // fading into a plain panel - no second copy behind the whole panel.
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="full" lightweight hideCloseButton={isTrailerPlaying} backdropImage={!isTrailerPlaying ? (heroImage || undefined) : undefined}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying}>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (
@@ -1064,31 +1066,33 @@ export function MediaDetailModal({
             <button
               type="button"
               onClick={() => setIsTrailerPlaying(false)}
-              className="absolute bottom-2 right-2 z-10 p-1 rounded-md transition-colors"
-              style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
+              className="art-btn absolute bottom-2 right-2 z-10 p-1 rounded-md transition-colors"
               aria-label="Back to details"
             >
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
         ) : heroImage && (
-          <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl">
-            <img
-              src={heroImage}
-              alt=""
-              decoding="async"
-              className="w-full h-full object-cover"
-              style={{ objectPosition: 'center 15%' }}
-            />
-            <div
-              className="absolute inset-0"
-              style={{ background: 'linear-gradient(180deg, transparent 40%, var(--color-surface) 100%)' }}
-            />
+          <div className="relative w-full h-40 sm:h-56">
+            {/* Taller than the space it takes: the picture carries on behind
+                the title and ratings below, fading out under them. */}
+            <div className="absolute inset-x-0 top-0 h-[262px] sm:h-[330px] overflow-hidden rounded-t-2xl pointer-events-none" aria-hidden="true">
+              <img
+                src={heroImage}
+                alt=""
+                decoding="async"
+                className="w-full h-full object-cover"
+                style={{ objectPosition: 'center 15%' }}
+              />
+              <div
+                className="absolute inset-0"
+                style={{ background: 'linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--color-surface) 55%, transparent) 62%, var(--color-surface) 100%)' }}
+              />
+            </div>
             {trailerId && (isTV ? (
               <TVFocusable onEnterPress={() => { setTrailerSrc(buildTrailerSrc(trailerId, false)); setIsTrailerPlaying(true); }} className="absolute inset-0 flex items-center justify-center">
                 <span
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm"
-                  style={{ background: 'color-mix(in srgb, var(--color-surface) 60%, transparent)', color: 'white', backdropFilter: 'blur(4px)' }}
+                  className="art-btn flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm"
                 >
                   <PlayIcon className="w-5 h-5" />
                   Play Trailer
@@ -1102,8 +1106,7 @@ export function MediaDetailModal({
                 aria-label="Play trailer"
               >
                 <span
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-transform group-hover:scale-105"
-                  style={{ background: 'color-mix(in srgb, var(--color-surface) 60%, transparent)', color: 'white', backdropFilter: 'blur(4px)' }}
+                  className="art-btn flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-transform group-hover:scale-105"
                 >
                   <PlayIcon className="w-5 h-5" />
                   Play Trailer
@@ -1113,7 +1116,7 @@ export function MediaDetailModal({
           </div>
         )}
 
-        <div className="px-6 pb-2 pt-4">
+        <div className="relative z-[1] px-6 pb-2 pt-4">
           {/* Only shown mid drill-down (came here via a "More Like This"
               poster) - closing the modal from a related title would
               otherwise just lose the original one entirely, one click from
@@ -1135,7 +1138,7 @@ export function MediaDetailModal({
               Back to {fallbackTitle}
             </button>
           ))}
-          <h2 className="text-2xl font-bold font-display text-default">{title}</h2>
+          <h2 className="text-2xl font-bold font-display text-default" style={heroImage && !isTrailerPlaying ? { textShadow: '0 2px 12px rgba(0,0,0,.6)' } : undefined}>{title}</h2>
           {/* On a computer, Bookmark and Watched sit right under the title,
               where the eye lands first - not mixed in with the app buttons. */}
           {!isTV && !isLoading && details?.imdb_id && hasPersonalPills && (
@@ -1604,7 +1607,7 @@ export function MediaDetailModal({
                                 key={s.season}
                                 type="button"
                                 onClick={() => setActiveSeason(s.season)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary text-white' : 'text-muted bg-surface'}`}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary-solid text-white' : 'text-muted bg-surface'}`}
                               >
                                 Season {s.season}
                                 {s.watchedCount > 0 && (

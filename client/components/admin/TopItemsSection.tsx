@@ -60,7 +60,7 @@ export const TopItemsSection = memo(function TopItemsSection({ movies, series }:
             )}
           </div>
         )}
-        <div className="absolute top-1 left-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-white">
+        <div className="absolute top-1 left-1 w-6 h-6 rounded-full bg-primary-solid flex items-center justify-center text-xs font-bold text-white">
           #{rank}
         </div>
       </div>

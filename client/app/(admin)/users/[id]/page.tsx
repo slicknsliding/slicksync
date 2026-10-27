@@ -22,9 +22,12 @@ import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
+import { HistoryImportFlow, type HistoryImportFlowHandle } from '@/components/user/HistoryImportFlow';
+import { useIsTV } from '@/lib/hooks/useIsTV';
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { SignInNuvioTvButton } from '@/components/nuvio/SignInNuvioTvButton';
 import { NuvioServersTile } from '@/components/nuvio/NuvioServersTile';
+import { HouseholdServersTile } from '@/components/jellyfin/HouseholdServersTile';
 import { CopyHistoryTile } from '@/components/user/CopyHistoryTile';
 import { SignInOfferBanner } from '@/components/user/SignInOfferBanner';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
@@ -76,6 +79,7 @@ import {
   Bar,
 } from 'recharts';
 import { ScrollRow } from '@/components/ui/ScrollRow';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 // Watch time data type
 interface WatchTimeDataPoint {
@@ -117,14 +121,8 @@ function formatMinutes(minutes: number): string {
 }
 
 // Memoized tooltip style to avoid recreating on each render (Vercel best practice: rerender-memo-with-default-value)
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(30, 30, 56, 0.9)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  backdropFilter: 'blur(12px)',
-} as const;
-
-const TOOLTIP_LABEL_STYLE = { color: '#fff' } as const;
+const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
+const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 // Memoized chart components to prevent unnecessary re-renders (Vercel best practice: rerender-memo)
 const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: WatchTimeDataPoint[] }) {
@@ -238,6 +236,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
 
 export default function UserDetailPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
   const { hideSensitive } = useTheme();
   const params = useParams();
   const router = useRouter();
@@ -267,8 +266,10 @@ export default function UserDetailPage() {
   const [mergePickerSearch, setMergePickerSearch] = useState('');
 
   // Watch-history CSV import/export - see server/utils/csvHistoryImport.js
-  const historyFileInputRef = useRef<HTMLInputElement>(null);
-  const [isImportingHistory, setIsImportingHistory] = useState(false);
+  // The import's preview and summary open in a popup beside the Import button (HistoryImportFlow).
+  const historyImportFlowRef = useRef<HistoryImportFlowHandle>(null);
+  const historyImportBtnRef = useRef<HTMLButtonElement>(null);
+  const [historyImportOpen, setHistoryImportOpen] = useState(false);
   const [isExportingHistory, setIsExportingHistory] = useState(false);
 
   // SlickTrax Addon toggle - see server/routes/traxAddon.js. The manifest
@@ -277,80 +278,6 @@ export default function UserDetailPage() {
   // display until the first toggle response replaces it.
   const [isTogglingTrax, setIsTogglingTrax] = useState(false);
   const [traxManifestUrl, setTraxManifestUrl] = useState<string | null>(null);
-
-  const [historyImportResult, setHistoryImportResult] = useState<{
-    filesProcessed: number;
-    filesUsed: number;
-    filesUnusable: string[];
-    imported: number;
-    skipped: number;
-    truncated: boolean;
-    unresolvedTitles: string[];
-  } | null>(null);
-  // Only shown while a multi-file batch is running - counts down so someone
-  // watching a 20+ file Trakt export import (collections, comments, lists,
-  // network, hidden progress, etc. - only history/ratings are actually
-  // importable) can see it is progressing rather than staring at a spinner
-  // that could be stuck.
-  const [historyImportProgress, setHistoryImportProgress] = useState<{ done: number; total: number } | null>(null);
-
-  // Handles one file OR a whole batch selected at once (the input now allows
-  // multiple). A real Trakt export unzips into 20-30+ files - collections,
-  // comments, lists, network, hidden progress, settings, stats - and only
-  // the history/ratings ones are actually importable. Rather than make
-  // someone pick through that list one at a time, or throw an error toast
-  // for every irrelevant file, every selected file is sent to the SAME
-  // tested single-file endpoint in sequence, and the results are folded into
-  // one summary: files that contributed rows count toward the totals, files
-  // that came back with nothing usable are named once at the end rather than
-  // erroring individually.
-  const handleImportHistoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = ''; // allow re-selecting the same file(s) next time
-    if (files.length === 0 || !params.id) return;
-
-    setIsImportingHistory(true);
-    setHistoryImportResult(null);
-    setHistoryImportProgress(files.length > 1 ? { done: 0, total: files.length } : null);
-
-    let imported = 0;
-    let skipped = 0;
-    let truncated = false;
-    let filesUsed = 0;
-    const filesUnusable: string[] = [];
-    const unresolvedTitles: string[] = [];
-    let lastError: string | null = null;
-
-    for (const file of files) {
-      try {
-        const result = await api.importUserHistory(params.id as string, file);
-        if (result.imported > 0) filesUsed++;
-        else filesUnusable.push(file.name);
-        imported += result.imported;
-        skipped += result.skipped;
-        truncated = truncated || result.truncated;
-        for (const t of result.unresolvedTitles) if (!unresolvedTitles.includes(t)) unresolvedTitles.push(t);
-      } catch (err: any) {
-        // A file this endpoint cannot use at all (wrong format, or one of
-        // the non-history Trakt files) - counted, not fatal to the batch.
-        filesUnusable.push(file.name);
-        lastError = err?.message || 'Failed to import';
-      }
-      setHistoryImportProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : null));
-    }
-
-    setHistoryImportResult({ filesProcessed: files.length, filesUsed, filesUnusable, imported, skipped, truncated, unresolvedTitles });
-    setHistoryImportProgress(null);
-    setIsImportingHistory(false);
-
-    if (imported > 0) {
-      toast.success(`Imported ${imported} title${imported === 1 ? '' : 's'}${filesUsed < files.length ? ` from ${filesUsed} of ${files.length} file${files.length === 1 ? '' : 's'}` : ''}`);
-    } else if (files.length === 1 && lastError) {
-      toast.error(lastError);
-    } else {
-      toast.error(files.length === 1 ? 'Nothing importable in that file' : `Nothing importable across ${files.length} files - see the summary below`);
-    }
-  };
 
   const handleExportHistory = async () => {
     if (!params.id) return;
@@ -572,6 +499,7 @@ export default function UserDetailPage() {
   const [streaks, setStreaks] = useState<any>(null);
   const [metricsData, setMetricsData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [providerAddonsLoading, setProviderAddonsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   // Addons state
@@ -729,11 +657,22 @@ export default function UserDetailPage() {
 
   // Fetch user data
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
+      setProviderAddonsLoading(true);
+      setStremioAddons([]);
+      // The provider's addon list can be slow; it loads on its own so the
+      // profile and household data are not held behind it.
+      api.getUserStremioAddons(params.id as string).then((data) => {
+        if (cancelled) return;
+        setStremioAddons(data || []);
+      }).catch((err) => {
+        console.error('Failed to fetch Stremio addons:', err);
+      }).finally(() => { if (!cancelled) setProviderAddonsLoading(false); });
       try {
-        const [userData, groupsData, watchTime, topItemsData, streaksData, metrics, groupAddonsData, stremioAddonsData] = await Promise.all([
+        const [userData, groupsData, watchTime, topItemsData, streaksData, metrics, groupAddonsData] = await Promise.all([
           api.getUser(params.id as string),
           api.getGroups(),
           api.getUserWatchTime(params.id as string, 'year').catch(() => null),
@@ -741,18 +680,14 @@ export default function UserDetailPage() {
           api.getUserStreaks(params.id as string).catch(() => null),
           api.getMetrics('7d').catch(() => null),
           api.getUserGroupAddons(params.id as string).catch(() => []),
-          api.getUserStremioAddons(params.id as string).catch((err) => {
-            console.error('Failed to fetch Stremio addons:', err);
-            return [];
-          }),
         ]);
+        if (cancelled) return;
         setUser(userData);
         setGroups(groupsData);
         setStreaks(streaksData);
         setMetricsData(metrics);
         setGroupAddons(groupAddonsData || []);
-        setStremioAddons(stremioAddonsData || []);
-        
+
         // Set total watch time from absolute user total (minutes -> seconds)
         if ((userData as any)?.watchTime !== undefined) {
           setTotalWatchTimeSeconds((userData as any).watchTime * 60);
@@ -760,13 +695,6 @@ export default function UserDetailPage() {
           setTotalWatchTimeSeconds(watchTime.totalWatchTimeSeconds || 0);
         }
         
-        // Debug logging
-        if (stremioAddonsData && stremioAddonsData.length > 0) {
-          console.log('Loaded Stremio addons:', stremioAddonsData.length, stremioAddonsData);
-        } else {
-          console.log('No Stremio addons found or empty array');
-        }
-
         // Set excluded and protected addons from user data
         if (userData?.excludedAddons) {
           setExcludedAddonIds(new Set(userData.excludedAddons));
@@ -792,15 +720,16 @@ export default function UserDetailPage() {
           setTotalWatchTimeSeconds(watchTime.totalWatchTimeSeconds || 0);
         }
       } catch (err) {
-        setError(err as Error);
+        if (!cancelled) setError(err as Error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     if (params.id) {
       fetchData();
     }
+    return () => { cancelled = true; };
   }, [params.id]);
 
   useEffect(() => {
@@ -1464,7 +1393,7 @@ export default function UserDetailPage() {
                       </div>
                       <button
                         onClick={refreshSyncPlan}
-                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
+                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary-solid hover:text-white rounded transition-colors"
                       >
                         Refresh
                       </button>
@@ -1474,7 +1403,7 @@ export default function UserDetailPage() {
                           copyToClipboard(text);
                           toast.success('Copied to clipboard');
                         }}
-                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
+                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary-solid hover:text-white rounded transition-colors"
                       >
                         Copy
                       </button>
@@ -1544,6 +1473,12 @@ export default function UserDetailPage() {
                 Trakt's own free export and needs no app and no VIP. */}
             {/* Their Jellyfin / AIOStreams / AIOMetadata in their Nuvio profile -
                 only for someone with both sign-ins (renders nothing otherwise). */}
+            {/* Their accounts on the Jellyfin servers given to their groups on
+                the Addons page (renders nothing when there are none). */}
+            <PageSection className="mb-6 empty:hidden">
+              <HouseholdServersTile userId={user.id} username={user.username} />
+            </PageSection>
+
             <PageSection className="mb-6 empty:hidden">
               <NuvioServersTile userId={user.id} />
             </PageSection>
@@ -1777,23 +1712,30 @@ export default function UserDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    ref={historyFileInputRef}
-                    type="file"
-                    accept=".csv,text/csv,.json,application/json"
-                    multiple
-                    className="hidden"
-                    onChange={handleImportHistoryFile}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
-                    onClick={() => historyFileInputRef.current?.click()}
-                    isLoading={isImportingHistory}
-                  >
-                    {historyImportProgress ? `Importing ${historyImportProgress.done}/${historyImportProgress.total}...` : 'Import history'}
-                  </Button>
+                  {/* A file chooser cannot be driven from a TV remote, so the import is left out there; Export CSV stays. */}
+                  {!isTV && (
+                    <>
+                      <HistoryImportFlow
+                        ref={historyImportFlowRef}
+                        anchorRef={historyImportBtnRef}
+                        open={historyImportOpen}
+                        onOpen={() => setHistoryImportOpen(true)}
+                        onClose={() => setHistoryImportOpen(false)}
+                        send={(kind, file) => api.importUserHistory(params.id as string, file, kind === 'preview')}
+                        title="Import watch history"
+                        owner="their"
+                      />
+                      <Button
+                        ref={historyImportBtnRef}
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                        onClick={() => historyImportFlowRef.current?.pick()}
+                      >
+                        Import history
+                      </Button>
+                    </>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1804,31 +1746,6 @@ export default function UserDetailPage() {
                     Export CSV
                   </Button>
                 </div>
-                {historyImportResult && (
-                  <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: 'var(--color-surface-hover)' }}>
-                    <p className="text-default">
-                      Imported <strong>{historyImportResult.imported}</strong> title{historyImportResult.imported === 1 ? '' : 's'}
-                      {historyImportResult.filesProcessed > 1 && ` from ${historyImportResult.filesUsed} of ${historyImportResult.filesProcessed} files`}
-                      {historyImportResult.skipped > 0 && ` (${historyImportResult.skipped} skipped)`}
-                      {historyImportResult.truncated && ' - a file was larger than the 2,000-row import cap'}
-                    </p>
-                    {historyImportResult.unresolvedTitles.length > 0 && (
-                      <p className="text-muted text-xs mt-1.5">
-                        Couldn't resolve: {historyImportResult.unresolvedTitles.join(', ')}
-                      </p>
-                    )}
-                    {/* Named rather than silently dropped - lets someone
-                        importing a whole unzipped Trakt export confirm the
-                        files skipped were the expected ones (collections,
-                        comments, lists, network, hidden progress, and so on)
-                        rather than history/ratings that failed to parse. */}
-                    {historyImportResult.filesUnusable.length > 0 && (
-                      <p className="text-muted text-xs mt-1.5">
-                        No importable entries in: {historyImportResult.filesUnusable.join(', ')}
-                      </p>
-                    )}
-                  </div>
-                )}
                 </div>)}
               </Card>
             </PageSection>
@@ -1840,7 +1757,7 @@ export default function UserDetailPage() {
                   onClick={() => setActiveTab('overview')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     activeTab === 'overview'
-                      ? 'bg-primary text-white'
+                      ? 'bg-primary-solid text-white'
                       : 'text-muted hover:text-default hover:bg-surface-hover'
                   }`}
                 >
@@ -1851,7 +1768,7 @@ export default function UserDetailPage() {
                   onClick={() => setActiveTab('addons')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                     activeTab === 'addons'
-                      ? 'bg-primary text-white'
+                      ? 'bg-primary-solid text-white'
                       : 'text-muted hover:text-default hover:bg-surface-hover'
                   }`}
                 >
@@ -2190,8 +2107,10 @@ export default function UserDetailPage() {
                         <div>
                           <h3 className="text-lg font-semibold text-default">Account Addons</h3>
                           <p className="text-sm text-muted">
-                            {stremioAddons.length} addon{stremioAddons.length !== 1 ? 's' : ''} in your account
-                            {stremioAddons.length > 0 && ' • Drag to reorder'}
+                            {providerAddonsLoading ? 'Loading addons...' : (<>
+                              {stremioAddons.length} addon{stremioAddons.length !== 1 ? 's' : ''} in your account
+                              {stremioAddons.length > 0 && ' • Drag to reorder'}
+                            </>)}
                           </p>
                         </div>
                       </div>

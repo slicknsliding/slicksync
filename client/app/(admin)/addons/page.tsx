@@ -6,7 +6,8 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { SharedConfigPill } from '@/components/addons/SharedConfigPill';
-import { sharedConfigPeers, configKindOf, type SharedPeer } from '@/lib/sharedConfig';
+import { sharedConfigPeers, configKindOf, configKeyOf, type SharedPeer } from '@/lib/sharedConfig';
+import { JellyfinServerPill } from '@/components/addons/JellyfinServerPill';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -16,13 +17,16 @@ import { Button, Card, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, V
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { BeginnerHint } from '@/components/ui/BeginnerHint';
 import { AddonDirectoryModal } from '@/components/addons/AddonDirectoryModal';
+import { AddChoiceMenu } from '@/components/addons/AddChoiceMenu';
+import { JellyfinServerModal } from '@/components/addons/JellyfinServerModal';
+import { JellyfinServerCard } from '@/components/addons/JellyfinServerCard';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaHeaderStats, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, Addon } from '@/lib/api';
+import { api, Addon, type HouseholdServer, type ConfigServerLink } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -48,6 +52,7 @@ import {
   XCircleIcon,
   ArrowLeftIcon,
   Bars3Icon,
+  ServerStackIcon,
 } from '@heroicons/react/24/outline';
 
 const ADDON_VAULT_CATEGORIES = [
@@ -130,7 +135,7 @@ function TagPill({
       ref={setNodeRef}
       className={`group/tag flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
         isActive
-          ? 'bg-primary text-white border-transparent'
+          ? 'bg-primary-solid text-white border-transparent'
           : tinted
             ? 'border-transparent'
             : 'bg-surface-hover text-muted nav-item-hover-pill border-default'
@@ -198,6 +203,18 @@ export default function AddonsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // "+ Add" asks what to add: an addon, or a Jellyfin server.
+  const [addMenuAnchor, setAddMenuAnchor] = useState<{ rect: DOMRect; el: Element } | null>(null);
+  const addButtonRef = useRef<HTMLDivElement>(null);
+  const [householdServers, setHouseholdServers] = useState<HouseholdServer[]>([]);
+  const [serverModal, setServerModal] = useState<{ server: HouseholdServer | null } | null>(null);
+  const loadHouseholdServers = useCallback(() => {
+    api.householdServers().then((r) => setHouseholdServers(r.servers || [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadHouseholdServers(); }, [loadHouseholdServers]);
+  const openAddMenu = useCallback((el: Element | null) => {
+    if (el) setAddMenuAnchor({ rect: el.getBoundingClientRect(), el });
+  }, []);
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   // Custom tag catalog (account-wide list of names) + which one is active as
@@ -214,6 +231,16 @@ export default function AddonsPage() {
   const [addons, setAddons] = useState<Addon[]>([]);
   // Addons whose links open the same AIOStreams/AIOMetadata configuration.
   const sharedPeers = useMemo(() => sharedConfigPeers(addons), [addons]);
+  // AIOStreams/AIOMetadata configurations someone also signs in to as a
+  // Jellyfin server: their addon cards say so.
+  const [serverLinks, setServerLinks] = useState<Map<string, ConfigServerLink>>(new Map());
+  useEffect(() => {
+    api.configServerLinks().then((r) => setServerLinks(new Map((r.links || []).map((l) => [l.key, l])))).catch(() => {});
+  }, []);
+  const serverLinkOf = (addon: { manifestUrl?: string | null }) => {
+    const key = configKeyOf(addon.manifestUrl);
+    return key ? serverLinks.get(key) : undefined;
+  };
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -333,6 +360,16 @@ export default function AddonsPage() {
 
     return true;
   });
+
+  // Jellyfin servers show first, under All and Servers - never under a tag or
+  // one of the addon-only filters.
+  const shownServers = (activeFilter === 'all' || activeFilter === 'servers') && !activeTag
+    ? householdServers.filter((s) => {
+      const q = searchQuery.toLowerCase();
+      return !q || s.name.toLowerCase().includes(q) || s.address.toLowerCase().includes(q);
+    })
+    : [];
+  const shownAddons = activeFilter === 'servers' ? [] : filteredAddons;
 
   const protectedCount = addonsDisplay.filter(a => a.isProtected).length;
   // Nebula's stat row - real total from the same addonsDisplay data already rendered.
@@ -699,6 +736,7 @@ export default function AddonsPage() {
               { key: 'subtitles', label: 'Subtitles' },
               { key: 'online', label: 'Online' },
               { key: 'offline', label: 'Offline' },
+              { key: 'servers', label: 'Servers' },
             ],
             activeKey: activeFilter,
             onChange: setActiveFilter,
@@ -730,18 +768,22 @@ export default function AddonsPage() {
                 >
                   <span className="hidden sm:inline">Browse</span>
                 </Button>
-                <Button
-                  variant="primary"
-                  leftIcon={<PlusIcon className="w-5 h-5" />}
-                  onClick={() => setIsAddModalOpen(true)}
-                  aria-label="Add addon"
-                  title="Add addon"
-                >
-                  <span className="hidden sm:inline">Add</span>
-                </Button>
+                <div ref={addButtonRef}>
+                  <Button
+                    variant="primary"
+                    leftIcon={<PlusIcon className="w-5 h-5" />}
+                    onClick={(e) => (addMenuAnchor ? setAddMenuAnchor(null) : openAddMenu(e.currentTarget))}
+                    aria-label="Add an addon or a Jellyfin server"
+                    aria-haspopup="menu"
+                    aria-expanded={!!addMenuAnchor}
+                    title="Add an addon or a Jellyfin server"
+                  >
+                    <span className="hidden sm:inline">Add</span>
+                  </Button>
+                </div>
               </div>
             );
-            return isTV ? <TVFocusable onEnterPress={() => setIsAddModalOpen(true)}>{btn}</TVFocusable> : btn;
+            return isTV ? <TVFocusable onEnterPress={() => openAddMenu(addButtonRef.current)}>{btn}</TVFocusable> : btn;
           })()}
         />
 
@@ -820,14 +862,23 @@ export default function AddonsPage() {
           </div>
         ) : (
           <>
+            {/* Jellyfin servers, given to groups like an addon */}
+            {shownServers.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-6">
+                {shownServers.map((server) => (
+                  <JellyfinServerCard key={server.id} server={server} focusable={isTV} onOpen={() => setServerModal({ server })} />
+                ))}
+              </div>
+            )}
+
             {/* Addons Grid/List */}
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
                   <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
-                      <SortableContext items={filteredAddons.map(a => a.id)} strategy={rectSortingStrategy}>
-                        {filteredAddons.map((addon) => (
+                      <SortableContext items={shownAddons.map(a => a.id)} strategy={rectSortingStrategy}>
+                        {shownAddons.map((addon) => (
                           <SortableAddonWrapper key={addon.id} id={addon.id}>
                             {(dragHandleProps) => (
                             <StaggerItem>
@@ -854,6 +905,7 @@ export default function AddonsPage() {
                                 focusable={isTV}
                                 dragHandleProps={dragHandleProps}
                                 sharedPeers={sharedPeers.get(addon.id)}
+                                serverLink={serverLinkOf(addon)}
                               />
                             </StaggerItem>
                             )}
@@ -872,8 +924,8 @@ export default function AddonsPage() {
                     className="space-y-3"
                   >
                     <AnimatePresence mode="popLayout">
-                      <SortableContext items={filteredAddons.map(a => a.id)} strategy={verticalListSortingStrategy}>
-                        {filteredAddons.map((addon) => (
+                      <SortableContext items={shownAddons.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                        {shownAddons.map((addon) => (
                           <SortableAddonWrapper key={addon.id} id={addon.id}>
                             {(dragHandleProps) => (
                               <AddonCard
@@ -900,6 +952,7 @@ export default function AddonsPage() {
                                 focusable={isTV}
                                 dragHandleProps={dragHandleProps}
                                 sharedPeers={sharedPeers.get(addon.id)}
+                                serverLink={serverLinkOf(addon)}
                               />
                             )}
                           </SortableAddonWrapper>
@@ -911,8 +964,25 @@ export default function AddonsPage() {
               </AnimatePresence>
             </LayoutGroup>
 
+            {activeFilter === 'servers' && shownServers.length === 0 && (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
+                  <ServerStackIcon className="w-8 h-8 text-subtle" />
+                </div>
+                <h3 className="text-lg font-medium mb-2 text-default">No Jellyfin servers yet</h3>
+                <p className="mb-6 text-muted">
+                  {searchQuery ? 'Try adjusting your search' : 'Add one and give it to a group - everyone in it gets their own account.'}
+                </p>
+                {!searchQuery && (
+                  <Button variant="primary" onClick={() => setServerModal({ server: null })}>
+                    Add a Jellyfin server
+                  </Button>
+                )}
+              </div>
+            )}
+
             {/* Empty state */}
-            {filteredAddons.length === 0 && (
+            {activeFilter !== 'servers' && filteredAddons.length === 0 && shownServers.length === 0 && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -1005,7 +1075,9 @@ export default function AddonsPage() {
 
       {/* Floating Add Button - Mobile Only */}
       <button
-        onClick={() => setIsAddModalOpen(true)}
+        onClick={(e) => (addMenuAnchor ? setAddMenuAnchor(null) : openAddMenu(e.currentTarget))}
+        aria-label="Add an addon or a Jellyfin server"
+        aria-haspopup="menu"
         className="lg:hidden fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg bg-surface border border-default nav-item-hover-pill"
         style={{ boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' }}
       >
@@ -1030,6 +1102,25 @@ export default function AddonsPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         groups={groups}
+      />
+
+      {addMenuAnchor && (
+        <AddChoiceMenu
+          anchor={addMenuAnchor.rect}
+          anchorEl={addMenuAnchor.el}
+          isTV={isTV}
+          onClose={() => setAddMenuAnchor(null)}
+          onAddon={() => setIsAddModalOpen(true)}
+          onServer={() => setServerModal({ server: null })}
+        />
+      )}
+
+      <JellyfinServerModal
+        isOpen={!!serverModal}
+        onClose={() => setServerModal(null)}
+        groups={groups}
+        server={serverModal?.server}
+        onSaved={loadHouseholdServers}
       />
 
 
@@ -1214,6 +1305,7 @@ function AddonCard({
   dragHandleProps,
   layout = 'grid',
   sharedPeers,
+  serverLink,
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -1247,6 +1339,8 @@ function AddonCard({
   layout?: 'grid' | 'row';
   /** Other addons opening the same saved configuration (lib/sharedConfig.ts). */
   sharedPeers?: SharedPeer[];
+  /** Its configuration is also signed in to as a Jellyfin server. */
+  serverLink?: ConfigServerLink;
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1380,7 +1474,7 @@ function AddonCard({
 
   // The label and Shared settings: on a phone they follow the version and
   // counts, everywhere else they lead the tags row - never a row of their own.
-  const labelPills = (addon.customTag || (sharedPeers && sharedPeers.length > 0)) ? (
+  const labelPills = (addon.customTag || (sharedPeers && sharedPeers.length > 0) || serverLink) ? (
     <>
       {addon.customTag && (
         <span
@@ -1404,6 +1498,7 @@ function AddonCard({
           isTV={focusable}
         />
       )}
+      {serverLink && <JellyfinServerPill link={serverLink} isTV={focusable} />}
     </>
   ) : null;
 
@@ -1586,6 +1681,7 @@ function AddonCard({
             {sharedPeers && sharedPeers.length > 0 && (
               <SharedConfigPill peers={sharedPeers} kind={configKindOf(addon.manifestUrl, addon.name)} isTV={focusable} />
             )}
+            {serverLink && <JellyfinServerPill link={serverLink} isTV={focusable} />}
             {/* Moved out of its old leading spot (before the drag handle,
                 crowding every row's start on mobile). A flex-basis:100%
                 spacer forces this onto its own line UNCONDITIONALLY - a
@@ -2186,7 +2282,7 @@ function AddAddonModal({
                                       {/* Selection indicator circle */}
                                       <div
                                         className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected
-                                            ? 'bg-primary border-primary'
+                                            ? 'bg-primary-solid border-primary-solid'
                                             : 'border-default group-hover:border-primary/50'
                                           }`}
                                       >

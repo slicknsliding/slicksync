@@ -139,6 +139,19 @@ async function getGroupUsers(prisma, groupId, accountId, include = {}) {
 }
 
 /**
+ * True when every id is a row of this model in this account (an empty list is
+ * fine). Used before writing a link to ids a client sent, so one account can
+ * never be pointed at another's addons or groups.
+ */
+async function idsInAccount(prisma, model, ids, accountId) {
+  const wanted = [...new Set((ids || []).map((id) => String(id)))];
+  if (wanted.length === 0) return true;
+  if (!accountId) return false;
+  const found = await prisma[model].count({ where: { id: { in: wanted }, accountId } });
+  return found === wanted.length;
+}
+
+/**
  * Get account ID for private mode
  */
 function getAccountId(req) {
@@ -508,6 +521,7 @@ module.exports = {
   getUserGroups,
   getGroupUsers,
   getAccountId,
+  idsInAccount,
   scopedWhere,
   getGroupAddons,
   assignUserToGroup,

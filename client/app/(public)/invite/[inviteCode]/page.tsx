@@ -566,10 +566,11 @@ export default function InviteRequestPage() {
                             : 'bg-white/[0.03] text-muted hover:bg-white/[0.06]'
                         }`}
                       >
-                        {p === 'stremio' ? 'Stremio' : p === 'nuvio' ? 'Nuvio' : 'Jellyfin | AIOStreams'}
+                        {p === 'stremio' ? 'Stremio' : p === 'nuvio' ? 'Nuvio' : 'Jellyfin'}
                       </button>
                     ))}
                   </div>
+                  <p className="text-xs text-center -mt-2 mb-4" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>
 
                   {joinProvider === 'jellyfin' ? (
                     <div className="space-y-3">

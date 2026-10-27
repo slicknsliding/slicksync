@@ -37,6 +37,9 @@ const FALLBACK_FLOAT_TOP = 12;
 // Docked, how far the cluster sits in from the bar card's right edge: into
 // the card's padding, so it isn't crowding the centred logo.
 const DOCK_EDGE_INSET = 8;
+// Docked beside the account picture (account in the bar): the gap left between
+// the cluster and it.
+const DOCK_END_GAP = 4;
 
 // The topbar's right-hand cluster: command palette, then notifications.
 // Grouped into one component because the resume-tour prompt deliberately
@@ -134,7 +137,11 @@ export function TopbarActions({
       const row = document.querySelector('[data-nebula-logo-row]');
       const rr = row?.getBoundingClientRect();
       const card = row?.parentElement?.getBoundingClientRect();
-      const edge = card ? card.right - DOCK_EDGE_INSET : rr?.right ?? 0;
+      // With the account in the bar, dock just left of it instead.
+      const end = row?.querySelector('[data-nebula-end]')?.getBoundingClientRect();
+      const edge = end && end.width > 0
+        ? end.left - DOCK_END_GAP
+        : card ? card.right - DOCK_EDGE_INSET : rr?.right ?? 0;
       // A fixed element's `right` counts from the page's visible width, which
       // excludes a desktop-style scrollbar; innerWidth would include it and
       // shift the buttons left by the scrollbar's width.

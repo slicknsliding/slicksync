@@ -12,6 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 interface UserLifecycleCardProps {
   lifecycle: AdminMetrics['userLifecycle'];
@@ -67,11 +68,8 @@ export function UserLifecycleCard({ lifecycle, userJoins }: UserLifecycleCardPro
             />
             <YAxis stroke="#64748b" fontSize={12} />
             <Tooltip
-              contentStyle={{
-                backgroundColor: 'rgba(20, 20, 35, 0.95)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '12px',
-              }}
+              contentStyle={CHART_TOOLTIP_STYLE}
+              labelStyle={CHART_TOOLTIP_LABEL_STYLE}
               labelFormatter={(value: any) => {
                 const date = new Date(value);
                 return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });

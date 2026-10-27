@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { providerTypeLabel } from '@/lib/providers';
 import { ArchiveBoxIcon } from '@heroicons/react/24/outline';
 
 // The Graveyard (renamed from "Dropped" - the user's own word for it, and a
@@ -81,7 +82,7 @@ export function DroppedShowsPanel() {
       // Appears in the graveyard immediately, without a refetch flashing the
       // whole panel - buriedAt is "now" by definition.
       setBuried((prev) => [{
-        userId: item.userId, username: item.username, showId: item.showId, showName: item.showName,
+        userId: item.userId, username: item.username, providerType: item.providerType, showId: item.showId, showName: item.showName,
         poster: item.poster, lastSeason: item.lastSeason, lastEpisode: item.lastEpisode,
         lastWatchedAt: item.lastWatchedAt, episodesWatched: item.episodesWatched, buriedAt: new Date().toISOString(),
       }, ...(prev || [])]);
@@ -129,6 +130,15 @@ export function DroppedShowsPanel() {
   const toggleWipeOnDevice = (v: boolean) => {
     setWipeOnDevice(v);
     try { localStorage.setItem('graveyard-wipe-on-device', v ? '1' : '0'); } catch { /* private window */ }
+  };
+  // Whether a wipe of this row also reaches the person's app: the option is
+  // on, the person still exists, and their app's library can be edited.
+  const reachesApp = (item: Buried) => wipeOnDevice && !!item.providerType && item.providerType !== 'nuvio';
+  const wipeConfirmText = (item: Buried) => {
+    const what = item.episodesWatched > 0 ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'}` : 'Erase its watch history';
+    return reachesApp(item)
+      ? `${what} and remove it from ${item.username}'s ${providerTypeLabel(item.providerType || '')}?`
+      : `${what} forever?`;
   };
 
   const wipe = async (item: Buried) => {
@@ -311,28 +321,38 @@ export function DroppedShowsPanel() {
             className="w-full flex items-center justify-between gap-2 text-left"
           >
             <div>
-              <h3 className="text-lg font-semibold text-default">The Graveyard</h3>
+              <h3 className="text-lg font-semibold text-default">
+                The Graveyard
+                {wipeOnDevice && <span className="wipe-app-pill">Also removing from apps</span>}
+              </h3>
               <p className="text-sm text-muted mt-0.5">
-                {buried.length} buried show{buried.length === 1 ? '' : 's'} resting here. Dig one back up any time - or Wipe it to erase its watch history permanently.
+                {buried.length} buried show{buried.length === 1 ? '' : 's'} resting here. Dig one back up any time - or Wipe it to erase its watch history from SlickSync permanently.
               </p>
             </div>
             <span className="text-xs text-muted shrink-0">{graveOpen ? 'Hide' : 'Show'}</span>
           </button>
           {graveOpen && (
             <>
-              <label className="flex items-start gap-2 mt-3 text-xs text-muted cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={wipeOnDevice}
-                  onChange={(e) => toggleWipeOnDevice(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  When wiping, also remove the title from the account&apos;s own library - so it disappears from
-                  the device&apos;s home screen too, not just from SlickSync. Skipped automatically for accounts
-                  whose library can&apos;t be edited.
+              {/* It reaches past SlickSync into the person's app and can't be
+                  undone there, so it reads as a warning and turns red when on. */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={wipeOnDevice}
+                onClick={() => toggleWipeOnDevice(!wipeOnDevice)}
+                className={`wipe-app-opt ${wipeOnDevice ? 'wipe-app-opt-on' : ''}`}
+              >
+                <span className="wipe-app-mark" aria-hidden="true">!</span>
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-semibold text-default">Also remove it from their apps</span>
+                  <span className="block text-xs text-muted mt-0.5 leading-relaxed">
+                    Wipe will also delete the title from that person&apos;s Stremio or Jellyfin library, so it leaves their
+                    home screen. <span className="wipe-app-strong">This can&apos;t be undone in the app.</span> Nuvio
+                    libraries can&apos;t be edited, so they&apos;re skipped.
+                  </span>
                 </span>
-              </label>
+                <span className="wipe-app-switch" aria-hidden="true"><i /></span>
+              </button>
               {buried.length > 1 && (
                 <div className="flex flex-wrap items-center justify-end gap-2 mt-3">
                   <button
@@ -349,7 +369,7 @@ export function DroppedShowsPanel() {
                       </Button>
                       <Button variant={bulkWipeArmed ? 'danger' : 'ghost'} size="sm" isLoading={bulkBusy && bulkWipeArmed} onClick={wipeBulk}>
                         {bulkWipeArmed
-                          ? (selBuriedEpisodes > 0 ? `Erase ${selBuriedEpisodes} episode${selBuriedEpisodes === 1 ? '' : 's'} across ${selBuried.size} title${selBuried.size === 1 ? '' : 's'} forever?` : `Erase ${selBuried.size} title${selBuried.size === 1 ? '' : 's'} and their watch history forever?`)
+                          ? (selBuriedEpisodes > 0 ? `Erase ${selBuriedEpisodes} episode${selBuriedEpisodes === 1 ? '' : 's'} across ${selBuried.size} title${selBuried.size === 1 ? '' : 's'}${wipeOnDevice ? ' and remove them from their apps' : ''} forever?` : `Erase ${selBuried.size} title${selBuried.size === 1 ? '' : 's'} and their watch history${wipeOnDevice ? ', and remove them from their apps' : ''} forever?`)
                           : `Wipe ${selBuried.size} selected`}
                       </Button>
                     </>
@@ -394,8 +414,8 @@ export function DroppedShowsPanel() {
                           onClick={() => wipe(item)}
                         >
                           {wipeArmed === key
-                            ? (item.episodesWatched > 0 ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'} forever?` : 'Erase its watch history forever?')
-                            : 'Wipe'}
+                            ? wipeConfirmText(item)
+                            : reachesApp(item) ? <span className="wipe-app-label">Wipe + app</span> : 'Wipe'}
                         </Button>
                       </div>
                     </div>

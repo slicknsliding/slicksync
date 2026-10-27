@@ -20,7 +20,7 @@ const FACE: Record<ActionPillTone, string> = {
 
 const DISC: Record<ActionPillTone, string> = {
   neutral: 'bg-primary/15 text-primary',
-  on: 'bg-primary text-white',
+  on: 'bg-primary-solid text-white',
   warn: 'bg-warning text-black',
 };
 

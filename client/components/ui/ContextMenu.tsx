@@ -98,7 +98,7 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
         }}
         // Options a step bigger than body text in every menu (15px, more room,
         // 18px icons) - set here so all of them stay alike.
-        className="min-w-[180px] py-1.5 rounded-xl shadow-xl bg-surface border border-default backdrop-blur-xl [&_button]:text-[15px] [&_button]:py-2.5 [&_button>svg]:w-[18px] [&_button>svg]:h-[18px]"
+        className="popup-panel min-w-[180px] py-1.5 rounded-xl [&_button]:text-[15px] [&_button]:py-2.5 [&_button>svg]:w-[18px] [&_button>svg]:h-[18px]"
         onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
         onContextMenu={(e) => e.preventDefault()} // Prevent native context menu on the menu itself
       >

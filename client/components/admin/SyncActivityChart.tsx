@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 // The dashboard's sync-activity chart, in its own module so the charting
 // library loads only when this actually renders. recharts is a 400KB
@@ -24,14 +25,7 @@ export interface SyncStatusData {
   syncs: number;
 }
 
-const CHART_TOOLTIP_STYLE = {
-  backgroundColor: 'var(--color-surface)',
-  border: '1px solid var(--color-surface-border)',
-  borderRadius: '10px',
-  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-} as const;
-
-const CHART_LABEL_STYLE = { color: 'var(--color-text)' } as const;
+const CHART_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 export const SyncActivityChart = memo(function SyncActivityChart({ data }: { data: SyncStatusData[] }) {
   return (

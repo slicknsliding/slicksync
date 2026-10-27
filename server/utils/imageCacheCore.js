@@ -241,7 +241,11 @@ async function readSource(src, localFile, followRedirects = true) {
 // joins the encode queue behind the response. A freshly opened grid of new
 // posters used to wait in that queue (three at a time, 100-200ms each): a
 // screenful took 1.5-2 seconds to fill. The next request gets the resized file.
+// Only when the original is near the size asked for: a tiny copy stands in for
+// a blur (the detail panel's backdrop art on phones once was one), and sending
+// the full picture there puts a sharp second scene where a soft glow belongs.
 const QUICK_MAX_BYTES = 300 * 1024
+const QUICK_MAX_SCALE = 3
 const QUICK_TYPES = { jpeg: 'image/jpeg', webp: 'image/webp', png: 'image/png' }
 
 /**
@@ -287,7 +291,7 @@ function produce(src, { w, wantsWebp, localFile = null, followRedirects = true, 
 
     const enc = await getEncoder()
     const wanted = wantsWebp && enc.webp ? 'webp' : 'jpeg'
-    if (quick && !localFile && buf.length <= QUICK_MAX_BYTES && QUICK_TYPES[fmt]) {
+    if (quick && !localFile && buf.length <= QUICK_MAX_BYTES && QUICK_TYPES[fmt] && dims && dims.width <= w * QUICK_MAX_SCALE) {
       scheduleEncode(wanted === 'webp' ? p.webp : p.jpg, buf, { w, format: wanted })
       return { buf, contentType: QUICK_TYPES[fmt], provisional: true }
     }

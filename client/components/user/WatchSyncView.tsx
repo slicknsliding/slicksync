@@ -791,7 +791,7 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
                     {visible.length === 0 && <div className="mt-4 text-sm text-muted">Nothing here.</div>}
 
                     {/* In the top-bar layout the account button floats in the bottom-left corner; the bar starts after it. */}
-                    <div className={`sticky bottom-3 z-20 mt-4 flex items-center justify-between gap-3 pr-3.5 py-3 rounded-2xl border border-default backdrop-blur-xl ${layoutMode === 'nebula' ? 'pl-[4.25rem] md:pl-20' : 'pl-3.5'}`} style={{ background: 'color-mix(in srgb, var(--color-surface) 88%, transparent)', boxShadow: '0 -8px 30px -16px rgba(0,0,0,.7)' }}>
+                    <div className={`sticky bottom-3 z-20 mt-4 flex items-center justify-between gap-3 pr-3.5 py-3 rounded-2xl border border-default ${layoutMode === 'nebula' ? 'pl-[4.25rem] md:pl-20' : 'pl-3.5'}`} style={{ background: 'var(--color-surface)', boxShadow: '0 -8px 30px -16px rgba(0,0,0,.7)' }}>
                       <div className="flex items-center gap-2 min-w-0 text-xs" style={{ color: AMBER }}>
                         <ShieldCheckIcon className="hidden sm:block w-4 h-4 shrink-0" />
                         <span className="hidden sm:inline">SlickSync saves what {choiceLabel(toChoice)} has first, so you can <b>undo this copy for 7 days</b></span>

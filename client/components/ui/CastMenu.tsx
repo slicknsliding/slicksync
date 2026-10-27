@@ -75,13 +75,13 @@ export function CastMenu({ target, title, follow, titlesOpen, onClose, onSeeEver
     <div
       ref={ref}
       role="menu"
-      className="fixed z-[10000] w-[min(300px,calc(100vw-1.5rem))] py-1.5 rounded-2xl bg-surface border border-default shadow-2xl select-none"
+      className="popup-panel fixed z-[10000] w-[min(300px,calc(100vw-1.5rem))] py-1.5 rounded-2xl select-none"
       style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, WebkitTouchCallout: 'none' }}
       onContextMenu={(e) => e.preventDefault()}
     >
       <span
         aria-hidden
-        className="absolute w-3.5 h-3.5 bg-surface border-default"
+        className="popup-caret absolute w-3.5 h-3.5 bg-surface"
         style={place?.below
           ? { left: place.tail, top: -8, borderLeftWidth: 1, borderTopWidth: 1, transform: 'rotate(45deg)' }
           : { left: place?.tail ?? 14, bottom: -8, borderLeftWidth: 1, borderBottomWidth: 1, transform: 'rotate(-45deg)' }}

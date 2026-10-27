@@ -56,6 +56,8 @@ export interface UserInfo {
   username: string;
   email: string;
   colorIndex?: number;
+  /** Their own picture: an address, or /uploads/avatars/<file> for one uploaded here. */
+  avatarUrl?: string | null;
   /** They switched Gravatar on, so their avatar may look their email up there. */
   useGravatar?: boolean;
   activityVisibility: 'public' | 'private';
@@ -593,9 +595,19 @@ export interface NowPlayingItem {
     poster?: string;
     season?: number;
     episode?: number;
+    // A proxy stream whose title isn't known yet - name is plain words.
+    titlePending?: boolean;
   };
   startTime: string;
   videoId?: string;
+  // For the freshness line (lib/playbackFreshness.ts): where the row comes
+  // from, when it was last reconfirmed / saved (ms), and a pause the player
+  // itself reported.
+  source?: string;
+  elapsedFrozen?: boolean;
+  reportedAtTimestamp?: number;
+  paused?: boolean;
+  playingUntilTimestamp?: number;
 }
 
 export interface UserActivityData {
@@ -862,6 +874,123 @@ export const userPush = {
   async unsubscribe(userId: string, authKey: string, endpoint: string): Promise<{ success: boolean }> {
     return request('/public-library/push/unsubscribe', { method: 'POST', authKey, body: JSON.stringify({ userId, endpoint }) });
   },
+  /** Every device that gets this person's alerts. `endpoint` (this browser's own) marks which one is "this device". */
+  async devices(userId: string, authKey: string, endpoint?: string): Promise<{ devices: PersonPushDevice[] }> {
+    return request('/public-library/push/devices', { method: 'POST', authKey, body: JSON.stringify({ userId, endpoint }) });
+  },
+  async renameDevice(userId: string, authKey: string, id: string, label: string): Promise<{ success: boolean }> {
+    return request(`/public-library/push/devices/${encodeURIComponent(id)}`, { method: 'PATCH', authKey, body: JSON.stringify({ userId, label }) });
+  },
+  async removeDevice(userId: string, authKey: string, id: string): Promise<{ success: boolean }> {
+    return request(`/public-library/push/devices/${encodeURIComponent(id)}`, { method: 'DELETE', authKey, body: JSON.stringify({ userId }) });
+  },
+};
+
+export interface PersonPushDevice {
+  id: string;
+  label: string | null;
+  userAgent: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+  /** This browser's own registration. */
+  current: boolean;
+}
+
+/** The person's own picture. */
+export const userAvatar = {
+  async update(userId: string, authKey: string, change: { avatarUrl?: string | null; colorIndex?: number }): Promise<{ success: boolean; avatarUrl: string | null; colorIndex: number }> {
+    return request('/public-library/avatar', { method: 'PATCH', authKey, body: JSON.stringify({ userId, ...change }) });
+  },
+  /** Uploads a picture and makes it theirs in one step. */
+  async upload(userId: string, authKey: string, file: File): Promise<{ success: boolean; avatarUrl: string }> {
+    const form = new FormData();
+    form.append('avatar', file);
+    const response = await fetch(`${API_BASE}/public-library/avatar/upload?${new URLSearchParams({ userId })}`, {
+      method: 'POST',
+      headers: { 'x-stremio-auth': authKey },
+      body: form,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new UserApiError(error.message || `HTTP ${response.status}`, response.status);
+    }
+    return response.json();
+  },
+  /** nuvio.tv's cover gallery - a Nuvio sign-in only. */
+  async nuvioCovers(userId: string, authKey: string, opts: { page?: number; search?: string } = {}): Promise<NuvioCoversPage> {
+    const q = new URLSearchParams({ userId, limit: '24', sort: 'recent' });
+    if (opts.page) q.set('page', String(opts.page));
+    if (opts.search) q.set('search', opts.search);
+    return request(`/public-library/nuvio-covers?${q}`, { authKey });
+  },
+};
+
+export interface NuvioCoversPage {
+  items: { id: number; image_url: string; title: string }[];
+  pagination?: { hasNextPage?: boolean };
+}
+
+/** Moving between the profiles of one's own Nuvio login. */
+export interface NuvioProfileTile {
+  id: string;
+  name: string;
+  profileNumber: number;
+  avatarUrl: string | null;
+  colorIndex: number;
+  current: boolean;
+  needsReconnect: boolean;
+}
+export const userNuvioProfiles = {
+  async list(userId: string, authKey: string): Promise<{ profiles: NuvioProfileTile[] }> {
+    return request(`/public-library/nuvio-profiles?${new URLSearchParams({ userId })}`, { authKey });
+  },
+  async switchTo(userId: string, authKey: string, targetId: string): Promise<{ userId: string; sessionToken: string; user: Partial<UserInfo> & { id: string } }> {
+    return request('/public-library/switch-nuvio-profile', { method: 'POST', authKey, body: JSON.stringify({ userId, targetId }) });
+  },
+};
+
+/** The person's own Continue Watching row. */
+export interface ContinueWatchingCardData {
+  showId: string;
+  contentType: 'series' | 'movie';
+  name: string;
+  poster: string | null;
+  background: string | null;
+  thumbnail: string | null;
+  season: number | null;
+  episode: number | null;
+  episodeTitle: string | null;
+  resume: boolean;
+  progressPercent: number | null;
+  remainingMinutes: number | null;
+  lastWatchedAt: string;
+  providerType: string;
+  /** Opens their app on the title - Stremio and Nuvio only. */
+  appUrl: string | null;
+  /** The title's page. */
+  webUrl: string | null;
+}
+export const userContinueWatching = {
+  async list(userId: string, authKey: string): Promise<{ items: ContinueWatchingCardData[] }> {
+    return request(`/public-library/continue-watching?${new URLSearchParams({ userId })}`, { authKey });
+  },
+  async dismiss(userId: string, authKey: string, showId: string): Promise<{ success: boolean }> {
+    return request('/public-library/continue-watching/dismiss', { method: 'POST', authKey, body: JSON.stringify({ userId, showId }) });
+  },
+};
+
+/**
+ * "Resume in your app" on a Continue Watching card: the person's own server,
+ * user id and the title's id there (what lib/openWith.ts builds links from),
+ * and - on a real Jellyfin - their own devices to start it on.
+ */
+export const userOpenTargets = {
+  async get(userId: string, authKey: string, id: string, type: 'movie' | 'series'): Promise<import('./openWith').OpenTargets> {
+    return request(`/public-library/open-targets?${new URLSearchParams({ userId, id, type })}`, { authKey });
+  },
+  async playOn(userId: string, authKey: string, body: { sessionId: string; itemId: string }): Promise<{ success: boolean }> {
+    return request('/public-library/open-targets/play-on', { method: 'POST', authKey, body: JSON.stringify({ userId, ...body }) });
+  },
 };
 
 /**
@@ -882,4 +1011,45 @@ export const userApi = {
   shares: userShares,
   sync: userSync,
   export: userExport,
+};
+
+/** What one watch-history file holds, or what importing it did. */
+export interface HistoryImportFileResult {
+  /** Preview only: true. */
+  dryRun?: boolean;
+  /** Titles put in (preview: that would be). */
+  added: number;
+  /** Titles the person already had. */
+  alreadyThere: number;
+  skipped: number;
+  skippedEpisodes: number;
+  totalRows: number;
+  truncated: boolean;
+  unresolvedTitles: string[];
+  /** Titles with no IMDb id past the household's lookup allowance were left unresolved. */
+  lookupsCapped: boolean;
+  /** Preview only: the first titles that would be added. */
+  titles?: { id: string; name: string; watchedAt: string }[];
+  /** Preview only: every title that would be added / is already there, to add several files up exactly. */
+  ids?: string[];
+  existingIds?: string[];
+}
+
+/** The person's own watch-history import: a preview, then the import. Their own history only. */
+export const userHistoryImport = {
+  async send(kind: 'preview' | 'import', userId: string, authKey: string, file: File): Promise<HistoryImportFileResult> {
+    const form = new FormData();
+    form.append('file', file);
+    const route = kind === 'preview' ? '/public-library/history-import/preview' : '/public-library/history-import';
+    const response = await fetch(`${API_BASE}${route}?${new URLSearchParams({ userId })}`, {
+      method: 'POST',
+      headers: { 'x-stremio-auth': authKey },
+      body: form,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Import failed' }));
+      throw new UserApiError(error.message || error.error || `HTTP ${response.status}`, response.status);
+    }
+    return response.json();
+  },
 };

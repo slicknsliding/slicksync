@@ -49,6 +49,7 @@ import {
 import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { DraggableList } from '@/components/ui/DragSortable';
+import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 
 
 // Chart color palette for users - theme-aware colors
@@ -77,14 +78,8 @@ interface AggregatedContentData {
 }
 
 // Memoized tooltip style (same as UserDetailsPage)
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(30, 30, 56, 0.9)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  backdropFilter: 'blur(12px)',
-} as const;
-
-const TOOLTIP_LABEL_STYLE = { color: '#fff' } as const;
+const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
+const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 function formatMinutes(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
@@ -1681,7 +1676,7 @@ function AddAddonForm({ availableAddons, onAdd, onClose }: AddAddonFormProps) {
           >
             <div className="shrink-0 flex items-center justify-center">
               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                isSelected ? 'bg-primary border-primary' : 'border-default'
+                isSelected ? 'bg-primary-solid border-primary-solid' : 'border-default'
               }`}>
                 {isSelected && <CheckIcon className="w-3 h-3 text-white" />}
               </div>

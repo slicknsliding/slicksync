@@ -431,6 +431,9 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
       // observations to diff (see this repo's CLAUDE.md).
       lastPosition: session.lastPosition ?? null,
       totalDuration: session.totalDuration ?? null,
+      // When the provider's checkpoint was last written, for the "Last seen"
+      // label on the cards.
+      ...(session.updatedAt ? { reportedAtTimestamp: session.updatedAt.getTime() } : {}),
       // Same episode-aware deep-link builder Continue Watching already uses
       // (server/utils/appLinks.js) - not the plain client-side one, which
       // has no season/episode parameter at all for series.
@@ -479,6 +482,17 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
         lastPosition: v.positionMs,
         totalDuration: v.durationMs,
         source: v.source || 'aiostreams',
+        // When the player was last heard from, and whether it said paused -
+        // only what the player itself reported, for the cards' freshness line.
+        ...(typeof v.observedAt === 'number' || v.observedAt instanceof Date
+          ? {
+            reportedAtTimestamp: new Date(v.observedAt).getTime(),
+            // The position was reported then; the card counts on from it while playing.
+            ...(typeof v.positionMs === 'number' ? { positionAt: new Date(v.observedAt).getTime() } : {}),
+          }
+          : {}),
+        ...(v.paused === true ? { paused: true } : {}),
+        ...(typeof v.playingUntil === 'number' ? { playingUntilTimestamp: v.playingUntil } : {}),
         // The device and app it's playing on, when the server says (Jellyfin does).
         ...(v.device ? { device: v.device } : {}),
         // A Jellyfin app has no link to open a title with, and a Stremio or
@@ -504,6 +518,27 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
     nowPlaying.push(...merged)
   } catch (error) {
     console.warn('[MetricsBuilder] Failed to merge proxy now playing:', error.message)
+  }
+
+  // Which Nuvio (or AIOStreams) profile each person watches under - the one
+  // their own watch history last recorded, as the history cards show it.
+  try {
+    const ids = [...new Set(nowPlaying.map((np) => np.user?.id).filter(Boolean))]
+    if (ids.length) {
+      const labels = await prisma.watchActivity.findMany({
+        where: { accountId: accountIdValue || 'default', userId: { in: ids }, profileLabel: { not: null } },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['userId'],
+        select: { userId: true, profileLabel: true },
+      })
+      const byUser = new Map(labels.map((l) => [l.userId, l.profileLabel]))
+      for (const np of nowPlaying) {
+        const label = byUser.get(np.user?.id)
+        if (label) np.profileLabel = label
+      }
+    }
+  } catch (error) {
+    console.warn('[MetricsBuilder] Failed to read profile names:', error.message)
   }
 
   // Most recent first.

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,6 +13,8 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  /** Name for screen readers when the modal has no visible title. */
+  ariaLabel?: string;
   description?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   children: React.ReactNode;
@@ -59,7 +61,7 @@ const sizeMaxWidthPx = {
   full: '896px',
 };
 
-export function Modal({ isOpen, onClose, title, description, size = 'md', children, hideCloseButton = false, backdropImage, lightweight = false }: ModalProps) {
+export function Modal({ isOpen, onClose, title, ariaLabel, description, size = 'md', children, hideCloseButton = false, backdropImage, lightweight = false }: ModalProps) {
   // On a phone or tablet the close is a plain fade. The default close also
   // shrinks and slides the panel, and a transform on a panel whose backdrop
   // art is a large blurred image makes WebKit re-rasterize that image on
@@ -69,14 +71,17 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
   // The library's own title element inside its shell; a plain heading in
   // the lightweight one, wired to the dialog by id for screen readers.
   const TitleTag: React.ElementType = lightweight ? 'h2' : DialogTitle;
-  const titleId = lightweight ? 'slicksync-light-modal-title' : undefined;
+  // A generated id per modal: two open at once must not share one.
+  const generatedTitleId = useId();
+  const titleId = lightweight ? generatedTitleId : undefined;
   const panelBody = (
     <>
+      {!title && !lightweight && <DialogTitle className="sr-only">{ariaLabel || 'Details'}</DialogTitle>}
       {/* Ambient backdrop art - z-0, sits behind the header/content
           below (both explicitly z-10) rather than relying on default
           paint order, which would otherwise put this absolutely-
           positioned layer above their static-flow content. Sized to
-          the panel itself (capped at max-h-[85vh] above), not the
+          the panel itself (capped at max-h-[85dvh] above), not the
           scrollable content, so the fade-to-solid point stays fixed
           regardless of how long the content is. */}
       {backdropImage && (
@@ -119,8 +124,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
       {!hideCloseButton && (
       <button
         onClick={onClose}
-        className="absolute top-3 right-3 z-20 p-2 rounded-lg backdrop-blur-sm transition-colors"
-        style={{ color: 'var(--color-text-muted)', background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}
+        className="modal-close-btn absolute top-3 right-3 z-20 p-2 rounded-lg transition-colors"
         aria-label="Close"
       >
         <XMarkIcon className="w-5 h-5" />
@@ -159,7 +163,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
 
   if (lightweight) {
     return (
-      <LightShell isOpen={isOpen} onClose={onClose} size={size} titleId={title ? titleId : undefined}>
+      <LightShell isOpen={isOpen} onClose={onClose} size={size} titleId={title ? titleId : undefined} ariaLabel={ariaLabel}>
         {panelBody}
       </LightShell>
     );
@@ -209,16 +213,11 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
           >
             <DialogPanel
               className={clsx(
-                'relative w-full flex flex-col max-h-[85vh]',
+                'relative w-full flex flex-col max-h-[85dvh]',
                 sizeStyles[size],
-                'rounded-2xl p-0 overflow-hidden'
+                'popup-panel rounded-2xl p-0 overflow-hidden'
               )}
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-surface-border)',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                maxWidth: sizeMaxWidthPx[size],
-              }}
+              style={{ maxWidth: sizeMaxWidthPx[size] }}
             >
               {panelBody}
             </DialogPanel>
@@ -230,15 +229,20 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
 }
 
 // The shell behind `lightweight` - see that prop's comment on Modal.
-function LightShell({ isOpen, onClose, size, titleId, children }: {
+function LightShell({ isOpen, onClose, size, titleId, ariaLabel, children }: {
   isOpen: boolean;
   onClose: () => void;
   size: NonNullable<ModalProps['size']>;
   titleId?: string;
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<Element | null>(null);
+  // The latest onClose, read from the key handler, so a parent that passes a
+  // new function every render does not tear down and re-focus the dialog.
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -247,12 +251,13 @@ function LightShell({ isOpen, onClose, size, titleId, children }: {
     // Focus the panel itself so Escape and Tab land inside it.
     panel?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return; }
       if (e.key !== 'Tab' || !panel) return;
       // Keep Tab inside the panel.
-      const focusable = panel.querySelectorAll<HTMLElement>(
+      // Only what can actually take focus: not hidden, not collapsed.
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
+      )).filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
       if (focusable.length === 0) { e.preventDefault(); return; }
       const first = focusable[0], last = focusable[focusable.length - 1];
       if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) { e.preventDefault(); last.focus(); }
@@ -264,7 +269,7 @@ function LightShell({ isOpen, onClose, size, titleId, children }: {
       const el = restoreFocusTo.current as HTMLElement | null;
       if (el && typeof el.focus === 'function' && el.isConnected) el.focus({ preventScroll: true });
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen || typeof document === 'undefined') return null;
   return createPortal(
@@ -284,18 +289,14 @@ function LightShell({ isOpen, onClose, size, titleId, children }: {
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
+          aria-label={titleId ? undefined : (ariaLabel || 'Details')}
           tabIndex={-1}
           className={clsx(
-            'relative w-full flex flex-col max-h-[85vh] pointer-events-auto outline-none',
+            'relative w-full flex flex-col max-h-[85dvh] pointer-events-auto outline-none',
             sizeStyles[size],
-            'rounded-2xl p-0 overflow-hidden overscroll-contain'
+            'popup-panel rounded-2xl p-0 overflow-hidden overscroll-contain'
           )}
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-surface-border)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-            maxWidth: sizeMaxWidthPx[size],
-          }}
+          style={{ maxWidth: sizeMaxWidthPx[size] }}
         >
           {children}
         </div>
@@ -356,7 +357,7 @@ export function ConfirmModal({
               ? 'var(--color-error)'
               : variant === 'warning'
               ? 'var(--color-warning)'
-              : 'var(--color-primary)',
+              : 'var(--color-primary-solid)',
             color: 'white'
           }}
         >

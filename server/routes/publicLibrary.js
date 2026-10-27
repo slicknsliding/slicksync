@@ -3,7 +3,7 @@ const { publicMessage } = require('../utils/publicError');
 const jwt = require('jsonwebtoken');
 const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
-const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin, refreshNuvioToken, isTokenExpired } = require('../providers/nuvioAuth');
+const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin, isTokenExpired } = require('../providers/nuvioAuth');
 const { makeCreateProvider } = require('../providers');
 const { encrypt, decrypt } = require('../utils/encryption');
 const { canonicalizeManifestUrl } = require('../utils/validation');
@@ -18,6 +18,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   const { getShares, getGroupMembers } = require('../utils/sharesManager')
   const { getAccountId } = require('../utils/helpers')
   const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId })
+  const { imageUpload } = require('../utils/helpers/multer')
+  const { saveAvatarFile, removeAvatarFile, UPLOADED_AVATAR } = require('./avatars')
   const router = express.Router();
 
   // Helper to get existing user from Stremio auth (does NOT create new users)
@@ -172,8 +174,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
   // Nuvio's identity proof shape is different from Stremio's - a single
   // authKey Stremio re-validates identically on every call vs. a refresh
-  // token that Nuvio ROTATES on use. Proving identity (fresh OAuth exchange,
-  // or a live refreshNuvioToken call) happens at each call site below; this
+  // token that Nuvio ROTATES on use. Proving identity (a fresh OAuth exchange,
+  // or the caller's signed portal session) happens at each call site below; this
   // helper is the shared DB-side half - same USER_NOT_FOUND/USER_NOT_ACTIVE/
   // USER_NOT_IN_GROUP sentinels and the same self-healing re-persist pattern
   // getPublicUser uses for a rotated Stremio authKey, just keyed on
@@ -819,10 +821,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
-  // Validate a Nuvio user session (mirrors /validate) - given userId, loads
-  // that user's own stored refresh token and live-verifies it against Nuvio
-  // (refreshNuvioToken throws if it's been revoked/expired), then re-checks
-  // active/group status the same way getPublicUserNuvio always does.
+  // Validate a Nuvio user session (mirrors /validate) - given userId and the
+  // caller's own portal session token, re-checks active/group status the same
+  // way getPublicUserNuvio always does.
   router.post('/validate-nuvio', async (req, res) => {
     try {
       const { userId } = req.body;
@@ -857,14 +858,12 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
       const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq);
 
-      let refreshed;
-      try {
-        refreshed = await refreshNuvioToken(storedRefreshToken);
-      } catch (err) {
-        return res.status(401).json({ error: 'Validation failed', message: 'Invalid or expired Nuvio session' });
-      }
-
-      const validatedUser = await getPublicUserNuvio(user.nuvioUserId, refreshed.refresh_token || storedRefreshToken, req, userId);
+      // The signed portal session above already proves who this is. Refreshing
+      // here spent Nuvio's single-use refresh token on every page load, outside
+      // the provider's shared refresh (providers/nuvio.js), so two quick
+      // reloads - or a reload during a sync - left one of them holding a dead
+      // token and signed the person out.
+      const validatedUser = await getPublicUserNuvio(user.nuvioUserId, storedRefreshToken, req, userId);
 
       res.json({
         success: true,
@@ -1019,6 +1018,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             isActive: true,
             activityVisibility: true,
             colorIndex: true,
+            avatarUrl: true,
             useGravatar: true,
             createdAt: true,
             expiresAt: true,
@@ -1042,10 +1042,17 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           return res.status(401).json({ error: publicMessage(e, 'Authentication required') });
         }
 
-        // Check if user belongs to at least one active group
-        const { getGroupMembers } = require('../utils/sharesManager');
-        const groupMembers = await getGroupMembers(prisma, foundUser.accountId, foundUser.id);
-        if (groupMembers.length === 0) {
+        // Check the user belongs to at least one active group. Membership,
+        // not "has housemates": someone alone in their group is still in it
+        // (getGroupMembers leaves the caller out, so it answered 403 for them).
+        const activeGroups = await prisma.group.findMany({
+          where: { accountId: foundUser.accountId, isActive: true },
+          select: { userIds: true },
+        });
+        const inAGroup = activeGroups.some((g) => {
+          try { const ids = JSON.parse(g.userIds || '[]'); return Array.isArray(ids) && ids.includes(foundUser.id); } catch { return false; }
+        });
+        if (!inAGroup) {
           return res.status(403).json({ error: 'User is not part of any group' });
         }
 
@@ -1060,8 +1067,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             id: true,
             username: true,
             email: true,
+            accountId: true,
             activityVisibility: true,
             colorIndex: true,
+            avatarUrl: true,
             useGravatar: true,
             createdAt: true,
             expiresAt: true,
@@ -1077,12 +1086,23 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         user = fullUser;
       }
 
+      // The groups they are in, by name, for their Settings page.
+      const theirGroups = await prisma.group.findMany({
+        where: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, isActive: true },
+        select: { name: true, userIds: true },
+      });
+      const groupNames = theirGroups
+        .filter((g) => { try { const ids = JSON.parse(g.userIds || '[]'); return Array.isArray(ids) && ids.includes(user.id); } catch { return false; } })
+        .map((g) => g.name);
+
       res.json({
         id: user.id,
         username: user.username,
         email: user.email,
+        groupName: groupNames.join(', ') || null,
         activityVisibility: user.activityVisibility || 'private',
         colorIndex: user.colorIndex || 0,
+        avatarUrl: user.avatarUrl || null,
         // So the portal knows whether to look this person up on Gravatar.
         useGravatar: user.useGravatar === true,
         createdAt: user.createdAt,
@@ -2550,12 +2570,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       console.log('Loading library cache for account:', user.accountId);
       const libraryCache = getCachedLibrary(user.accountId || DEFAULT_ACCOUNT_ID, user) || [];
       console.log('Library cache items:', libraryCache.length);
-      const libraryItemMap = new Map();
-      libraryCache.forEach(item => {
-        if (item._id || item.id) {
-          libraryItemMap.set(item._id || item.id, item);
-        }
-      });
+      // Titles the cache doesn't hold yet are looked up, so a cold cache
+      // never shows ids in place of names.
+      const { portalActivityMetadata } = require('../utils/portalActivityMetadata');
+      const libraryItemMap = await portalActivityMetadata(libraryCache, watchActivities);
       console.log('Library item map size:', libraryItemMap.size);
 
       // Helper function to extract season/episode from itemId
@@ -2889,20 +2907,26 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         startTime: s.startTime,
         videoId: s.videoId,
         lastPosition: s.lastPosition ?? null,
-        totalDuration: s.totalDuration ?? null
+        totalDuration: s.totalDuration ?? null,
+        ...(s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
       }));
 
       // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings() -
       // or on a Jellyfin server they sign in to (utils/jellyfinLive.js).
       try {
         const { liveViewings } = require('../utils/watchState');
-        const jellyfinViewings = require('../utils/jellyfinLive').liveViewings([userId]);
+        const jellyfinViewings = require('../utils/jellyfinLive').liveViewings([userId]).map(v => ({ ...v, source: 'jellyfin' }));
         for (const v of [...await liveViewings(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [userId]), ...jellyfinViewings]) {
           if (nowPlaying.some(np => np.item.id === v.itemId)) continue;
           nowPlaying.push({
             item: { id: v.itemId, name: v.itemName || v.itemId, type: v.itemType, poster: v.poster, season: v.season, episode: v.episode },
             startTime: v.startedAt,
-            videoId: v.videoId
+            videoId: v.videoId,
+            // For the cards' "Live / Paused / Last seen" line.
+            source: v.source || 'aiostreams',
+            ...(v.observedAt != null ? { reportedAtTimestamp: new Date(v.observedAt).getTime() } : {}),
+            ...(v.paused === true ? { paused: true } : {}),
+            ...(typeof v.playingUntil === 'number' ? { playingUntilTimestamp: v.playingUntil } : {})
           });
         }
       } catch (error) {
@@ -2935,6 +2959,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           // this is a live proxy stream and its timer still running.
           lastPosition: m.lastPosition ?? null,
           totalDuration: m.totalDuration ?? null,
+          ...(typeof m.positionAt === 'number' ? { positionAt: m.positionAt } : {}),
+          ...(typeof m.reportedAtTimestamp === 'number' ? { reportedAtTimestamp: m.reportedAtTimestamp } : {}),
+          ...(m.paused === true ? { paused: true } : {}),
+          ...(typeof m.playingUntilTimestamp === 'number' ? { playingUntilTimestamp: m.playingUntilTimestamp } : {}),
           ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {})
         })));
       } catch (error) {
@@ -3166,8 +3194,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           email: true,
           accountId: true,
           isActive: true,
-          stremioAuthKey: true,
-          groupId: true
+          stremioAuthKey: true
         }
       });
 
@@ -3436,7 +3463,475 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
+  // ---- The person's own picture ----
+  // Colour, an image link, an upload, or (Nuvio) a cover from nuvio.tv's
+  // gallery. Every route proves the caller is this exact person (personAsking)
+  // and only ever writes that person's row. Uploaded files are kept to one per
+  // person: a new picture removes the file the old one used.
+
+  // The colours the picker offers (client/components/ui/Avatar.tsx): the eight
+  // theme shades, and the twelve fixed colours from 100.
+  const validAvatarColor = (n) => Number.isInteger(n) && ((n >= 0 && n <= 7) || (n >= 100 && n <= 111));
+
+  // What an avatarUrl may be: null (none), an http(s) address, or the person's
+  // own current uploaded file. A path to someone else's file is refused - a
+  // new file only arrives through /avatar/upload.
+  function checkedPictureUrl(value, currentUrl) {
+    if (value === null || value === '') return { url: null };
+    if (typeof value !== 'string' || value.length > 2048) return { error: 'That picture address can’t be used' };
+    const text = value.trim();
+    if (UPLOADED_AVATAR.test(text)) return text === currentUrl ? { url: text } : { error: 'That picture address can’t be used' };
+    let parsed;
+    try { parsed = new URL(text); } catch { return { error: 'That picture address can’t be used' }; }
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) return { error: 'Use a link that starts with http:// or https://' };
+    return { url: text };
+  }
+
+  // The file an old picture leaves behind goes with it - unless another row
+  // still shows it.
+  async function tidyOldPicture(oldUrl, newUrl, personId) {
+    if (!oldUrl || oldUrl === newUrl || !UPLOADED_AVATAR.test(oldUrl)) return;
+    try {
+      const [otherPerson, aGroup] = await Promise.all([
+        prisma.user.findFirst({ where: { avatarUrl: oldUrl, id: { not: personId } }, select: { id: true } }),
+        prisma.group.findFirst({ where: { avatarUrl: oldUrl }, select: { id: true } }),
+      ]);
+      if (!otherPerson && !aGroup) removeAvatarFile(oldUrl);
+    } catch (e) {
+      console.warn('[publicLibrary] could not tidy an old picture:', e?.message);
+    }
+  }
+
+  router.patch('/avatar', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const { avatarUrl, colorIndex } = req.body || {};
+      if (avatarUrl === undefined && colorIndex === undefined) return res.status(400).json({ error: 'Nothing to change' });
+      const current = await prisma.user.findUnique({ where: { id: user.id }, select: { avatarUrl: true, colorIndex: true } });
+      const data = {};
+      if (avatarUrl !== undefined) {
+        const checked = checkedPictureUrl(avatarUrl, current?.avatarUrl || null);
+        if (checked.error) return res.status(400).json({ error: checked.error, message: checked.error });
+        data.avatarUrl = checked.url;
+      }
+      if (colorIndex !== undefined) {
+        if (!validAvatarColor(colorIndex)) return res.status(400).json({ error: 'Pick one of the colours offered', message: 'Pick one of the colours offered' });
+        data.colorIndex = colorIndex;
+      }
+      const saved = await prisma.user.update({ where: { id: user.id }, data, select: { avatarUrl: true, colorIndex: true } });
+      await tidyOldPicture(current?.avatarUrl, saved.avatarUrl, user.id);
+      res.json({ success: true, avatarUrl: saved.avatarUrl || null, colorIndex: saved.colorIndex || 0 });
+    } catch (error) {
+      pushError(res, error, 'Could not change your picture');
+    }
+  });
+
+  // At most this many uploads an hour per person: a person cannot fill the
+  // disk by uploading in a loop (each one also removes their previous file).
+  const AVATAR_UPLOADS_PER_HOUR = 10;
+  const avatarUploads = new Map();
+  function avatarUploadAllowed(personId) {
+    const now = Date.now();
+    const recent = (avatarUploads.get(personId) || []).filter((t) => now - t < 60 * 60 * 1000);
+    if (recent.length >= AVATAR_UPLOADS_PER_HOUR) { avatarUploads.set(personId, recent); return false; }
+    recent.push(now);
+    avatarUploads.set(personId, recent);
+    return true;
+  }
+
+  // The bytes have to be the kind of picture the type says: the declared type
+  // alone is whatever the sender wrote.
+  function pictureKind(buf) {
+    if (!buf || buf.length < 12) return null;
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+    if (buf.subarray(0, 4).toString('latin1') === 'GIF8') return 'image/gif';
+    if (buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+    return null;
+  }
+
+  // Upload and use in one step (the file field is "avatar"; the person's id is
+  // in the address because the body is not read yet). The sign-in is checked
+  // before anything is accepted, so an anonymous caller never gets a file
+  // buffered.
+  router.post('/avatar/upload', async (req, res) => {
+    let user;
+    try {
+      user = await personAsking(req, req.query.userId);
+    } catch (error) {
+      return pushError(res, error, 'Could not change your picture');
+    }
+    if (!avatarUploadAllowed(user.id)) return res.status(429).json({ error: 'That’s a lot of pictures - try again in a while', message: 'That’s a lot of pictures - try again in a while' });
+    imageUpload.single('avatar')(req, res, async (uploadError) => {
+      try {
+        if (uploadError) {
+          const message = uploadError.code === 'LIMIT_FILE_SIZE' ? 'That picture is over 5 MB' : (uploadError.message || 'Could not read that picture');
+          return res.status(400).json({ error: message, message });
+        }
+        if (!req.file) return res.status(400).json({ error: 'Choose a picture first', message: 'Choose a picture first' });
+        const kind = pictureKind(req.file.buffer);
+        if (!kind) return res.status(400).json({ error: 'That isn’t a JPEG, PNG, GIF or WEBP picture', message: 'That isn’t a JPEG, PNG, GIF or WEBP picture' });
+        const current = await prisma.user.findUnique({ where: { id: user.id }, select: { avatarUrl: true } });
+        const url = saveAvatarFile(req.file.buffer, kind);
+        try {
+          await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: url } });
+        } catch (e) {
+          removeAvatarFile(url);
+          throw e;
+        }
+        await tidyOldPicture(current?.avatarUrl, url, user.id);
+        res.status(201).json({ success: true, avatarUrl: url });
+      } catch (error) {
+        console.error('Error saving a picture:', error?.message);
+        res.status(500).json({ error: 'Could not save that picture', message: 'Could not save that picture' });
+      }
+    });
+  });
+
+  // nuvio.tv's cover gallery, for a Nuvio member choosing a picture. Read-only,
+  // and through the member's own Nuvio login only.
+  router.get('/nuvio-covers', async (req, res) => {
+    try {
+      const asker = await personAsking(req, req.query.userId);
+      if (asker.providerType !== 'nuvio' || !asker.nuvioUserId) return res.status(400).json({ error: 'Covers are for Nuvio sign-ins' });
+      const user = await prisma.user.findFirst({ where: { id: asker.id, accountId: asker.accountId, providerType: 'nuvio' } });
+      const provider = user ? createProvider(user, { decrypt, req: { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID } }) : null;
+      if (!provider?.getCommunityCovers) return res.status(400).json({ error: 'Covers are for Nuvio sign-ins' });
+      const { sort, orientation, format, page, limit, search } = req.query;
+      res.json(await provider.getCommunityCovers({
+        sort: typeof sort === 'string' ? sort : undefined,
+        orientation: typeof orientation === 'string' ? orientation : undefined,
+        format: typeof format === 'string' ? format : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Math.min(Number(limit) || 24, 48) : undefined,
+        search: typeof search === 'string' ? search.slice(0, 100) : undefined,
+      }));
+    } catch (error) {
+      pushError(res, error, 'Could not load covers');
+    }
+  });
+
+  // ---- Switching between a Nuvio login's own profiles ----
+  // One Nuvio login can be several people in SlickSync (its profiles). A
+  // member signed in as one of them may move to another of the SAME login in
+  // the SAME household, with no sign-out. A profile is offered only while it is
+  // active, in an active group, and its login is still kept; one whose login
+  // is gone is listed as needing a reconnect and cannot be chosen.
+
+  // The caller's Nuvio login. Rows with no nuvioUserId all look alike to a
+  // query on it (null matches null), so none is ever searched for.
+  function nuvioLoginOf(asker) {
+    if (asker.providerType !== 'nuvio') return { error: 'Profiles are for Nuvio sign-ins' };
+    if (!asker.nuvioUserId) return { error: 'This sign-in has no Nuvio login to switch within' };
+    return { nuvioUserId: asker.nuvioUserId };
+  }
+
+  async function profilesOfLogin(asker, nuvioUserId) {
+    const rows = await prisma.user.findMany({
+      where: { accountId: asker.accountId, providerType: 'nuvio', nuvioUserId, isActive: true },
+      select: { id: true, username: true, nuvioProfileId: true, avatarUrl: true, colorIndex: true, nuvioRefreshToken: true },
+    });
+    if (!rows.length) return [];
+    const groups = await prisma.group.findMany({ where: { accountId: asker.accountId || DEFAULT_ACCOUNT_ID, isActive: true }, select: { userIds: true } });
+    const inGroup = new Set();
+    for (const group of groups) {
+      try {
+        const ids = JSON.parse(group.userIds || '[]');
+        if (Array.isArray(ids)) for (const id of ids) inGroup.add(id);
+      } catch { /* a group with unreadable members has none */ }
+    }
+    return rows.filter((r) => inGroup.has(r.id)).sort((a, b) => (a.nuvioProfileId || 0) - (b.nuvioProfileId || 0));
+  }
+
+  router.get('/nuvio-profiles', async (req, res) => {
+    try {
+      const asker = await personAsking(req, req.query.userId);
+      const login = nuvioLoginOf(asker);
+      if (login.error) return res.status(400).json({ error: login.error, message: login.error });
+      const profiles = await profilesOfLogin(asker, login.nuvioUserId);
+      res.json({
+        profiles: profiles.map((p) => ({
+          id: p.id,
+          name: p.username,
+          profileNumber: p.nuvioProfileId || 1,
+          avatarUrl: p.avatarUrl || null,
+          colorIndex: p.colorIndex || 0,
+          current: p.id === asker.id,
+          needsReconnect: !p.nuvioRefreshToken,
+        })),
+      });
+    } catch (error) {
+      pushError(res, error, 'Could not load your profiles');
+    }
+  });
+
+  router.post('/switch-nuvio-profile', async (req, res) => {
+    try {
+      const asker = await personAsking(req, req.body?.userId);
+      const login = nuvioLoginOf(asker);
+      if (login.error) return res.status(400).json({ error: login.error, message: login.error });
+      const targetId = req.body?.targetId;
+      if (typeof targetId !== 'string' || !targetId) return res.status(400).json({ error: 'Choose one of your profiles', message: 'Choose one of your profiles' });
+      if (targetId === asker.id) return res.status(400).json({ error: 'You are already on this profile', message: 'You are already on this profile' });
+      const target = (await profilesOfLogin(asker, login.nuvioUserId)).find((p) => p.id === targetId);
+      if (!target) return res.status(404).json({ error: 'Profile not found', message: 'Profile not found' });
+      if (!target.nuvioRefreshToken) return res.status(409).json({ error: 'This profile needs reconnecting - ask whoever runs SlickSync', message: 'This profile needs reconnecting - ask whoever runs SlickSync' });
+      const full = await prisma.user.findUnique({ where: { id: target.id }, select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, createdAt: true, expiresAt: true } });
+      res.json({
+        success: true,
+        userId: full.id,
+        sessionToken: issueNuvioSessionToken(full.id),
+        user: { id: full.id, username: full.username, email: full.email, colorIndex: full.colorIndex || 0, avatarUrl: full.avatarUrl || null, createdAt: full.createdAt, expiresAt: full.expiresAt },
+      });
+    } catch (error) {
+      pushError(res, error, 'Could not switch profiles');
+    }
+  });
+
+  // ---- Continue Watching on the person's own Home ----
+  // Their own row only (the history read is narrowed to them before it is
+  // capped), and a dismissal that is theirs alone.
+
+  router.get('/continue-watching', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId);
+      const { getContinueWatching } = require('../utils/continueWatching');
+      const rows = await getContinueWatching(prisma, user.accountId || DEFAULT_ACCOUNT_ID, 12, { userId: user.id });
+      res.json({
+        items: rows.filter((r) => r.userId === user.id).map((r) => ({
+          showId: r.showId,
+          contentType: r.contentType,
+          name: r.showName,
+          poster: r.poster || null,
+          background: r.background || null,
+          season: r.nextEpisode?.season ?? null,
+          episode: r.nextEpisode?.episode ?? null,
+          episodeTitle: r.nextEpisode?.title ?? null,
+          thumbnail: r.nextEpisode?.thumbnail ?? null,
+          resume: r.resume === true,
+          progressPercent: r.progressPercent ?? null,
+          remainingMinutes: r.remainingMinutes ?? null,
+          lastWatchedAt: r.lastWatchedAt,
+          providerType: r.providerType,
+          // Only Stremio and Nuvio have an address that opens their app on a
+          // title; every other sign-in gets the title's page.
+          appUrl: r.appUrl || null,
+          webUrl: r.webUrl || null,
+        })),
+      });
+    } catch (error) {
+      pushError(res, error, 'Could not load Continue Watching');
+    }
+  });
+
+  router.post('/continue-watching/dismiss', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const showId = req.body?.showId;
+      if (typeof showId !== 'string' || !showId || showId.length > 200) return res.status(400).json({ error: 'showId required', message: 'showId required' });
+      const accountId = user.accountId || DEFAULT_ACCOUNT_ID;
+      // Only a title in their own history can be removed from their row.
+      const [asShow, asMovie] = await Promise.all([
+        prisma.episodeWatchHistory.findFirst({ where: { accountId, userId: user.id, showId }, select: { id: true } }),
+        prisma.movieWatchHistory.findFirst({ where: { accountId, userId: user.id, itemId: showId }, select: { id: true } }),
+      ]);
+      if (!asShow && !asMovie) return res.status(404).json({ error: 'Not in your Continue Watching', message: 'Not in your Continue Watching' });
+      const { dismissContinueWatching } = require('../utils/continueWatching');
+      await dismissContinueWatching(prisma, accountId, user.id, showId);
+      res.json({ success: true });
+    } catch (error) {
+      pushError(res, error, 'Could not remove that from Continue Watching');
+    }
+  });
+
+  // ---- "Resume in your app" on a Continue Watching card ----
+  // What the card's app picker needs (lib/openWith.ts), for a Jellyfin or
+  // AIOStreams person asking about themselves: their own server (address, kind,
+  // id), their own user id there, the title's id on that server and, on a real
+  // Jellyfin, the devices their own sign-in can start it on. Never a token,
+  // never another person's server or devices. Shares the admin route's logic
+  // (utils/openTargets.js); the admin's play-on is not reachable from here.
+
+  // The caller's own Jellyfin-compatible sign-in, with what the provider needs
+  // to act on it, or null when they have none.
+  async function ownServerRow(user) {
+    const row = await prisma.user.findUnique({ where: { id: user.id } });
+    if (!row || row.providerType !== 'jellyfin' || !row.jellyfinServerUrl || !row.jellyfinToken) return null;
+    return row;
+  }
+  const ownServerProvider = (row) => createProvider(row, { decrypt, req: { appAccountId: row.accountId || DEFAULT_ACCOUNT_ID } });
+
+  router.get('/open-targets', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId);
+      const { buildOpenTargets, validTitleId } = require('../utils/openTargets');
+      const id = String(req.query.id || '');
+      const type = req.query.type === 'movie' ? 'movie' : 'series';
+      const row = validTitleId(id) ? await ownServerRow(user) : null;
+      if (!row) return res.json({ servers: [], devices: [], tmdbId: null });
+      const found = await buildOpenTargets({ rows: [row], id, type, providerFor: ownServerProvider });
+      // Rebuilt field by field so nothing else on the row can ride along.
+      res.json({
+        servers: found.servers.map((s) => ({
+          address: s.address, kind: s.kind, serverId: s.serverId, itemId: s.itemId,
+          people: s.people.map((p) => ({ name: p.name, userId: p.userId })),
+        })),
+        devices: found.devices.map((d) => ({
+          personId: user.id, credentialId: null, person: d.person, address: d.address, itemId: d.itemId,
+          sessionId: d.sessionId, device: d.device, client: d.client,
+        })),
+        tmdbId: found.tmdbId,
+      });
+    } catch (error) {
+      if (error?.status) return pushError(res, error, 'Could not look that up');
+      console.warn('[public-library] open targets failed:', error?.message);
+      res.json({ servers: [], devices: [], tmdbId: null });
+    }
+  });
+
+  // Play on a device: only a device their own sign-in can control, on their
+  // own real Jellyfin, with an item id of the shape that server uses.
+  router.post('/open-targets/play-on', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const sessionId = String(req.body?.sessionId || '');
+      const itemId = String(req.body?.itemId || '');
+      if (!sessionId || !/^[A-Za-z0-9-]{8,64}$/.test(itemId)) return res.status(400).json({ error: 'Pick a device', message: 'Pick a device' });
+      const row = await ownServerRow(user);
+      if (!row || (row.jellyfinServerKind || 'jellyfin') !== 'jellyfin') {
+        return res.status(400).json({ error: 'Only a Jellyfin server can do that', message: 'Only a Jellyfin server can do that' });
+      }
+      const provider = ownServerProvider(row);
+      const own = await provider.controllableSessions().catch(() => []);
+      if (!own.some((d) => d.id === sessionId)) return res.status(404).json({ error: 'That device is not one of yours', message: 'That device is not one of yours' });
+      try {
+        await provider.playOn(sessionId, itemId);
+      } catch {
+        return res.status(502).json({ error: 'That device did not answer - it may have closed the app', message: 'That device did not answer - it may have closed the app' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      pushError(res, error, 'Could not start that');
+    }
+  });
+
+  // ---- The person's own notification devices ----
+  // Listed, renamed and removed by id, always narrowed to this household and
+  // this person - an id from anyone else's list matches nothing. A POST, so
+  // this device's own address (which can be used to push to it) is in the
+  // body and never the address bar.
+
+  router.post('/push/devices', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : '';
+      const rows = await prisma.personPushSubscription.findMany({
+        where: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, userId: user.id },
+        select: { id: true, endpoint: true, label: true, userAgent: true, lastSeenAt: true, createdAt: true },
+      });
+      const devices = rows
+        .map((d) => ({ id: d.id, label: d.label || null, userAgent: d.userAgent || null, lastSeenAt: d.lastSeenAt || null, createdAt: d.createdAt, current: !!endpoint && d.endpoint === endpoint }))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      res.json({ devices });
+    } catch (error) {
+      pushError(res, error, 'Could not list your devices');
+    }
+  });
+
+  router.patch('/push/devices/:id', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const label = req.body?.label;
+      if (typeof label !== 'string' || label.trim().length > 60) return res.status(400).json({ error: 'Use a name of 60 characters or fewer', message: 'Use a name of 60 characters or fewer' });
+      const result = await prisma.personPushSubscription.updateMany({
+        where: { id: String(req.params.id), accountId: user.accountId || DEFAULT_ACCOUNT_ID, userId: user.id },
+        data: { label: label.trim() || null },
+      });
+      if (!result.count) return res.status(404).json({ error: 'Device not found', message: 'Device not found' });
+      res.json({ success: true });
+    } catch (error) {
+      pushError(res, error, 'Could not rename that device');
+    }
+  });
+
+  router.delete('/push/devices/:id', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId);
+      const result = await prisma.personPushSubscription.deleteMany({
+        where: { id: String(req.params.id), accountId: user.accountId || DEFAULT_ACCOUNT_ID, userId: user.id },
+      });
+      if (!result.count) return res.status(404).json({ error: 'Device not found', message: 'Device not found' });
+      res.json({ success: true });
+    } catch (error) {
+      pushError(res, error, 'Could not remove that device');
+    }
+  });
+
+  // ---- Importing their own watch history ----
+  // The admin's per-person import (routes/users.js), asked by the person
+  // themselves: the same importer (utils/historyImport.js), their own history
+  // only. It fills SlickSync's history; nothing is written back to the
+  // provider they sign in with. The person's id is in the address (the body is
+  // a file, not read yet) and is proved before the file is accepted.
+  //
+  // Titles with no IMDb id are looked up with the household's OMDb key, which
+  // has a small daily allowance shared by everyone, so one request may spend
+  // at most this many of them (the rest are left as "couldn't resolve" and the
+  // reply says so). A title looked up for the preview is remembered, so
+  // importing what was previewed spends nothing more. Rows that carry an IMDb
+  // id, and titles a LumiereDB answers, cost nothing.
+  const HISTORY_IMPORT_LOOKUPS = 50;
+  // At most this many requests (previews and imports) an hour per person.
+  const HISTORY_IMPORTS_PER_HOUR = 40;
+  const historyImports = new Map();
+  function historyImportAllowed(personId) {
+    const now = Date.now();
+    const recent = (historyImports.get(personId) || []).filter((t) => now - t < 60 * 60 * 1000);
+    if (recent.length >= HISTORY_IMPORTS_PER_HOUR) { historyImports.set(personId, recent); return false; }
+    recent.push(now);
+    historyImports.set(personId, recent);
+    return true;
+  }
+
+  function ownHistoryImport(dryRun) {
+    return async (req, res) => {
+      let user;
+      try {
+        user = await personAsking(req, req.query.userId);
+      } catch (error) {
+        return pushError(res, error, 'Could not read your file');
+      }
+      if (!historyImportAllowed(user.id)) {
+        const message = 'That’s a lot of imports - try again in a while';
+        return res.status(429).json({ error: message, message });
+      }
+      const { historyUpload, runHistoryImport } = require('../utils/historyImport');
+      historyUpload.single('file')(req, res, async (uploadError) => {
+        try {
+          if (uploadError) {
+            const message = uploadError.code === 'LIMIT_FILE_SIZE' ? 'That file is over 20 MB' : (uploadError.message || 'Could not read that file');
+            return res.status(400).json({ error: message, message });
+          }
+          if (!req.file) return res.status(400).json({ error: 'Choose a file first', message: 'Choose a file first' });
+          const result = await runHistoryImport({
+            prisma,
+            accountId: user.accountId || DEFAULT_ACCOUNT_ID,
+            user,
+            text: req.file.buffer.toString('utf8'),
+            dryRun,
+            maxLookups: HISTORY_IMPORT_LOOKUPS,
+            cacheLookups: true,
+          });
+          res.status(result.status).json({ ...result.body, message: result.body.error });
+        } catch (error) {
+          console.error('Error importing a member history file:', error?.message);
+          pushError(res, error, 'Could not import that file');
+        }
+      });
+    };
+  }
+  router.post('/history-import/preview', ownHistoryImport(true));
+  router.post('/history-import', ownHistoryImport(false));
+
   return router;
 };
-
-

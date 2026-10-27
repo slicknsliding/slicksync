@@ -79,15 +79,21 @@ function useTVScrollPadding(active: boolean) {
   }, [active]);
 }
 
+function initOnce() {
+  if (initialized || typeof window === 'undefined') return;
+  initialized = true;
+  init({ debug: false, visualDebug: false, distanceCalculationMethod: 'center' });
+}
+
 export function TVPageProvider({ children }: { children: ReactNode }) {
+  // Started while this first renders, not in an effect: a page that knows it
+  // is on a TV from its first render (useIsTV's remembered answer) mounts its
+  // TVFocusables at once, and React runs their effects before this one's -
+  // each one measured itself against a library not started yet and threw
+  // ("reading 'measureLayout'"), a dozen times per page.
+  initOnce();
   useTVViewport(true);
   useTVScrollPadding(true);
-
-  useEffect(() => {
-    if (initialized) return;
-    initialized = true;
-    init({ debug: false, visualDebug: false, distanceCalculationMethod: 'center' });
-  }, []);
 
   const { ref, focusKey, focusSelf, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ focusable: false, trackChildren: true });
 

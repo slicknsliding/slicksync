@@ -14,6 +14,8 @@ import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
 import { ActivityCardMenu, useCardMenuPress, type MenuTarget, type MenuWatcher } from '@/components/activity/ActivityCardMenu';
+import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
+import { NowPlayingPosition, ProfileChip } from '@/components/ui/NowPlayingPosition';
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { toast } from '@/components/ui/Toast';
 import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, SOURCE_ORDER, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
@@ -265,17 +267,6 @@ function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const mins = Math.round((seconds % 3600) / 60);
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
-
-// Clock-style H:MM:SS / M:SS - for the "resume here" position display, where
-// the whole point is showing the exact spot to seek to, not a rounded estimate.
-function formatClock(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 // Format fractional hours in a human-readable way (Xh Xm)
@@ -764,7 +755,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           // absolute-anchored-to-a-32px-avatar dropdown could run off the
           // top/side of a narrow phone screen), reverting to the original
           // avatar-anchored dropdown at `sm` and up where it already worked.
-          const popoverClass = "fixed z-[9999] w-48 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5";
+          const popoverClass = "popup-panel fixed z-[9999] w-48 rounded-lg p-1.5";
           return (
             <div className="absolute top-2 right-2">
               {count > 1 ? (
@@ -790,7 +781,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                   aria-label={`${count} people watched — show who`}
                 >
                   <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} useGravatar={activity.userUseGravatar} size="sm" />
-                  <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary text-white ring-2 ring-slate-900">
+                  <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary-solid text-white ring-2 ring-[var(--color-bg-subtle)]">
                     {count}
                   </span>
                 </button>
@@ -845,12 +836,13 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             since the always-visible text badge cluttered the poster art. */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
           <div className="absolute top-2 left-2">
-            {/* Always a dark pill with white text, whatever the poster
+            {/* Always a solid pill with the theme's own text, whatever the poster
                 behind it. The tinted translucent style the list view uses
                 disappeared against bright artwork (unreadable on a red
                 poster) - a badge over an image cannot borrow its colour
-                from the type, it has to carry its own contrast. */}
-            <div className="px-2 py-1 rounded-md text-xs font-semibold tabular-nums text-white bg-black/75 ring-1 ring-white/15 shadow-lg backdrop-blur-sm">
+                from the type, it has to carry its own contrast. Solid theme
+                surface (.art-badge), no blur. */}
+            <div className="art-badge px-2 py-1 rounded-md text-xs font-semibold tabular-nums">
               {formatDuration(activity.durationSeconds)}
             </div>
           </div>
@@ -865,7 +857,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             poster, which has no such collision risk. */}
         {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
           <div className="absolute bottom-2 right-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+            <div className="art-badge px-2 py-0.5 rounded-md text-[10px] font-medium">
               {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
             </div>
           </div>
@@ -1373,8 +1365,9 @@ function NowPlayingItemBody({
           <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
             {np.user.username}
           </span>
+          <ProfileChip label={np.profileLabel} />
         </TVLink>
-        <p className="text-sm text-muted truncate">
+        <p className={`text-sm truncate ${np.item.titlePending ? 'text-subtle' : 'text-muted'}`}>
           {np.item.name}
           {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
             <span className="ml-1">
@@ -1532,56 +1525,10 @@ function NowPlayingItemBody({
             </p>
           );
         })()}
-        {/* "Resume here" - jumps to the right title/episode on whatever
-            device you tap this from, with the exact position shown so you
-            know where to seek to. Neither Stremio's nor Nuvio's deep-link
-            scheme can carry a playback position (confirmed reading both -
-            see appLinks.ts/appLinks.js), so this can't auto-seek - showing
-            the real number beats leaving you to guess. Position comes from
-            native tracking (WatchSession.lastPosition/totalDuration), not
-            the proxy - the proxy has no concept of playback position, only
-            connection/byte-range activity. */}
-        {typeof np.lastPosition === 'number' && typeof np.totalDuration === 'number' && np.totalDuration > 0 && (np.stremioAppUrl || np.nuvioAppUrl) && (
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <span className="text-xs text-subtle">
-              {/* This position comes from native's last checkpoint (see
-                  proxyNowPlaying.js), which only writes at pause/stop. For a
-                  proxy-confirmed-live entry the proxy itself is proof
-                  playback is still going, so calling this stale number
-                  "Paused at" is actively wrong - confirmed real case: a fast
-                  debrid stream kept climbing toward 15min while this stayed
-                  frozen at a ~3min checkpoint, mislabeled as paused the
-                  whole time. Only call it "Paused" when there's no live
-                  proxy signal contradicting it. */}
-              {np.source === 'aiostreams-proxy' ? 'Last known position' : 'Paused at'}{' '}
-              {formatClock(np.lastPosition / 1000)} of {formatClock(np.totalDuration / 1000)}
-              {' '}({Math.round((np.lastPosition / np.totalDuration) * 100)}%)
-            </span>
-            {np.stremioAppUrl && (
-              <a
-                href={np.stremioAppUrl}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors"
-                style={{ background: 'rgba(167, 139, 250, 0.15)', color: 'rgb(196, 181, 253)', border: '1px solid rgba(167, 139, 250, 0.25)' }}
-              >
-                <PlayIcon className="w-3 h-3" />
-                Resume in Stremio
-              </a>
-            )}
-            {np.nuvioAppUrl && (
-              <a
-                href={np.nuvioAppUrl}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors"
-                style={{
-                  background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
-                  color: 'rgb(186, 208, 240)', border: '1px solid rgba(255, 152, 0, 0.18)',
-                }}
-              >
-                <PlayIcon className="w-3 h-3" />
-                Resume in Nuvio
-              </a>
-            )}
-          </div>
-        )}
+        <PlaybackFreshnessLine row={np} />
+        {/* While it plays: about where it is. Paused or stopped: the exact
+            checkpoint and "Resume here" (see NowPlayingPosition). */}
+        <NowPlayingPosition row={np} />
       </div>
     </>
   );

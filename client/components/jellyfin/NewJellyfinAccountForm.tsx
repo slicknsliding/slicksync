@@ -63,7 +63,7 @@ export function NewJellyfinAccountForm({ server, username, onSubmit }: {
         type="button"
         onClick={submit}
         disabled={busy || !password || !confirm}
-        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-primary disabled:opacity-50 transition-opacity"
+        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-primary-solid disabled:opacity-50 transition-opacity"
       >
         {busy ? 'Making your account…' : 'Request access'}
       </button>

@@ -13,13 +13,20 @@ import { ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { userPush } from '@/lib/user-api';
 import { urlBase64ToUint8Array } from '@/components/ui/PushNotificationToggle';
+import { PersonPushDevices } from '@/components/user/PersonPushDevices';
 
 export function PersonPushRow({ userId, authKey }: { userId: string | null; authKey: string | null }) {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Turning this device on or off changes the list of devices below it.
+  const [devicesVersion, setDevicesVersion] = useState(0);
 
+  // What the server will actually send to this device. Read on load and again
+  // after a device is removed below, so the switch never says On for a device
+  // the server has dropped.
+  const [statusVersion, setStatusVersion] = useState(0);
   useEffect(() => {
     const ok = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     setSupported(ok);
@@ -35,7 +42,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
         setAvailable(false);
       }
     })();
-  }, [userId, authKey]);
+  }, [userId, authKey, statusVersion]);
 
   const turnOn = async () => {
     if (!userId || !authKey) return;
@@ -50,6 +57,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
         || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(status.publicKey) });
       await userPush.subscribe(userId, authKey, sub.toJSON());
       setOn(true);
+      setDevicesVersion((v) => v + 1);
       toast.success('Notifications are on for this device');
     } catch (e) {
       toast.error((e as Error)?.message || 'Could not turn notifications on');
@@ -66,6 +74,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
       const sub = await reg?.pushManager.getSubscription();
       if (sub) await userPush.unsubscribe(userId, authKey, sub.endpoint);
       setOn(false);
+      setDevicesVersion((v) => v + 1);
       toast.success('Notifications are off for this device');
     } catch (e) {
       toast.error((e as Error)?.message || 'Could not turn notifications off');
@@ -78,6 +87,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
   if (supported === null || (supported && available === false)) return null;
 
   return (
+    <>
     <div className="flex items-center justify-between gap-4 p-4 rounded-lg mb-4" style={{ background: 'var(--color-surface-elevated)' }}>
       <div className="flex-1 min-w-0">
         <h3 className="font-medium mb-1" style={{ color: 'var(--color-text)' }}>
@@ -98,5 +108,8 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
         </div>
       )}
     </div>
+    {/* Their other devices, folded away until opened. */}
+    <PersonPushDevices userId={userId} authKey={authKey} refreshKey={devicesVersion} onRemoved={() => setStatusVersion((v) => v + 1)} />
+    </>
   );
 }

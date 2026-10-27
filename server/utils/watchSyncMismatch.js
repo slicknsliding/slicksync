@@ -58,6 +58,7 @@ function normalizeTitle(name) {
 }
 
 const { isPlayingConnection } = require('./proxyPlaying')
+const { isOpaqueStreamName } = require('./proxyTitle')
 
 async function checkWatchSyncMismatch(prisma, accountId, users) {
   try {
@@ -76,6 +77,9 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
 
     const byTitle = new Map() // normalized -> { display, lastActivity }
     for (const row of proxyRows) {
+      // An opaque stream id names no title: nothing to compare with native
+      // history, and nothing readable to put in the message.
+      if (isOpaqueStreamName(row.displayName)) continue
       const norm = normalizeTitle(row.displayName)
       if (!norm) continue
       const lastActivity = Math.max(

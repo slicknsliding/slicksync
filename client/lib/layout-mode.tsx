@@ -21,9 +21,27 @@ export const layoutModeMeta: Record<LayoutModeId, { name: string; description: s
   },
 };
 
+// Where the account button (picture + account menu) lives, for Top Navi only:
+// Original always keeps it at the foot of the sidebar. 'b' (floating pill,
+// bottom left) is the default; 'a' puts it at the right end of the top bar.
+export const accountButtonIds = ['a', 'b'] as const;
+export type AccountButtonId = (typeof accountButtonIds)[number];
+export type AccountPlacement = 'bar' | 'float';
+
+export const accountButtonMeta: Record<AccountButtonId, { name: string; description: string; placement: AccountPlacement }> = {
+  a: { name: 'In the top bar', description: 'Your picture at the right end of the bar. Menu drops down.', placement: 'bar' },
+  b: { name: 'Floating, bottom left', description: 'A small pill that floats over the page. Menu opens upward.', placement: 'float' },
+};
+
+const ACCOUNT_BUTTON_KEY = 'slicksync-account-button-nebula';
+
 interface LayoutModeContextValue {
   layoutMode: LayoutModeId;
   setLayoutMode: (id: LayoutModeId) => void;
+  /** Top Navi's account button choice. A TV always gets 'a' - a remote cannot
+   *  reach a floating pill. */
+  accountButton: AccountButtonId;
+  setAccountButton: (id: AccountButtonId) => void;
 }
 
 // Default is 'nebula' ("Top Navi") - the earlier Nebula-specific issues
@@ -33,12 +51,15 @@ interface LayoutModeContextValue {
 const defaultContextValue: LayoutModeContextValue = {
   layoutMode: 'nebula',
   setLayoutMode: () => {},
+  accountButton: 'b',
+  setAccountButton: () => {},
 };
 
 const LayoutModeContext = createContext<LayoutModeContextValue>(defaultContextValue);
 
 export function LayoutModeProvider({ children }: { children: ReactNode }) {
   const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('nebula');
+  const [accountChoice, setAccountChoice] = useState<AccountButtonId>('b');
   const [mounted, setMounted] = useState(false);
   // TV mode has no D-pad wiring built for Original's sidebar/card chrome at
   // all - every TVPageProvider/TVFocusable/TVLink pass this session
@@ -58,6 +79,10 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('slicksync-layout-mode') as LayoutModeId | null;
     const initial = saved && layoutModeIds.includes(saved) ? saved : 'nebula';
     setLayoutModeState(initial);
+    // Same moment, same reason: a saved "bar" choice must not flash as the pill.
+    try {
+      setAccountChoice(localStorage.getItem(ACCOUNT_BUTTON_KEY) === 'a' ? 'a' : 'b');
+    } catch { /* storage blocked: the default */ }
     setMounted(true);
   }, []);
 
@@ -72,8 +97,19 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setAccountButton = (id: AccountButtonId) => {
+    if (!accountButtonIds.includes(id)) return;
+    setAccountChoice(id);
+    try { localStorage.setItem(ACCOUNT_BUTTON_KEY, id); } catch { /* storage blocked: lasts this visit */ }
+  };
+
   return (
-    <LayoutModeContext.Provider value={{ layoutMode: isTV ? 'nebula' : layoutMode, setLayoutMode }}>
+    <LayoutModeContext.Provider value={{
+      layoutMode: isTV ? 'nebula' : layoutMode,
+      setLayoutMode,
+      accountButton: isTV ? 'a' : accountChoice,
+      setAccountButton,
+    }}>
       {children}
     </LayoutModeContext.Provider>
   );
@@ -81,6 +117,16 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
 
 export function useLayoutMode() {
   return useContext(LayoutModeContext);
+}
+
+/** Set by the top bar, which hosts the account button, so the button and its
+ *  menu know which way to open. Null elsewhere (the sidebar foot). */
+export const AccountPlacementContext = createContext<AccountPlacement | null>(null);
+
+/** Where the account button sits in the top bar layout. */
+export function useAccountPlacement(): AccountPlacement {
+  const { accountButton } = useContext(LayoutModeContext);
+  return accountButtonMeta[accountButton].placement;
 }
 
 // Pages that actually have a Nebula-styled render path. Everything else

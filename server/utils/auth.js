@@ -240,6 +240,27 @@ function randomCsrfToken() {
   }
 }
 
+// The password a private instance's default account is seeded with. Sign-in
+// there goes through the operator login, SSO or a passkey, not through this
+// password, so unless the operator chose one (PRIVATE_ACCOUNT_PASSWORD) it is
+// random and nobody ever knows it. It used to be the fixed word below, which
+// anyone could try against the (public) default uuid.
+const LEGACY_DEFAULT_PASSWORD = 'private-mode';
+function defaultAccountPassword() {
+  return process.env.PRIVATE_ACCOUNT_PASSWORD || crypto.randomBytes(32).toString('hex');
+}
+
+// For an existing default account: a fresh hash when the stored one still
+// opens with the old well-known password (and the operator has not chosen a
+// password of their own), otherwise null. Run at boot so installs seeded
+// before the password became random stop accepting it.
+async function replaceLegacyDefaultHash(storedHash) {
+  if (!storedHash || process.env.PRIVATE_ACCOUNT_PASSWORD) return null;
+  const bcrypt = require('bcryptjs');
+  if (!(await bcrypt.compare(LEGACY_DEFAULT_PASSWORD, storedHash))) return null;
+  return bcrypt.hash(defaultAccountPassword(), 12);
+}
+
 module.exports = {
   pathIsAllowlisted,
   pathNeedsLiveAccount,
@@ -250,5 +271,8 @@ module.exports = {
   issueRefreshToken,
   checkAccountClaims,
   verifyAccountToken,
-  randomCsrfToken
+  randomCsrfToken,
+  defaultAccountPassword,
+  LEGACY_DEFAULT_PASSWORD,
+  replaceLegacyDefaultHash
 }

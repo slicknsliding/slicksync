@@ -16,6 +16,29 @@ const EXT_BY_MIME = {
   'image/webp': '.webp',
 };
 
+// The one place a picture file is written and removed, so the admin upload below
+// and a person's own (routes/publicLibrary.js) cannot drift apart.
+const UPLOADED = /^\/uploads\/avatars\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(?:jpg|png|gif|webp))$/i;
+
+function saveAvatarFile(buffer, mimetype) {
+  ensureAvatarDir();
+  const filename = `${crypto.randomUUID()}${EXT_BY_MIME[mimetype] || '.jpg'}`;
+  fs.writeFileSync(path.join(AVATAR_DIR, filename), buffer);
+  return `/uploads/avatars/${filename}`;
+}
+
+/** Best-effort: removes the file behind an /uploads/avatars/<uuid>.<ext> address; anything else is left alone. */
+function removeAvatarFile(url) {
+  const m = UPLOADED.exec(String(url || ''));
+  if (!m) return false;
+  try {
+    fs.unlinkSync(path.join(AVATAR_DIR, m[1]));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = ({ imageUpload }) => {
   const router = express.Router();
 
@@ -28,14 +51,7 @@ module.exports = ({ imageUpload }) => {
         return res.status(400).json({ error: 'No image file provided (expected field name "avatar")' });
       }
 
-      ensureAvatarDir();
-      const ext = EXT_BY_MIME[req.file.mimetype] || '.jpg';
-      const filename = `${crypto.randomUUID()}${ext}`;
-      const filepath = path.join(AVATAR_DIR, filename);
-
-      fs.writeFileSync(filepath, req.file.buffer);
-
-      res.status(201).json({ url: `/uploads/avatars/${filename}` });
+      res.status(201).json({ url: saveAvatarFile(req.file.buffer, req.file.mimetype) });
     } catch (error) {
       console.error('Error uploading avatar:', error);
       res.status(500).json({ error: 'Failed to upload image' });
@@ -64,3 +80,6 @@ module.exports = ({ imageUpload }) => {
 };
 
 module.exports.AVATAR_DIR = AVATAR_DIR;
+module.exports.saveAvatarFile = saveAvatarFile;
+module.exports.removeAvatarFile = removeAvatarFile;
+module.exports.UPLOADED_AVATAR = UPLOADED;

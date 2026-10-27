@@ -1,7 +1,7 @@
 'use client';
 
 import { WatchSyncCard } from '@/components/user/WatchSyncCard';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
@@ -14,6 +14,9 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TaskCategoryTiles } from '@/components/tasks/TaskCategoryTiles';
 import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { toast } from '@/components/ui/Toast';
@@ -113,7 +116,19 @@ function ActionButton({
   );
 }
 
+// Counts are the cards in each group below - keep them in step when one moves.
+const TASK_CATEGORIES = [
+  { key: 'daily', label: 'Everyday tools', description: 'People, addons, and automation', icon: BoltIcon, count: 5 },
+  { key: 'data', label: 'Data & templates', description: 'Libraries, history, and configuration', icon: DocumentDuplicateIcon, count: 4 },
+  { key: 'backup', label: 'Backup & recovery', description: 'Keep a copy. Pick up where you left off.', icon: ArchiveBoxIcon, count: 3 },
+  { key: 'schedule', label: 'Schedules & health', description: 'Maintenance that runs for you', icon: ClockIcon, count: 4 },
+] as const;
+type TaskCategoryKey = typeof TASK_CATEGORIES[number]['key'];
+
 export default function TasksPage() {
+  const [taskCategory, setTaskCategory] = useState<TaskCategoryKey>('daily');
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const { layoutMode } = useLayoutMode();
   // State for loading indicators
   const [syncingUsers, setSyncingUsers] = useState(false);
@@ -219,7 +234,7 @@ export default function TasksPage() {
     if (!target) return;
     hasHandledOpenParam.current = true;
     if (target === 'automation') setIsAutomationOpen(true);
-    else if (target === 'addon-templates') setIsCreateSnapshotOpen(true);
+    else if (target === 'addon-templates') { setTaskCategory('data'); setIsCreateSnapshotOpen(true); }
     router.replace('/tasks');
   }, [searchParams, router]);
 
@@ -1089,7 +1104,7 @@ export default function TasksPage() {
   };
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title="Tasks"
@@ -1102,6 +1117,11 @@ export default function TasksPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Tasks" subtitle="Manage and export all your SlickSync data" />
       )}
+        <TaskCategoryTiles categories={TASK_CATEGORIES} active={taskCategory} onSelect={(key) => setTaskCategory(key as TaskCategoryKey)} isTV={isTV} />
+        {/* Every category stays mounted and is only hidden, so switching
+            between them keeps a half-done import, the chosen user in a
+            dialog and the file inputs exactly as they were. */}
+        <div hidden={taskCategory !== 'daily'} className="lg:grid lg:grid-cols-2 lg:gap-x-5 lg:items-start">
         {/* Users */}
         <PageSection>
           <TaskCard
@@ -1240,29 +1260,12 @@ export default function TasksPage() {
 
         {/* AIOSync - copy watch history between sign-ins and profiles, or
             keep them in step (components/user/WatchSyncCard.tsx). */}
-        <PageSection>
+        <PageSection className="lg:col-span-full">
           <WatchSyncCard />
         </PageSection>
+        </div>
 
-        {/* Maintenance - off-site backup targets, database upkeep, and
-            applying updates. All set-once-and-forget, which is why they
-            live behind one card rather than as three more things on the
-            page. */}
-        <PageSection delay={0.115}>
-          <TaskCard
-            icon={<WrenchScrewdriverIcon className="w-5 h-5 text-primary" />}
-            iconBg="bg-primary-muted"
-            title="Maintenance"
-            description="Off-site backups, database upkeep, and updates"
-          >
-            <ActionButton
-              onClick={() => setIsMaintenanceOpen(true)}
-              icon={<WrenchScrewdriverIcon className="w-4 h-4" />}
-              label="Open Maintenance"
-            />
-          </TaskCard>
-        </PageSection>
-
+        <div hidden={taskCategory !== 'data'}>
         {/* Addon Templates - the backend (/api/snapshots) already existed
             fully built (save a user's/group's current addon set, deploy it
             to any user later) but had no UI anywhere calling it. */}
@@ -1555,6 +1558,9 @@ export default function TasksPage() {
           />
         </PageSection>
 
+        </div>
+
+        <div hidden={taskCategory !== 'backup'}>
         {/* Automatic Backups */}
         <PageSection delay={0.3}>
           <Card padding="lg" className="mb-6">
@@ -1803,6 +1809,28 @@ export default function TasksPage() {
           </Card>
         </PageSection>
 
+        </div>
+
+        <div hidden={taskCategory !== 'schedule'}>
+        {/* Maintenance - off-site backup targets, database upkeep, and
+            applying updates. All set-once-and-forget, which is why they
+            live behind one card rather than as three more things on the
+            page. */}
+        <PageSection delay={0.115}>
+          <TaskCard
+            icon={<WrenchScrewdriverIcon className="w-5 h-5 text-primary" />}
+            iconBg="bg-primary-muted"
+            title="Maintenance"
+            description="Off-site backups, database upkeep, and updates"
+          >
+            <ActionButton
+              onClick={() => setIsMaintenanceOpen(true)}
+              icon={<WrenchScrewdriverIcon className="w-4 h-4" />}
+              label="Open Maintenance"
+            />
+          </TaskCard>
+        </PageSection>
+
         {/* Automatic Sync */}
         <PageSection delay={0.35}>
           <Card padding="lg" className="mb-6">
@@ -2003,6 +2031,7 @@ export default function TasksPage() {
         <PageSection delay={0.4}>
           <ScheduledTasksSection syncFrequency={syncFrequency} backupDays={backupDays} healthCheckMinutes={healthCheckMinutes} />
         </PageSection>
+        </div>
       </div>
       </div>
 
@@ -2373,7 +2402,7 @@ export default function TasksPage() {
           </div>
         </div>
       </Modal>
-    </>
+    </Wrapper>
   );
 }
 

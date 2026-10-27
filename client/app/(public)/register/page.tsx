@@ -274,7 +274,7 @@ export default function RegisterPage() {
                 disabled={isSubmitting || !uuid || !password || !confirmPassword}
                 className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
                 style={{
-                  background: 'var(--color-primary)',
+                  background: 'var(--color-primary-solid)',
                   color: 'white',
                   opacity: isSubmitting || !uuid || !password || !confirmPassword ? 0.5 : 1,
                 }}

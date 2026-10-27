@@ -268,19 +268,19 @@ export default function ListsPage() {
     </button>
   );
 
-  // Jellyfin | AIOStreams collections, next to Nuvio's: which catalogs show
+  // Jellyfin collections (Jellyfin servers and AIOStreams), next to Nuvio's: which catalogs show
   // up as collections in AIOStreams' apps and on a household's own Jellyfin
-  // server. Jellyfin's mark and colours, with "AIOStreams" in AIOStreams' own
-  // lavender and indigo.
+  // server. Jellyfin's mark and colours; AIOStreams runs a Jellyfin server, so
+  // "Jellyfin" covers both.
   const aiostreamsCollectionsButton = (
     <button
       type="button"
       onClick={() => router.push('/catalogs/aiostreams-collections')}
       className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
-        background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(170, 92, 195, 0.75), rgba(0, 164, 220, 0.75)) border-box',
+        background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(190, 110, 215, 0.95), rgba(0, 180, 235, 0.95)) border-box',
         border: '1.5px solid transparent',
-        boxShadow: '-6px 0 20px -6px rgba(170, 92, 195, 0.35), 6px 0 20px -6px rgba(0, 164, 220, 0.35)',
+        boxShadow: '-8px 0 24px -6px rgba(170, 92, 195, 0.55), 8px 0 24px -6px rgba(0, 164, 220, 0.55)',
       }}
     >
       <span
@@ -290,9 +290,9 @@ export default function ListsPage() {
         <JellyfinLogo />
       </span>
       <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate">
-        <span style={{ background: 'linear-gradient(90deg, #C58BDA, #4CC3EE)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Jellyfin</span>{' '}
-        <span style={{ color: 'rgb(212, 208, 255)' }}>| AIO</span>
-        <span style={{ color: 'rgb(159, 146, 255)' }}>Streams</span>
+        {/* A plain colour, not gradient-clipped text: page-recolouring
+            extensions darken the gradient "background" behind the letters. */}
+        <span style={{ color: 'rgb(220, 226, 255)' }}>Jellyfin Collections</span>
       </span>
     </button>
   );

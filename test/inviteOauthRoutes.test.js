@@ -19,7 +19,9 @@ function fakePrisma() {
     inviteRequest: {
       findFirst: async ({ where }) => requests.find((r) => r.invitationId === where.invitationId && r.email === where.email && r.username === where.username && r.status === where.status) || null,
       update: async ({ where, data }) => { Object.assign(requests.find((r) => r.id === where.id), data); return {} },
+      create: async ({ data }) => { const row = { id: 'new-request', ...data }; requests.push(row); return row },
     },
+    user: { findFirst: async () => null },
   }
 }
 
@@ -105,3 +107,37 @@ test('a household install that has a login still refuses a signed-out caller', a
   assert.equal((await post('/invite/CODE1/generate-oauth', accepted)).status, 401)
   assert.equal((await post('/invite/generate-oauth')).status, 401)
 })
+
+// Nuvio's poll status is opaque, as at sign-in: anything but 'pending' goes to
+// the exchange, which is what proves approval. Only the upstream answers are
+// faked, so the real Nuvio adapter maps the status and makes the exchange.
+for (const providerStatus of ['pending', 'approved', 'authorized', 'expired']) {
+  test(`a Nuvio invite sign-in that reports '${providerStatus}'`, async (t) => {
+    const { post, prisma } = await serve(t, { ...publicInstance })
+    let exchanges = 0
+    const payload = Buffer.from(JSON.stringify({ email: 'viewer@example.com', sub: 'viewer' })).toString('base64url')
+    global.fetch = async (url) => {
+      if (String(url).endsWith('/rest/v1/rpc/poll_tv_login_session')) return Response.json([{ status: providerStatus }])
+      if (String(url).endsWith('/functions/v1/tv-logins-exchange')) {
+        exchanges++
+        return Response.json({ access_token: `header.${payload}.signature`, refresh_token: 'test-refresh-token' })
+      }
+      throw new Error(`unexpected request to ${url}`)
+    }
+    const res = await post('/invite/CODE1/nuvio/poll', { anonToken: 'test-anon', code: 'test-code', deviceNonce: 'test-nonce' })
+    assert.ok(!JSON.stringify(res.body).includes('test-refresh-token'))
+    if (providerStatus === 'pending' || providerStatus === 'expired') {
+      assert.deepEqual(res, { status: 200, body: { status: providerStatus } })
+      assert.equal(exchanges, 0)
+      return
+    }
+    assert.deepEqual(res, { status: 200, body: { status: 'authorized', email: 'viewer@example.com' } })
+    assert.equal(exchanges, 1)
+    const submitted = await post('/invite/CODE1/request', { nuvioCode: 'test-code', username: 'viewer' })
+    assert.equal(submitted.status, 200)
+    assert.equal(submitted.body.providerType, 'nuvio')
+    assert.equal(submitted.body.email, 'viewer@example.com')
+    assert.equal(submitted.body.nuvioRefreshToken, undefined)
+    assert.equal(prisma.requests.at(-1).nuvioRefreshToken, 'test-refresh-token')
+  })
+}

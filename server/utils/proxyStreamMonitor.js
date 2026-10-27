@@ -35,7 +35,7 @@ const { notifyPushForType } = require('./pushNotifications')
 // A connection counts as playing from its second request - see proxyPlaying.js.
 const { isPlayingConnection } = require('./proxyPlaying')
 
-const { proxyDisplayTitle } = require('./proxyTitle')
+const { proxyDisplayTitle, isOpaqueStreamName } = require('./proxyTitle')
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
 // Overlap guard. pollOnce is async and this runs on a fixed 30s timer, so
@@ -722,13 +722,21 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const whoName = user.username || user.email || 'Someone'
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
       title: `${whoName} started watching`,
-      body: displayName,
+      body: readableStreamTitle(shownName),
       icon: fresh?.posterUrl || '/android-chrome-192x192.png',
       url: '/activity',
     })
   } catch (error) {
     heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
   }
+}
+
+// A stream's own name can be an opaque file or cache id when its title isn't
+// matched yet - say so in words instead of printing the id.
+function readableStreamTitle(name) {
+  const n = String(name || '').trim()
+  if (isOpaqueStreamName(n)) return 'a title SlickSync couldn’t name yet'
+  return n
 }
 
 // Deliberately no "finished watching" notification here. It existed once,

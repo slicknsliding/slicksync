@@ -43,7 +43,7 @@ test('saved rows and the bell are repaired; real titles are left alone', async (
     findMany: async () => rows[name] || [],
     updateMany: async ({ where, data }) => { updated.push([name, where.id.in, data]); return { count: where.id.in.length } },
   })
-  const notes = [{ id: 'n1', title: 'VIFOY watched tt4468741', body: 'Today' }, { id: 'n2', title: 'Settings saved', body: 'Attention' }]
+  const notes = [{ id: 'n1', title: 'MAIN watched tt4468741', body: 'Today' }, { id: 'n2', title: 'Settings saved', body: 'Attention' }]
   const noteUpdates = []
   const prisma = {
     movieWatchHistory: table('movieWatchHistory'),
@@ -58,6 +58,6 @@ test('saved rows and the bell are repaired; real titles are left alone', async (
     ['episodeWatchHistory', ['e1'], { showName: 'Breaking Bad' }],
     ['watchSession', ['s1'], { itemName: 'Paddington 2' }],
   ])
-  assert.deepEqual(noteUpdates, [['n1', { title: 'VIFOY watched Paddington 2', body: 'Today' }]])
+  assert.deepEqual(noteUpdates, [['n1', { title: 'MAIN watched Paddington 2', body: 'Today' }]])
   assert.equal(fixed, 4)
 })

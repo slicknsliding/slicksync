@@ -687,18 +687,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // history behind - see csvHistoryImport.js's own comment for why this
   // reads by flexible column name (IMDb/Letterboxd/loose-Trakt-export
   // compatible) rather than three hardcoded exact formats.
-  const { createMulterInstance } = require('../utils/helpers/multer')
-  const csvUpload = createMulterInstance({
-    limits: { fileSize: 20 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-      const looksLikeCsv = file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel' || /\.csv$/i.test(file.originalname || '')
-      // Trakt's own free export (Settings -> Data) is JSON, not CSV - see
-      // traktExportImport.js. Same endpoint handles both.
-      const looksLikeJsonFile = file.mimetype === 'application/json' || /\.json$/i.test(file.originalname || '')
-      if (looksLikeCsv || looksLikeJsonFile) return cb(null, true)
-      cb(new Error('Only .csv or .json files are allowed'), false)
-    },
-  })
+  const { runHistoryImport, historyUpload: csvUpload } = require('../utils/historyImport')
 
   // POST /users/:id/import-history - multipart file upload (field name
   // "file"). Must be before /:id route.
@@ -710,136 +699,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) return res.status(404).json({ error: 'User not found' })
       if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected multipart field "file")' })
 
-      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating, looksLikeSeriesEpisodeTitle } = require('../utils/csvHistoryImport')
-      const { resolveSinglePoster } = require('../utils/libraryHelpers')
-      const { resolveOmdbKeyForAccount } = require('../utils/listImport')
-
-      const text = req.file.buffer.toString('utf8')
-
-      // A Trakt export JSON is flattened into the same column names the CSV
-      // path already understands, so everything below this point is shared.
-      const { parseTraktExport, looksLikeJson } = require('../utils/traktExportImport')
-      let headers, records, skippedNonMovie = 0, skippedNoTimestamp = 0
-      if (looksLikeJson(text)) {
-        const parsed = parseTraktExport(text)
-        if (!parsed) return res.status(400).json({ error: 'That file is not valid JSON.' })
-        ;({ headers, records, skippedNonMovie, skippedNoTimestamp } = parsed)
-        if (records.length === 0) {
-          if (skippedNonMovie > 0) {
-            return res.status(400).json({ error: `That file contains ${skippedNonMovie} episode or show entr${skippedNonMovie === 1 ? 'y' : 'ies'} and no movies. Movie history and ratings can be imported; episode history cannot yet.` })
-          }
-          if (skippedNoTimestamp > 0) {
-            // Named plainly - this is Trakt's collection or watchlist export
-            // (or similar), which is correctly not importable: a title
-            // merely owned or queued was never actually watched.
-            return res.status(400).json({ error: `That file lists ${skippedNoTimestamp} title(s) with no watch date or rating attached - looks like a collection or watchlist export rather than history. Only history and ratings files can be imported.` })
-          }
-          // Say what the file actually looked like. A format that doesn't
-          // match is a one-line fix here, but only if the shape is known -
-          // "no entries found" on its own is a dead end for whoever hit it.
-          return res.status(400).json({
-            error: `No importable entries found. Expected Trakt's export format (entries with a "movie" object containing ids.imdb). This file is ${parsed.shape || 'in an unrecognised shape'}.`,
-            shape: parsed.shape || null,
-          })
-        }
-      } else {
-        ({ headers, records } = parseCsv(text))
-        if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
-      }
-      const colMap = mapColumns(headers)
-      const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId).catch(() => null)
-      const lumiereBase = await require('../utils/lumiere').readyLumiere(prisma, accountId).catch(() => '')
-
-      // Capped so one enormous export (a decade of Letterboxd diary
-      // entries) can't turn a single request into thousands of sequential
-      // OMDb lookups - matches the same protective cap listImport.js's own
-      // MAX_IMPORT_ITEMS already applies to title-based catalog imports.
-      const MAX_ROWS = 2000
-      const rows = records.slice(0, MAX_ROWS)
-
-      let imported = 0
-      let skipped = 0
-      const unresolved = []
-
-      // Undo bookkeeping: snapshot which items/ratings already exist so the
-      // rows this run CREATES can be told apart from ones it merely skipped
-      // (the upserts below never modify existing rows - update: {}).
-      const preExistingItemIds = new Set(
-        (await prisma.movieWatchHistory.findMany({ where: { accountId, userId: user.id }, select: { itemId: true } })).map((r) => r.itemId)
-      )
-      const preExistingRatingIds = new Set(
-        (await prisma.titleRating.findMany({ where: { accountId, season: 0 }, select: { itemId: true } })).map((r) => r.itemId)
-      )
-      const createdItemIds = []
-      const createdRatingIds = []
-
-      for (const row of rows) {
-        // Netflix-style episode rows (Show: Season N: Episode) carry no id
-        // and cannot resolve as movies - counted with the other episode
-        // skips instead of burning a doomed OMDb lookup each and landing in
-        // "couldn't resolve" noise. Only when there's no real id to trust.
-        const rawRowId = colMap.imdbId ? row[colMap.imdbId] : null
-        const hasRealId = rawRowId && /^tt\d+$/.test(String(rawRowId).trim())
-        if (!hasRealId && looksLikeSeriesEpisodeTitle(colMap.title ? row[colMap.title] : null)) {
-          skippedNonMovie++
-          continue
-        }
-        const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey, lumiereBase)
-        if (!resolved) {
-          skipped++
-          if (colMap.title && row[colMap.title]) unresolved.push(row[colMap.title])
-          continue
-        }
-        const watchedAt = colMap.watchedDate ? (parseWatchedDate(row[colMap.watchedDate]) || new Date()) : new Date()
-        const rating = colMap.rating ? normalizeRating(row[colMap.rating]) : null
-
-        try {
-          const poster = await resolveSinglePoster(resolved.imdbId, 'movie', null)
-          await prisma.movieWatchHistory.upsert({
-            where: { accountId_userId_itemId: { accountId, userId: user.id, itemId: resolved.imdbId } },
-            create: { accountId, userId: user.id, itemId: resolved.imdbId, itemName: resolved.title || resolved.imdbId, poster, profileLabel: 'Imported', completed: true, watchedAt },
-            update: {}, // never overwrite an existing native record with an imported one
-          })
-          if (!preExistingItemIds.has(resolved.imdbId)) {
-            preExistingItemIds.add(resolved.imdbId) // a file can repeat a title
-            createdItemIds.push(resolved.imdbId)
-          }
-          if (rating) {
-            await prisma.titleRating.upsert({
-              where: { accountId_itemId_season: { accountId, itemId: resolved.imdbId, season: 0 } },
-              create: { accountId, itemId: resolved.imdbId, itemType: 'movie', season: 0, rating, itemName: resolved.title || null },
-              update: {},
-            }).catch(() => {}) // best-effort - a rating conflict must never fail the whole import
-            if (!preExistingRatingIds.has(resolved.imdbId)) {
-              preExistingRatingIds.add(resolved.imdbId)
-              createdRatingIds.push(resolved.imdbId)
-            }
-          }
-          imported++
-        } catch (e) {
-          skipped++
-        }
-      }
-
-      // One Trash entry per import run: undoing it deletes exactly the rows
-      // this run created and nothing that predated it.
-      try {
-        await require('../utils/trash').archiveHistoryImport(prisma, accountId, user.id, { createdItemIds, createdRatingIds })
-      } catch (e) {
-        console.warn('Import undo-archive failed (import itself succeeded):', e?.message)
-      }
-
-      res.json({
-        imported,
-        // Entries the export carried but this importer cannot write (episode
-        // and show history) are counted as skipped rather than omitted, so
-        // the totals shown add up to what was actually in the file.
-        skipped: skipped + skippedNonMovie,
-        skippedEpisodes: skippedNonMovie,
-        totalRows: records.length + skippedNonMovie,
-        truncated: records.length > MAX_ROWS,
-        unresolvedTitles: unresolved.slice(0, 20),
-      })
+      // Shared with the member's own import (utils/historyImport.js).
+      // ?dryRun=1 reports what would be added without writing anything.
+      const result = await runHistoryImport({ prisma, accountId, user, text: req.file.buffer.toString('utf8'), dryRun: req.query.dryRun === '1' })
+      res.status(result.status).json(result.body)
     } catch (error) {
       console.error('Error importing history CSV:', error)
       res.status(500).json({ error: publicMessage(error, 'Failed to import history') })
@@ -1767,14 +1630,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       ])
       const nameOf = (id) => accountUsers.find((u) => u.id === id)?.username || null
       const byIp = new Map()
+      // An opaque stream id is not a title; leave it out rather than print it.
+      const { isOpaqueStreamName } = require('../utils/proxyTitle')
+      const readableName = (name) => (name && !isOpaqueStreamName(name) ? name : null)
       for (const sess of sessions) {
         if (!sess.clientIp) continue
         const cur = byIp.get(sess.clientIp)
         if (!cur) {
-          byIp.set(sess.clientIp, { clientIp: sess.clientIp, lastSeenAt: sess.lastSeenAt, lastTitle: sess.displayName || null, streams: 1 })
+          byIp.set(sess.clientIp, { clientIp: sess.clientIp, lastSeenAt: sess.lastSeenAt, lastTitle: readableName(sess.displayName), streams: 1 })
         } else {
           cur.streams++
-          if (!cur.lastTitle && sess.displayName) cur.lastTitle = sess.displayName
+          if (!cur.lastTitle) cur.lastTitle = readableName(sess.displayName)
         }
       }
       // Claimed IPs always appear, even quiet ones - a claim you can't see
@@ -3210,7 +3076,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { donorId } = req.query
       if (!donorId) return res.status(400).json({ error: 'donorId is required' })
       const { getMergePreview } = require('../utils/userMerge')
-      const preview = await getMergePreview(prisma, req.params.id, donorId)
+      const preview = await getMergePreview(prisma, req.params.id, donorId, getAccountId(req))
       res.json(preview)
     } catch (error) {
       console.error('Error building merge preview:', error)
@@ -3223,7 +3089,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { donorId } = req.body || {}
       if (!donorId) return res.status(400).json({ error: 'donorId is required' })
       const { mergeUsers } = require('../utils/userMerge')
-      const result = await mergeUsers(prisma, req.params.id, donorId)
+      const result = await mergeUsers(prisma, req.params.id, donorId, getAccountId(req))
       res.json({ success: true, ...result })
     } catch (error) {
       console.error('Error merging users:', error)
@@ -3234,7 +3100,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.get('/:id/merge-info', async (req, res) => {
     try {
       const { getUndoInfo } = require('../utils/userMerge')
-      const info = await getUndoInfo(prisma, req.params.id)
+      const info = await getUndoInfo(prisma, req.params.id, getAccountId(req))
       res.json({ info })
     } catch (error) {
       console.error('Error checking merge info:', error)
@@ -3245,7 +3111,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.post('/:id/undo-merge', async (req, res) => {
     try {
       const { undoMerge } = require('../utils/userMerge')
-      const result = await undoMerge(prisma, req.params.id)
+      const result = await undoMerge(prisma, req.params.id, getAccountId(req))
       res.json({ success: true, ...result })
     } catch (error) {
       console.error('Error undoing merge:', error)

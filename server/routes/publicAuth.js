@@ -58,14 +58,38 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   // Shared tail of a successful login (real session, post any 2FA check) -
   // used by /login, /private-login, and /verify-2fa, so the three don't
   // each hand-roll the same cookie-setting block with a chance to drift.
+  // Secure follows the request as well as NODE_ENV: a household install
+  // behind an HTTPS proxy often has no NODE_ENV, and one reached over plain
+  // http on the LAN must still be able to keep its cookies.
   function issueSessionCookies(res, accountId) {
     const at = issueAccessToken(accountId);
     const rt = issueRefreshToken(accountId);
     const csrf = randomCsrfToken();
-    res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
-    res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
-    res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+    res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+    res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
+    res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
     return at;
+  }
+
+  // The check every sign-in door makes before it hands out a session: a
+  // disabled account is refused, and one with 2FA on gets a pending challenge
+  // (same shape /login returns, finished through /verify-2fa) instead of
+  // cookies. Returns true when it has already answered the request, so the
+  // caller just returns. The Stremio, Nuvio and Jellyfin/AIOStreams sign-ins
+  // go through here too: proving who you are with a provider is not a reason
+  // to skip the second step the account owner turned on.
+  function holdSessionForChecks(res, account) {
+    if (account.disabled) {
+      res.status(403).json({ message: 'This account has been disabled' });
+      return true;
+    }
+    if (account.twoFactorEnabled) {
+      const twoFactor = require('../utils/twoFactor');
+      const pendingToken = twoFactor.createPendingChallenge(account.id);
+      res.json({ requiresTwoFactor: true, pendingToken });
+      return true;
+    }
+    return false;
   }
 
   // Checks a submitted TOTP or backup code against the account, consuming a
@@ -230,6 +254,12 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   // Public auth endpoints
   router.post('/register', async (req, res) => {
     try {
+      // A private instance has exactly one account (the default one) and
+      // every request there resolves to it, so a freshly registered account
+      // would be a way in as that owner. Same guard the provider sign-ins use.
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(400).json({ message: 'Registration is only available in public auth mode' });
+      }
       const { uuid, password } = req.body || {};
       if (!uuid || !password) {
         return responseUtils.badRequest(res, 'uuid and password are required');
@@ -287,9 +317,9 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       const at = issueAccessToken(account.id);
       const rt = issueRefreshToken(account.id);
       const csrf = randomCsrfToken();
-      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
       return res.status(201).json({
         message: 'Registered successfully',
         token: at,
@@ -309,6 +339,12 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       }
 
       const account = await prisma.appAccount.findUnique({ where: { uuid } });
+      // With the operator login configured, the default account signs in
+      // through /private-login, SSO or a passkey only - its uuid is public
+      // in the source, so a uuid+password door on it is not a second lock.
+      if (account && INSTANCE_TYPE !== 'public' && PRIVATE_AUTH_ENABLED && account.id === DEFAULT_ACCOUNT_ID) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
       if (!account || !account.passwordHash) {
         // No passwordHash covers OIDC-only accounts (created via
         // /oidc/callback with no password set) - same "Invalid credentials"
@@ -841,9 +877,9 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           const at = issueAccessToken(account.id)
           const rt = issueRefreshToken(account.id)
           const csrf = randomCsrfToken()
-          res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
-          res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
-          res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
 
           return res.json({
             message: 'Account already linked',
@@ -948,12 +984,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         })
       }
 
+      // Proven with the provider, but the account may still want its second step.
+      if (holdSessionForChecks(res, account)) return
+
       const at = issueAccessToken(account.id);
       const rt = issueRefreshToken(account.id);
       const csrf = randomCsrfToken();
-      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
       return res.json({
         message: 'Login successful',
@@ -1145,9 +1184,9 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           const at = issueAccessToken(account.id)
           const rt = issueRefreshToken(account.id)
           const csrf = randomCsrfToken()
-          res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
-          res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
-          res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
 
           return res.json({
             message: 'Account already linked',
@@ -1227,12 +1266,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         })
       }
 
+      // Proven with the provider, but the account may still want its second step.
+      if (holdSessionForChecks(res, account)) return
+
       const at = issueAccessToken(account.id);
       const rt = issueRefreshToken(account.id);
       const csrf = randomCsrfToken();
-      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
       return res.json({
         message: 'Login successful',
@@ -1325,12 +1367,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         user = { id: created.id, email: created.email, username: created.username }
       }
 
+      // Already signed in as this account: that session is the proof, nothing new is being granted.
+      if (account.id !== currentAccountId && holdSessionForChecks(res, account)) return
+
       const at = issueAccessToken(account.id)
       const rt = issueRefreshToken(account.id)
       const csrf = randomCsrfToken()
-      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
-      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
-      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
       return res.json({
         message: 'Login successful',
         token: at,
@@ -1520,10 +1565,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   });
 
   router.post('/logout', (req, res) => {
-    const opts = { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', expires: new Date(0) };
+    const opts = { httpOnly: true, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', expires: new Date(0) };
     res.cookie(cookieName('sfm_at'), '', opts);
     res.cookie(cookieName('sfm_rt'), '', opts);
-    res.cookie(cookieName('sfm_csrf'), '', { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', expires: new Date(0) });
+    res.cookie(cookieName('sfm_csrf'), '', { httpOnly: false, secure: isProdEnv() || res.req?.secure === true, sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', expires: new Date(0) });
     return res.json({ message: 'Logged out' });
   });
 
