@@ -22,6 +22,9 @@ import { EditInvitationForm } from '@/components/invitations/EditInvitationForm'
 import { displayEmail } from '@/lib/providers';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { InvitationsV2, INVITE_SECTIONS, type V2Invite, type V2Request } from '@/components/v2/InvitationsV2';
 import {
   PlusIcon,
   EnvelopeIcon,
@@ -241,6 +244,64 @@ export default function InvitationsPage() {
 
   const pendingRequests = requestsDisplay.filter(r => r.status === 'pending');
 
+  // v2: one page - people waiting to join first, then the invites. Sections
+  // move, fold and hide; single invites hide (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const sectionArrange = usePageArrangement('invitations', useMemo(() => INVITE_SECTIONS.map((x) => x.key), []));
+  const inviteArrangeOwn = usePageArrangement('invitations-items', useMemo(() => invitationsDisplay.map((i) => i.id), [invitationsDisplay]));
+  const inviteArrange = { ...inviteArrangeOwn, arranging: sectionArrange.arranging };
+  const pageArrange = { ...sectionArrange, isDefault: sectionArrange.isDefault && inviteArrangeOwn.isDefault, reset: () => { sectionArrange.reset(); inviteArrangeOwn.reset(); } };
+  const [busyRequests, setBusyRequests] = useState<Set<string>>(new Set());
+  const [renderedAt] = useState(() => Date.now());
+  const v2Requests = useMemo<V2Request[]>(() => {
+    const invById = new Map(invitationsDisplay.map((i) => [i.id, i]));
+    return requestsDisplay
+      .filter((r) => r.status === 'pending' || r.status === 'accepted')
+      .map((r) => ({
+        id: r.id,
+        invitationId: r.invitationId,
+        name: r.username || displayEmail(r.email) || 'Someone',
+        email: r.email,
+        groupName: invById.get(String(r.invitationId))?.groupName,
+        createdAt: r.createdAt,
+        status: r.status === 'accepted' ? 'accepted' as const : 'pending' as const,
+      }));
+  }, [requestsDisplay, invitationsDisplay]);
+  const v2Invites = useMemo<V2Invite[]>(() => {
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    return invitationsDisplay.map((i) => ({
+      id: i.id,
+      code: i.code,
+      name: i.name,
+      groupName: i.groupName,
+      groupColorIndex: i.groupId ? groupById.get(i.groupId)?.colorIndex : undefined,
+      groupMissing: i.groupMissing,
+      uses: i.uses,
+      maxUses: i.maxUses,
+      expiresAt: i.expiresAt,
+      isActive: i.isActive !== false,
+    }));
+  }, [invitationsDisplay, groups]);
+  const answerRequest = async (r: V2Request, action: 'accept' | 'reject') => {
+    setBusyRequests((prev) => new Set(prev).add(r.id));
+    try {
+      if (action === 'accept') await api.acceptInviteRequest(r.id);
+      else await api.rejectInviteRequest(r.id);
+      // Reflect the answer here at once; the full list refreshes behind it.
+      setRequests((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: action === 'accept' ? 'accepted' : 'rejected' } : x)));
+      toast.success(action === 'accept' ? `Approved ${r.name}` : `Rejected ${r.name}`, action === 'accept' ? { line: 'They can sign in now.' } : undefined);
+      api.getInvitations().then(setInvitations).catch(() => {});
+    } catch (err) {
+      toast.error(action === 'accept' ? `Couldn’t approve ${r.name}` : `Couldn’t reject ${r.name}`, { line: err instanceof Error ? err.message : undefined });
+    } finally {
+      setBusyRequests((prev) => { const n = new Set(prev); n.delete(r.id); return n; });
+    }
+  };
+  const subtitle = isLoading ? 'Loading...'
+    : v2 ? `${invitations.length} invite${invitations.length === 1 ? '' : 's'}${pendingRequests.length ? ` · ${pendingRequests.length} ${pendingRequests.length === 1 ? 'person' : 'people'} waiting` : ''}`
+    : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`;
+
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -326,7 +387,8 @@ export default function InvitationsPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Invitations"
-          subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
+          actions={v2 ? <ArrangeButton arrange={sectionArrange} /> : undefined}
         />
       )}
 
@@ -335,11 +397,13 @@ export default function InvitationsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Invitations"
-          subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
+          actions={v2 ? <ArrangeButton arrange={sectionArrange} /> : undefined}
         />
       )}
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
+      {v2 && <ArrangeBar arrange={pageArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
           selectionConfig={activeTab === 'invitations' ? {
@@ -348,7 +412,7 @@ export default function InvitationsPage() {
             onSelectAll: selectAll,
             onDeselectAll: deselectAll,
           } : undefined}
-          filterTabs={{
+          filterTabs={v2 ? undefined : {
             options: [
               { key: 'invitations', label: 'Invitations' },
               {
@@ -375,6 +439,42 @@ export default function InvitationsPage() {
           })()}
         />
 
+        {v2 ? (
+          isLoading ? (
+            <p className="text-muted text-center py-16">Loading invitations...</p>
+          ) : (
+            <>
+              <InvitationsV2
+                requests={v2Requests}
+                invites={v2Invites}
+                arrange={sectionArrange}
+                inviteArrange={inviteArrange}
+                view={viewMode === 'list' ? 'list' : 'grid'}
+                busy={busyRequests}
+                onApprove={(r) => answerRequest(r, 'accept')}
+                onReject={(r) => answerRequest(r, 'reject')}
+                onCopy={(i) => {
+                  copyToClipboard(`${window.location.origin}/invite/${i.code}`);
+                  toast.success('Invite link copied', { line: i.code });
+                }}
+                now={renderedAt}
+              />
+              <HiddenTray
+                arrange={sectionArrange}
+                labelOf={(key) => `${INVITE_SECTIONS.find((x) => x.key === key)?.label ?? 'Section'} (section)`}
+                extra={inviteArrangeOwn.hidden.map((id) => ({ id: `i:${id}`, label: invitationsDisplay.find((i) => i.id === id)?.code ?? 'An invite', show: () => inviteArrangeOwn.show(id) }))}
+                note="Hidden only here: invites keep working. Tap one to bring it back."
+              />
+              {v2Requests.length === 0 && v2Invites.length === 0 && (
+                <div className="text-center py-16">
+                  <h3 className="text-lg font-medium mb-2 text-default">No invitations</h3>
+                  <p className="mb-6 text-muted">Create an invitation to start inviting people</p>
+                  <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>Create Invite</Button>
+                </div>
+              )}
+            </>
+          )
+        ) : (
         <AnimatePresence mode="wait">
           {activeTab === 'invitations' ? (
             <motion.div
@@ -610,6 +710,7 @@ export default function InvitationsPage() {
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </div>
       </div>
       </div>

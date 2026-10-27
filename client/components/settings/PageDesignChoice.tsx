@@ -10,7 +10,7 @@ import type { PageDesign } from '@/lib/arrange-core';
 
 const CHOICES: { id: PageDesign; name: string; blurb: string }[] = [
   { id: 'classic', name: 'Classic', blurb: 'The pages as they have always been.' },
-  { id: 'v2', name: 'v2', blurb: 'Grouped cards: one status in plain words and one obvious button. On Users so far.' },
+  { id: 'v2', name: 'v2', blurb: 'Grouped cards: one status in plain words and one obvious button. Users, Groups, Addons, Invitations, Catalogs and Vault.' },
 ];
 
 export function PageDesignChoice() {

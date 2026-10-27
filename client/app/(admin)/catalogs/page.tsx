@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -14,6 +14,11 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { CatalogsV2 } from '@/components/v2/CatalogsV2';
+import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { avatarColorFill } from '@/components/ui/Avatar';
 import {
@@ -224,7 +229,15 @@ export default function ListsPage() {
     setLists((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
   };
 
-  const heading = { title: 'Catalogs', subtitle: 'Your custom collections of movies and shows.' };
+  // v2: posters first, one card per catalog; Arrange moves and hides them
+  // on this page (lib/arrange.tsx). Pinned catalogs start at the front.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2';
+  const { viewMode, setViewMode } = useDefaultViewMode();
+  const catalogKeys = useMemo(() => [...lists.filter((l) => l.pinned), ...lists.filter((l) => !l.pinned)].map((l) => l.id), [lists]);
+  const catalogArrange = usePageArrangement('catalogs', catalogKeys);
+
+  const heading = { title: 'Catalogs', subtitle: v2 && loaded ? `${lists.length} catalog${lists.length === 1 ? '' : 's'} of your own` : 'Your custom collections of movies and shows.' };
 
   // Nuvio Collections entry point - deliberately not a card in the page
   // body (was too easy to miss as a full-width button there, then too
@@ -341,8 +354,11 @@ export default function ListsPage() {
               <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
                 New catalog
               </Button>
+              {v2 && <ArrangeButton arrange={catalogArrange} />}
+              {v2 && <span className="max-md:hidden"><ViewModeToggle mode={viewMode} onChange={setViewMode} showLabels={false} /></span>}
             </div>
           </div>
+          {v2 && <ArrangeBar arrange={catalogArrange} />}
 
           {loaded && lists.length === 0 && (
             <Card padding="lg" className="text-center">
@@ -352,7 +368,15 @@ export default function ListsPage() {
             </Card>
           )}
 
-          {lists.length > 0 && (() => {
+          {v2 && lists.length > 0 && (
+            <>
+              <CatalogsV2 lists={lists} arrange={catalogArrange} view={viewMode === 'list' ? 'list' : 'grid'} coverStyle={coverColorStyle} />
+              <HiddenTray arrange={catalogArrange} labelOf={(id) => lists.find((l) => l.id === id)?.name ?? 'A catalog'}
+                note="Hidden only here: the catalog keeps working everywhere it's used. Tap one to bring it back." />
+            </>
+          )}
+
+          {!v2 && lists.length > 0 && (() => {
             // At most one hero - the pinned catalog with the most recent
             // activity if more than one happens to be pinned (see the
             // pinned field's own schema comment).

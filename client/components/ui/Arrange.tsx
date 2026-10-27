@@ -46,7 +46,9 @@ export function ArrangeBar({ arrange }: { arrange: PageArrange }) {
 
 function IconBtn({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
-    <button type="button" className="arrange-icon" aria-label={label} title={label} onClick={onClick} disabled={disabled}>
+    // Kept from reaching a card's own link around it.
+    <button type="button" className="arrange-icon" aria-label={label} title={label} disabled={disabled}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}>
       {children}
     </button>
   );

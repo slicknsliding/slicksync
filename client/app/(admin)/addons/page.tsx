@@ -33,6 +33,9 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } fro
 import { useDroppable } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { AddonsV2, ADDON_KINDS, type V2Addon } from '@/components/v2/AddonsV2';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -375,6 +378,47 @@ export default function AddonsPage() {
   // Nebula's stat row - real total from the same addonsDisplay data already rendered.
   const totalAddonAssignments = addonsDisplay.reduce((sum, a) => sum + (a.userCount || 0), 0);
 
+  // v2: addons sorted by what they give, with which groups have each one.
+  // Sections move, fold and hide; single addons hide (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const kindArrange = usePageArrangement('addons', useMemo(() => ADDON_KINDS.map((k) => k.key), []));
+  const addonArrangeOwn = usePageArrangement('addons-items', useMemo(() => addons.map((a) => a.id), [addons]));
+  const addonArrange = { ...addonArrangeOwn, arranging: kindArrange.arranging };
+  const pageArrange = { ...kindArrange, isDefault: kindArrange.isDefault && addonArrangeOwn.isDefault, reset: () => { kindArrange.reset(); addonArrangeOwn.reset(); } };
+  const [addonGroups, setAddonGroups] = useState<Record<string, { name: string; colorIndex?: number }[]>>({});
+  const [reloadingIds, setReloadingIds] = useState<Set<string>>(new Set());
+  const groupIdsKey = groups.map((g: { id: string }) => g.id).join(',');
+  useEffect(() => {
+    if (!v2 || !groupIdsKey) return;
+    let cancelled = false;
+    const list = groups as { id: string; name: string; colorIndex?: number }[];
+    Promise.all(list.map((g) => api.getGroupAddons(g.id).then((as) => ({ g, ids: as.map((a) => a.id) })).catch(() => ({ g, ids: [] as string[] }))))
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<string, { name: string; colorIndex?: number }[]> = {};
+        for (const { g, ids } of rows) for (const id of ids) (next[id] ||= []).push({ name: g.name, colorIndex: g.colorIndex });
+        setAddonGroups(next);
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v2, groupIdsKey]);
+  const v2Addons = useMemo<V2Addon[]>(() => shownAddons.map((a) => ({
+    id: a.id,
+    name: a.name,
+    version: a.version,
+    logo: a.logo,
+    resources: a.resources,
+    hasCatalogs: a.catalogs.length > 0,
+    isActive: a.isActive !== false,
+    isOnline: a.isOnline,
+    healthError: a.healthCheckError,
+    groups: addonGroups[a.id] || [],
+    groupCount: a.groupCount,
+  })), [shownAddons, addonGroups]);
+  const offlineCount = addonsDisplay.filter((a) => a.isOnline === false).length;
+  const v2Subtitle = `${addons.length} addon${addons.length === 1 ? '' : 's'}${offlineCount ? ` · ${offlineCount} not answering` : ''}`;
+
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -670,7 +714,10 @@ export default function AddonsPage() {
   );
   const reloadAllButton = isTV ? (
     <TVFocusable onEnterPress={handleReloadAllAddons}>{reloadAllButtonInner}</TVFocusable>
+  ) : v2 ? (
+    <div className="flex items-center gap-2"><ArrangeButton arrange={kindArrange} />{reloadAllButtonInner}</div>
   ) : reloadAllButtonInner;
+  const subtitle = isLoading ? 'Loading...' : v2 ? v2Subtitle : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`;
 
   return (
     <Wrapper>
@@ -680,7 +727,7 @@ export default function AddonsPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Addons"
-          subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
+          subtitle={subtitle}
           actions={reloadAllButton}
         />
       )}
@@ -690,10 +737,10 @@ export default function AddonsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Addons"
-          subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
+          subtitle={subtitle}
           actions={reloadAllButton}
           stats={
-            isMobile ? (
+            isMobile && !v2 ? (
               <NebulaHeaderStats
                 stats={[
                   { label: 'Total Addons', value: isLoading ? '...' : addons.length, icon: <PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" /> },
@@ -705,15 +752,16 @@ export default function AddonsPage() {
           }
         />
       )}
-      {layoutMode === 'nebula' && !isMobile && (
+      {layoutMode === 'nebula' && !isMobile && !v2 && (
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
           <NebulaCompactStatCard label="Total Addons" value={isLoading ? '...' : addons.length} icon={<PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
           <NebulaCompactStatCard label="Protected" value={isLoading ? '...' : protectedCount} icon={<ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
           <NebulaCompactStatCard label="Assignments" value={isLoading ? '...' : totalAddonAssignments} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
         </div>
       )}
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
+      {v2 && <ArrangeBar arrange={pageArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
           selectionConfig={{
@@ -871,7 +919,36 @@ export default function AddonsPage() {
               </div>
             )}
 
-            {/* Addons Grid/List */}
+            {/* Addons Grid/List - v2 sorts them by what they give. */}
+            {v2 ? (
+              <>
+                <AddonsV2
+                  addons={v2Addons}
+                  arrange={kindArrange}
+                  addonArrange={addonArrange}
+                  view={viewMode === 'list' ? 'list' : 'grid'}
+                  reloading={reloadingIds}
+                  onReload={async (a) => {
+                    setReloadingIds((prev) => new Set(prev).add(a.id));
+                    try {
+                      await api.reloadAddon(a.id);
+                      toast.success(`Reloaded ${a.name}`);
+                      setAddons(await api.getAddons());
+                    } catch (err) {
+                      toast.error(`Couldn’t reload ${a.name}`, { line: err instanceof Error ? err.message : undefined });
+                    } finally {
+                      setReloadingIds((prev) => { const n = new Set(prev); n.delete(a.id); return n; });
+                    }
+                  }}
+                />
+                <HiddenTray
+                  arrange={kindArrange}
+                  labelOf={(key) => `${ADDON_KINDS.find((k) => k.key === key)?.label ?? 'Section'} (section)`}
+                  extra={addonArrangeOwn.hidden.map((id) => ({ id: `a:${id}`, label: addonsDisplay.find((a) => a.id === id)?.name ?? 'An addon', show: () => addonArrangeOwn.show(id) }))}
+                  note="Hidden only here: addons keep working for everyone who has them. Tap one to bring it back."
+                />
+              </>
+            ) : (
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
@@ -963,6 +1040,7 @@ export default function AddonsPage() {
                 )}
               </AnimatePresence>
             </LayoutGroup>
+            )}
 
             {activeFilter === 'servers' && shownServers.length === 0 && (
               <div className="text-center py-16">

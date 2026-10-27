@@ -1,5 +1,10 @@
 'use client';
 
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { VaultV2, VAULT_SECTIONS } from '@/components/v2/VaultV2';
+import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -906,6 +911,17 @@ function VaultPageContent() {
     }
   };
 
+  // v2: what needs you first, then the rest; Arrange moves, folds and hides
+  // the two sections and hides single entries (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const { viewMode, setViewMode } = useDefaultViewMode();
+  const [renderedAt] = useState(() => Date.now());
+  const sectionArrange = usePageArrangement('vault', useMemo(() => VAULT_SECTIONS.map((x) => x.key), []));
+  const entryArrangeOwn = usePageArrangement('vault-items', useMemo(() => allCostEntries.map((e) => e.id), [allCostEntries]));
+  const entryArrange = { ...entryArrangeOwn, arranging: sectionArrange.arranging };
+  const pageArrange = { ...sectionArrange, isDefault: sectionArrange.isDefault && entryArrangeOwn.isDefault, reset: () => { sectionArrange.reset(); entryArrangeOwn.reset(); } };
+
   const filterOptions = [
     ...Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
@@ -1057,6 +1073,7 @@ function VaultPageContent() {
           subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
           actions={
             <>
+              {v2 && <ArrangeButton arrange={sectionArrange} />}
               <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
                 Add Entry
               </Button>
@@ -1077,7 +1094,7 @@ function VaultPageContent() {
                 Add Entry
               </Button>
             );
-            return isTV ? <TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable> : btn;
+            return isTV ? <TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable> : v2 ? <div className="flex items-center gap-2"><ArrangeButton arrange={sectionArrange} />{btn}</div> : btn;
           })()}
         />
       )}
@@ -1163,10 +1180,14 @@ function VaultPageContent() {
         </>
       )}
 
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
-        <div className="mb-5">
-          <FilterTabsResponsive fill options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
+      {v2 && <ArrangeBar arrange={pageArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
+        <div className={v2 ? 'mb-2 flex items-center gap-3' : 'mb-5'}>
+          <div className={v2 ? 'flex-1 min-w-0' : ''}>
+            <FilterTabsResponsive fill options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
+          </div>
+          {v2 && <span className="max-md:hidden shrink-0"><ViewModeToggle mode={viewMode} onChange={setViewMode} showLabels={false} /></span>}
         </div>
 
         {isLoading ? (
@@ -1186,6 +1207,27 @@ function VaultPageContent() {
               Add your first entry
             </Button>
           </div>
+        ) : v2 ? (
+          <>
+            <VaultV2
+              entries={entries}
+              labels={CATEGORY_LABELS}
+              arrange={sectionArrange}
+              entryArrange={entryArrange}
+              view={viewMode === 'list' ? 'list' : 'grid'}
+              testing={testingId}
+              now={renderedAt}
+              onOpen={openEditModal}
+              onCopy={handleCopy}
+              onTest={handleTest}
+            />
+            <HiddenTray
+              arrange={sectionArrange}
+              labelOf={(key) => `${VAULT_SECTIONS.find((x) => x.key === key)?.label ?? 'Section'} (section)`}
+              extra={entryArrangeOwn.hidden.map((id) => ({ id: `e:${id}`, label: allCostEntries.find((e) => e.id === id)?.name ?? 'An entry', show: () => entryArrangeOwn.show(id) }))}
+              note="Hidden only here: entries keep working and keep their alerts. Tap one to bring it back."
+            />
+          </>
         ) : (
           <>
             <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
