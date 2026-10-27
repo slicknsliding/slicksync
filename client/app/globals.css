@@ -1874,6 +1874,7 @@ html[data-density="compact"] .ss-toast { padding: 9px 12px; }
 
 /* v2 detail pages (components/v2/V2Detail.tsx). */
 .v2-detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 18px; margin: 6px 0 18px; }
+.v2-detail-head-wash { padding: 18px; border-radius: 22px; border: 1px solid var(--color-surface-border); }
 .v2-detail-lead { flex: none; display: flex; }
 .v2-detail-id { flex: 1; min-width: 200px; }
 .v2-detail-title { font-size: 30px; line-height: 1.15; font-weight: 700; color: var(--color-text); overflow-wrap: anywhere; }

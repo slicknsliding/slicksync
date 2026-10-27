@@ -8,7 +8,7 @@
 import Link from 'next/link';
 import { EyeIcon, LinkIcon } from '@heroicons/react/24/outline';
 import { UserAvatar } from '@/components/ui';
-import { avatarColorFill } from '@/components/ui/Avatar';
+import { GroupPicture } from './GroupPicture';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { formatRelativeTime } from '@/lib/relativeTime';
@@ -30,6 +30,7 @@ export type V2Invite = {
   name?: string;
   groupName?: string;
   groupColorIndex?: number;
+  groupAvatarUrl?: string | null;
   groupMissing?: boolean;
   uses: number;
   maxUses?: number;
@@ -117,9 +118,9 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
   const inviteAction = (i: V2Invite) => arrange.arranging ? hideBtn(i) : (
     <V2Button onClick={() => onCopy(i)} icon={<LinkIcon className="w-4 h-4" />}>Copy link</V2Button>
   );
-  const bar = (i: V2Invite, h: string) => (
-    <span className={`w-3 ${h} rounded-[5px] shrink-0`} style={{ background: i.groupName && !i.groupMissing ? avatarColorFill(i.groupColorIndex ?? 0) : 'var(--color-text-subtle)' }} />
-  );
+  const bar = (i: V2Invite, h: string) => i.groupName && !i.groupMissing
+    ? <GroupPicture name={i.groupName} avatarUrl={i.groupAvatarUrl} colorIndex={i.groupColorIndex} size={h === 'h-8' ? 'md' : 'lg'} ring={false} />
+    : <span className={`${h === 'h-8' ? 'w-10 h-10' : 'w-12 h-12'} rounded-[30%] shrink-0 border border-dashed border-default`} />;
   const joins = (i: V2Invite) => i.groupMissing ? 'Its group is gone' : i.groupName ? `Joins ${i.groupName}` : 'Joins no group';
   const status = (i: V2Invite) => {
     const e = ends(i, now);

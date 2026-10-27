@@ -35,9 +35,9 @@ export function V2AppPill({ label, color }: { label: string; color: string }) {
 }
 
 /** A card in a v2 grid. The whole card opens the thing; `action` is its one button. */
-export function V2Card({ children, footer, action, className = '' }: { children: ReactNode; footer?: ReactNode; action?: ReactNode; className?: string }) {
+export function V2Card({ children, footer, action, className = '', style }: { children: ReactNode; footer?: ReactNode; action?: ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
-    <div className={`v2-card ${className}`}>
+    <div className={`v2-card ${className}`} style={style}>
       {children}
       {(footer !== undefined || action) && (
         <div className="v2-card-foot">

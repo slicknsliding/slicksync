@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { ArrowPathIcon, EyeIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { UserAvatar } from '@/components/ui';
-import { avatarColorFill } from '@/components/ui/Avatar';
+import { GroupPicture } from './GroupPicture';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { pinFirst } from '@/lib/arrange-core';
@@ -32,7 +32,7 @@ export type V2Person = {
   addonCount: number;
 };
 
-export type V2Group = { key: string; name: string; colorIndex?: number; addons?: number };
+export type V2Group = { key: string; name: string; colorIndex?: number; avatarUrl?: string | null; addons?: number };
 
 function watched(minutes: number) {
   if (minutes < 60) return `${minutes} min`;
@@ -159,7 +159,6 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
         if (all.length === 0) return null;
         const g = byKey.get(key);
         const name = g?.name ?? 'No group';
-        const color = g ? avatarColorFill(g.colorIndex ?? 0) : 'var(--color-text-subtle)';
         const addons = g?.addons;
         return (
           <ArrangeSection
@@ -170,7 +169,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
             noun="group"
             title={(
               <span className="flex items-center gap-2.5 min-w-0">
-                <span className="w-3 h-3 rounded shrink-0" style={{ background: color }} />
+                {g ? <GroupPicture name={name} avatarUrl={g.avatarUrl} colorIndex={g.colorIndex} size="sm" ring={false} /> : <span className="w-8 h-8 rounded-[30%] shrink-0 border border-dashed border-default" />}
                 <span className="truncate">{name}</span>
               </span>
             )}

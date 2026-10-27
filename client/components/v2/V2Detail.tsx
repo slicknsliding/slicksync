@@ -116,7 +116,7 @@ export function V2MoreMenu({ items, label = 'More' }: { items: V2MenuItem[]; lab
  * status in words with a short line of facts, and the buttons - the obvious
  * one first, everything else in ⋯.
  */
-export function V2DetailHead({ lead, title, pill, status, facts, actions, more, below }: {
+export function V2DetailHead({ lead, title, pill, status, facts, actions, more, below, style }: {
   lead: ReactNode;
   title: ReactNode;
   pill?: ReactNode;
@@ -126,9 +126,11 @@ export function V2DetailHead({ lead, title, pill, status, facts, actions, more, 
   more?: V2MenuItem[];
   /** Anything under the header, full width (a banner, a warning). */
   below?: ReactNode;
+  /** A wash of colour behind the header. */
+  style?: React.CSSProperties;
 }) {
   return (
-    <div className="v2-detail-head">
+    <div className={style ? "v2-detail-head v2-detail-head-wash" : "v2-detail-head"} style={style}>
       <div className="v2-detail-lead">{lead}</div>
       <div className="v2-detail-id">
         <div className="flex items-center gap-2.5 flex-wrap min-w-0">

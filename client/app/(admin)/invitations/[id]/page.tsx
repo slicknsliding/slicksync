@@ -12,7 +12,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
-import { avatarColorFill } from '@/components/ui/Avatar';
+import { GroupPicture } from '@/components/v2/GroupPicture';
 import { V2DetailHead } from '@/components/v2/V2Detail';
 import { V2Button } from '@/components/v2/V2Bits';
 import { InviteV2, InviteStatus, inviteEnds, type InviteState } from '@/components/v2/InviteV2';
@@ -286,7 +286,9 @@ export default function InvitationDetailPage() {
         {v2 ? (
           <>
             <V2DetailHead
-              lead={<span style={{ width: 14, height: 58, borderRadius: 6, background: group?.colorIndex !== undefined ? avatarColorFill(group.colorIndex) : 'var(--color-primary)' }} />}
+              lead={group
+                ? <GroupPicture name={group.name} avatarUrl={(group as { avatarUrl?: string | null }).avatarUrl} colorIndex={group.colorIndex} size="xl" />
+                : <span className="w-16 h-16 rounded-[30%] shrink-0 border border-dashed border-default" />}
               title={<span className="font-mono tracking-[0.06em]">{code}</span>}
               status={<InviteStatus state={inviteState} />}
               facts={v2Facts}

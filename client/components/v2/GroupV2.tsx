@@ -17,7 +17,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { UserAvatar } from '@/components/ui';
-import { avatarColorFill } from '@/components/ui/Avatar';
+import { GroupPicture, groupWash } from './GroupPicture';
 import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { usePageArrangement } from '@/lib/arrange';
 import { formatLastSync } from '@/lib/relativeTime';
@@ -35,7 +35,7 @@ export type GroupV2Watch = {
 };
 
 type Props = {
-  group: (Group & { colorIndex?: number }) | null;
+  group: (Group & { colorIndex?: number; avatarUrl?: string | null }) | null;
   isLoading: boolean;
   people: User[];
   addons: Addon[];
@@ -133,15 +133,13 @@ export function GroupV2(p: Props) {
   ];
 
   const lead = (
-    <span
-      aria-hidden
-      style={{ width: 14, height: 58, borderRadius: 6, background: avatarColorFill(group?.colorIndex ?? 0) }}
-    />
+    <GroupPicture name={group?.name || 'Group'} avatarUrl={group?.avatarUrl} colorIndex={group?.colorIndex} size="xl" dim={!active} />
   );
 
   const head = (
     <V2DetailHead
       lead={lead}
+      style={groupWash(group?.colorIndex)}
       title={p.isLoading && !group ? 'Loading...' : (group?.name || 'Group')}
       status={<V2Status tone={active ? 'ok' : 'off'}>{active ? 'All synced' : 'Switched off'}</V2Status>}
       facts={`${nPeople} ${nPeople === 1 ? 'person' : 'people'} · ${nAddons} ${nAddons === 1 ? 'addon' : 'addons'} · synced ${formatLastSync(group?.lastSyncedAt)}`}

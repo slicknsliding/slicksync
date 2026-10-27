@@ -229,6 +229,7 @@ export default function GroupsPage() {
       id: g.id,
       name: g.name,
       colorIndex: g.colorIndex,
+      avatarUrl: g.avatarUrl,
       isActive: g.isActive !== false,
       lastSyncedAt: rawById.get(g.id)?.lastSyncedAt ?? null,
       addonCount: g.addonCount,

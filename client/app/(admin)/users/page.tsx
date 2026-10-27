@@ -319,7 +319,7 @@ export default function UsersPage() {
   // v2: groups as sections the account can move, fold and hide, and people
   // it can hide (lib/arrange.tsx). Sections follow the Groups page's order;
   // anyone in no group gathers at the end.
-  const v2Groups = useMemo<V2Group[]>(() => groups.map((g) => ({ key: `g:${g.id}`, name: g.name, colorIndex: g.colorIndex, addons: g.addons })), [groups]);
+  const v2Groups = useMemo<V2Group[]>(() => groups.map((g) => ({ key: `g:${g.id}`, name: g.name, colorIndex: g.colorIndex, avatarUrl: (g as { avatarUrl?: string | null }).avatarUrl, addons: g.addons })), [groups]);
   const groupArrange = usePageArrangement('users', useMemo(() => [...v2Groups.map((g) => g.key), NO_GROUP_KEY], [v2Groups]));
   const peopleArrangeOwn = usePageArrangement('users-people', useMemo(() => users.map((u) => u.id), [users]));
   const peopleArrange = { ...peopleArrangeOwn, arranging: groupArrange.arranging };

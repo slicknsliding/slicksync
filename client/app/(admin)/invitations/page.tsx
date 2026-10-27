@@ -276,6 +276,7 @@ export default function InvitationsPage() {
       name: i.name,
       groupName: i.groupName,
       groupColorIndex: i.groupId ? groupById.get(i.groupId)?.colorIndex : undefined,
+      groupAvatarUrl: i.groupId ? (groupById.get(i.groupId) as { avatarUrl?: string | null } | undefined)?.avatarUrl : undefined,
       groupMissing: i.groupMissing,
       uses: i.uses,
       maxUses: i.maxUses,

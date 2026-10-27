@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { UserAvatar } from '@/components/ui';
-import { avatarColorFill } from '@/components/ui/Avatar';
+import { GroupPicture, groupWash } from './GroupPicture';
 import { ArrangeControls } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { formatLastSync } from '@/lib/relativeTime';
@@ -17,6 +17,7 @@ export type V2GroupCard = {
   id: string;
   name: string;
   colorIndex?: number;
+  avatarUrl?: string | null;
   isActive: boolean;
   lastSyncedAt?: string | null;
   people: { id: string; name: string; email?: string; avatarUrl?: string | null; useGravatar?: boolean; colorIndex?: number }[];
@@ -26,7 +27,7 @@ export type V2GroupCard = {
 };
 
 function Faces({ people, size }: { people: V2GroupCard['people']; size: 'xs' | 'sm' }) {
-  if (people.length === 0) return <span className="text-muted text-[13px]">Nobody yet</span>;
+  if (people.length === 0) return <span className="text-muted text-[13px]">Nobody yet · <b className="text-default">Add a person</b></span>;
   return (
     <div className="flex gap-x-3 gap-y-2 flex-wrap">
       {people.map((p) => (
@@ -66,7 +67,7 @@ export function GroupsV2({ groups, arrange, view, syncing, onSync }: {
   const chips = (g: V2GroupCard, max?: number) => {
     const names = g.addonNames;
     if (!names) return null;
-    if (names.length === 0) return <span className="text-muted text-[13px]">No addons yet</span>;
+    if (names.length === 0) return <span className="text-muted text-[13px]">No addons yet · <b className="text-default">Add an addon</b></span>;
     const list = max ? names.slice(0, max) : names;
     return (
       <div className="flex gap-1.5 flex-wrap">
@@ -75,8 +76,8 @@ export function GroupsV2({ groups, arrange, view, syncing, onSync }: {
       </div>
     );
   };
-  const bar = (g: V2GroupCard, h: string) => (
-    <span className={`w-3 ${h} rounded-[5px] shrink-0`} style={{ background: avatarColorFill(g.colorIndex ?? 0), opacity: g.isActive ? 1 : 0.45 }} />
+  const picture = (g: V2GroupCard, size: 'md' | 'lg', ring: boolean) => (
+    <GroupPicture name={g.name} avatarUrl={g.avatarUrl} colorIndex={g.colorIndex} size={size} ring={ring} dim={!g.isActive} />
   );
 
   if (view === 'list') {
@@ -84,7 +85,7 @@ export function GroupsV2({ groups, arrange, view, syncing, onSync }: {
       <V2List>
         {shown.map((g) => (
           <Link key={g.id} href={`/groups/${g.id}`} className="v2-row">
-            {bar(g, 'h-9')}
+            {picture(g, 'md', false)}
             <div className="w-[190px] min-w-0 shrink-0">
               <b className="text-default block truncate">{g.name}</b>
               <div className="text-muted text-[12.5px] truncate">{g.isActive ? (g.lastSyncedAt ? `synced ${formatLastSync(g.lastSyncedAt)}` : 'not synced yet') : 'Switched off'}</div>
@@ -101,9 +102,9 @@ export function GroupsV2({ groups, arrange, view, syncing, onSync }: {
     <V2Grid max={3}>
       {shown.map((g) => (
         <Link key={g.id} href={`/groups/${g.id}`} className="v2-link">
-          <V2Card action={action(g)}>
-            <div className="flex items-center gap-3 min-w-0">
-              {bar(g, 'h-10')}
+          <V2Card action={action(g)} style={groupWash(g.colorIndex)}>
+            <div className="flex items-center gap-3.5 min-w-0">
+              {picture(g, 'lg', true)}
               <div className="flex-1 min-w-0">
                 <div className="text-lg font-semibold text-default truncate">{g.name}</div>
                 <div className="text-muted text-[13px] truncate">{meta(g)}</div>
