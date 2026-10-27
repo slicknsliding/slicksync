@@ -593,8 +593,21 @@ export default function DiscoverPage() {
 
   const shownItems = useMemo(() => {
     const kept = keepByWatched(items);
-    return sort === 'az' && !debouncedQuery ? [...kept].sort((a, b) => a.name.localeCompare(b.name)) : kept;
-  }, [items, keepByWatched, sort, debouncedQuery]);
+    if (debouncedQuery) return kept;
+    if (sort === 'az') return [...kept].sort((a, b) => a.name.localeCompare(b.name));
+    // Cinemeta's rated list is not strictly in score order. Everything loaded
+    // is put in order by the IMDb score the title's own page shows (the same
+    // batch as the poster badges), the catalog's score until that arrives,
+    // and titles with no score last.
+    if (sort === 'rated') {
+      const score = (i: DiscoverItem) => {
+        const n = Number.parseFloat(ratingsById[i.id]?.imdbRating ?? i.imdbRating ?? '');
+        return Number.isFinite(n) ? n : -1;
+      };
+      return [...kept].sort((a, b) => score(b) - score(a));
+    }
+    return kept;
+  }, [items, keepByWatched, sort, debouncedQuery, ratingsById]);
   const shownWatchlist = useMemo(() => {
     const kept = keepByWatched(watchlistItems);
     return watchlistSort === 'first' ? [...kept].reverse() : kept;

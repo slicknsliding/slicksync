@@ -26,6 +26,7 @@ import { providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { availableApps, linksFor, rememberApp, rememberedApp, rememberedShortcut, type OpenTargets, type OpenWithAppId } from '@/lib/openWith';
 import { userContinueWatching, userOpenTargets, type ContinueWatchingCardData } from '@/lib/user-api';
+import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 
 const REFRESH_MS = 60 * 1000;
 const EMPTY: ContinueWatchingCardData[] = [];
@@ -65,14 +66,14 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
   onToggleMenu: (card: ContinueWatchingCardData, button: HTMLElement) => void;
 }) {
   const { appUrl, href, app } = openingOf(card);
-  const image = card.thumbnail || card.background || card.poster;
+  const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
 
   const body = (
     <>
       <div className="relative aspect-video" style={{ background: 'var(--color-surface-elevated)' }}>
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cachedImageUrl(image, 342) || image} alt="" draggable={false} loading="lazy" decoding="async" className="w-full h-full object-cover pointer-events-none" />
+          <img src={cachedImageUrl(image, 342) || image} onError={onImageError} alt="" draggable={false} loading="lazy" decoding="async" className="w-full h-full object-cover pointer-events-none" />
         ) : (
           <div className="w-full h-full flex items-center justify-center"><PlayIcon className="w-8 h-8 text-subtle" /></div>
         )}

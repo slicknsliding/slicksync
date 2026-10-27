@@ -170,9 +170,10 @@ export function NebulaBar({
             ("System" group, alongside Tasks/Settings/Themes/Changelog) - one
             stable spot instead of a floating badge. */}
         <div
-          className="rounded-2xl p-1.5"
+          className="rounded-full p-1"
           // Solid, no blur: there is nothing for a blur to show but the page
-          // scrolling past.
+          // scrolling past. Round, hugging the round picture - a square tile
+          // read as a box around a circle.
           style={{
             background: 'var(--color-surface)',
             border: '1px solid var(--color-surface-border)',

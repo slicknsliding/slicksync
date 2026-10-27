@@ -283,7 +283,7 @@ function SectionDropdown({ tabs, active, onSelect }: {
         aria-expanded={open}
         onClick={() => (open ? close() : replace())}
         className="w-full flex items-center gap-2.5 rounded-xl px-3 h-11 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        style={open ? { ...surface, borderColor: 'var(--color-primary)' } : surface}
+        style={{ ...surface, boxShadow: '0 10px 24px -10px rgba(0,0,0,0.7)', ...(open ? { borderColor: 'var(--color-primary)' } : {}) }}
       >
         <CurrentIcon className="w-4 h-4 shrink-0 text-muted" />
         <span className="flex-1 min-w-0 text-sm font-semibold text-default truncate">{current.label}</span>
@@ -345,7 +345,9 @@ export function SettingsNavigation({ tabs, active, onSelect, rail, isTV, getEntr
     <>
       {/* Phone / PWA: search, then the section dropdown. */}
       {search && <div className="md:hidden pb-2">{search}</div>}
-      <div className="md:hidden sticky top-0 z-20 pt-1 pb-3 -mx-1 px-1" style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
+      {/* No backdrop of its own: a flat strip here showed as a box over the
+          page glow. The pill is solid and carries a shadow instead. */}
+      <div className="md:hidden sticky top-0 z-20 pt-1 pb-3 -mx-1 px-1">
         <SectionDropdown tabs={tabs} active={active} onSelect={onSelect} />
       </div>
 

@@ -198,7 +198,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
           // In the bar: a round picture in a solid pill (no blur), at least 44px to hit.
           ? `flex items-center gap-2 ${isTV ? 'p-0.5 rounded-xl' : 'min-w-11 min-h-11 pl-1 pr-1 min-[1920px]:pr-2.5 rounded-2xl'} transition-all duration-200`
           : isCompact
-          ? 'flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200'
+          ? 'flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200'
           : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200'} ${isOpen ? 'panel-btn-open' : 'panel-btn'}`}
         style={{
           color: 'var(--color-text)',
