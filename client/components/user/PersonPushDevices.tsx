@@ -159,7 +159,7 @@ function DeviceTile({ device, onRename, onRemove }: { device: PersonPushDevice; 
       className={`w-full flex items-center gap-3 p-3 rounded-xl border ${device.current ? 'border-[var(--color-primary)]' : 'border-default'}`}
       style={{ background: 'var(--color-surface-elevated)' }}
     >
-      <span className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
+      <span className="hidden sm:flex w-10 h-10 shrink-0 rounded-lg items-center justify-center" style={{ background: 'var(--color-surface)' }}>
         <Icon className="w-5 h-5 text-muted" />
       </span>
       <span className="min-w-0 flex-1">
@@ -172,7 +172,7 @@ function DeviceTile({ device, onRename, onRemove }: { device: PersonPushDevice; 
       <button
         type="button"
         onClick={onRename}
-        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-default text-sm font-medium hover:bg-surface-hover transition-colors"
+        className="shrink-0 inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full border border-default text-sm font-medium hover:bg-surface-hover transition-colors"
         style={{ color: 'var(--color-text)' }}
       >
         <PencilIcon className="w-4 h-4" />
