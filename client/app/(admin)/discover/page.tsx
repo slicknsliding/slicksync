@@ -112,7 +112,8 @@ export default function DiscoverPage() {
   const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
 
   const [address] = useState(personFromAddress);
-  const [kind, setKind] = useState<Kind>('movie');
+  // Both by default, so a search or a browse finds movies and shows alike.
+  const [kind, setKind] = useState<Kind>('both');
   const [lens, setLens] = useState<Lens>(address ? 'people' : 'titles');
   // Trending first where there is a LumiereDB to rank it - the server
   // answers Popular for it without one, and the effect below says so.

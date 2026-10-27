@@ -506,7 +506,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Browsing and searching in Discover',
     category: 'Watching & Discover',
     keywords: ['discover', 'browse', 'search movies', 'genre filter', 'because you watched', 'filters', 'decade', 'rating filter', 'length', 'movies and shows', 'both', 'surprise me', 'sort', 'nobody has seen'],
-    answer: 'Discover is one page of posters. Search across the top, pick Movies, Shows or Both, then choose what to look through: Titles, People, For you, Nobody\'s seen it or Watchlist. Sort and Filters sit beside them, and a line above the posters says what you\'re looking at - "Popular 1990s comedy movies rated 7+".',
+    answer: 'Discover is one page of posters. Search across the top, pick Movies, Shows or Both (it starts on Both, so a search finds either), then choose what to look through: Titles, People, For you, Nobody\'s seen it or Watchlist. Sort and Filters sit beside them, and a line above the posters says what you\'re looking at - "Popular 1990s comedy movies rated 7+".',
     steps: [
       'Sort: Most popular, Trending (with a LumiereDB), Newest, Highest rated or A to Z.',
       'Filters: genre, decade, rating, length, and whether to hide or show only what you\'ve watched. Each one you pick shows as a chip above the posters; tap a chip to drop it.',
