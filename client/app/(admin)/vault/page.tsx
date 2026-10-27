@@ -722,9 +722,16 @@ function VaultPageContent() {
         const aioNote = aio ? `${aio} AIOStreams setup${aio === 1 ? '' : 's'}` : '';
         if (result?.rotation && result.rotation.addonsUpdated.length > 0) {
           const r = result.rotation;
-          toast.success(`Key rotated - updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'}${aioNote ? `, ${aioNote}` : ''} and re-synced ${r.usersSynced} user${r.usersSynced === 1 ? '' : 's'}${r.userFailures.length ? ` (${r.userFailures.length} sync failure${r.userFailures.length === 1 ? '' : 's'} - see notifications)` : ''}`);
+          const updated = `Updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'}${aioNote ? `, ${aioNote}` : ''} and re-synced ${r.usersSynced} ${r.usersSynced === 1 ? 'person' : 'people'}.`;
+          if (r.userFailures.length) {
+            toast.warning('Key rotated', {
+              line: `${updated} ${r.userFailures.length} couldn’t be re-synced. Details are in your notifications.`,
+            });
+          } else {
+            toast.success('Key rotated', { line: updated });
+          }
         } else if (aioNote) {
-          toast.success(`Key rotated - updated ${aioNote}`);
+          toast.success('Key rotated', { line: `Updated ${aioNote}.` });
         } else {
           toast.success('Vault entry updated');
         }
@@ -758,12 +765,12 @@ function VaultPageContent() {
     try {
       const { secret } = await api.revealVaultSecret(entry.id);
       if (!secret || !/^https?:\/\//i.test(secret.trim())) {
-        toast.error("This entry's secret doesn't look like an addon manifest URL (must start with http:// or https://)");
+        toast.error('That isn’t an addon address', { line: 'The secret has to be a link starting with http:// or https://.' });
         return;
       }
       await api.createAddon({ manifestUrl: secret.trim(), name: entry.name } as any);
       await api.deleteVaultEntry(entry.id);
-      toast.success(`Moved "${entry.name}" to Addons`);
+      toast.success(`Moved ${entry.name} to Addons`);
       load();
     } catch (err: any) {
       toast.error(err.message || 'Failed to move to Addons');

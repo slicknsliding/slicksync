@@ -269,7 +269,7 @@ export default function SuperAdminPage() {
       const res = await fetch(`${API_BASE}/superadmin/db-maintenance/vacuum`, { method: 'POST', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || 'VACUUM failed');
-      toast.success('VACUUM completed - disk space reclaimed');
+      toast.success('Database compacted', { line: 'Disk space reclaimed.' });
       await loadMaintenance();
     } catch (e: any) {
       toast.error(e?.message || 'VACUUM failed');
@@ -425,8 +425,14 @@ export default function SuperAdminPage() {
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setAccounts((prev) => prev.filter((a) => !selectedIds.has(a.id) || data.failed?.includes(a.id)));
-      if (data.deleted > 0) toast.success(`${data.deleted} account${data.deleted !== 1 ? 's' : ''} deleted`);
-      if (data.failed?.length > 0) toast.error(`${data.failed.length} account${data.failed.length !== 1 ? 's' : ''} failed to delete`);
+      const failedCount = data.failed?.length || 0;
+      if (failedCount > 0 && data.deleted > 0) {
+        toast.warning(`Deleted ${data.deleted} of ${data.deleted + failedCount} accounts`, { line: `${failedCount} couldn’t be deleted.` });
+      } else if (failedCount > 0) {
+        toast.error(`${failedCount} account${failedCount !== 1 ? 's' : ''} couldn’t be deleted`);
+      } else if (data.deleted > 0) {
+        toast.success(`${data.deleted} account${data.deleted !== 1 ? 's' : ''} deleted`);
+      }
       setSelectedIds(new Set());
       setConfirmBulkDelete(false);
     } catch {

@@ -368,12 +368,12 @@ export default function ListDetailPage() {
     try {
       await api.setSmartRule(list.id, clear ? null : (smartDraft as SmartCatalogRule));
       if (clear) {
-        toast.success('Rule cleared - this is an ordinary catalog again, and keeps the titles it has');
+        toast.success('Rule cleared', { line: 'It’s an ordinary catalog again and keeps its titles.' });
       } else {
         // Evaluate straight away: a rule you cannot see the result of is
         // just a promise. Failure here leaves the catalog untouched.
         const r = await api.refreshSmartCatalog(list.id);
-        toast.success(`Rule saved - ${r.count} title${r.count === 1 ? '' : 's'} match right now`);
+        toast.success('Rule saved', { line: `${r.count} title${r.count === 1 ? '' : 's'} match right now.` });
       }
       setSmartOpen(false);
       await load();
@@ -448,7 +448,7 @@ export default function ListDetailPage() {
       const result = await api.exportListToSimkl(list.id, exportSimklUserId);
       setShowExportSimkl(false);
       setExportSimklResult(result);
-      toast.success(`Added ${result.added} title${result.added !== 1 ? 's' : ''} to ${result.username}'s SIMKL Plan to Watch`);
+      toast.success(`Added ${result.added} title${result.added !== 1 ? 's' : ''} to SIMKL`, { line: `They’re in ${result.username}’s Plan to Watch.` });
     } catch (e: any) {
       toast.error(e?.message || 'Failed to export to SIMKL');
     } finally {
@@ -496,7 +496,8 @@ export default function ListDetailPage() {
       const updated = await api.updateList(list.id, { autoRefresh: next });
       setList(updated);
       const freq = updated.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
-      toast.success(next ? `This catalog will now refresh from its source ${freq}` : 'Auto-refresh turned off');
+      if (next) toast.success('Auto-refresh on', { line: `This catalog refreshes from its source ${freq}.` });
+      else toast.success('Auto-refresh turned off');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update auto-refresh');
     } finally {
@@ -584,7 +585,7 @@ export default function ListDetailPage() {
     try {
       const created = await api.publishCatalog(list.id);
       setShareLink(toShareUrl(created.path));
-      toast.success('New link issued - the previous one stopped working');
+      toast.success('New link issued', { line: 'The previous one stopped working.' });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to issue a new link');
     } finally {
@@ -601,7 +602,7 @@ export default function ListDetailPage() {
       setShareLink(null);
       setConfirmRevoke(false);
       setShowShareLink(false);
-      toast.success('Unpublished - no new pulls. Anyone already subscribed keeps what they have.');
+      toast.success('Unpublished', { line: 'No new pulls. Anyone already subscribed keeps what they have.' });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to unpublish');
     } finally {
@@ -617,7 +618,7 @@ export default function ListDetailPage() {
     } catch {
       // Clipboard is blocked on insecure origins and in some embedded
       // browsers - the field is selectable, so say so rather than failing mute.
-      toast.error('Could not copy automatically - select the link and copy it');
+      toast.error('Couldn’t copy the link', { line: 'Select it and copy it by hand.' });
     }
   };
 
@@ -685,13 +686,13 @@ export default function ListDetailPage() {
       setList(updated);
       setShowPolicyModal(false);
       setPreviewResult(null);
-      toast.success(
-        draftRatings.length === 0
-          ? 'Content rating policy cleared'
-          : removedCount > 0
-            ? `Removed ${removedCount} title${removedCount !== 1 ? 's' : ''} - use "Restore last removal" to undo`
-            : 'Policy saved - nothing to remove'
-      );
+      if (draftRatings.length === 0) toast.success('Content rating policy cleared');
+      else if (removedCount > 0) {
+        toast.success(`Removed ${removedCount} title${removedCount !== 1 ? 's' : ''}`, {
+          line: 'They didn’t fit the content rating policy.',
+          actions: [{ label: 'Undo', onClick: () => { void handleRestoreRemoval(); } }],
+        });
+      } else toast.success('Policy saved', { line: 'Nothing needed removing.' });
     } catch (e: any) {
       toast.error(e?.message || 'Failed to apply content rating');
     } finally {

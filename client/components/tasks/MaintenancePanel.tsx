@@ -69,7 +69,8 @@ export function MaintenancePanel() {
     setAutoUpdateHour(hour);
     try {
       await api.updateSyncSettings({ autoUpdateEnabled: enabled, autoUpdateHour: hour });
-      toast.success(enabled ? `Automatic updates on - daily at ${String(hour).padStart(2, '0')}:00` : 'Automatic updates off');
+      if (enabled) toast.success('Automatic updates on', { line: `Daily at ${String(hour).padStart(2, '0')}:00.` });
+      else toast.success('Automatic updates off');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to save');
     }
@@ -116,9 +117,10 @@ export function MaintenancePanel() {
     try {
       const r = await api.runDataBackup();
       const mb = (r.sizeBytes / 1048576).toFixed(1);
-      const verified = r.verified === true ? ', verified readable' : r.verified === false ? ' - WARNING: failed verification' : '';
-      toast.success(`Snapshot written (${mb}MB${r.encrypted ? ', encrypted' : ''}${verified})`);
-      if (r.upload?.skipped) toast.error(`Off-site copy skipped: ${r.upload.skipped}`);
+      const details = [`${mb}MB`, r.encrypted ? 'encrypted' : '', r.verified === true ? 'verified readable' : ''].filter(Boolean).join(', ');
+      if (r.verified === false) toast.warning('Snapshot written, but it failed verification', { line: `${details}.` });
+      else toast.success('Snapshot written', { line: `${details}.` });
+      if (r.upload?.skipped) toast.warning('Off-site copy skipped', { line: r.upload.skipped });
       setDataBackup(await api.getDataBackup());
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Snapshot failed');
@@ -142,14 +144,16 @@ export function MaintenancePanel() {
       const result = await api.runDbMaintenance(action);
       if (action === 'integrity') {
         const ok = (result as { ok?: boolean }).ok;
-        if (ok) toast.success('Database integrity verified - no problems found');
-        else toast.error('Integrity check found problems - restore from a backup');
+        if (ok) toast.success('Database checked', { line: 'No problems found.' });
+        else toast.error('Integrity check found problems', { line: 'Restore from a backup.' });
       } else if (action === 'prune') {
         const r = result as { healthHistoryDeleted?: number; automationRunsDeleted?: number };
-        toast.success(`Pruned ${(r.healthHistoryDeleted || 0) + (r.automationRunsDeleted || 0)} old log rows`);
+        const pruned = (r.healthHistoryDeleted || 0) + (r.automationRunsDeleted || 0);
+        toast.success('Old logs pruned', { line: `${pruned} row${pruned === 1 ? '' : 's'} removed.` });
       } else if (action === 'pruneNotifications') {
         const r = result as { notificationsDeleted?: number; days?: number };
-        toast.success(`Cleared ${r.notificationsDeleted || 0} read notifications older than ${r.days} days`);
+        const cleared = r.notificationsDeleted || 0;
+        toast.success('Old notifications cleared', { line: `${cleared} read notification${cleared === 1 ? '' : 's'} older than ${r.days} days.` });
       } else {
         toast.success('Database compacted');
       }
@@ -499,7 +503,7 @@ export function MaintenancePanel() {
                     setBusy('test');
                     try {
                       const r = await api.testBackupTarget();
-                      if (r.ok) toast.success('Target reachable - test file uploaded');
+                      if (r.ok) toast.success('Target reachable', { line: 'A test file was uploaded.' });
                       else toast.error(r.error || 'Target test failed');
                     } finally { setBusy(null); }
                   }}

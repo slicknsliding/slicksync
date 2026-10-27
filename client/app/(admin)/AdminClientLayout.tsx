@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrangeProvider } from "@/lib/arrange";
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { trackGuideNavigation } from "@/lib/guideReturn";
@@ -198,6 +199,7 @@ export default function AdminClientLayout({
         {!isTV && <CommandPalette />}
         <LiveEventsBridge />
         {!isTV && onboardingScopeReady && <OnboardingWizard />}
+        <ArrangeProvider>
         <VaultDragProvider>
           <LayoutDndWrapper>
             <div className="relative min-h-screen">
@@ -229,6 +231,7 @@ export default function AdminClientLayout({
             </div>
           </LayoutDndWrapper>
         </VaultDragProvider>
+        </ArrangeProvider>
       </MobileMenuContext.Provider>
     </AdminAuthGate>
   );

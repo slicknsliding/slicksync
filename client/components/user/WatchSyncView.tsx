@@ -539,7 +539,9 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
         job = (await api.getWatchCopyStatus(userId)).job || job;
       }
       if (job.state === 'failed') throw new Error(job.error || 'The copy failed');
-      toast.success(`Copied ${job.done.toLocaleString()} title${job.done === 1 ? '' : 's'} to ${choiceLabel(toChoice)}${job.failed ? ` — ${job.failed} couldn’t be copied` : ''}`);
+      const copiedTitle = `Copied ${job.done.toLocaleString()} title${job.done === 1 ? '' : 's'}`;
+      if (job.failed) toast.warning(copiedTitle, { line: `To ${choiceLabel(toChoice)}. ${job.failed.toLocaleString()} couldn’t be copied.` });
+      else toast.success(copiedTitle, { line: `To ${choiceLabel(toChoice)}.` });
       setLastRun((await api.getWatchCopyStatus(userId)).lastRun);
       await load();
     } catch (e) {
@@ -554,7 +556,8 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
     setUndoing(true);
     try {
       const r = await api.undoWatchCopy(userId, lastRun.id);
-      toast.success(r.kept ? `Undone — ${r.kept} title${r.kept === 1 ? '' : 's'} they watched since stayed as they are` : 'Undone');
+      if (r.kept) toast.success('Undone', { line: `${r.kept} title${r.kept === 1 ? '' : 's'} they watched since stayed as they are.` });
+      else toast.success('Undone');
       setConfirmUndo(false);
       setLastRun((await api.getWatchCopyStatus(userId)).lastRun);
       await load();

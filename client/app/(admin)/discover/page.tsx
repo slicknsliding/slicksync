@@ -528,7 +528,7 @@ export default function DiscoverPage() {
       if (!personFollow) {
         const row = await api.followSubject('person', followId, name, person.person.profile);
         setPersonFollow({ id: row.id, muted: row.muted });
-        toast.success(`Following ${name} - you'll hear when they have something new out`);
+        toast.success(`Following ${name}`, { line: 'You’ll hear when they have something new out.' });
       } else {
         // Mute rather than unfollow, as everywhere: the row survives, so
         // turning it back on doesn't replay news already announced.

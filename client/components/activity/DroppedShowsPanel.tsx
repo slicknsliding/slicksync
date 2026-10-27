@@ -101,7 +101,7 @@ export function DroppedShowsPanel() {
       await api.unburyShow(item.userId, item.showId);
       setBuried((prev) => (prev || []).filter((i) => keyOf(i) !== key));
       setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
-      toast.success(`${item.showName} dug back up - it returns to Continue Watching or the unfinished list`);
+      toast.success(`Dug up ${item.showName}`, { line: 'It’s back in Continue Watching.' });
       // The unfinished list may now contain it again - refresh just that half.
       api.getAbandonedShows().then(setItems).catch(() => {});
     } catch (e) {
@@ -156,9 +156,9 @@ export function DroppedShowsPanel() {
       setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
       const erased = r.episodesDeleted > 0
         ? `${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased`
-        : 'its watch history erased';
-      const device = r.deviceRemoved ? ', removed from the account library' : '';
-      toast.success(`${item.showName} wiped - ${erased}${device} (undoable for 30 days in the Trash)`);
+        : 'Its watch history was erased';
+      const device = r.deviceRemoved ? ' It’s gone from the account library too.' : '';
+      toast.success(`Wiped ${item.showName}`, { line: `${erased}. It’s in the Trash for 30 days.${device}` });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not wipe that show');
     } finally {
@@ -180,7 +180,7 @@ export function DroppedShowsPanel() {
     setSelUnfinished(new Set());
     await load();
     if (ok === targets.length) toast.success(`Buried ${ok} show${ok === 1 ? '' : 's'}`);
-    else toast.error(`Buried ${ok} of ${targets.length} - the rest failed, try them again`);
+    else toast.warning(`Buried ${ok} of ${targets.length} shows`, { line: `${targets.length - ok} couldn’t be buried.` });
   };
 
   const unburyBulk = async () => {
@@ -194,8 +194,8 @@ export function DroppedShowsPanel() {
     setBulkBusy(false);
     setSelBuried(new Set());
     await load();
-    if (ok === targets.length) toast.success(`Dug up ${ok} show${ok === 1 ? '' : 's'}`);
-    else toast.error(`Dug up ${ok} of ${targets.length} - the rest failed, try them again`);
+    if (ok === targets.length) toast.success(`Dug up ${ok} show${ok === 1 ? '' : 's'}`, { line: 'They’re back in Continue Watching.' });
+    else toast.warning(`Dug up ${ok} of ${targets.length} shows`, { line: `${targets.length - ok} couldn’t be dug up.` });
   };
 
   // Bulk wipe gets the same two-step arming as a single wipe, with the
@@ -223,8 +223,8 @@ export function DroppedShowsPanel() {
     setBulkBusy(false);
     setSelBuried(new Set());
     await load();
-    if (ok === targets.length) toast.success(`Wiped ${ok} show${ok === 1 ? '' : 's'} - ${episodes} episode${episodes === 1 ? '' : 's'} of history erased (each undoable for 30 days in the Trash)`);
-    else toast.error(`Wiped ${ok} of ${targets.length} - the rest failed, try them again`);
+    if (ok === targets.length) toast.success(`Wiped ${ok} show${ok === 1 ? '' : 's'}`, { line: `${episodes} episode${episodes === 1 ? '' : 's'} of history erased. They’re in the Trash for 30 days.` });
+    else toast.warning(`Wiped ${ok} of ${targets.length} shows`, { line: `${targets.length - ok} couldn’t be wiped.` });
   };
 
   if (error) {

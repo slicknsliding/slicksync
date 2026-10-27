@@ -3204,6 +3204,17 @@ class ApiClient {
     });
   }
 
+  /** How this account has arranged SlickSync (see lib/arrange.tsx). */
+  async getArrangement() {
+    return this.fetch<{ arrange: import('./arrange-core').Arrangement | null }>('/settings/arrange', { quiet401: true });
+  }
+  async saveArrangement(arrange: import('./arrange-core').Arrangement | null) {
+    return this.fetch<{ arrange: import('./arrange-core').Arrangement | null }>('/settings/arrange', {
+      method: 'PUT',
+      body: JSON.stringify({ arrange }),
+    });
+  }
+
   // Personal watchlist — SlickSync's own bookmark list.
   /** Saves a manual watchlist ranking - array order is the order, first is "up next". */
   async setWatchlistOrder(itemIds: string[]) {

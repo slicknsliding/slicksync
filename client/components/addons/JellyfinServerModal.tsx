@@ -207,7 +207,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
       setError(null);
       try {
         await api.updateHouseholdServer(server.id, { name: name.trim(), groupIds: [...selected] });
-        toast.success('Saved - sync a group to give its people their accounts');
+        toast.success('Saved', { line: 'Sync a group to give its people their accounts.' });
         onSaved();
         onClose();
       } catch (e) {

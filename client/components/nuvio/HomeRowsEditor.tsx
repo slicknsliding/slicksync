@@ -164,7 +164,7 @@ export function HomeRowsEditor({ userId, profileId, profileName, onDone }: Props
     setSaving(true);
     try {
       const r = await api.saveNuvioHomeLayout(userId, profileId, rows);
-      toast.success(`Home layout saved - ${r.rows} row${r.rows === 1 ? '' : 's'} pushed to ${profileName}`);
+      toast.success('Home layout saved', { line: `${r.rows} row${r.rows === 1 ? '' : 's'} sent to ${profileName}.` });
       setDirty(false);
       onDone();
     } catch (e) {

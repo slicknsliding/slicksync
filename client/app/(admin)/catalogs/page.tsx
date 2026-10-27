@@ -133,7 +133,7 @@ export default function ListsPage() {
         setImportUrl('');
         setImportName('');
         setShowImport(false);
-        toast.success(`Imported "${created.name}" (${result.added} title${result.added !== 1 ? 's' : ''})`);
+        toast.success(`Imported ${created.name}`, { line: `${result.added} title${result.added !== 1 ? 's' : ''} added.` });
         router.push(`/catalogs/${created.id}`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Failed to import that code');
@@ -148,11 +148,11 @@ export default function ListsPage() {
       setImportUrl('');
       setImportName('');
       setShowImport(false);
-      toast.success(
-        list.truncated
-          ? `Imported ${list.items.length} of ${list.totalAvailable} titles (capped at ${list.items.length})`
-          : `Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`
-      );
+      if (list.truncated) {
+        toast.warning(`Imported ${list.name}`, { line: `Only the first ${list.items.length} of ${list.totalAvailable} titles fit.` });
+      } else {
+        toast.success(`Imported ${list.name}`, { line: `${list.items.length} title${list.items.length !== 1 ? 's' : ''} added.` });
+      }
       router.push(`/catalogs/${list.id}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to import catalog');
@@ -169,7 +169,7 @@ export default function ListsPage() {
       setImportName('');
       setSelectedSimklUserId('');
       setShowImport(false);
-      toast.success(`Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`);
+      toast.success(`Imported ${list.name}`, { line: `${list.items.length} title${list.items.length !== 1 ? 's' : ''} added.` });
       router.push(`/catalogs/${list.id}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to import from SIMKL');

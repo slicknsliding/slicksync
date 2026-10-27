@@ -1087,11 +1087,11 @@ function DeviceClaimsPanel() {
     try {
       if (userId === '') {
         await api.deleteDeviceClaim(clientIp);
-        toast.success('Claim removed - attribution goes back to guessing');
+        toast.success('Claim removed', { line: 'Attribution goes back to guessing.' });
       } else {
         await api.saveDeviceClaim(clientIp, userId);
         const name = data.users.find((u) => u.id === userId)?.username || 'that user';
-        toast.success(`Device claimed - streams from it now count as ${name}`);
+        toast.success('Device claimed', { line: `Streams from it now count as ${name}.` });
       }
       load();
     } catch (e) {
@@ -1638,7 +1638,8 @@ function ActivityPageContent() {
   const handleFilterByEpisode = useCallback((act: ActivityItem) => {
     setEpisodeFilter({ name: act.contentName, season: act.season, episode: act.episode });
   }, []);
-  const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'>('watch');
+  // ?view=graveyard opens the Graveyard (the Dashboard's removal pop-up links here).
+  const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'>(() => (searchParams.get('view') === 'graveyard' ? 'dropped' : 'watch'));
   const { viewMode: watchActivityViewMode, setViewMode: setWatchActivityViewMode } = useDefaultViewMode();
   const [visibleCount, setVisibleCount] = useState(50); // lazy-load activity in chunks
   const [isLoadingMore, setIsLoadingMore] = useState(false);

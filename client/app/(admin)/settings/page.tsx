@@ -11,6 +11,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
+import { joinNames } from '@/lib/sharedConfig';
 import { ShortcutRecipes } from '@/components/settings/ShortcutRecipes';
 import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettings';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
@@ -507,7 +508,12 @@ export default function SettingsPage() {
       const { keyHealth } = await api.checkProviderKeys();
       setSyncSettings((prev) => ({ ...prev, keyHealth }));
       const checkedProviders = Object.keys(keyHealth || {});
-      const failing = checkedProviders.filter((k) => keyHealth?.[k] && !keyHealth[k].ok).length;
+      const failingKeys = checkedProviders.filter((k) => keyHealth?.[k] && !keyHealth[k].ok);
+      const failing = failingKeys.length;
+      const keyNames: Record<string, string> = { tmdb: 'TMDb', mdblist: 'MDBList', rpdb: 'RPDB', omdb: 'OMDb' };
+      const keyOrder = ['tmdb', 'mdblist', 'rpdb', 'omdb'];
+      const failingNames = failingKeys.map((k) => keyNames[k] || k);
+      const firstFailing = keyOrder.find((k) => failingKeys.includes(k)) || failingKeys[0];
       // 0 failing out of 0 configured is vacuously "all passing" but reads
       // as false reassurance - confirmed live (a removed key's stale result
       // is correctly cleared now, and "0 failing" alone doesn't distinguish
@@ -518,7 +524,15 @@ export default function SettingsPage() {
       // flag. A warning here would be the same false-alarm mistake the
       // vacuous "all keys working" copy just got caught making.
       if (checkedProviders.length === 0) showToast.info('No API keys configured to check');
-      else if (failing > 0) toast.error(`${failing} of ${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} not working - see below`);
+      else if (failing > 0) {
+        toast.warning(`${failing} of ${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} ${failing === 1 ? 'isn’t' : 'aren’t'} working`, {
+          line: `${joinNames(failingNames)} didn’t accept ${failing === 1 ? 'its key' : 'their keys'}.`,
+          actions: [{
+            label: 'Show me',
+            onClick: () => document.getElementById(`provider-key-${firstFailing}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          }],
+        });
+      }
       else toast.success(`${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} working`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to check keys');
@@ -635,7 +649,7 @@ export default function SettingsPage() {
       setAiCheckStatus(result.lastCheckStatus);
       setAiCheckMessage(result.lastCheckMessage);
       if (result.lastCheckStatus === 'ok') toast.success('AI Services verified and saved');
-      else toast.error(`Saved, but verification failed: ${result.lastCheckMessage}`);
+      else toast.warning('AI Services saved, not verified', { line: result.lastCheckMessage || undefined });
       fetchLiveAiModels({ hasKey: true }); // refresh the model dropdown against whatever key/URL just got saved
     } catch (e: any) {
       toast.error(e.message || 'Failed to save AI Services');
@@ -1084,11 +1098,13 @@ export default function SettingsPage() {
     try {
       const result = await api.generateMosaicNow();
       if (result.posted) {
-        toast.success(syncSettings.webhookUrl?.trim()
-          ? `Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`
-          : `Sent ${result.month} recap — ${result.count} title${result.count === 1 ? '' : 's'} watched`);
+        toast.success(syncSettings.webhookUrl?.trim() ? `Posted the ${result.month} recap` : `Sent the ${result.month} recap`, {
+          line: syncSettings.webhookUrl?.trim()
+            ? `${result.count} title${result.count === 1 ? '' : 's'} watched, shared to Discord.`
+            : `${result.count} title${result.count === 1 ? '' : 's'} watched.`,
+        });
       } else if (result.reason === 'nothing watched') {
-        toast.error('Nothing watched last month - nothing to post');
+        toast.error('Nothing to post', { line: 'Nothing was watched last month.' });
       } else {
         toast.error(result.reason || 'Failed to generate mosaic');
       }
@@ -1179,7 +1195,7 @@ export default function SettingsPage() {
       setTwoFaRegenPrompt(false);
       setTwoFaRegenCode('');
       setTwoFaBackupCodes(result.backupCodes);
-      toast.success('New backup codes generated - your old codes no longer work');
+      toast.success('New backup codes ready', { line: 'Your old codes no longer work.' });
     } catch (e: any) {
       toast.error(e?.message || 'Incorrect code');
     } finally {
@@ -2118,7 +2134,7 @@ export default function SettingsPage() {
                   Free from themoviedb.org (Settings -> API). Saved on blur,
                   same pattern as the webhook URL above. */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-tmdb" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.tmdbApiKey ? (
                     syncSettings.keyHealth?.tmdb ? (
@@ -2163,7 +2179,7 @@ export default function SettingsPage() {
                   from mdblist.com -> Preferences -> API Access. Same
                   optional-text-field pattern as the TMDb key above. */}
               <div className="pt-1">
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-mdblist" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">MDBList API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.mdblistApiKey ? (
                     syncSettings.keyHealth?.mdblist ? (
@@ -2209,7 +2225,7 @@ export default function SettingsPage() {
                   tier (Tier 0) already includes ratings, just not the
                   customizable badge styles - plenty for this purpose. */}
               <div className="pt-1">
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-rpdb" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.rpdbApiKey ? (
                     syncSettings.keyHealth?.rpdb ? (
@@ -2255,7 +2271,7 @@ export default function SettingsPage() {
                   it so this account's OMDb quota isn't shared with everyone
                   else on the instance. */}
               <div className="pt-1">
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-omdb" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.omdbApiKey ? (
                     syncSettings.keyHealth?.omdb ? (
@@ -2310,7 +2326,7 @@ export default function SettingsPage() {
                         setSyncSettings((prev) => ({ ...prev, keyPoolQuotaWeighting: v }));
                         try {
                           await api.updateSyncSettings({ keyPoolQuotaWeighting: v });
-                          toast.success(v ? 'Pool requests now favor the key with the most quota left' : 'Pool back to taking strict turns');
+                          toast.success(v ? 'Pool favors the fullest key' : 'Pool takes strict turns', { line: v ? 'Requests go to the key with the most quota left.' : 'Each key gets its turn in order.' });
                         } catch {
                           toast.error('Could not save that setting');
                           setSyncSettings((prev) => ({ ...prev, keyPoolQuotaWeighting: !v }));
@@ -2329,7 +2345,7 @@ export default function SettingsPage() {
                         setSyncSettings((prev) => ({ ...prev, quotaAutopilot: v }));
                         try {
                           await api.updateSyncSettings({ quotaAutopilot: v });
-                          toast.success(v ? 'Background lookups will stand down near the daily cap' : 'Background lookups will always run');
+                          toast.success(v ? 'Background lookups ease off' : 'Background lookups always run', { line: v ? 'They stand down near the daily cap.' : undefined });
                         } catch {
                           toast.error('Could not save that setting');
                           setSyncSettings((prev) => ({ ...prev, quotaAutopilot: !v }));
@@ -2348,7 +2364,7 @@ export default function SettingsPage() {
                         setSyncSettings((prev) => ({ ...prev, keyPoolAutoRetire: v }));
                         try {
                           await api.updateSyncSettings({ keyPoolAutoRetire: v });
-                          toast.success(v ? 'Dead pool keys will retire themselves after 3 days' : 'Pool keys will only be removed by hand');
+                          toast.success(v ? 'Dead pool keys retire themselves' : 'Pool keys stay until removed', { line: v ? 'A key that stays dead for 3 days is dropped.' : 'Only you can remove them now.' });
                         } catch {
                           toast.error('Could not save that setting');
                           setSyncSettings((prev) => ({ ...prev, keyPoolAutoRetire: !v }));
@@ -2481,11 +2497,11 @@ export default function SettingsPage() {
                           toast.success('Backend detected and saved');
                         } else {
                           // Not fatal - the manual key field below always works.
-                          toast.error(r.error || 'Could not read that backend - enter the anon key manually');
+                          toast.error(r.error || 'Couldn’t read that backend', { line: 'Enter the anon key by hand.' });
                         }
                       } catch (e) {
                         // The server says why when it has a reason (an address it may not reach).
-                        toast.error((e instanceof Error && e.message) || 'Could not reach that backend - enter the anon key manually');
+                        toast.error((e instanceof Error && e.message) || 'Couldn’t reach that backend', { line: 'Enter the anon key by hand.' });
                       } finally {
                         setNuvioDiscovering(false);
                       }

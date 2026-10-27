@@ -45,7 +45,7 @@ export function TraxRowsEditor({ userId }: { userId: string }) {
       const v = await api.saveTraxRows(userId, rows.map((r) => r.key), rows.filter((r) => r.hidden).map((r) => r.key));
       setRows(v.rows);
       setSaved(JSON.stringify(v.rows));
-      toast.success('Rows saved - their apps update with the sync that just started');
+      toast.success('Rows saved', { line: 'Their apps update with the sync that just started.' });
     } catch (e: any) {
       toast.error(e?.message || 'Could not save the rows');
     } finally {

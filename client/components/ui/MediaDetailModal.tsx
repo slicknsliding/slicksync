@@ -185,7 +185,7 @@ export function MediaDetailModal({
       if (!existing) {
         const row = await api.followSubject('person', tmdbId, name);
         setPersonFollows((prev) => ({ ...prev, [tmdbId]: { id: row.id, muted: row.muted } }));
-        toast.success(`Following ${name} - you'll hear when they have something new out`);
+        toast.success(`Following ${name}`, { line: 'You’ll hear when they have something new out.' });
       } else if (existing.muted) {
         await api.muteFollow(existing.id, false);
         setPersonFollows((prev) => ({ ...prev, [tmdbId]: { ...existing, muted: false } }));
@@ -195,7 +195,7 @@ export function MediaDetailModal({
         // turning it back on doesn't replay news already announced.
         await api.muteFollow(existing.id, true);
         setPersonFollows((prev) => ({ ...prev, [tmdbId]: { ...existing, muted: true } }));
-        toast.success(`Muted ${name} - still followed, just quiet`);
+        toast.success(`Muted ${name}`, { line: 'Still followed, just quiet.' });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not update following');
@@ -363,7 +363,7 @@ export function MediaDetailModal({
       if (!followRow) {
         const row = await api.followSubject('show', effectiveId, details?.title || effectiveFallbackTitle || effectiveId, details?.poster || effectiveFallbackPoster || null);
         setFollowRow({ id: row.id, muted: row.muted });
-        toast.success('Following - you\'ll hear when it\'s renewed, canceled or dated');
+        toast.success('Following', { line: 'You’ll hear when it’s renewed, canceled or dated.' });
       } else if (followRow.muted) {
         await api.muteFollow(followRow.id, false);
         setFollowRow({ ...followRow, muted: false });
@@ -373,7 +373,7 @@ export function MediaDetailModal({
         // doesn't replay news already announced.
         await api.muteFollow(followRow.id, true);
         setFollowRow({ ...followRow, muted: true });
-        toast.success('Muted - still followed, just quiet');
+        toast.success('Muted', { line: 'Still followed, just quiet.' });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not update following');
@@ -575,7 +575,7 @@ export function MediaDetailModal({
     try {
       await api.saveWatchTogether(effectiveId, details?.title || effectiveFallbackTitle || effectiveId, Array.from(wtSelected));
       setWtHasPact(true);
-      toast.success('Spoiler guard on - anyone getting ahead now sets off the alarm');
+      toast.success('Spoiler guard on', { line: 'Anyone getting ahead now sets off the alarm.' });
       // Frontier may exist immediately (members may have history) - refresh.
       const pacts = await api.getWatchTogether().catch(() => []);
       const pact = pacts.find((pt) => pt.showId === effectiveId);
@@ -590,7 +590,7 @@ export function MediaDetailModal({
     try {
       await api.deleteWatchTogether(effectiveId);
       setWtHasPact(false); setWtSelected(new Set()); setWtFrontier(null); setWtWaitingOn([]);
-      toast.success('Spoiler guard off - everyone is free to run ahead');
+      toast.success('Spoiler guard off', { line: 'Everyone is free to run ahead.' });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not remove');
     } finally { setWtBusy(false); }

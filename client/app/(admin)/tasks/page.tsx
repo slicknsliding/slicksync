@@ -11,6 +11,7 @@ import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialo
 import { MaintenancePanel } from '@/components/tasks/MaintenancePanel';
 import { encodeAddonTemplateShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { copyToClipboard } from '@/lib/clipboard';
+import { joinNames } from '@/lib/sharedConfig';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -51,6 +52,18 @@ import {
   EyeSlashIcon,
 } from '@heroicons/react/24/outline';
 import { providerTypeLabel, providerBadgeVariant, displayEmail } from '@/lib/providers';
+
+// "7 people · 3 groups · 6 addons · 4 Vault entries" for the pop-ups after a
+// restore. The Vault part only shows when there is something in it.
+function backupCountsLine(c: { users: number; groups: number; addons: number; vault?: number }) {
+  const parts = [
+    `${c.users} ${c.users === 1 ? 'person' : 'people'}`,
+    `${c.groups} group${c.groups === 1 ? '' : 's'}`,
+    `${c.addons} addon${c.addons === 1 ? '' : 's'}`,
+  ];
+  if (c.vault) parts.push(`${c.vault} Vault ${c.vault === 1 ? 'entry' : 'entries'}`);
+  return parts.join(' · ');
+}
 
 // Task action card component
 function TaskCard({
@@ -295,7 +308,9 @@ export default function TasksPage() {
       a.download = `slicksync-recovery-kit-${date}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`Kit downloaded: ${kit.counts.users} users, ${kit.counts.groups} groups, ${kit.counts.addons} addons, ${kit.counts.vaultEntries} Vault entries`);
+      toast.success('Recovery kit downloaded', {
+        line: backupCountsLine({ users: kit.counts.users, groups: kit.counts.groups, addons: kit.counts.addons, vault: kit.counts.vaultEntries }),
+      });
       setDrkExportPassphrase('');
     } catch (e: any) {
       toast.error(e.message || 'Failed to build recovery kit');
@@ -319,7 +334,10 @@ export default function TasksPage() {
           const text = await file.text();
           const kit: DisasterRecoveryKit = JSON.parse(text);
           const result = await api.importDisasterRecoveryKit(drkImportPassphrase.trim(), kit);
-          toast.success(`Restored: ${result.counts.users} users, ${result.counts.groups} groups, ${result.counts.addons} addons, ${result.restoredVaultCount} Vault entries`);
+          toast.success('Backup restored', {
+            line: backupCountsLine({ users: result.counts.users, groups: result.counts.groups, addons: result.counts.addons, vault: result.restoredVaultCount }),
+            actions: [{ label: 'Open Users', onClick: () => router.push('/users') }],
+          });
           setDrkImportPassphrase('');
         } catch (e: any) {
           toast.error(e.message || 'Failed to restore recovery kit');
@@ -443,9 +461,12 @@ export default function TasksPage() {
     try {
       const result = await api.syncAllUsers();
       if (result.failed === 0) {
-        toast.success(`Synced ${result.success} user${result.success !== 1 ? 's' : ''} successfully`);
+        toast.success(`Synced ${result.success} ${result.success === 1 ? 'person' : 'people'}`);
       } else {
-        toast.success(`Synced ${result.success} user${result.success !== 1 ? 's' : ''}, ${result.failed} failed`);
+        toast.warning(`Synced ${result.success} of ${result.success + result.failed} people`, {
+          line: `${result.failed} couldn’t be synced.`,
+          actions: [{ label: 'Try again', onClick: () => { void handleSyncAllUsers(); } }],
+        });
       }
     } catch (e: any) {
       toast.error(e.message || 'Failed to sync users');
@@ -498,9 +519,14 @@ export default function TasksPage() {
     try {
       const result = await api.syncAllGroups();
       if (result.failedGroups === 0) {
-        toast.success(`Synced ${result.syncedGroups} group${result.syncedGroups !== 1 ? 's' : ''} (${result.totalUsersSynced} user${result.totalUsersSynced !== 1 ? 's' : ''})`);
+        toast.success(`Synced ${result.syncedGroups} group${result.syncedGroups !== 1 ? 's' : ''}`, {
+          line: `${result.totalUsersSynced} ${result.totalUsersSynced === 1 ? 'person' : 'people'} updated.`,
+        });
       } else {
-        toast.success(`Synced ${result.syncedGroups} group${result.syncedGroups !== 1 ? 's' : ''}, ${result.failedGroups} failed`);
+        toast.warning(`Synced ${result.syncedGroups} of ${result.syncedGroups + result.failedGroups} groups`, {
+          line: `${result.failedGroups} ${result.failedGroups === 1 ? 'group' : 'groups'} couldn’t be synced.`,
+          actions: [{ label: 'Try again', onClick: () => { void handleSyncAllGroups(); } }],
+        });
       }
     } catch (e: any) {
       toast.error(e.message || 'Failed to sync groups');
@@ -533,7 +559,13 @@ export default function TasksPage() {
     setImportingAddons(true);
     try {
       const result = await api.importAddons(file);
-      toast.success(`Import complete: ${result.successful} successful, ${result.failed} failed, ${result.redundant} redundant`);
+      const notes: string[] = [];
+      if (result.redundant) notes.push(result.redundant === 1 ? '1 was already here.' : `${result.redundant} were already here.`);
+      if (result.failed) notes.push(result.failed === 1 ? '1 couldn’t be read.' : `${result.failed} couldn’t be read.`);
+      const title = `Imported ${result.successful} addon${result.successful === 1 ? '' : 's'}`;
+      const opts = notes.length ? { line: notes.join(' ') } : undefined;
+      if (result.failed) toast.warning(title, opts);
+      else toast.success(title, opts);
     } catch (e: any) {
       toast.error(e.message || 'Failed to import addons');
     } finally {
@@ -574,7 +606,9 @@ export default function TasksPage() {
     setRepairingAddons(true);
     try {
       const result = await api.repairAddons();
-       toast.success(`Repaired ${result.updated} of ${result.inspected} addon${result.inspected !== 1 ? 's' : ''}`);
+       toast.success(`Repaired ${result.updated} addon${result.updated !== 1 ? 's' : ''}`, {
+         line: `Checked ${result.inspected}.`,
+       });
     } catch (e: any) {
       toast.error(e.message || 'Failed to repair addons');
     } finally {
@@ -610,7 +644,7 @@ export default function TasksPage() {
       if (result.users.created > 0) parts.push(`${result.users.created} user${result.users.created !== 1 ? 's' : ''}`);
       if (result.groups.created > 0) parts.push(`${result.groups.created} group${result.groups.created !== 1 ? 's' : ''}`);
       if (result.addons.created > 0) parts.push(`${result.addons.created} addon${result.addons.created !== 1 ? 's' : ''}`);
-      toast.success(`Configuration imported${parts.length ? ': ' + parts.join(', ') : ''}`);
+      toast.success('Configuration imported', parts.length ? { line: `Added ${parts.join(', ')}.` } : undefined);
     } catch (e: any) {
       // Encrypted off-site backup (.enc): ask for its passphrase and retry
       // once - the file itself is fine, it just needs the key.
@@ -703,7 +737,7 @@ export default function TasksPage() {
         (result.results?.watchSessions?.imported || 0) +
         (result.results?.episodeWatchHistory?.imported || 0) +
         (result.results?.watchActivity?.imported || 0);
-      toast.success(`Imported ${total} history records`);
+      toast.success('History imported', { line: `${total} record${total === 1 ? '' : 's'} added.` });
     } catch (e: any) {
       toast.error(e.message || 'Failed to import history');
     } finally {
@@ -725,7 +759,7 @@ export default function TasksPage() {
         setIsClearingLibrary(true);
         try {
           const result = await api.clearUserLibrary(selectedUserId);
-          toast.success(`Library cleared: ${result.deleted} items removed`);
+          toast.success('Library cleared', { line: `${result.deleted} item${result.deleted === 1 ? '' : 's'} removed.` });
         } catch (e: any) {
           toast.error(e.message || 'Failed to clear library');
         } finally {
@@ -754,7 +788,7 @@ export default function TasksPage() {
             (result.deleted?.episodeWatchHistory || 0) +
             (result.deleted?.watchActivity || 0) +
             (result.deleted?.watchSnapshots || 0);
-          toast.success(`History cleared: ${total} records deleted`);
+          toast.success('History cleared', { line: `${total} record${total === 1 ? '' : 's'} deleted.` });
         } catch (e: any) {
           toast.error(e.message || 'Failed to clear history');
         } finally {
@@ -812,7 +846,7 @@ export default function TasksPage() {
     try {
       const r = await api.offerMigration();
       setMigrationCode(r.code);
-      toast.success('Code ready - paste it on the new instance within 15 minutes');
+      toast.success('Migration code ready', { line: 'Paste it on the new instance within 15 minutes.' });
     } catch (err: any) {
       toast.error(err.message || 'Failed to create migration code');
     } finally {
@@ -829,7 +863,11 @@ export default function TasksPage() {
         setIsReceivingMigration(true);
         try {
           const r: any = await api.receiveMigration(receiveCode.trim());
-          toast.success(`Migration complete${r?.counts ? `: ${r.counts.users ?? '?'} users, ${r.counts.groups ?? '?'} groups, ${r.counts.addons ?? '?'} addons` : ''} - reloading`);
+          toast.success('Migration complete', {
+            line: r?.counts
+              ? `${backupCountsLine({ users: r.counts.users ?? 0, groups: r.counts.groups ?? 0, addons: r.counts.addons ?? 0 })}. Reloading…`
+              : 'Reloading…',
+          });
           setTimeout(() => window.location.reload(), 1500);
         } catch (err: any) {
           toast.error(err.message || 'Migration failed');
@@ -878,7 +916,7 @@ export default function TasksPage() {
     setUserRestoreBusy(true);
     try {
       const r = await api.restoreBackupUser(userRestore.backup.filename, userRestoreUserId, false);
-      toast.success(`${r.username} rewound to this backup - the previous state is in the Trash for 30 days`);
+      toast.success(`${r.username} rewound to this backup`, { line: 'Their previous state is in the Trash for 30 days.' });
       setUserRestore(null);
     } catch (e: any) {
       toast.error(e.message || 'Failed to restore user');
@@ -916,7 +954,14 @@ export default function TasksPage() {
         setRestoringBackup(backup.filename);
         try {
           const result = await api.restoreBackup(backup.filename);
-          toast.success(`Restored ${result.users.created + result.users.reused} users, ${result.groups.created + result.groups.reused} groups, ${result.addons.created + result.addons.reused} addons`);
+          toast.success('Backup restored', {
+            line: backupCountsLine({
+              users: result.users.created + result.users.reused,
+              groups: result.groups.created + result.groups.reused,
+              addons: result.addons.created + result.addons.reused,
+            }),
+            actions: [{ label: 'Open Users', onClick: () => router.push('/users') }],
+          });
           setTimeout(() => window.location.reload(), 1500);
         } catch (e: any) {
           toast.error(e.message || 'Failed to restore backup');
@@ -979,8 +1024,14 @@ export default function TasksPage() {
     try {
       const result = await api.deploySnapshot(deployingSnapshot.id, deployTargetUserId);
       // Say which ones did not make it, not just how many.
-      const leftOut = result.leftOut?.length ? `, left out: ${result.leftOut.join(', ')}` : (result.failed ? `, ${result.failed} failed` : '');
-      toast.success(`Deployed ${result.deployed} addon${result.deployed !== 1 ? 's' : ''}${leftOut}`);
+      const title = `Deployed ${result.deployed} addon${result.deployed !== 1 ? 's' : ''}`;
+      if (result.leftOut?.length) {
+        toast.warning(title, { line: `${joinNames(result.leftOut)} ${result.leftOut.length === 1 ? 'was' : 'were'} left out.` });
+      } else if (result.failed) {
+        toast.warning(title, { line: `${result.failed} couldn’t be added.` });
+      } else {
+        toast.success(title);
+      }
       setDeployingSnapshot(null);
       setDeployTargetUserId('');
     } catch (e: any) {
@@ -1015,7 +1066,14 @@ export default function TasksPage() {
     setIsSyncRunning(true);
     try {
       const result = await api.syncAllGroups();
-      toast.success(`Sync completed: ${result.syncedGroups} synced, ${result.failedGroups} failed`);
+      if (result.failedGroups === 0) {
+        toast.success(`Synced ${result.syncedGroups} group${result.syncedGroups !== 1 ? 's' : ''}`);
+      } else {
+        toast.warning(`Synced ${result.syncedGroups} of ${result.syncedGroups + result.failedGroups} groups`, {
+          line: `${result.failedGroups} ${result.failedGroups === 1 ? 'group' : 'groups'} couldn’t be synced.`,
+          actions: [{ label: 'Try again', onClick: () => { void handleSyncNow(); } }],
+        });
+      }
     } catch (e: any) {
       toast.error(e.message || 'Failed to start sync');
     } finally {
@@ -1043,7 +1101,7 @@ export default function TasksPage() {
     setIsHealthCheckLoading(true);
     try {
       await api.setAddonHealthCheckInterval(minutes);
-      toast.success('Health check interval updated. Restart server to apply changes.');
+      toast.success('Health check interval updated', { line: 'Restart the server for it to take effect.' });
     } catch (e: any) {
       toast.error(e.message || 'Failed to update health check interval');
     } finally {
@@ -1782,7 +1840,7 @@ export default function TasksPage() {
                 {migrationCode && (
                   <div className="flex items-center gap-2 mt-2">
                     <code className="flex-1 p-2 bg-surface-hover rounded-lg text-xs text-subtle break-all font-mono">{migrationCode}</code>
-                    <Button variant="ghost" size="sm" onClick={async () => { (await copyToClipboard(migrationCode)) ? toast.success('Code copied') : toast.error('Copy failed - select the code text'); }}>
+                    <Button variant="ghost" size="sm" onClick={async () => { (await copyToClipboard(migrationCode)) ? toast.success('Code copied') : toast.error('Couldn’t copy the code', { line: 'Select the text and copy it by hand.' }); }}>
                       <DocumentDuplicateIcon className="w-4 h-4" />
                     </Button>
                   </div>
@@ -2084,7 +2142,10 @@ export default function TasksPage() {
             const result = sanitizeTemplateAddons(addons);
             addons = result.addons;
             if (result.excluded.length > 0) {
-              toast(`${result.excluded.length} addon${result.excluded.length === 1 ? '' : 's'} left out of the code - their config couldn't be safely stripped: ${result.excluded.join(', ')}`, { icon: '⚠️', duration: 6000 });
+              toast.warning(`Code made, ${result.excluded.length} addon${result.excluded.length === 1 ? '' : 's'} left out`, {
+                line: `${joinNames(result.excluded)} ${result.excluded.length === 1 ? 'holds' : 'hold'} private settings, so ${result.excluded.length === 1 ? 'it stays' : 'they stay'} out.`,
+                duration: 6000,
+              });
             }
           }
           return encodeAddonTemplateShareCode({
@@ -2133,7 +2194,7 @@ export default function TasksPage() {
             description: decoded.payload.description,
             addons: decoded.payload.addons,
           });
-          toast.success(`Imported "${created.name}" (${created.addonCount} addon${created.addonCount !== 1 ? 's' : ''})`);
+          toast.success(`Imported “${created.name}”`, { line: `${created.addonCount} addon${created.addonCount !== 1 ? 's' : ''} in the template.` });
           fetchSnapshots();
         }}
       />
@@ -2195,7 +2256,7 @@ export default function TasksPage() {
                       description: pendingTemplateImport.description,
                       addons,
                     });
-                    toast.success(`Imported "${created.name}" (${created.addonCount} addon${created.addonCount !== 1 ? 's' : ''})`);
+                    toast.success(`Imported “${created.name}”`, { line: `${created.addonCount} addon${created.addonCount !== 1 ? 's' : ''} in the template.` });
                     fetchSnapshots();
                     setPendingTemplateImport(null);
                     setTemplateKeyValues({});

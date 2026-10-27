@@ -335,7 +335,7 @@ export function SyncBadge({
           if (statusRef.current === 'error' || statusRef.current === 'connect') {
             toast.error(lastMessageRef.current || 'Fix user credentials to resolve sync errors', { id: toastId });
           } else {
-            toast.success('Actually already synced - this just hadn\'t refreshed yet', { id: toastId });
+            toast.success('Already synced', { id: toastId, line: 'It just hadn’t refreshed yet.' });
           }
         }}
         className="cursor-pointer"

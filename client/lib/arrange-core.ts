@@ -1,0 +1,119 @@
+// How someone has arranged SlickSync, and the pure rules that apply it.
+// Everything here falls back to the default: an arrangement only records what
+// was changed, so a section added in a later version simply appears in its
+// default place, and Reset is "forget what was changed".
+
+export type PageArrangement = {
+  /** Keys in the order they were put in. Keys not listed keep their default place. */
+  order?: string[];
+  hidden?: string[];
+  folded?: string[];
+};
+
+export type MenuArrangement = {
+  order?: string[];
+  /** Hidden pages move into a More menu. */
+  hidden?: string[];
+  rows?: 1 | 2;
+  logo?: 'large' | 'small' | 'hidden';
+  align?: 'center' | 'left';
+};
+
+export type Density = 'comfortable' | 'compact';
+
+export type Arrangement = {
+  pages?: Record<string, PageArrangement>;
+  menu?: MenuArrangement;
+  density?: Density;
+  /** Where SlickSync opens: a page's address, e.g. '/activity'. */
+  startPage?: string;
+  /** Grid or list, per page. */
+  views?: Record<string, 'grid' | 'list'>;
+  /** A page's kept filter, per page. */
+  filters?: Record<string, string>;
+  /** Pinned items, per page: always first. */
+  pinned?: Record<string, string[]>;
+};
+
+/**
+ * Puts `keys` (the default order) into the arranged order. Keys the
+ * arrangement mentions take the slots those keys hold by default, in the
+ * arranged order; keys it doesn't mention stay exactly where they are. So a
+ * new section lands in its default spot rather than at the end.
+ */
+export function orderKeys(keys: string[], order: string[] | undefined): string[] {
+  if (!order || order.length === 0) return keys;
+  const known = new Set(keys);
+  const arranged = order.filter((k, i) => known.has(k) && order.indexOf(k) === i);
+  const moved = new Set(arranged);
+  const out = keys.slice();
+  let next = 0;
+  for (let i = 0; i < out.length; i++) {
+    if (moved.has(out[i])) out[i] = arranged[next++];
+  }
+  return out;
+}
+
+/** The arranged order split into what shows and what is hidden. */
+export function arrangeKeys(keys: string[], page: PageArrangement | undefined) {
+  const ordered = orderKeys(keys, page?.order);
+  const hidden = new Set(page?.hidden || []);
+  return {
+    shown: ordered.filter((k) => !hidden.has(k)),
+    hidden: ordered.filter((k) => hidden.has(k)),
+  };
+}
+
+/** Pinned keys first (in pin order), then the rest as they were. */
+export function pinFirst<T>(items: T[], keyOf: (item: T) => string, pinned: string[] | undefined): T[] {
+  if (!pinned || pinned.length === 0) return items;
+  const rank = new Map(pinned.map((k, i) => [k, i]));
+  const pins = items.filter((it) => rank.has(keyOf(it))).sort((a, b) => rank.get(keyOf(a))! - rank.get(keyOf(b))!);
+  return [...pins, ...items.filter((it) => !rank.has(keyOf(it)))];
+}
+
+/** Moves `key` one step up or down among the shown keys; returns the new full order. */
+export function stepKey(keys: string[], page: PageArrangement | undefined, key: string, dir: -1 | 1): string[] {
+  const ordered = orderKeys(keys, page?.order);
+  const hidden = new Set(page?.hidden || []);
+  const shown = ordered.filter((k) => !hidden.has(k));
+  const i = shown.indexOf(key);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= shown.length) return ordered;
+  return moveKey(ordered, key, shown[j]);
+}
+
+/** Moves `key` to where `over` is (drag and drop); returns the new full order. */
+export function moveKey(ordered: string[], key: string, over: string): string[] {
+  const from = ordered.indexOf(key);
+  const to = ordered.indexOf(over);
+  if (from < 0 || to < 0 || from === to) return ordered;
+  const out = ordered.slice();
+  out.splice(from, 1);
+  out.splice(to, 0, key);
+  return out;
+}
+
+function toggle(list: string[] | undefined, key: string, on: boolean) {
+  const set = new Set(list || []);
+  if (on) set.add(key);
+  else set.delete(key);
+  return [...set];
+}
+
+export function withHidden(page: PageArrangement | undefined, key: string, hidden: boolean): PageArrangement {
+  return { ...page, hidden: toggle(page?.hidden, key, hidden) };
+}
+
+export function withFolded(page: PageArrangement | undefined, key: string, folded: boolean): PageArrangement {
+  return { ...page, folded: toggle(page?.folded, key, folded) };
+}
+
+/** Drops empty pieces so a page back at its default stores nothing. */
+export function tidyPage(page: PageArrangement): PageArrangement | undefined {
+  const out: PageArrangement = {};
+  if (page.order?.length) out.order = page.order;
+  if (page.hidden?.length) out.hidden = page.hidden;
+  if (page.folded?.length) out.folded = page.folded;
+  return Object.keys(out).length ? out : undefined;
+}

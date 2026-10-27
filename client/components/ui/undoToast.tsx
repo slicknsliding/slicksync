@@ -1,6 +1,6 @@
 'use client';
 
-import { toast } from 'react-hot-toast';
+import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 
 // "Deleted X — Undo" toast.
@@ -23,36 +23,22 @@ export function showDeletedWithUndo(
     return;
   }
 
-  toast.custom(
-    (t) => (
-      <div
-        className="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg"
-        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
-      >
-        <span className="text-sm" style={{ color: 'var(--color-text)' }}>
-          Deleted <strong>{label}</strong>
-        </span>
-        <button
-          type="button"
-          className="text-sm font-medium underline"
-          style={{ color: 'var(--color-primary)' }}
-          onClick={async () => {
-            toast.dismiss(t.id);
-            try {
-              await api.restoreFromTrash(trashId);
-              toast.success(`Restored ${label}`);
-              onRestored?.();
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : `Could not restore ${label}`);
-            }
-          }}
-        >
-          Undo
-        </button>
-      </div>
-    ),
+  toast.success(`Deleted ${label}`, {
+    line: 'It’s in the Trash for 30 days.',
+    actions: [{
+      label: 'Undo',
+      onClick: async () => {
+        try {
+          await api.restoreFromTrash(trashId);
+          toast.success(`Restored ${label}`);
+          onRestored?.();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : `Could not restore ${label}`);
+        }
+      },
+    }],
     // Longer than a normal toast: an undo you did not have time to read is
     // not an undo. It stays recoverable from Trash for 30 days regardless.
-    { duration: 8000 },
-  );
+    duration: 8000,
+  });
 }

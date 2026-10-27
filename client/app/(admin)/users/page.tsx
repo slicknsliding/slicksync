@@ -371,7 +371,7 @@ export default function UsersPage() {
     try {
       await api.syncUser(id);
       await refreshUsersQuietly();
-      toast.success(`${name} re-synced - SlickSync's setup is back on the account`);
+      toast.success(`${name} re-synced`, { line: 'SlickSync’s setup is back on the account.' });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Failed to sync ${name}`);
     } finally { setGuardBusyId(null); }

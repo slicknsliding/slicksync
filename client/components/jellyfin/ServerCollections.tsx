@@ -92,8 +92,8 @@ export function ServerCollections({ server, canSwitch, onSwitch }: { server: Jel
       const next = await api.setJellyfinCollection(server.key, c.id, !c.on);
       setView(next);
       const now = next.catalogs.find((x) => x.id === c.id);
-      if (next.lastError && next.lastError !== 'no-permission') toast.error(`Jellyfin said: ${next.lastError}`);
-      else if (now?.on && !now.inJellyfin) toast.success(`None of ${c.name}'s titles are on this server yet - it shows up once one is`);
+      if (next.lastError && next.lastError !== 'no-permission') toast.error('Jellyfin said no', { line: next.lastError });
+      else if (now?.on && !now.inJellyfin) toast.info(`${c.name} is on, but empty for now`, { line: 'None of its titles are on this server yet. It shows up once one is.' });
       else toast.success(now?.on ? `${c.name} is a collection on ${next.server.name}` : `${c.name} is off ${next.server.name}`);
     } catch (e: any) {
       toast.error(e?.message || 'Could not change it');

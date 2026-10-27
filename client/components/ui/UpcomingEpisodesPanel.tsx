@@ -1,5 +1,6 @@
 'use client';
 
+import { PanelControls } from '@/components/ui/Arrange';
 import { useEffect, useState, useMemo, memo, useCallback, useRef } from 'react';
 import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
 import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button } from '@/components/ui';
@@ -211,7 +212,9 @@ const UpcomingRow = memo(function UpcomingRow({
   );
 });
 
-export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
+// `className` is the outer spacing; the Dashboard's arranged grid spaces its
+// panels itself and passes ''.
+export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6' }: { className?: string } = {}) {
   const [items, setItems] = useState<UpcomingEpisode[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<UpcomingEpisode | null>(null);
@@ -257,7 +260,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
       toast.success(`Hidden ${item.showName || 'episode'} ${epLabel(item.season, item.episode)}`);
     } catch {
       setItems((prev) => [...prev, item]);
-      toast.error(`Failed to hide ${item.showName || 'that episode'} - try again`);
+      toast.error(`Couldn’t hide ${item.showName || 'that episode'}`, { line: 'Try again.' });
     }
   }, []);
 
@@ -269,10 +272,10 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
     setItems((prev) => prev.filter((i) => i.showId !== item.showId));
     try {
       await api.muteShow(item.showId, item.showName || undefined, item.poster || undefined);
-      toast.success(`Won't track new episodes for ${item.showName || 'this show'} anymore`);
+      toast.success(`Stopped tracking ${item.showName || 'this show'}`, { line: 'No more new-episode alerts for it.' });
     } catch {
       setItems((prev) => [...prev, item]);
-      toast.error(`Failed to stop tracking ${item.showName || 'that show'} - try again`);
+      toast.error(`Couldn’t stop tracking ${item.showName || 'that show'}`, { line: 'Try again.' });
     }
   }, []);
 
@@ -285,10 +288,10 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
     setMutedShows((prev) => prev.filter((s) => s.id !== show.id));
     try {
       await api.unmuteShow(show.showId);
-      toast.success(`${show.showName || 'Show'} will show up again once it has a new episode`);
+      toast.success(`Unmuted ${show.showName || 'show'}`, { line: 'It’ll show up again once it has a new episode.' });
     } catch {
       setMutedShows((prev) => [...prev, show]);
-      toast.error(`Failed to unmute ${show.showName || 'that show'} - try again`);
+      toast.error(`Couldn’t unmute ${show.showName || 'that show'}`, { line: 'Try again.' });
     }
   }, []);
 
@@ -314,9 +317,11 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
 
   return (
     <>
-    <section aria-label="Upcoming episodes" className="mb-6">
+    <section aria-label="Upcoming episodes" className={className || undefined}>
       <Card padding="lg">
         <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {/* The fold chevron and ⋯ menu when the Dashboard is arranging it. */}
+          <PanelControls side="start" />
           <CalendarDaysIcon className="w-5 h-5 text-primary" />
           <h3 className="text-base font-semibold font-display text-default">Coming up</h3>
           {groups.length > 0 && (
@@ -325,8 +330,9 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
               <span className="text-xs text-muted sm:hidden">Long-press an episode to hide it</span>
             </>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             {isTV ? <TVFocusable onEnterPress={openMutedModal}>{mutedButton}</TVFocusable> : mutedButton}
+            <PanelControls side="end" />
           </div>
         </div>
 

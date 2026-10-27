@@ -524,9 +524,9 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
     const code = encodeThemeShareCode(buildDraft(), builderName.trim() || activeCustomTheme?.name || 'My theme');
     try {
       await copyToClipboard(code);
-      toast.success('Theme code copied - paste it anywhere to share');
+      toast.success('Theme code copied', { line: 'Paste it anywhere to share.' });
     } catch {
-      toast.error('Failed to copy - your browser may be blocking clipboard access');
+      toast.error('Couldn’t copy the code', { line: 'Your browser may be blocking clipboard access.' });
     }
   };
 

@@ -447,7 +447,7 @@ export default function UserDetailPage() {
     setCinemetaBusy(true);
     try {
       const r = await api.patchCinemeta(params.id as string, cinemetaDraft);
-      toast.success(`Cinemeta patched - ${r.summary}`);
+      toast.success('Cinemeta patched', { line: r.summary });
       setCinemetaOpen(false);
       await loadCinemeta();
     } catch (e: any) {
@@ -485,7 +485,7 @@ export default function UserDetailPage() {
           ? 'SlickTrax Addon enabled - it installs on the next sync'
           : 'Enabled, but SlickSync doesn’t know the address devices reach it at yet. Open SlickSync once from that address, then sync.');
       } else {
-        toast.success('SlickTrax Addon disabled - the next sync removes it');
+        toast.success('SlickTrax addon turned off', { line: 'The next sync removes it.' });
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to toggle SlickTrax Addon');
@@ -1579,7 +1579,7 @@ export default function UserDetailPage() {
                             type="button"
                             className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
                             title="Copy manifest URL"
-                            onClick={async () => { (await copyToClipboard(traxManifestUrl)) ? toast.success('Manifest URL copied') : toast.error('Copy failed - select and copy the URL text directly'); }}
+                            onClick={async () => { (await copyToClipboard(traxManifestUrl)) ? toast.success('Manifest URL copied') : toast.error('Couldn’t copy the link', { line: 'Select the text and copy it by hand.' }); }}
                           >
                             {traxManifestUrl}
                           </button>
@@ -2565,7 +2565,7 @@ function SimklLinkModal({
           // as the Trakt row's own expiry path - not a modal left sitting
           // open with an error inside it.
           stopPolling();
-          toast.error('SIMKL code expired - try linking again');
+          toast.error('SIMKL code expired', { line: 'Start linking again for a new one.' });
           onClose();
           return;
         }
