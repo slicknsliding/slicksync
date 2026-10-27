@@ -290,7 +290,9 @@ export default function ListsPage() {
         <JellyfinLogo />
       </span>
       <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate">
-        <span style={{ background: 'linear-gradient(90deg, #E2B4F2, #7FD9F7)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Jellyfin Collections</span>
+        {/* A plain colour, not gradient-clipped text: page-recolouring
+            extensions darken the gradient "background" behind the letters. */}
+        <span style={{ color: 'rgb(220, 226, 255)' }}>Jellyfin Collections</span>
       </span>
     </button>
   );
