@@ -360,3 +360,19 @@ test('restoring a Nuvio session never spends the refresh token', async () => {
     assert.equal((await call('POST', '/validate-nuvio', { key: 'not-a-session', body: { userId: 'nA' } })).status, 401)
   } finally { global.fetch = previousFetch }
 })
+
+// Someone alone in their group is still in a group: the membership check used
+// to count only the other members and answered 403 for them.
+test('a person alone in their group still gets their page', async () => {
+  data.user.rows.push(person('jSolo', 'acc1', { providerType: 'jellyfin' }))
+  data.group.rows.push({ id: 'gSolo', accountId: 'acc1', isActive: true, userIds: JSON.stringify(['jSolo']) })
+  try {
+    assert.equal((await call('GET', '/user-info', { key: session('jSolo', 'jellyfin'), query: { userId: 'jSolo' } })).status, 200)
+    // An inactive group does not count.
+    data.group.rows.find((g) => g.id === 'gSolo').isActive = false
+    assert.equal((await call('GET', '/user-info', { key: session('jSolo', 'jellyfin'), query: { userId: 'jSolo' } })).status, 403)
+  } finally {
+    data.user.rows.splice(data.user.rows.findIndex((u) => u.id === 'jSolo'), 1)
+    data.group.rows.splice(data.group.rows.findIndex((g) => g.id === 'gSolo'), 1)
+  }
+})

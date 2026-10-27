@@ -1042,10 +1042,17 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           return res.status(401).json({ error: publicMessage(e, 'Authentication required') });
         }
 
-        // Check if user belongs to at least one active group
-        const { getGroupMembers } = require('../utils/sharesManager');
-        const groupMembers = await getGroupMembers(prisma, foundUser.accountId, foundUser.id);
-        if (groupMembers.length === 0) {
+        // Check the user belongs to at least one active group. Membership,
+        // not "has housemates": someone alone in their group is still in it
+        // (getGroupMembers leaves the caller out, so it answered 403 for them).
+        const activeGroups = await prisma.group.findMany({
+          where: { accountId: foundUser.accountId, isActive: true },
+          select: { userIds: true },
+        });
+        const inAGroup = activeGroups.some((g) => {
+          try { const ids = JSON.parse(g.userIds || '[]'); return Array.isArray(ids) && ids.includes(foundUser.id); } catch { return false; }
+        });
+        if (!inAGroup) {
           return res.status(403).json({ error: 'User is not part of any group' });
         }
 
@@ -3177,8 +3184,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           email: true,
           accountId: true,
           isActive: true,
-          stremioAuthKey: true,
-          groupId: true
+          stremioAuthKey: true
         }
       });
 
