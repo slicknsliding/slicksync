@@ -6,6 +6,7 @@
 
 import { ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useMenuArrangement } from '@/lib/arrange';
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { ADMIN_MENU, arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
 import { orderKeys, type MenuArrangement } from '@/lib/arrange-core';
 
@@ -64,7 +65,8 @@ export function MenuArranger({ topNavi }: { topNavi: boolean }) {
     else next.add(href);
     set({ hidden: [...next] });
   };
-  const isDefault = !menuIsArranged(menu) && menu.rows === undefined && menu.logo === undefined && menu.align === undefined;
+  const moreOn = menu.more !== false;
+  const isDefault = !menuIsArranged(menu) && menu.rows === undefined && menu.logo === undefined && menu.align === undefined && moreOn;
 
   return (
     <div className="mt-5 rounded-xl p-4" style={{ border: '1px solid var(--color-surface-border)' }}>
@@ -72,7 +74,7 @@ export function MenuArranger({ topNavi }: { topNavi: boolean }) {
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-semibold text-default">Arrange the menu</h4>
           <p className="text-xs text-muted mt-0.5">
-            Move pages into your order. Hidden pages go into a More menu, so nothing is ever lost. The bar changes as you go, and the Original sidebar follows the same order.
+            Move pages into your order. Hidden pages go into a More menu, or leave the menu if you turn More off; they still open from search. The bar changes as you go, and the Original sidebar follows the same order.
           </p>
         </div>
         <button type="button" className="arrange-pill" disabled={isDefault} onClick={() => setMenu(() => ({}))}>Reset</button>
@@ -91,7 +93,7 @@ export function MenuArranger({ topNavi }: { topNavi: boolean }) {
             >
               <Icon className="w-[18px] h-[18px] text-muted shrink-0" />
               <span className="flex-1 min-w-0 text-sm text-default truncate">{item.label}</span>
-              <span className="menu-where">{off ? 'In More' : 'In the bar'}</span>
+              <span className="menu-where">{off ? (moreOn ? 'In More' : 'Hidden') : 'In the bar'}</span>
               <span className="flex items-center gap-1.5 shrink-0">
                 <button type="button" className="arrange-icon" aria-label={`Move ${item.label} up`} title="Move up" disabled={i === 0} onClick={() => move(href, -1)}>
                   <ChevronUpIcon className="w-4 h-4" />
@@ -102,8 +104,8 @@ export function MenuArranger({ topNavi }: { topNavi: boolean }) {
                 <button
                   type="button"
                   className="arrange-icon"
-                  aria-label={off ? `Put ${item.label} back in the bar` : `Move ${item.label} into More`}
-                  title={off ? 'Back in the bar' : 'Into More'}
+                  aria-label={off ? `Put ${item.label} back in the bar` : moreOn ? `Move ${item.label} into More` : `Hide ${item.label}`}
+                  title={off ? 'Back in the bar' : moreOn ? 'Into More' : 'Hide'}
                   aria-pressed={off}
                   // Keep at least one page in the bar.
                   disabled={!off && shown.length <= 1}
@@ -116,6 +118,14 @@ export function MenuArranger({ topNavi }: { topNavi: boolean }) {
           );
         })}
       </ol>
+
+      <div className="flex items-center gap-4 mt-3.5 rounded-xl px-3.5 py-3" style={{ border: '1px solid var(--color-surface-border)' }}>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-sm text-default">More menu</p>
+          <p className="text-xs text-muted mt-0.5">Pages you hide go into a More menu at the end of the bar. Turn it off to hide them completely; they still open from search.</p>
+        </div>
+        <ToggleSwitch checked={moreOn} onChange={() => set({ more: moreOn ? false : undefined })} />
+      </div>
 
       {topNavi && (<>
       <Segment label="Rows" value={rows} onChange={(v) => set({ rows: v === 2 ? undefined : 1 })}

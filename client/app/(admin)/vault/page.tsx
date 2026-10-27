@@ -3,7 +3,6 @@
 import { usePageArrangement, usePageDesign, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { VaultV2, VAULT_SECTIONS } from '@/components/v2/VaultV2';
-import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
@@ -1188,7 +1187,6 @@ function VaultPageContent() {
           <div className={v2 ? 'flex-1 min-w-0' : ''}>
             <FilterTabsResponsive fill options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
           </div>
-          {v2 && <span className="max-md:hidden shrink-0"><ViewModeToggle mode={viewMode} onChange={setViewMode} showLabels={false} /></span>}
         </div>
 
         {isLoading ? (

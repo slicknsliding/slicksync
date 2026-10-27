@@ -34,16 +34,17 @@ function pageKeyOf(pathname: string | null) {
 }
 
 /**
- * Grid or list. Each admin page remembers its own choice (saved to the
- * account, so Users can be a grid while Addons is a list); a page with no
- * choice of its own uses the default from Themes. `{ global: true }` reads and
- * sets that default itself. Phones are always grid.
+ * Grid or list. Admin pages all follow the one choice in Settings -> Themes
+ * (saved to the account, so it follows you to another device); there is no
+ * switch on the pages. A person's own pages (/user) still remember their own
+ * choice. `{ global: true }` reads and sets the Themes choice. Phones are
+ * always grid.
  */
 export function useDefaultViewMode(opts: { global?: boolean } = {}) {
   const pageKey = pageKeyOf(usePathname());
   const { arrangement, update, active } = useArrangement();
-  const perPage = active && !opts.global;
-  const pageChoice = perPage ? arrangement.views?.[pageKey] : undefined;
+  const perPage = active && !opts.global && pageKey === '/user';
+  const pageChoice = active ? arrangement.views?.[perPage ? pageKey : '*'] : undefined;
   const [viewModeState, setViewMode] = useState<ViewMode>('grid');
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -84,12 +85,9 @@ export function useDefaultViewMode(opts: { global?: boolean } = {}) {
       return;
     }
     setViewMode(mode);
-    if (perPage) {
-      update((prev) => ({ ...prev, views: { ...(prev.views || {}), [pageKey]: mode } }));
-      return;
-    }
-    setStoredViewMode(mode);
-  }, [perPage, pageKey, update]);
+    if (active) update((prev) => ({ ...prev, views: { ...(prev.views || {}), [perPage ? pageKey : '*']: mode } }));
+    if (!perPage) setStoredViewMode(mode);
+  }, [active, perPage, pageKey, update]);
 
   const viewMode: ViewMode = pageChoice && isLoaded && !isMobile() ? pageChoice : viewModeState;
 

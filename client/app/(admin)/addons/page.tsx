@@ -766,7 +766,6 @@ export default function AddonsPage() {
       {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
-          viewModeConfig={{ mode: viewMode, onChange: setViewMode, showLabels: false }}
           selectionConfig={{
             totalCount: filteredAddons.length,
             selectedCount: selectedIds.size,

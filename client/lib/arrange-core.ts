@@ -16,6 +16,8 @@ export type MenuArrangement = {
   order?: string[];
   /** Hidden pages move into a More menu. */
   hidden?: string[];
+  /** false: hidden pages leave the menu completely (still open from search). */
+  more?: false;
   rows?: 1 | 2;
   logo?: 'large' | 'small' | 'hidden';
   align?: 'center' | 'left';

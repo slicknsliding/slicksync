@@ -663,7 +663,6 @@ export default function UsersPage() {
       {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters and controls */}
         <PageToolbar
-          viewModeConfig={{ mode: viewMode, onChange: setViewMode, showLabels: false }}
           selectionConfig={{
             totalCount: filteredUsers.length,
             selectedCount: selectedIds.size,

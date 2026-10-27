@@ -17,7 +17,6 @@ import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { CatalogsV2 } from '@/components/v2/CatalogsV2';
-import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { avatarColorFill } from '@/components/ui/Avatar';
@@ -355,7 +354,6 @@ export default function ListsPage() {
                 New catalog
               </Button>
               {v2 && <ArrangeButton arrange={catalogArrange} />}
-              {v2 && <span className="max-md:hidden"><ViewModeToggle mode={viewMode} onChange={setViewMode} showLabels={false} /></span>}
             </div>
           </div>
           {v2 && <ArrangeBar arrange={catalogArrange} />}

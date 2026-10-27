@@ -649,8 +649,8 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 own page. */}
             <div className="flex items-center justify-between p-4 rounded-lg bg-subtle mt-3">
               <div>
-                <p className="font-medium text-sm text-default">Default View Mode</p>
-                <p className="text-xs text-muted">Grid or list for every page you haven&apos;t set yourself. Each page remembers its own switch.</p>
+                <p className="font-medium text-sm text-default">Grid or list</p>
+                <p className="text-xs text-muted">How every page shows its things. Pages no longer have their own switch.</p>
               </div>
               <div className="hidden md:block">
                 <ViewModeToggle

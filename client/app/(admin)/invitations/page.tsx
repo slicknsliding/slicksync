@@ -407,7 +407,6 @@ export default function InvitationsPage() {
       {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
-          viewModeConfig={{ mode: viewMode, onChange: setViewMode, showLabels: false }}
           selectionConfig={activeTab === 'invitations' ? {
             totalCount: invitationsDisplay.length,
             selectedCount: selectedIds.size,

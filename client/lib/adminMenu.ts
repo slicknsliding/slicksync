@@ -36,6 +36,6 @@ export function arrangeMenu(menu: MenuArrangement, items: MenuItem[] = ADMIN_MEN
   const { shown, hidden } = arrangeKeys(items.map((i) => i.href), { order: menu.order, hidden: menu.hidden });
   return {
     shown: shown.map((h) => byHref.get(h)!),
-    more: hidden.map((h) => byHref.get(h)!),
+    more: menu.more === false ? [] : hidden.map((h) => byHref.get(h)!),
   };
 }
