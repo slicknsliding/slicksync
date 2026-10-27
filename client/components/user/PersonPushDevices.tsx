@@ -62,8 +62,13 @@ export function PersonPushDevices({ userId, authKey, refreshKey, onRemoved }: {
       try {
         let endpoint: string | undefined;
         try {
-          const reg = typeof navigator !== 'undefined' && 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
-          endpoint = (await reg?.pushManager?.getSubscription())?.endpoint;
+          // Time-boxed: Safari can leave this lookup pending, and the list
+          // must still show (it is where you remove your other devices).
+          const lookup = (async () => {
+            const reg = typeof navigator !== 'undefined' && 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
+            return (await reg?.pushManager?.getSubscription())?.endpoint;
+          })();
+          endpoint = await Promise.race([lookup, new Promise<undefined>((r) => setTimeout(() => r(undefined), 2000))]);
         } catch { /* this browser has no registration to mark */ }
         const r = await userPush.devices(userId, authKey, endpoint);
         if (!stale) setDevices(r.devices);
