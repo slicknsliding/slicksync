@@ -351,6 +351,34 @@ function generateAlerts(userLifecycle, topContent, engagement, period) {
 const ACTIVITY_TAKE = 5000
 const ACTIVITY_TAKE_DEEP = 100000
 
+// Now Playing for Nuvio when only Nuvio's own saves are known (see buildNowPlaying).
+const NUVIO_RECENT_MS = 5 * 60 * 1000
+const NOW_PLAYING_DONE_RATIO = 0.92
+
+/** Nuvio's own save time for this session's title, from the library read, in ms (null when unknown). */
+function nuvioCheckpointAt(accountIdValue, user, session, libraries) {
+  if (!libraries.has(user.id)) libraries.set(user.id, getCachedLibrary(accountIdValue || 'default', user) || [])
+  const base = (id) => /^tt\d+/.exec(String(id || ''))?.[0] || String(id || '')
+  const item = libraries.get(user.id).find((i) => base(i?._id || i?.id) === base(session.itemId))
+  const at = Date.parse(item?.state?.lastWatched || '')
+  return Number.isFinite(at) ? at : null
+}
+
+/** Drops Nuvio-save-only cards older than 5 minutes, and all but the newest per person. */
+function nuvioOnlyCards(rows, now) {
+  const newest = new Map()
+  for (const r of rows) {
+    if (typeof r.nuvioSavedAt !== 'number') continue
+    const id = r.user?.id
+    if (!newest.has(id) || r.nuvioSavedAt > newest.get(id)) newest.set(id, r.nuvioSavedAt)
+  }
+  return rows.filter((r) => {
+    if (!('nuvioSavedAt' in r)) return true
+    if (typeof r.nuvioSavedAt !== 'number') return false
+    return now - r.nuvioSavedAt < NUVIO_RECENT_MS && r.nuvioSavedAt === newest.get(r.user?.id)
+  })
+}
+
 /**
  * Who is watching what right now, for one account. Built from live state
  * every time it is asked for - it is deliberately NOT part of the cached
@@ -360,6 +388,7 @@ const ACTIVITY_TAKE_DEEP = 100000
  */
 async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
   const nowPlaying = []
+  const libraries = new Map()
   // "Now Playing" is seeded from BOTH signals, because neither covers
   // everything on its own:
   //   - The AIOStreams proxy sees streams it carries open/close in real time
@@ -397,11 +426,15 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
     // checkpoint stays active until the poll after that, and this keeps it
     // out of the panel in between.
     if (hasReachedEnd(session.lastPosition, session.totalDuration)) continue
+    // Into the credits counts as finished for this panel (Continue Watching
+    // treats 92% the same way); the session itself still closes as before.
+    if (Number(session.totalDuration) > 0 && Number(session.lastPosition) >= Number(session.totalDuration) * NOW_PLAYING_DONE_RATIO) continue
     // Someone on a Jellyfin-compatible server has a real live signal - the
     // server's own sessions list, added below - so a session only kept open
     // by the library read's ~15-minute freshness window would leave a
     // finished viewing on screen long after it stopped.
     if (user.providerType === 'jellyfin') continue
+    const nuvioSavedAt = user.providerType === 'nuvio' ? (nuvioCheckpointAt(accountIdValue, user, session, libraries) ?? session.updatedAt?.getTime() ?? null) : null
 
     nowPlaying.push({
       user: {
@@ -432,8 +465,10 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
       lastPosition: session.lastPosition ?? null,
       totalDuration: session.totalDuration ?? null,
       // When the provider's checkpoint was last written, for the "Last seen"
-      // label on the cards.
-      ...(session.updatedAt ? { reportedAtTimestamp: session.updatedAt.getTime() } : {}),
+      // label on the cards. For Nuvio that is Nuvio's own save time, which a
+      // background refresh of the session row can't move forward.
+      ...(nuvioSavedAt != null ? { reportedAtTimestamp: nuvioSavedAt, nuvioSavedAt }
+        : session.updatedAt ? { reportedAtTimestamp: session.updatedAt.getTime() } : {}),
       // Same episode-aware deep-link builder Continue Watching already uses
       // (server/utils/appLinks.js) - not the plain client-side one, which
       // has no season/episode parameter at all for series.
@@ -519,6 +554,15 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
   } catch (error) {
     console.warn('[MetricsBuilder] Failed to merge proxy now playing:', error.message)
   }
+
+  // A card that only Nuvio's own saves stand behind (the proxy, a Jellyfin
+  // server and the AIOStreams apps all have live signals and replaced theirs
+  // in the merge above): Nuvio saves when someone pauses, stops or leaves the
+  // app, so the card means "paused or stopped a moment ago". It shows for
+  // 5 minutes after that save, and only the newest save per person shows.
+  const keep = nuvioOnlyCards(nowPlaying, Date.now())
+  nowPlaying.length = 0
+  nowPlaying.push(...keep)
 
   // Which Nuvio (or AIOStreams) profile each person watches under - the one
   // their own watch history last recorded, as the history cards show it.
@@ -1838,6 +1882,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 }
 
 module.exports = {
+  nuvioOnlyCards,
   buildNowPlaying,
   liveNowPlaying,
   invalidateLiveNowPlaying,

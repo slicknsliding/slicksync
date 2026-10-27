@@ -2897,8 +2897,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // watch that ended, not one that is playing - the same rule the admin
       // Activity page uses (metricsBuilder.js).
       const { hasReachedEnd } = require('../utils/sessionTracker');
+      // Nuvio's own save time per title (the library read), for the 5-minute
+      // rule the admin Now Playing uses too (metricsBuilder nuvioOnlyCards).
+      const baseOf = (id) => /^tt\d+/.exec(String(id || ''))?.[0] || String(id || '');
+      const nuvioSave = (s) => {
+        if (user.providerType !== 'nuvio') return undefined;
+        const item = libraryCache.find(i => baseOf(i?._id || i?.id) === baseOf(s.itemId));
+        const at = Date.parse(item?.state?.lastWatched || '');
+        return Number.isFinite(at) ? at : (s.updatedAt ? s.updatedAt.getTime() : null);
+      };
       const nowPlaying = (user.providerType === 'jellyfin' ? [] : activeSessions)
         .filter(s => !hasReachedEnd(s.lastPosition, s.totalDuration))
+        .filter(s => !(Number(s.totalDuration) > 0 && Number(s.lastPosition) >= Number(s.totalDuration) * 0.92))
         .map(s => ({
         item: {
           id: s.itemId,
@@ -2912,7 +2922,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         videoId: s.videoId,
         lastPosition: s.lastPosition ?? null,
         totalDuration: s.totalDuration ?? null,
-        ...(s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
+        ...(nuvioSave(s) !== undefined ? { nuvioSavedAt: nuvioSave(s), ...(nuvioSave(s) != null ? { reportedAtTimestamp: nuvioSave(s) } : {}) }
+          : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
       }));
 
       // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings() -
@@ -2967,10 +2978,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           ...(typeof m.reportedAtTimestamp === 'number' ? { reportedAtTimestamp: m.reportedAtTimestamp } : {}),
           ...(m.paused === true ? { paused: true } : {}),
           ...(typeof m.playingUntilTimestamp === 'number' ? { playingUntilTimestamp: m.playingUntilTimestamp } : {}),
-          ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {})
+          ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {}),
+          ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {})
         })));
       } catch (error) {
         console.warn('[PublicLibrary] Failed to merge proxy now playing:', error.message);
+      }
+      {
+        // A card only Nuvio's own saves stand behind: 5 minutes, newest only.
+        const { nuvioOnlyCards } = require('../utils/metricsBuilder');
+        const keep = nuvioOnlyCards(nowPlaying, Date.now());
+        nowPlaying.length = 0;
+        nowPlaying.push(...keep);
       }
 
       res.json({
