@@ -38,7 +38,7 @@ export function PersonalTouches() {
           value={startPage}
           onChange={(e) => setStartPage(e.target.value)}
           className="input-base px-3 py-2 text-sm rounded-lg"
-          style={{ width: '11rem' }}
+          style={{ width: '11rem', background: 'var(--color-surface-hover)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
           aria-label="Start page"
         >
           {START_PAGES.map((p) => <option key={p.href} value={p.href}>{p.label}</option>)}

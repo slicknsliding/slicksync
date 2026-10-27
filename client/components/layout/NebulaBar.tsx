@@ -10,7 +10,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ComponentType, Fragment, ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { ComponentType, Fragment, ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -68,6 +68,25 @@ export function NebulaBar({
   const reduceMotion = useReducedMotion();
   const navId = useId();
   const barRef = useRef<HTMLDivElement>(null);
+  // The bar sits in the page's flow, so a change to its size (a Themes →
+  // Arrange the menu choice made further down the page) would shift
+  // everything under the finger. Scroll by the same amount so nothing moves.
+  const barHeight = useRef(0);
+  const lookKey = `${look.rows}|${look.logo}|${look.align}`;
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (barHeight.current && h !== barHeight.current && window.scrollY > 0) window.scrollBy(0, h - barHeight.current);
+    barHeight.current = h;
+  }, [lookKey]);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { barHeight.current = el.offsetHeight; });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   // Where the account button sits: 'float' (bottom-left pill, the default) or
   // 'bar' (right end of the logo row). TV is always 'bar'.
@@ -357,18 +376,18 @@ export function NebulaBar({
           {!noLogo && (
           <Link href={homeHref} aria-label="SlickSync home" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : `flex items-center gap-2 ${smallLogo ? 'md:gap-3' : 'md:gap-4'} justify-center min-w-0 shrink-0`}>
             <div
-              className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : smallLogo ? 'w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
+              className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : smallLogo ? 'w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
               style={{
                 background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
                 boxShadow: '0 8px 28px -6px var(--color-primary)',
               }}
             >
-              <SlickSyncLogo className={isTV ? 'w-4 h-4' : smallLogo ? 'w-7 h-7 md:w-8 md:h-8' : 'w-7 h-7 md:w-11 md:h-11'} />
+              <SlickSyncLogo className={isTV ? 'w-4 h-4' : smallLogo ? 'w-5 h-5 md:w-8 md:h-8' : 'w-7 h-7 md:w-11 md:h-11'} />
             </div>
             <b
               // Account in the bar, scrolled, on a phone: the docked bell and
               // palette need the room beside the logo, so the wordmark steps aside.
-              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : `text-xl ${smallLogo ? 'md:text-2xl' : 'md:text-4xl'} font-bold font-display tracking-tight whitespace-nowrap${placement === 'bar' && isScrolled ? ' max-md:hidden' : ''}`}
+              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : `${smallLogo ? 'text-base md:text-2xl' : 'text-xl md:text-4xl'} font-bold font-display tracking-tight whitespace-nowrap${placement === 'bar' && isScrolled ? ' max-md:hidden' : ''}`}
               style={{
                 background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
                 WebkitBackgroundClip: 'text',

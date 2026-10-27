@@ -5,7 +5,8 @@
 // section's ⋯ menu, and the tray of hidden things. Pages decide what their
 // sections are; lib/arrange.tsx keeps the order.
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AdjustmentsHorizontalIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon,
   EllipsisHorizontalIcon, EyeIcon, EyeSlashIcon,
@@ -91,14 +92,42 @@ export function FoldButton({ arrange, id, label }: { arrange: PageArrange; id: s
 /** A section's ⋯ menu: the quick moves without entering Arrange mode. */
 export function SectionMenu({ arrange, id, label, noun = 'section' }: { arrange: PageArrange; id: string; label: string; noun?: string }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // Drawn over the page (not inside the panel, which clips what spills out
+  // of it), below the button - or above it when there's no room below - and
+  // kept inside the screen at the edges.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const width = 240;
+    const height = menuRef.current?.offsetHeight || 230;
+    const below = r.bottom + 6 + height <= window.innerHeight - 8;
+    const top = below ? r.bottom + 6 : Math.max(8, r.top - 6 - height);
+    const left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPos({ top: Math.round(top), left: Math.round(left) });
+  }, [open]);
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const close = () => setOpen(false);
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btnRef.current?.focus(); } };
     document.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
+    window.addEventListener('scroll', close, { passive: true });
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', close);
+      window.removeEventListener('resize', close);
+    };
   }, [open]);
   const folded = arrange.isFolded(id);
   const item = (icon: ReactNode, text: string, onClick: () => void, disabled = false) => (
@@ -114,25 +143,32 @@ export function SectionMenu({ arrange, id, label, noun = 'section' }: { arrange:
     </button>
   );
   return (
-    <div className="relative shrink-0" ref={ref}>
+    <div className="relative shrink-0">
       <button
+        ref={btnRef}
         type="button"
         className="arrange-icon arrange-icon-plain"
         aria-label={`${label} options`}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setPos(null); setOpen((v) => !v); }}
       >
         <EllipsisHorizontalIcon className="w-5 h-5" />
       </button>
-      {open && (
-        <div className="arrange-menu" role="menu">
+      {open && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          className="arrange-menu"
+          role="menu"
+          style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, right: 'auto', zIndex: 60, visibility: pos ? 'visible' : 'hidden' }}
+        >
           {item(<ChevronUpIcon className="w-4 h-4" />, 'Move up', () => arrange.move(id, -1), !arrange.canMove(id, -1))}
           {item(<ChevronDownIcon className="w-4 h-4" />, 'Move down', () => arrange.move(id, 1), !arrange.canMove(id, 1))}
           {item(folded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />, folded ? `Unfold this ${noun}` : `Fold this ${noun}`, () => arrange.fold(id, !folded))}
           {item(<EyeSlashIcon className="w-4 h-4" />, `Hide this ${noun}`, () => arrange.hide(id))}
           {item(<AdjustmentsHorizontalIcon className="w-4 h-4" />, 'Arrange the whole page', () => arrange.setArranging(true))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
