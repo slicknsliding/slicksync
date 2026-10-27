@@ -23,6 +23,10 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
   // Turning this device on or off changes the list of devices below it.
   const [devicesVersion, setDevicesVersion] = useState(0);
 
+  // What the server will actually send to this device. Read on load and again
+  // after a device is removed below, so the switch never says On for a device
+  // the server has dropped.
+  const [statusVersion, setStatusVersion] = useState(0);
   useEffect(() => {
     const ok = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     setSupported(ok);
@@ -38,7 +42,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
         setAvailable(false);
       }
     })();
-  }, [userId, authKey]);
+  }, [userId, authKey, statusVersion]);
 
   const turnOn = async () => {
     if (!userId || !authKey) return;
@@ -105,7 +109,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
       )}
     </div>
     {/* Their other devices, folded away until opened. */}
-    <PersonPushDevices userId={userId} authKey={authKey} refreshKey={devicesVersion} onRemovedThisDevice={() => setOn(false)} />
+    <PersonPushDevices userId={userId} authKey={authKey} refreshKey={devicesVersion} onRemoved={() => setStatusVersion((v) => v + 1)} />
     </>
   );
 }

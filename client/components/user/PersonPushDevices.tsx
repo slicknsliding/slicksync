@@ -2,16 +2,15 @@
 
 // "Your devices", under the notifications switch on a person's Settings page:
 // every device that gets their alerts, as tiles, so each can be given a name
-// ("Kitchen tablet") or removed. Folded away until opened. A tile opens a small
-// popup beside it with Rename and Remove. Their own devices only, whichever
-// sign-in they have - notifications belong to the person, not to Stremio,
-// Nuvio, Jellyfin or AIOStreams.
+// ("Kitchen tablet") or removed. Folded away until opened. Rename turns the
+// tile itself into the name box (no popup); the bin removes it after asking.
+// Their own devices only, whichever sign-in they have - notifications belong to
+// the person, not to Stremio, Nuvio, Jellyfin or AIOStreams.
 
-import { useEffect, useRef, useState } from 'react';
-import { ChevronDownIcon, ChevronRightIcon, ComputerDesktopIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
-import { Button, Input } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import { ChevronDownIcon, ChevronRightIcon, ComputerDesktopIcon, DevicePhoneMobileIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { Button, ConfirmModal, Input } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { formatRelativeTime } from '@/lib/relativeTime';
 import { userPush, type PersonPushDevice } from '@/lib/user-api';
 
@@ -42,18 +41,19 @@ function seenLine(d: PersonPushDevice): string {
   return `Added ${new Date(d.createdAt).toLocaleDateString()}`;
 }
 
-export function PersonPushDevices({ userId, authKey, refreshKey, onRemovedThisDevice }: {
+export function PersonPushDevices({ userId, authKey, refreshKey, onRemoved }: {
   userId: string | null;
   authKey: string | null;
   /** Changes when this device turns notifications on or off, so the list is read again. */
   refreshKey: unknown;
-  /** The device they are using was removed: its switch should read Off. */
-  onRemovedThisDevice: () => void;
+  /** A device was removed: the switch above asks the server again, in case it was this one. */
+  onRemoved: () => void;
 }) {
   const [devices, setDevices] = useState<PersonPushDevice[] | null>(null);
   const [open, setOpen] = useState(false);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  const anchor = useRef<HTMLElement | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<PersonPushDevice | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!userId || !authKey) return;
@@ -74,15 +74,30 @@ export function PersonPushDevices({ userId, authKey, refreshKey, onRemovedThisDe
     return () => { stale = true; };
   }, [userId, authKey, refreshKey]);
 
+  const remove = async () => {
+    if (!removing || !userId || !authKey) return;
+    setBusy(true);
+    try {
+      await userPush.removeDevice(userId, authKey, removing.id);
+      setDevices((cur) => (cur || []).filter((d) => d.id !== removing.id));
+      toast.success(removing.current ? `Removed ${nameOf(removing)}. Notifications are off on this device.` : `Removed ${nameOf(removing)}`);
+      setRemoving(null);
+      onRemoved();
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Could not remove that device');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Nothing registered: nothing to manage.
   if (!devices || devices.length === 0) return null;
-  const menuDevice = devices.find((d) => d.id === menuFor) || null;
 
   return (
     <div className="mb-4">
       <button
         type="button"
-        onClick={() => { setOpen((o) => !o); setMenuFor(null); }}
+        onClick={() => { setOpen((o) => !o); setEditing(null); }}
         aria-expanded={open}
         aria-controls="person-devices"
         className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left"
@@ -96,118 +111,126 @@ export function PersonPushDevices({ userId, authKey, refreshKey, onRemovedThisDe
 
       {open && (
         <ul id="person-devices" className="mt-2 space-y-2">
-          {devices.map((d) => {
-            const Icon = isPhone(d.userAgent) ? DevicePhoneMobileIcon : ComputerDesktopIcon;
-            return (
-              <li key={d.id}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    anchor.current = e.currentTarget;
-                    setMenuFor((cur) => (cur === d.id ? null : d.id));
+          {devices.map((d) => (
+            <li key={d.id}>
+              {editing === d.id && userId && authKey ? (
+                <RenameTile
+                  device={d}
+                  userId={userId}
+                  authKey={authKey}
+                  onDone={(label) => {
+                    if (label !== undefined) setDevices((cur) => (cur || []).map((x) => (x.id === d.id ? { ...x, label } : x)));
+                    setEditing(null);
                   }}
-                  aria-haspopup="dialog"
-                  aria-expanded={menuFor === d.id}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-colors hover:bg-surface-hover ${menuFor === d.id ? 'border-[var(--color-primary)]' : 'border-default'}`}
-                  style={{ background: 'var(--color-surface-elevated)' }}
-                >
-                  <span className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
-                    <Icon className="w-5 h-5 text-muted" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{nameOf(d)}</span>
-                    <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{seenLine(d)}</span>
-                  </span>
-                  {d.current && (
-                    <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>This device</span>
-                  )}
-                  <ChevronRightIcon className="w-4 h-4 shrink-0 text-muted" />
-                </button>
-              </li>
-            );
-          })}
+                />
+              ) : (
+                <DeviceTile device={d} onRename={() => setEditing(d.id)} onRemove={() => setRemoving(d)} />
+              )}
+            </li>
+          ))}
         </ul>
       )}
 
-      {open && menuDevice && (
-        <DevicePopup
-          key={menuDevice.id}
-          anchorRef={anchor}
-          device={menuDevice}
-          userId={userId as string}
-          authKey={authKey as string}
-          onClose={() => setMenuFor(null)}
-          onRenamed={(label) => setDevices((cur) => (cur || []).map((d) => (d.id === menuDevice.id ? { ...d, label } : d)))}
-          onRemoved={() => {
-            setDevices((cur) => (cur || []).filter((d) => d.id !== menuDevice.id));
-            if (menuDevice.current) onRemovedThisDevice();
-          }}
-        />
-      )}
+      <ConfirmModal
+        isOpen={!!removing}
+        onClose={() => { if (!busy) setRemoving(null); }}
+        onConfirm={remove}
+        title={removing ? `Remove ${nameOf(removing)}?` : ''}
+        description={removing?.current
+          ? 'This is the device you are using. It stops getting your alerts and its switch turns off. You can turn it on again any time.'
+          : 'It stops getting your alerts. Turning notifications on from that device adds it again.'}
+        confirmText="Remove"
+        variant="danger"
+        isLoading={busy}
+      />
     </div>
   );
 }
 
-function DevicePopup({ anchorRef, device, userId, authKey, onClose, onRenamed, onRemoved }: {
-  anchorRef: React.RefObject<HTMLElement | null>;
+function DeviceTile({ device, onRename, onRemove }: { device: PersonPushDevice; onRename: () => void; onRemove: () => void }) {
+  const Icon = isPhone(device.userAgent) ? DevicePhoneMobileIcon : ComputerDesktopIcon;
+  return (
+    <div
+      className={`w-full flex items-center gap-3 p-3 rounded-xl border ${device.current ? 'border-[var(--color-primary)]' : 'border-default'}`}
+      style={{ background: 'var(--color-surface-elevated)' }}
+    >
+      <span className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
+        <Icon className="w-5 h-5 text-muted" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{nameOf(device)}</span>
+        <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
+          {device.current && <span className="font-medium" style={{ color: 'var(--color-primary)' }}>This device · </span>}
+          {seenLine(device)}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onRename}
+        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-default text-sm font-medium hover:bg-surface-hover transition-colors"
+        style={{ color: 'var(--color-text)' }}
+      >
+        <PencilIcon className="w-4 h-4" />
+        Rename
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${nameOf(device)}`}
+        title="Remove"
+        className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full border border-default hover:bg-surface-hover transition-colors"
+        style={{ color: 'var(--color-error)' }}
+      >
+        <TrashIcon className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+function RenameTile({ device, userId, authKey, onDone }: {
   device: PersonPushDevice;
   userId: string;
   authKey: string;
-  onClose: () => void;
-  onRenamed: (label: string | null) => void;
-  onRemoved: () => void;
+  /** The new label (null = back to the guessed name), or undefined when cancelled. */
+  onDone: (label?: string | null) => void;
 }) {
   const [name, setName] = useState(nameOf(device));
-  const [busy, setBusy] = useState<'rename' | 'remove' | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const rename = async () => {
-    if (busy) return;
+  const save = async () => {
+    if (busy || !name.trim()) return;
     const label = name.trim();
     // Left as the guess it is no name at all: back to the default.
     const store = label === guessDeviceName(device.userAgent) ? '' : label;
-    setBusy('rename');
+    setBusy(true);
     try {
       await userPush.renameDevice(userId, authKey, device.id, store);
-      onRenamed(store || null);
       toast.success('Device renamed');
-      onClose();
+      onDone(store || null);
     } catch (e) {
       toast.error((e as Error)?.message || 'Could not rename that device');
-      setBusy(null);
-    }
-  };
-
-  const remove = async () => {
-    if (busy) return;
-    setBusy('remove');
-    try {
-      await userPush.removeDevice(userId, authKey, device.id);
-      onRemoved();
-      toast.success(`Removed ${nameOf(device)}`);
-      onClose();
-    } catch (e) {
-      toast.error((e as Error)?.message || 'Could not remove that device');
-      setBusy(null);
+      setBusy(false);
     }
   };
 
   return (
-    <AnchoredPopup anchorRef={anchorRef} onClose={onClose} title={nameOf(device)} width={320}>
-      <label htmlFor="device-name" className="block text-xs mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Name</label>
+    <div className="p-3 rounded-xl border border-[var(--color-primary)]" style={{ background: 'var(--color-surface-elevated)' }}>
+      <label htmlFor={`device-name-${device.id}`} className="block text-xs mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Name this device</label>
+      {/* 16px text: anything smaller makes a phone zoom in while typing. */}
       <Input
-        id="device-name"
+        id={`device-name-${device.id}`}
         value={name}
         maxLength={60}
+        autoFocus
+        className="text-base"
         onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') rename(); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onDone(); }}
       />
-      <div className="grid grid-cols-2 gap-2 mt-3">
-        <Button type="button" variant="primary" size="md" isLoading={busy === 'rename'} disabled={!!busy} onClick={rename}>Rename</Button>
-        <Button type="button" variant="danger" size="md" isLoading={busy === 'remove'} disabled={!!busy} onClick={remove}>Remove</Button>
+      <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-subtle)' }}>A name you will recognise, like Kitchen tablet.</p>
+      <div className="flex gap-2 justify-end mt-3">
+        <Button type="button" variant="secondary" size="md" disabled={busy} onClick={() => onDone()}>Cancel</Button>
+        <Button type="button" variant="primary" size="md" isLoading={busy} disabled={busy || !name.trim()} onClick={save}>Save name</Button>
       </div>
-      {device.current && (
-        <p className="text-xs mt-2.5" style={{ color: 'var(--color-text-subtle)' }}>This is the device you are using. Removing it stops its alerts until you turn them on again.</p>
-      )}
-    </AnchoredPopup>
+    </div>
   );
 }
