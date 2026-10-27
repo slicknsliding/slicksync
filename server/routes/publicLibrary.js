@@ -1067,6 +1067,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             id: true,
             username: true,
             email: true,
+            accountId: true,
             activityVisibility: true,
             colorIndex: true,
             avatarUrl: true,
@@ -1085,10 +1086,20 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         user = fullUser;
       }
 
+      // The groups they are in, by name, for their Settings page.
+      const theirGroups = await prisma.group.findMany({
+        where: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, isActive: true },
+        select: { name: true, userIds: true },
+      });
+      const groupNames = theirGroups
+        .filter((g) => { try { const ids = JSON.parse(g.userIds || '[]'); return Array.isArray(ids) && ids.includes(user.id); } catch { return false; } })
+        .map((g) => g.name);
+
       res.json({
         id: user.id,
         username: user.username,
         email: user.email,
+        groupName: groupNames.join(', ') || null,
         activityVisibility: user.activityVisibility || 'private',
         colorIndex: user.colorIndex || 0,
         avatarUrl: user.avatarUrl || null,

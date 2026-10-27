@@ -365,9 +365,12 @@ test('restoring a Nuvio session never spends the refresh token', async () => {
 // to count only the other members and answered 403 for them.
 test('a person alone in their group still gets their page', async () => {
   data.user.rows.push(person('jSolo', 'acc1', { providerType: 'jellyfin' }))
-  data.group.rows.push({ id: 'gSolo', accountId: 'acc1', isActive: true, userIds: JSON.stringify(['jSolo']) })
+  data.group.rows.push({ id: 'gSolo', name: 'Solo house', accountId: 'acc1', isActive: true, userIds: JSON.stringify(['jSolo']) })
   try {
-    assert.equal((await call('GET', '/user-info', { key: session('jSolo', 'jellyfin'), query: { userId: 'jSolo' } })).status, 200)
+    const r = await call('GET', '/user-info', { key: session('jSolo', 'jellyfin'), query: { userId: 'jSolo' } })
+    assert.equal(r.status, 200)
+    // Their Settings page shows the group they are in.
+    assert.equal(r.body.groupName, 'Solo house')
     // An inactive group does not count.
     data.group.rows.find((g) => g.id === 'gSolo').isActive = false
     assert.equal((await call('GET', '/user-info', { key: session('jSolo', 'jellyfin'), query: { userId: 'jSolo' } })).status, 403)
