@@ -1857,3 +1857,17 @@ body {
 .v2-btn:disabled { opacity: 0.6; cursor: default; }
 .v2-btn-main { background: var(--color-primary); border-color: transparent; color: #fff; }
 .v2-btn-main:hover:not(:disabled) { background: var(--color-primary); filter: brightness(1.08); }
+/* Arranged sections stack with room between them. */
+.arrange-section + .arrange-section { margin-top: 26px; }
+
+/* Density: Compact (Themes → Layout; set on <html> by lib/arrange.tsx). */
+html[data-density="compact"] .ss-card.p-5 { padding: 0.875rem; }
+html[data-density="compact"] .ss-card.p-4 { padding: 0.75rem; }
+html[data-density="compact"] .ss-card.p-3 { padding: 0.5rem; }
+html[data-density="compact"] .v2-card { padding: 12px 14px; gap: 8px; border-radius: 14px; }
+html[data-density="compact"] .v2-card-foot { padding-top: 8px; }
+html[data-density="compact"] .v2-grid { gap: 10px; }
+html[data-density="compact"] .v2-row { padding: 8px 14px; gap: 12px; }
+html[data-density="compact"] .arrange-section + .arrange-section { margin-top: 16px; }
+html[data-density="compact"] .ss-toast { padding: 9px 12px; }
+.arrange-icon-on { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 55%, transparent); }

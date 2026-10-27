@@ -1,5 +1,6 @@
 'use client';
 
+import { PersonalTouches } from '@/components/settings/PersonalTouches';
 import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
 import { useState, useEffect, useRef, memo } from 'react';
@@ -473,7 +474,7 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
     previewCustom, cancelPreview,
   } = useTheme();
   const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
-  const { viewMode, setViewMode } = useDefaultViewMode();
+  const { viewMode, setViewMode } = useDefaultViewMode({ global: true });
   // Confirmation modal for deleting a saved custom theme.
   const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
 
@@ -641,13 +642,15 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
 
             <MenuArranger topNavi={layoutMode === 'nebula'} />
 
+            <PersonalTouches />
+
             {/* Moved here from Settings -> Other Settings - a display
                 arrangement choice belongs alongside Layout, not off on its
                 own page. */}
             <div className="flex items-center justify-between p-4 rounded-lg bg-subtle mt-3">
               <div>
                 <p className="font-medium text-sm text-default">Default View Mode</p>
-                <p className="text-xs text-muted">Choose how lists are displayed by default</p>
+                <p className="text-xs text-muted">Grid or list for every page you haven&apos;t set yourself. Each page remembers its own switch.</p>
               </div>
               <div className="hidden md:block">
                 <ViewModeToggle

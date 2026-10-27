@@ -6,11 +6,13 @@
 // folded and hidden, and people hidden, through the page's Arrange mode.
 
 import Link from 'next/link';
-import { ArrowPathIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, EyeIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { UserAvatar } from '@/components/ui';
 import { avatarColorFill } from '@/components/ui/Avatar';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
+import { pinFirst } from '@/lib/arrange-core';
 import { V2AppPill, V2Button, V2Card, V2Grid, V2List, V2Status, type V2Tone } from './V2Bits';
 
 export type V2Person = {
@@ -60,11 +62,13 @@ type Props = {
   syncing: Set<string>;
   onSync: (p: V2Person) => void;
   onFix: (p: V2Person) => void;
+  /** Pinned people sit first in their group. */
+  pins: { isPinned: (id: string) => boolean; toggle: (id: string) => void; pinned: string[] };
 };
 
 export const NO_GROUP_KEY = 'g:none';
 
-export function PeopleV2({ people, groups, arrange, peopleArrange, view, watching, syncing, onSync, onFix }: Props) {
+export function PeopleV2({ people, groups, arrange, peopleArrange, view, watching, syncing, onSync, onFix, pins }: Props) {
   const hiddenPeople = new Set(peopleArrange.hidden);
   const byKey = new Map(groups.map((g) => [g.key, g]));
   const groupKeyOf = (p: V2Person) => {
@@ -81,12 +85,25 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
       </V2Button>
     );
   };
+  const pinBtn = (id: string, name: string) => {
+    const on = pins.isPinned(id);
+    return (
+      <button type="button" className={`arrange-icon${on ? ' arrange-icon-on' : ''}`} aria-pressed={on} aria-label={on ? `Unpin ${name}` : `Pin ${name}`} title={on ? 'Unpin' : 'Pin to the front'}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); pins.toggle(id); }}>
+        <MapPinIcon className="w-4 h-4" />
+      </button>
+    );
+  };
   const hideBtn = (p: V2Person) => (
-    <button type="button" className="arrange-icon" aria-label={`Hide ${p.name}`} title="Hide on this page"
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); peopleArrange.hide(p.id); }}>
-      <EyeIcon className="w-4 h-4" />
-    </button>
+    <span className="flex gap-1.5">
+      {pinBtn(p.id, p.name)}
+      <button type="button" className="arrange-icon" aria-label={`Hide ${p.name}`} title="Hide on this page"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); peopleArrange.hide(p.id); }}>
+        <EyeIcon className="w-4 h-4" />
+      </button>
+    </span>
   );
+  const pinMark = (p: V2Person) => pins.isPinned(p.id) ? <MapPinSolid className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} aria-label="Pinned" /> : null;
 
   const tile = (p: V2Person) => {
     const st = statusOf(p, watching.get(p.id));
@@ -96,7 +113,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
           <div className="flex items-center gap-3.5 min-w-0">
             <UserAvatar userId={p.id} name={p.name} email={p.email} colorIndex={p.colorIndex} src={p.avatarUrl || undefined} useGravatar={p.useGravatar} size="lg" />
             <div className="flex-1 min-w-0">
-              <div className="text-[17px] font-semibold text-default truncate">{p.name}</div>
+              <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default truncate">{p.name}</span>{pinMark(p)}</div>
               <div className="mt-1"><V2AppPill label={p.appLabel} color={p.appColor} /></div>
             </div>
           </div>
@@ -121,6 +138,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
             <b className="text-default truncate">{p.name}</b>
+            {pinMark(p)}
             <V2AppPill label={p.appLabel} color={p.appColor} />
           </div>
           <div className="text-muted text-[12.5px] truncate">{st.line}</div>
@@ -136,7 +154,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
   return (
     <div>
       {arrange.shown.map((key) => {
-        const members = people.filter((p) => groupKeyOf(p) === key && !hiddenPeople.has(p.id));
+        const members = pinFirst(people.filter((p) => groupKeyOf(p) === key && !hiddenPeople.has(p.id)), (p) => p.id, pins.pinned);
         const all = people.filter((p) => groupKeyOf(p) === key);
         if (all.length === 0) return null;
         const g = byKey.get(key);

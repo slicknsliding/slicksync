@@ -26,6 +26,13 @@ import { api, MetricsData, Invitation, Group } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePageArrangement } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeControls, HiddenTray } from '@/components/ui/Arrange';
+
+// Activity's tabs, in their default order. The account can reorder and hide
+// them (Arrange); the page opens on the first one it kept.
+const ACTIVITY_TABS = ['watch', 'dropped', 'tasks', 'invites', 'proxy'] as const;
+const ACTIVITY_TAB_LABELS: Record<string, string> = { watch: 'Watched', dropped: 'Graveyard', tasks: 'Tasks', invites: 'Invites', proxy: 'Proxy' };
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, posterSrcSet } from '@/lib/posterUrl';
 import {
@@ -2090,6 +2097,17 @@ function ActivityPageContent() {
   const yesterdayTasks: TaskHistoryItem[] = [];
   const olderTasks: TaskHistoryItem[] = [];
 
+  const tabArrange = usePageArrangement('activity', ACTIVITY_TABS as unknown as string[]);
+  // A hidden tab can't stay open: move to the first one kept - unless a
+  // link asked for it by name (the Dashboard's Open Graveyard).
+  const firstTab = tabArrange.shown[0];
+  const askedForTab = searchParams.get('view');
+  useEffect(() => {
+    if (askedForTab) return;
+    if (firstTab && !tabArrange.shown.includes(viewMode)) setViewMode(firstTab as typeof viewMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabArrange.shown.join(','), viewMode]);
+
   const groupFilterSelect = (
     <select
       value={selectedGroup || ''}
@@ -2118,7 +2136,7 @@ function ActivityPageContent() {
         <Header
           title="Activity"
           subtitle="Track watch history and sync operations across your SlickSync instance"
-          actions={<div className="flex items-center gap-3">{groupFilterSelect}</div>}
+          actions={<div className="flex items-center gap-3"><ArrangeButton arrange={tabArrange} />{groupFilterSelect}</div>}
         />
       )}
 
@@ -2138,21 +2156,38 @@ function ActivityPageContent() {
         <NebulaPageHeading
           title="Activity"
           subtitle="Track watch history and sync operations across your SlickSync instance"
-          actions={groupFilterSelect}
+          actions={<div className="flex items-center gap-2"><ArrangeButton arrange={tabArrange} />{groupFilterSelect}</div>}
         />
       )}
+        {/* Arranging: the tabs as a list to move and hide. */}
+        <ArrangeBar arrange={tabArrange} />
+        {tabArrange.arranging && (
+          <div className="v2-list mb-4">
+            {tabArrange.shown.map((k) => (
+              <div key={k} className="v2-row">
+                <span className="flex-1 text-sm font-medium text-default">{ACTIVITY_TAB_LABELS[k]}</span>
+                <ArrangeControls arrange={tabArrange} id={k} label={ACTIVITY_TAB_LABELS[k]} hideLabel="Hide the tab" />
+              </div>
+            ))}
+          </div>
+        )}
+        {tabArrange.arranging && <HiddenTray arrange={tabArrange} labelOf={(k) => ACTIVITY_TAB_LABELS[k] || k} note="Hidden tabs only leave the row; nothing in them is lost. Tap one to bring it back." />}
         {/* Primary Tabs - Centered */}
         <PageToolbar
           animate={false}
           filterTabs={{
-            options: [
+            options: (() => {
+              const all = [
               { key: 'watch', label: 'Watched', icon: <PlayIcon className="w-4 h-4" /> },
               // Shows started and then dropped - see getAbandonedShows.
               { key: 'dropped', label: 'Graveyard', icon: <ArchiveBoxIcon className="w-4 h-4" /> },
               { key: 'tasks', label: 'Tasks', icon: <ClockIcon className="w-4 h-4" /> },
               { key: 'invites', label: 'Invites', icon: <EnvelopeIcon className="w-4 h-4" /> },
               { key: 'proxy', label: 'Proxy', icon: <ShieldCheckIcon className="w-4 h-4" /> },
-            ],
+              ];
+              // The open tab stays in the row even if hidden (a link asked for it).
+              return tabArrange.shown.concat(tabArrange.shown.includes(viewMode) ? [] : [viewMode]).map((k) => all.find((o) => o.key === k)).filter((o): o is (typeof all)[number] => !!o);
+            })(),
             activeKey: viewMode,
             onChange: (key) => setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'),
             layoutId: 'activity-primary-tabs',

@@ -3781,6 +3781,37 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
+  // How this person arranged their own Home: section order, folded and
+  // hidden. Loose JSON the client owns (it falls back to the default for
+  // anything it doesn't recognise), capped so it can't bloat the row.
+  router.get('/home-arrange', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId)
+      const row = await prisma.user.findUnique({ where: { id: user.id }, select: { homeArrangeJson: true } })
+      let arrange = null
+      try { arrange = row?.homeArrangeJson ? JSON.parse(row.homeArrangeJson) : null } catch { arrange = null }
+      res.json({ arrange: arrange && typeof arrange === 'object' && !Array.isArray(arrange) ? arrange : null })
+    } catch (error) {
+      pushError(res, error, 'Could not read your Home arrangement')
+    }
+  })
+
+  router.put('/home-arrange', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId)
+      const arrange = req.body?.arrange
+      if (arrange !== null && (typeof arrange !== 'object' || Array.isArray(arrange))) {
+        return res.status(400).json({ error: 'arrange must be an object or null', message: 'arrange must be an object or null' })
+      }
+      const json = arrange ? JSON.stringify(arrange) : null
+      if (json && Buffer.byteLength(json) > 16 * 1024) return res.status(413).json({ error: 'Too large', message: 'That arrangement is too large to save' })
+      await prisma.user.update({ where: { id: user.id }, data: { homeArrangeJson: json } })
+      res.json({ arrange: arrange || null })
+    } catch (error) {
+      pushError(res, error, 'Could not save your Home arrangement')
+    }
+  })
+
   router.post('/continue-watching/dismiss', async (req, res) => {
     try {
       const user = await personAsking(req, req.body?.userId);

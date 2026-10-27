@@ -33,7 +33,7 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } fro
 import { useDroppable } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
-import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { AddonsV2, ADDON_KINDS, type V2Addon } from '@/components/v2/AddonsV2';
 import {
@@ -219,7 +219,8 @@ export default function AddonsPage() {
     if (el) setAddMenuAnchor({ rect: el.getBoundingClientRect(), el });
   }, []);
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('all');
+  // Kept between visits when "Keep each page's filter" is on (Themes).
+  const [activeFilter, setActiveFilter] = useSavedFilter('addons', 'all' as string);
   // Custom tag catalog (account-wide list of names) + which one is active as
   // a filter. null = no tag filter applied (shows every addon regardless of
   // tag, same as activeFilter === 'all' does for the built-in filters).
@@ -385,7 +386,8 @@ export default function AddonsPage() {
   const kindArrange = usePageArrangement('addons', useMemo(() => ADDON_KINDS.map((k) => k.key), []));
   const addonArrangeOwn = usePageArrangement('addons-items', useMemo(() => addons.map((a) => a.id), [addons]));
   const addonArrange = { ...addonArrangeOwn, arranging: kindArrange.arranging };
-  const pageArrange = { ...kindArrange, isDefault: kindArrange.isDefault && addonArrangeOwn.isDefault, reset: () => { kindArrange.reset(); addonArrangeOwn.reset(); } };
+  const addonPins = usePinned('addons');
+  const pageArrange = { ...kindArrange, isDefault: kindArrange.isDefault && addonArrangeOwn.isDefault && addonPins.pinned.length === 0, reset: () => { kindArrange.reset(); addonArrangeOwn.reset(); addonPins.reset(); } };
   const [addonGroups, setAddonGroups] = useState<Record<string, { name: string; colorIndex?: number }[]>>({});
   const [reloadingIds, setReloadingIds] = useState<Set<string>>(new Set());
   const groupIdsKey = groups.map((g: { id: string }) => g.id).join(',');
@@ -764,6 +766,7 @@ export default function AddonsPage() {
       {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
+          viewModeConfig={{ mode: viewMode, onChange: setViewMode, showLabels: false }}
           selectionConfig={{
             totalCount: filteredAddons.length,
             selectedCount: selectedIds.size,
@@ -926,6 +929,7 @@ export default function AddonsPage() {
                   addons={v2Addons}
                   arrange={kindArrange}
                   addonArrange={addonArrange}
+                  pins={addonPins}
                   view={viewMode === 'list' ? 'list' : 'grid'}
                   reloading={reloadingIds}
                   onReload={async (a) => {

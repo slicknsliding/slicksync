@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrangeProvider } from "@/lib/arrange";
+import { ArrangeProvider, StartPageRedirect } from "@/lib/arrange";
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { trackGuideNavigation } from "@/lib/guideReturn";
@@ -200,6 +200,7 @@ export default function AdminClientLayout({
         <LiveEventsBridge />
         {!isTV && onboardingScopeReady && <OnboardingWizard />}
         <ArrangeProvider>
+        {!isTV && <StartPageRedirect />}
         <VaultDragProvider>
           <LayoutDndWrapper>
             <div className="relative min-h-screen">

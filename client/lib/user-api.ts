@@ -1013,6 +1013,16 @@ export const userUpcoming = {
   },
 };
 
+/** How this person arranged their own Home (lib/arrange.tsx). */
+export const userHomeArrange = {
+  async get(userId: string, authKey: string): Promise<{ arrange: import('./arrange-core').Arrangement | null }> {
+    return request(`/public-library/home-arrange?${new URLSearchParams({ userId })}`, { authKey });
+  },
+  async save(userId: string, authKey: string, arrange: import('./arrange-core').Arrangement | null): Promise<{ arrange: unknown }> {
+    return request('/public-library/home-arrange', { method: 'PUT', authKey, body: JSON.stringify({ userId, arrange }) });
+  },
+};
+
 export const userContinueWatching = {
   async list(userId: string, authKey: string): Promise<{ items: ContinueWatchingCardData[] }> {
     return request(`/public-library/continue-watching?${new URLSearchParams({ userId })}`, { authKey });

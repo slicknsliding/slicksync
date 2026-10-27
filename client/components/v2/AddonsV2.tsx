@@ -6,10 +6,12 @@
 // the page's Arrange mode.
 
 import Link from 'next/link';
-import { ArrowPathIcon, EyeIcon, PuzzlePieceIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, EyeIcon, MapPinIcon, PuzzlePieceIcon } from '@heroicons/react/24/outline';
+import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { avatarColorFill } from '@/components/ui/Avatar';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
+import { pinFirst } from '@/lib/arrange-core';
 import { V2Button, V2Card, V2Grid, V2List, V2Status } from './V2Bits';
 
 export type V2Addon = {
@@ -76,22 +78,37 @@ function GivenTo({ a, max }: { a: V2Addon; max?: number }) {
   );
 }
 
-export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onReload }: {
+export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onReload, pins }: {
   addons: V2Addon[];
   arrange: PageArrange;
   addonArrange: PageArrange;
   view: 'grid' | 'list';
   reloading: Set<string>;
   onReload: (a: V2Addon) => void;
+  /** Pinned addons sit first in their section. */
+  pins: { isPinned: (id: string) => boolean; toggle: (id: string) => void; pinned: string[] };
 }) {
+  const pinBtn = (id: string, name: string) => {
+    const on = pins.isPinned(id);
+    return (
+      <button type="button" className={`arrange-icon${on ? ' arrange-icon-on' : ''}`} aria-pressed={on} aria-label={on ? `Unpin ${name}` : `Pin ${name}`} title={on ? 'Unpin' : 'Pin to the front'}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); pins.toggle(id); }}>
+        <MapPinIcon className="w-4 h-4" />
+      </button>
+    );
+  };
+  const pinMark = (a: V2Addon) => pins.isPinned(a.id) ? <MapPinSolid className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} aria-label="Pinned" /> : null;
   const hidden = new Set(addonArrange.hidden);
   const action = (a: V2Addon) => {
     if (arrange.arranging) {
       return (
-        <button type="button" className="arrange-icon" aria-label={`Hide ${a.name}`} title="Hide on this page"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); addonArrange.hide(a.id); }}>
-          <EyeIcon className="w-4 h-4" />
-        </button>
+        <span className="flex gap-1.5">
+          {pinBtn(a.id, a.name)}
+          <button type="button" className="arrange-icon" aria-label={`Hide ${a.name}`} title="Hide on this page"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); addonArrange.hide(a.id); }}>
+            <EyeIcon className="w-4 h-4" />
+          </button>
+        </span>
       );
     }
     const busy = reloading.has(a.id);
@@ -107,7 +124,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
         <div className="flex items-center gap-3.5 min-w-0">
           <Logo a={a} size={48} />
           <div className="flex-1 min-w-0">
-            <div className="text-[17px] font-semibold text-default truncate">{a.name}</div>
+            <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default truncate">{a.name}</span>{pinMark(a)}</div>
             <div className="text-muted text-[12.5px] truncate">{[a.version && `v${a.version.replace(/^v/i, '')}`, KIND_WORD[addonKind(a)]].filter(Boolean).join(' · ')}</div>
           </div>
         </div>
@@ -123,7 +140,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
     <Link key={a.id} href={`/addons/${a.id}`} className="v2-row">
       <Logo a={a} size={38} />
       <div className="flex-1 min-w-0">
-        <b className="text-default block truncate">{a.name}</b>
+        <span className="flex items-center gap-1.5 min-w-0"><b className="text-default truncate">{a.name}</b>{pinMark(a)}</span>
         <div className="text-muted text-[12.5px] truncate">{a.version ? `v${a.version.replace(/^v/i, '')}` : KIND_WORD[addonKind(a)]}</div>
       </div>
       <div className="v2-col w-[170px]"><Health a={a} /></div>
@@ -137,7 +154,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
       {arrange.shown.map((key) => {
         const all = addons.filter((a) => addonKind(a) === key);
         if (all.length === 0) return null;
-        const members = all.filter((a) => !hidden.has(a.id));
+        const members = pinFirst(all.filter((a) => !hidden.has(a.id)), (a) => a.id, pins.pinned);
         const label = KIND_WORD[key];
         return (
           <ArrangeSection key={key} arrange={arrange} id={key} title={label} meta={`${all.length}`} noun="section">

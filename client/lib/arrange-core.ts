@@ -33,6 +33,8 @@ export type Arrangement = {
   startPage?: string;
   /** Grid or list, per page. */
   views?: Record<string, 'grid' | 'list'>;
+  /** Keep each page's filter between visits (off by default). */
+  keepFilters?: boolean;
   /** A page's kept filter, per page. */
   filters?: Record<string, string>;
   /** Pinned items, per page: always first. */

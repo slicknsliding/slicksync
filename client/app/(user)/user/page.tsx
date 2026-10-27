@@ -20,6 +20,13 @@ import { UpcomingSection } from '@/components/user/home/UpcomingSection';
 import { HomeNumbers } from '@/components/user/home/HomeNumbers';
 import { RecentAndMost } from '@/components/user/home/RecentAndMost';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePageArrangement } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
+
+// The names the Arrange tray uses for hidden sections.
+const HOME_LABELS: Record<string, string> = {
+  nowPlaying: 'Now Playing', continue: 'Continue Watching', upcoming: 'Upcoming', numbers: 'Your numbers', recent: 'Recently watched',
+};
 
 export default function UserHomePage() {
   const { userId, userInfo, provider } = useUserAuth();
@@ -138,6 +145,13 @@ export default function UserHomePage() {
   const riskBadge = getRiskBadge();
   const stats = activityData?.stats;
 
+  // Their own arrangement of this page: move, fold and hide each section,
+  // saved to them (lib/arrange.tsx).
+  const hasNowPlaying = !!activityData?.nowPlaying?.[0];
+  const homeArrange = usePageArrangement('home', hasNowPlaying
+    ? ['nowPlaying', 'continue', 'upcoming', 'numbers', 'recent']
+    : ['continue', 'upcoming', 'numbers', 'recent']);
+
   return (
     <div className="p-4 sm:p-8">
       {/* Hello, their picture, health, group and Sync Now. */}
@@ -159,6 +173,8 @@ export default function UserHomePage() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-2">
+          <ArrangeButton arrange={homeArrange} />
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -168,6 +184,7 @@ export default function UserHomePage() {
             <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
             <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
           </button>
+          </div>
           {syncMessage && (
             <p className={`text-xs ${syncMessage.includes('completed') ? 'text-success' : 'text-error'}`}>{syncMessage}</p>
           )}
@@ -191,15 +208,42 @@ export default function UserHomePage() {
         </div>
       )}
 
-      {/* What is on right now, first: the reason most people open this page. */}
-      {activityData?.nowPlaying?.[0] && (
-        <NowPlayingBanner row={activityData.nowPlaying[0]} provider={provider} profileLabel={activityData.profileLabel} />
-      )}
+      <ArrangeBar arrange={homeArrange} />
 
-      {/* Partly-watched shows and films, theirs only; hides itself when there are none. */}
-      <ContinueWatchingRow view={viewMode} />
-
-      <UpcomingSection view={viewMode} />
+      {/* Their sections, in their order. Now Playing first by default: the
+          reason most people open this page. */}
+      {homeArrange.shown.map((id) => {
+        if (id === 'nowPlaying' && activityData?.nowPlaying?.[0]) {
+          return (
+            <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false} className="mb-1">
+              <NowPlayingBanner row={activityData.nowPlaying[0]} provider={provider} profileLabel={activityData.profileLabel} />
+            </ArrangePanel>
+          );
+        }
+        if (id === 'continue') {
+          // Partly-watched shows and films, theirs only; hides itself when there are none.
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><ContinueWatchingRow view={viewMode} /></ArrangePanel>;
+        }
+        if (id === 'upcoming') {
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><UpcomingSection view={viewMode} /></ArrangePanel>;
+        }
+        if (!loading && !error && stats && id === 'numbers') {
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><HomeNumbers stats={stats} byDay={activityData?.watchTimeByDay || []} /></ArrangePanel>;
+        }
+        if (!loading && !error && stats && id === 'recent') {
+          return (
+            <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}>
+              <RecentAndMost
+                recent={activityData?.recentlyWatched || []}
+                most={activityData?.mostWatchedList || (activityData?.mostWatched ? [activityData.mostWatched] : [])}
+                provider={provider}
+              />
+            </ArrangePanel>
+          );
+        }
+        return null;
+      })}
+      <HiddenTray arrange={homeArrange} labelOf={(id) => HOME_LABELS[id] || id} />
 
       {loading && (
         <div className="flex items-center justify-center py-20">
@@ -223,17 +267,6 @@ export default function UserHomePage() {
             Try Again
           </button>
         </div>
-      )}
-
-      {!loading && !error && stats && (
-        <>
-          <HomeNumbers stats={stats} byDay={activityData?.watchTimeByDay || []} />
-          <RecentAndMost
-            recent={activityData?.recentlyWatched || []}
-            most={activityData?.mostWatchedList || (activityData?.mostWatched ? [activityData.mostWatched] : [])}
-            provider={provider}
-          />
-        </>
       )}
 
       {!loading && !error && !stats && (

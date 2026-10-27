@@ -93,6 +93,7 @@ model User {
   excludeFromHouseholdStats Boolean @default(false)
   // Which SlickTrax rows this person gets, and in what order: JSON { order: [key], hidden: [key] }.
   traxRowsJson       String?
+  homeArrangeJson    String? // How this person arranged their own Home: section order, folded and hidden (JSON, client-owned shape)
   watchStateEnabled  Boolean  @default(false)
   // JSON { viewerId: userId | null }. AIOStreams names each household profile
   // on every request; this records which SlickSync user each one is. null

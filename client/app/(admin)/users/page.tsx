@@ -31,7 +31,7 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } fro
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
-import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
 import {
@@ -106,7 +106,8 @@ export default function UsersPage() {
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [peopleFilter, setPeopleFilter] = useState<'all' | 'dormant' | 'watching' | 'fix' | 'off'>('all');
+  // Kept between visits when "Keep each page's filter" is on (Themes).
+  const [peopleFilter, setPeopleFilter] = useSavedFilter('users', 'all' as 'all' | 'dormant' | 'watching' | 'fix' | 'off', ['all', 'dormant', 'watching', 'fix', 'off']);
   const { design } = usePageDesign();
   const v2 = design === 'v2' && !isTV;
   const { viewMode, setViewMode } = useDefaultViewMode();
@@ -322,8 +323,9 @@ export default function UsersPage() {
   const groupArrange = usePageArrangement('users', useMemo(() => [...v2Groups.map((g) => g.key), NO_GROUP_KEY], [v2Groups]));
   const peopleArrangeOwn = usePageArrangement('users-people', useMemo(() => users.map((u) => u.id), [users]));
   const peopleArrange = { ...peopleArrangeOwn, arranging: groupArrange.arranging };
-  // The bar's Reset puts both back: the groups and anyone hidden.
-  const pageArrange = { ...groupArrange, isDefault: groupArrange.isDefault && peopleArrangeOwn.isDefault, reset: () => { groupArrange.reset(); peopleArrangeOwn.reset(); } };
+  const peoplePins = usePinned('users');
+  // The bar's Reset puts it all back: the groups, anyone hidden, any pins.
+  const pageArrange = { ...groupArrange, isDefault: groupArrange.isDefault && peopleArrangeOwn.isDefault && peoplePins.pinned.length === 0, reset: () => { groupArrange.reset(); peopleArrangeOwn.reset(); peoplePins.reset(); } };
   const v2People = useMemo<V2Person[]>(() => filteredUsers.map((u) => ({
     id: u.id,
     name: u.name,
@@ -661,6 +663,7 @@ export default function UsersPage() {
       {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters and controls */}
         <PageToolbar
+          viewModeConfig={{ mode: viewMode, onChange: setViewMode, showLabels: false }}
           selectionConfig={{
             totalCount: filteredUsers.length,
             selectedCount: selectedIds.size,
@@ -735,6 +738,7 @@ export default function UsersPage() {
                   groups={v2Groups}
                   arrange={groupArrange}
                   peopleArrange={peopleArrange}
+                  pins={peoplePins}
                   view={viewMode === 'list' ? 'list' : 'grid'}
                   watching={watchingTitles}
                   syncing={syncingUserIds}

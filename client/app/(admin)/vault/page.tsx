@@ -1,6 +1,6 @@
 'use client';
 
-import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { VaultV2, VAULT_SECTIONS } from '@/components/v2/VaultV2';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
@@ -441,7 +441,8 @@ function VaultPageContent() {
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
-  const [activeCategory, setActiveCategory] = useState('debrid'); // 'all' tab removed - defaults to first real category
+  // Kept between visits when "Keep each page's filter" is on (Themes).
+  const [activeCategory, setActiveCategory] = useSavedFilter('vault', 'debrid' as string); // 'all' tab removed - defaults to first real category
   const [isLoading, setIsLoading] = useState(true);
 
   // Instant navigation: the last-known entries of the category this page

@@ -5,6 +5,7 @@
 // first paint, then from the account, which wins; every change is saved back
 // to the account so it follows the person to every device.
 
+import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 import {
@@ -17,13 +18,17 @@ const STORE_KEY = 'slicksync-arrange';
 type Ctx = {
   arrangement: Arrangement;
   update: (fn: (prev: Arrangement) => Arrangement) => void;
+  /** False outside ArrangeProvider (a person's own pages): nothing is saved there. */
+  active: boolean;
+  /** The account's copy has answered (or failed): the arrangement is final. */
+  loaded: boolean;
 };
 
-const ArrangeContext = createContext<Ctx>({ arrangement: {}, update: () => {} });
+const ArrangeContext = createContext<Ctx>({ arrangement: {}, update: () => {}, active: false, loaded: true });
 
-function readLocal(): Arrangement {
+function readLocal(key: string = STORE_KEY): Arrangement {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(key);
     const v = raw ? JSON.parse(raw) : null;
     return v && typeof v === 'object' ? v : {};
   } catch {
@@ -31,8 +36,26 @@ function readLocal(): Arrangement {
   }
 }
 
-export function ArrangeProvider({ children }: { children: ReactNode }) {
+type Store = {
+  /** This device's copy, under its own key. */
+  localKey: string;
+  load: () => Promise<{ arrange: Arrangement | null } | null | undefined>;
+  save: (a: Arrangement | null) => Promise<unknown>;
+};
+
+const ACCOUNT_STORE: Store = {
+  localKey: STORE_KEY,
+  load: () => api.getArrangement(),
+  save: (a) => api.saveArrangement(a),
+};
+
+/**
+ * The account's arrangement on the admin pages; a person's own pages pass
+ * their own `store` (PersonArrangeProvider) so it saves to them instead.
+ */
+export function ArrangeProvider({ children, store = ACCOUNT_STORE }: { children: ReactNode; store?: Store }) {
   const [arrangement, setArrangement] = useState<Arrangement>({});
+  const [loaded, setLoaded] = useState(false);
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -40,38 +63,49 @@ export function ArrangeProvider({ children }: { children: ReactNode }) {
   // during the server render, so it can't be the initial state).
   useLayoutEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setArrangement(readLocal());
-  }, []);
+    setArrangement(readLocal(store.localKey));
+  }, [store.localKey]);
 
   useEffect(() => {
     let cancelled = false;
-    api.getArrangement()
+    store.load()
       .then((r) => {
         // A change made before the answer came back wins over it.
         if (cancelled || dirty.current) return;
         const next = r?.arrange && typeof r.arrange === 'object' ? r.arrange : {};
         setArrangement(next);
-        try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+        try { localStorage.setItem(store.localKey, JSON.stringify(next)); } catch { /* storage blocked */ }
       })
-      .catch(() => { /* signed out or offline: this device's copy stands */ });
+      .catch(() => { /* signed out or offline: this device's copy stands */ })
+      .finally(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
-  }, []);
+  }, [store]);
 
   const update = useCallback((fn: (prev: Arrangement) => Arrangement) => {
     dirty.current = true;
     setArrangement((prev) => {
       const next = fn(prev);
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+      try { localStorage.setItem(store.localKey, JSON.stringify(next)); } catch { /* storage blocked */ }
       // One save after a burst of clicks, not one per click.
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
-        api.saveArrangement(Object.keys(next).length ? next : null).catch(() => {});
+        store.save(Object.keys(next).length ? next : null).catch(() => {});
       }, 600);
       return next;
     });
-  }, []);
+  }, [store]);
 
-  const value = useMemo(() => ({ arrangement, update }), [arrangement, update]);
+  // Density (Themes → Layout): one attribute on <html> that the stylesheet
+  // tightens cards, rows and gaps from.
+  const density = arrangement.density;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (density === 'compact') root.dataset.density = 'compact';
+    else delete root.dataset.density;
+    return () => { delete root.dataset.density; };
+  }, [density]);
+
+  const value = useMemo(() => ({ arrangement, update, active: true, loaded }), [arrangement, update, loaded]);
   return <ArrangeContext.Provider value={value}>{children}</ArrangeContext.Provider>;
 }
 
@@ -155,4 +189,145 @@ export function usePageDesign() {
     });
   }, [update]);
   return { design, setDesign };
+}
+
+/** Comfortable or Compact (Themes → Layout), for this account. */
+export function useDensity() {
+  const { arrangement, update } = useArrangement();
+  const density = arrangement.density === 'compact' ? 'compact' : 'comfortable';
+  const setDensity = useCallback((d: 'comfortable' | 'compact') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, density: d };
+      if (d === 'comfortable') delete out.density;
+      return out;
+    });
+  }, [update]);
+  return { density, setDensity };
+}
+
+/** Where SlickSync opens for this account (Themes → Layout). '/' is the Dashboard. */
+export function useStartPage() {
+  const { arrangement, update } = useArrangement();
+  const startPage = arrangement.startPage || '/';
+  const setStartPage = useCallback((href: string) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, startPage: href };
+      if (href === '/') delete out.startPage;
+      return out;
+    });
+  }, [update]);
+  return { startPage, setStartPage };
+}
+
+/**
+ * A page's filter. With "Keep each page's filter" on (Themes → Layout) the
+ * choice is saved and comes back next visit; otherwise it's this visit only.
+ */
+export function useSavedFilter<T extends string>(pageId: string, fallback: T, allowed?: readonly T[]) {
+  const { arrangement, update, active } = useArrangement();
+  const keep = active && !!arrangement.keepFilters;
+  const saved = keep ? arrangement.filters?.[pageId] : undefined;
+  const [own, setOwn] = useState<T>(fallback);
+  const [touched, setTouched] = useState(false);
+  const usable = saved !== undefined && (!allowed || (allowed as readonly string[]).includes(saved));
+  const value = (!touched && usable ? saved : own) as T;
+  const set = useCallback((v: T) => {
+    setOwn(v);
+    setTouched(true);
+    if (keep) update((prev) => ({ ...prev, filters: { ...(prev.filters || {}), [pageId]: v } }));
+  }, [keep, update, pageId]);
+  return [value, set] as const;
+}
+
+/** Pinned items on a page: they always sit first. */
+export function usePinned(pageId: string) {
+  const { arrangement, update } = useArrangement();
+  const pinned = useMemo(() => arrangement.pinned?.[pageId] || [], [arrangement.pinned, pageId]);
+  const toggle = useCallback((id: string) => {
+    update((prev) => {
+      const list = prev.pinned?.[pageId] || [];
+      const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+      const all = { ...(prev.pinned || {}) };
+      if (next.length) all[pageId] = next;
+      else delete all[pageId];
+      const out: Arrangement = { ...prev, pinned: all };
+      if (Object.keys(all).length === 0) delete out.pinned;
+      return out;
+    });
+  }, [update, pageId]);
+  const reset = useCallback(() => {
+    update((prev) => {
+      if (!prev.pinned?.[pageId]) return prev;
+      const all = { ...prev.pinned };
+      delete all[pageId];
+      const out: Arrangement = { ...prev, pinned: all };
+      if (Object.keys(all).length === 0) delete out.pinned;
+      return out;
+    });
+  }, [update, pageId]);
+  return { pinned, isPinned: (id: string) => pinned.includes(id), toggle, reset };
+}
+
+/** Keep each page's filter (Themes → Layout). */
+export function useKeepFilters() {
+  const { arrangement, update } = useArrangement();
+  const keep = !!arrangement.keepFilters;
+  const setKeep = useCallback((on: boolean) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, keepFilters: on };
+      if (!on) { delete out.keepFilters; delete out.filters; }
+      return out;
+    });
+  }, [update]);
+  return { keep, setKeep };
+}
+
+/**
+ * Opens SlickSync on the account's start page: once per browser tab, and only
+ * when the tab opened on the Dashboard and is still there - clicking
+ * Dashboard later still goes there. Waits for the account's copy on a device
+ * that hasn't got one yet.
+ */
+export function StartPageRedirect() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { arrangement, loaded } = useArrangement();
+  const eligible = useRef<boolean | null>(null);
+  if (eligible.current === null) {
+    let first = false;
+    try {
+      first = !sessionStorage.getItem('slicksync-started');
+      sessionStorage.setItem('slicksync-started', '1');
+    } catch { first = false; }
+    eligible.current = first && pathname === '/';
+  }
+  useEffect(() => {
+    if (!eligible.current) return;
+    if (pathname !== '/') { eligible.current = false; return; }
+    const start = arrangement.startPage || readLocal().startPage;
+    if (start && start !== '/' && start.startsWith('/')) {
+      eligible.current = false;
+      router.replace(start);
+    } else if (loaded) {
+      eligible.current = false;
+    }
+  }, [pathname, arrangement.startPage, loaded, router]);
+  return null;
+}
+
+/**
+ * A person's own pages: their arrangement is theirs, saved to them (not the
+ * account), and follows them to every device they sign in on.
+ */
+export function PersonArrangeProvider({ userId, authKey, children }: { userId: string | null; authKey: string | null; children: ReactNode }) {
+  const store = useMemo<Store | null>(() => {
+    if (!userId || !authKey) return null;
+    return {
+      localKey: `${STORE_KEY}::person::${userId}`,
+      load: () => import('@/lib/user-api').then((m) => m.userHomeArrange.get(userId, authKey)),
+      save: (a) => import('@/lib/user-api').then((m) => m.userHomeArrange.save(userId, authKey, a)),
+    };
+  }, [userId, authKey]);
+  if (!store) return <>{children}</>;
+  return <ArrangeProvider key={store.localKey} store={store}>{children}</ArrangeProvider>;
 }

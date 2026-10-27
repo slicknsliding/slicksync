@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { UserAuthProvider } from '@/lib/hooks/useUserAuth';
+import { UserAuthProvider, useUserAuth } from '@/lib/hooks/useUserAuth';
+import { PersonArrangeProvider } from '@/lib/arrange';
 import { UserAuthGate } from '@/components/user/UserAuthGate';
 import { PersonTopbar } from '@/components/user/PersonTopbar';
 import { UserPageContainer } from '@/components/user/UserPageContainer';
@@ -64,6 +65,7 @@ export default function UserLayout({
   return (
     <UserAuthProvider>
       <UserAuthGate>
+        <PersonArrange>
         <UserMobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
           <div className="relative min-h-screen">
             {/* The collapsed nav opens inside the bar, so nothing locks the page
@@ -75,7 +77,14 @@ export default function UserLayout({
             </UserPageContainer>
           </div>
         </UserMobileMenuContext.Provider>
+        </PersonArrange>
       </UserAuthGate>
     </UserAuthProvider>
   );
+}
+
+// Their own arrangement of their pages, saved to them (lib/arrange.tsx).
+function PersonArrange({ children }: { children: React.ReactNode }) {
+  const { userId, authKey } = useUserAuth();
+  return <PersonArrangeProvider userId={userId} authKey={authKey}>{children}</PersonArrangeProvider>;
 }

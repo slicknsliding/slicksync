@@ -1,5 +1,6 @@
 'use client';
 
+import { ViewModeToggle } from './ViewModeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FilterTabs, FilterTabOption } from './FilterTabs';
 import { SearchInput } from './Input';
@@ -287,6 +288,12 @@ export function PageToolbar({
             invitation, Add/Browse addon - simply did not exist on a phone.
             The only way in was the empty-state button, so once a list had
             anything in it the page became read-only on mobile. */}
+        {/* Grid or list for this page only (Themes sets the default). Phones are always grid. */}
+        {viewModeConfig && (
+          <span className="max-md:hidden">
+            <ViewModeToggle mode={viewModeConfig.mode} onChange={viewModeConfig.onChange} showLabels={viewModeConfig.showLabels ?? false} />
+          </span>
+        )}
         {primaryAction && <div>{primaryAction}</div>}
         {rightContent ? rightContent : rightActions}
       </div>
