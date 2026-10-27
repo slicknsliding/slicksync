@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
@@ -26,6 +26,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
+import { useMenuArrangement } from '@/lib/arrange';
+import { arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -170,6 +172,21 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       .catch(() => { });
   }, []);
 
+  // The account's own menu order (Themes → Layout → Arrange the menu), the
+  // same list the top bar uses: its pages in that order, then the ones it
+  // hid under More. Without one, the sidebar's own two groups.
+  const { menu } = useMenuArrangement();
+  const sections = useMemo(() => {
+    if (!menuIsArranged(menu)) return navigationSections;
+    const { shown, more } = arrangeMenu(menu);
+    const toItem = (i: (typeof shown)[number]) => ({ name: i.label, href: i.href, icon: i.icon });
+    return [
+      { id: 'pages', label: 'Pages', items: shown.map(toItem) },
+      ...(more.length ? [{ id: 'more', label: 'More', items: more.map(toItem) }] : []),
+      navigationSections[2],
+    ];
+  }, [menu]);
+
   const isItemActive = (href: string) => {
     if (href === '/') {
       return pathname === '/';
@@ -186,7 +203,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   return (
     <SidebarFrame
-      sections={navigationSections}
+      sections={sections}
       homeHref="/"
       isOpen={isOpen}
       onClose={onClose}
@@ -202,7 +219,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
  * button at the foot.
  */
 export function SidebarFrame({ sections, homeHref, isOpen = false, onClose, isItemActive, account }: {
-  sections: typeof navigationSections;
+  sections: { id: string; label: string; items: { name: string; href: string; icon: React.ComponentType<{ className?: string }> }[] }[];
   homeHref: string;
   isOpen?: boolean;
   onClose?: () => void;

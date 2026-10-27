@@ -1129,6 +1129,10 @@ body {
 .nebula-nav-row {
   justify-content: safe center;
 }
+/* The one-row bar with the logo on the left: links start beside the logo. */
+.nebula-nav-row.nebula-nav-row-start {
+  justify-content: flex-start;
+}
 
 /* Home Screen-launched (standalone display mode) web apps on iOS run in a
    separate WKWebView process with markedly worse backdrop-filter/blur
@@ -1808,3 +1812,13 @@ body {
   display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px;
   background: var(--color-surface); border: 1px solid var(--color-surface-border);
 }
+/* Themes → Layout → Arrange the menu (components/settings/MenuArranger.tsx). */
+.menu-seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
+.menu-seg button { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--color-text-muted); background: transparent; border: 0; cursor: pointer; }
+.menu-seg button.on { background: var(--color-surface); color: var(--color-text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.menu-seg[aria-disabled="true"] { opacity: 0.5; }
+.menu-seg button:disabled { cursor: default; }
+.menu-where { font-size: 12px; padding: 2px 9px; border-radius: 999px; color: var(--color-text-muted); border: 1px solid var(--color-surface-border); white-space: nowrap; }
+@media (max-width: 420px) { .menu-where { display: none; } }
+/* One-row bar, scrolled: the bell and palette dock at its right end, so the links stop short of them. */
+.nebula-inline-docked { padding-right: 96px; }

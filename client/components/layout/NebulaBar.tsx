@@ -18,6 +18,8 @@ import { AccountPlacementContext, useAccountPlacement } from '@/lib/layout-mode'
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { ScrollRow } from '@/components/ui/ScrollRow';
+import { NavMoreMenu } from './NavMoreMenu';
+import type { MenuItem } from '@/lib/adminMenu';
 
 // Matches Sidebar.tsx's isItemActive exactly - a sub-route (e.g.
 // /catalogs/[id] or /catalogs/nuvio-collections) should keep its parent nav
@@ -41,13 +43,21 @@ export type NebulaNavSection = {
  * its own nav rows, home address, open/closed state for the collapsed nav,
  * and account button.
  */
+export type NebulaBarLook = { rows: 1 | 2; logo: 'large' | 'small' | 'hidden'; align: 'center' | 'left' };
+
 export function NebulaBar({
   sections,
+  more = [],
+  look = { rows: 2, logo: 'large', align: 'center' },
   homeHref,
   menu,
   account,
 }: {
   sections: NebulaNavSection[];
+  /** Pages hidden from the bar, reached from a More pill at its end. */
+  more?: MenuItem[];
+  /** How the bar is laid out (Themes → Layout → Arrange the menu). */
+  look?: NebulaBarLook;
   homeHref: string;
   menu: { isOpen: boolean; onOpen: () => void; onClose: () => void };
   account: ReactNode;
@@ -83,6 +93,14 @@ export function NebulaBar({
   // even listen for scroll events (which fire constantly there as a side
   // effect of D-pad focus movement, not user intent) if nothing reads them.
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isWide, setIsWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const on = () => setIsWide(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
   useEffect(() => {
     if (isTV) return;
     // Two thresholds, not one. A single cutoff (the old `scrollY > 24`)
@@ -147,6 +165,66 @@ export function NebulaBar({
       document.removeEventListener('pointerdown', onPointerDown);
     };
   }, [mobileNavOpen, isTV, closeMobileNav]);
+
+  // The person's own bar (TV keeps the default: it has no D-pad wiring for
+  // More or a one-row bar). Inline: one row with the logo on the left and the
+  // links beside it, on a wide screen - it stays put when scrolling instead
+  // of folding behind the hamburger.
+  const smallLogo = !isTV && look.logo === 'small';
+  const noLogo = !isTV && look.logo === 'hidden';
+  const inline = !isTV && isWide && look.rows === 1 && look.align === 'left';
+  const moreItems = isTV ? [] : more;
+  // With no logo, the logo row only shows when it has something to hold.
+  const logoRowHidden = noLogo && !inline && !isScrolled && placement !== 'bar';
+  const isActive = (href: string) => isNavItemActive(pathname, href, homeHref);
+  const renderLink = (link: NebulaNavSection['items'][number]) => {
+    const isActiveLink = isActive(link.href);
+    const Icon = link.icon;
+    const navLink = (
+      <Link
+        href={link.href}
+        tabIndex={isTV ? -1 : undefined}
+        onClick={closeMobileNav}
+        aria-current={isActiveLink ? 'page' : undefined}
+        className={`${isTV ? 'nav-item-hover-pill flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap' : `nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold ${inline ? 'px-3' : 'px-4'} py-2 rounded-full whitespace-nowrap`} ${isActiveLink ? 'nebula-link-on' : 'text-muted'}`}
+      >
+        <Icon className={isTV ? 'w-3.5 h-3.5 shrink-0' : 'w-4 h-4 shrink-0'} />
+        {link.label}
+      </Link>
+    );
+    // This row previously had no D-pad wiring at all - Up out of
+    // a page's own TV content had nowhere to go, which is why
+    // switching pages (or getting back to one) was impossible on
+    // an actual TV. onEnterPress navigates imperatively since
+    // Norigin fires a synthetic "press", not a real click the
+    // anchor's own href would otherwise handle.
+    // Keyed on pathname too (not just href) so every link gets a
+    // brand-new DOM node on each route change, not just a
+    // restyle of the same persistent one. Confirmed live
+    // (Firefox, desktop): after hoisting this whole component to
+    // persist across navigation (previously remounted fresh on
+    // every page - see the component's own top-level comment),
+    // several previously-clicked pills stayed visually "active"
+    // at once instead of just the current page - a real Firefox
+    // quirk where a persistent element's :hover doesn't always
+    // get re-evaluated when its own styling changes without a
+    // fresh native mousemove. A pointer-events toggle attempted
+    // first wasn't reliable enough. Forcing a fresh element per
+    // navigation sidesteps the whole class of "stale browser-
+    // internal state survives because the DOM node survives"
+    // bug outright, rather than trying to name every event that
+    // could trigger it.
+    return isTV ? (
+      <TVFocusable key={`${link.href}-${pathname}`} onEnterPress={() => router.push(link.href)}>
+        {navLink}
+      </TVFocusable>
+    ) : (
+      <Fragment key={`${link.href}-${pathname}`}>{navLink}</Fragment>
+    );
+  };
+  const moreMenu = moreItems.length > 0
+    ? <NavMoreMenu key={`more-${pathname}`} items={moreItems} isActive={isActive} onNavigate={closeMobileNav} tight={inline} />
+    : null;
 
   return (
     <AccountPlacementContext.Provider value={placement}>
@@ -249,7 +327,7 @@ export function NebulaBar({
             bell inside this row, at the far end from the hamburger, once the
             page heading scrolls past, instead of floating them over the page
             under the bar. */}
-        <div data-nebula-logo-row className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4'}>
+        <div data-nebula-logo-row className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : inline ? `relative flex items-center gap-3${placement === 'bar' ? ' pr-14' : ''}${isScrolled ? ' nebula-inline-docked' : ''}` : `relative flex items-center justify-center gap-2 md:gap-4${logoRowHidden ? ' hidden' : ''}`}>
           {/* Hamburger - never on TV (nav is always shown inline there
               instead, see navVisible below); on mobile AND desktop alike,
               only once scrolled - nav shows inline at the top of the page
@@ -260,7 +338,7 @@ export function NebulaBar({
               deliberate design choice. Absolutely positioned so the logo
               stays genuinely centered either way, rather than the
               hamburger's own width pushing it off-center. */}
-          {!isTV && isScrolled && (
+          {!isTV && isScrolled && !inline && (
             <button
               ref={menuButtonRef}
               onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
@@ -276,20 +354,21 @@ export function NebulaBar({
               )}
             </button>
           )}
-          <Link href={homeHref} aria-label="SlickSync home" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : 'flex items-center gap-2 md:gap-4 justify-center min-w-0'}>
+          {!noLogo && (
+          <Link href={homeHref} aria-label="SlickSync home" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : `flex items-center gap-2 ${smallLogo ? 'md:gap-3' : 'md:gap-4'} justify-center min-w-0 shrink-0`}>
             <div
-              className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
+              className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : smallLogo ? 'w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
               style={{
                 background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
                 boxShadow: '0 8px 28px -6px var(--color-primary)',
               }}
             >
-              <SlickSyncLogo className={isTV ? 'w-4 h-4' : 'w-7 h-7 md:w-11 md:h-11'} />
+              <SlickSyncLogo className={isTV ? 'w-4 h-4' : smallLogo ? 'w-7 h-7 md:w-8 md:h-8' : 'w-7 h-7 md:w-11 md:h-11'} />
             </div>
             <b
               // Account in the bar, scrolled, on a phone: the docked bell and
               // palette need the room beside the logo, so the wordmark steps aside.
-              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : `text-xl md:text-4xl font-bold font-display tracking-tight whitespace-nowrap${placement === 'bar' && isScrolled ? ' max-md:hidden' : ''}`}
+              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : `text-xl ${smallLogo ? 'md:text-2xl' : 'md:text-4xl'} font-bold font-display tracking-tight whitespace-nowrap${placement === 'bar' && isScrolled ? ' max-md:hidden' : ''}`}
               style={{
                 background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
                 WebkitBackgroundClip: 'text',
@@ -300,6 +379,16 @@ export function NebulaBar({
               SlickSync
             </b>
           </Link>
+          )}
+          {/* One row, on the left: the links sit beside the logo. */}
+          {inline && (
+            <nav id={navId} aria-label="Main navigation" className="flex-1 min-w-0">
+              <ScrollRow className="flex flex-nowrap items-center gap-1 w-full px-1 -mx-1 nebula-nav-row nebula-nav-row-start">
+                {sections.flatMap((section) => section.items).map(renderLink)}
+                {moreMenu}
+              </ScrollRow>
+            </nav>
+          )}
           {/* Account in the bar: the right end of this row, mirroring the
               hamburger at the left. data-nebula-end lets TopbarActions dock
               its cluster just left of it. */}
@@ -324,6 +413,7 @@ export function NebulaBar({
             shown inline while at the top of the page, collapses behind the
             hamburger once scrolled, regardless of viewport size. */}
         {(() => {
+          if (inline) return null;
           const navVisible = isTV ? true : (isScrolled ? mobileNavOpen : true);
           return (
             <AnimatePresence initial={false}>
@@ -344,8 +434,8 @@ export function NebulaBar({
                       the logo row margin-free leaves equal padding above and
                       below it when the nav is collapsed. */}
                   <div
-                    className={isTV ? 'flex flex-col items-center gap-1 pt-1.5' : 'flex flex-col items-center gap-3 mt-4 pt-4'}
-                    style={{ borderTop: '1px solid var(--color-surface-border)' }}
+                    className={isTV ? 'flex flex-col items-center gap-1 pt-1.5' : logoRowHidden ? 'flex flex-col items-center gap-3' : 'flex flex-col items-center gap-3 mt-4 pt-4'}
+                    style={logoRowHidden ? undefined : { borderTop: '1px solid var(--color-surface-border)' }}
                   >
                   {sections.map((section) => (
             // Each section is its own row, same as Sidebar.tsx's vertical
@@ -363,51 +453,8 @@ export function NebulaBar({
               key={section.id}
               className={isTV ? 'flex flex-nowrap items-center gap-1.5 w-full px-1 -mx-1 nebula-nav-row' : 'flex flex-nowrap items-center gap-2 w-full px-1 -mx-1 nebula-nav-row'}
             >
-              {section.items.map((link) => {
-                const isActive = isNavItemActive(pathname, link.href, homeHref);
-                const Icon = link.icon;
-                const navLink = (
-                  <Link
-                    href={link.href}
-                    tabIndex={isTV ? -1 : undefined}
-                    onClick={closeMobileNav}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`${isTV ? 'nav-item-hover-pill flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap' : 'nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap'} ${isActive ? 'nebula-link-on' : 'text-muted'}`}
-                  >
-                    <Icon className={isTV ? 'w-3.5 h-3.5 shrink-0' : 'w-4 h-4 shrink-0'} />
-                    {link.label}
-                  </Link>
-                );
-                // This row previously had no D-pad wiring at all - Up out of
-                // a page's own TV content had nowhere to go, which is why
-                // switching pages (or getting back to one) was impossible on
-                // an actual TV. onEnterPress navigates imperatively since
-                // Norigin fires a synthetic "press", not a real click the
-                // anchor's own href would otherwise handle.
-                // Keyed on pathname too (not just href) so every link gets a
-                // brand-new DOM node on each route change, not just a
-                // restyle of the same persistent one. Confirmed live
-                // (Firefox, desktop): after hoisting this whole component to
-                // persist across navigation (previously remounted fresh on
-                // every page - see the component's own top-level comment),
-                // several previously-clicked pills stayed visually "active"
-                // at once instead of just the current page - a real Firefox
-                // quirk where a persistent element's :hover doesn't always
-                // get re-evaluated when its own styling changes without a
-                // fresh native mousemove. A pointer-events toggle attempted
-                // first wasn't reliable enough. Forcing a fresh element per
-                // navigation sidesteps the whole class of "stale browser-
-                // internal state survives because the DOM node survives"
-                // bug outright, rather than trying to name every event that
-                // could trigger it.
-                return isTV ? (
-                  <TVFocusable key={`${link.href}-${pathname}`} onEnterPress={() => router.push(link.href)}>
-                    {navLink}
-                  </TVFocusable>
-                ) : (
-                  <Fragment key={`${link.href}-${pathname}`}>{navLink}</Fragment>
-                );
-              })}
+              {section.items.map(renderLink)}
+              {section.id === sections[sections.length - 1]?.id && moreMenu}
             </ScrollRow>
           ))}
                   </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   HomeIcon,
   MagnifyingGlassIcon,
@@ -18,6 +18,8 @@ import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 import { NebulaBar, type NebulaNavSection } from './NebulaBar';
+import { useMenuArrangement } from '@/lib/arrange';
+import { arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
 
 // Replaces the sidebar for pages rendering Nebula layout mode (see
 // lib/layout-mode.tsx's NEBULA_ELIGIBLE_PATHS) - brand sits on its own row
@@ -92,9 +94,25 @@ export function NebulaTopbar() {
     window.location.href = '/login?mode=admin';
   };
 
+  // The account's own arrangement of the menu, if it has one: its order,
+  // hidden pages in More, one row or two, the logo's size and where the bar
+  // sits. Without one, the two default rows.
+  const { menu: arranged } = useMenuArrangement();
+  const sections = useMemo<NebulaNavSection[]>(() => {
+    const rows = arranged.rows ?? 2;
+    if (!menuIsArranged(arranged) && rows === 2) return NEBULA_NAV_SECTIONS;
+    const { shown } = arrangeMenu(arranged);
+    if (rows === 1) return [{ id: 'all', items: shown }];
+    const half = Math.ceil(shown.length / 2);
+    return [{ id: 'first', items: shown.slice(0, half) }, { id: 'second', items: shown.slice(half) }];
+  }, [arranged]);
+  const more = useMemo(() => arrangeMenu(arranged).more, [arranged]);
+
   return (
     <NebulaBar
-      sections={NEBULA_NAV_SECTIONS}
+      sections={sections}
+      more={more}
+      look={{ rows: arranged.rows ?? 2, logo: arranged.logo ?? 'large', align: arranged.align ?? 'center' }}
       homeHref="/"
       menu={menu}
       account={<PanelSwitcher mode="admin" userInfo={accountInfo} onLogout={handleLogout} variant="compact" align="left" />}

@@ -1,5 +1,6 @@
 'use client';
 
+import { MenuArranger } from '@/components/settings/MenuArranger';
 import { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
@@ -634,6 +635,8 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 </p>
               </>
             )}
+
+            <MenuArranger topNavi={layoutMode === 'nebula'} />
 
             {/* Moved here from Settings -> Other Settings - a display
                 arrangement choice belongs alongside Layout, not off on its
