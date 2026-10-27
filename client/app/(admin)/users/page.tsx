@@ -774,7 +774,7 @@ export default function UsersPage() {
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
-                  <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <StaggerContainer key="grid" className="user-card-grid">
                     <AnimatePresence mode="popLayout">
                       <SortableContext items={filteredUsers.map(u => u.id)} strategy={rectSortingStrategy}>
                       {filteredUsers.map((user) => (
@@ -1290,10 +1290,8 @@ function UserCard({
       <Card
         variant="interactive"
         padding="md"
-        // The switch sits on the name line. The provider and sync badges sit
-        // beside the name on a wide card and get a line of their own on a
-        // narrow one (see .user-card-head); Limits and Caught up follow the
-        // group / addons / time line.
+        // One thing per line: name and switch, the badges, group and addons,
+        // then time with Limits and Caught up (see .user-card-head).
         className={`user-card group cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
@@ -1388,9 +1386,9 @@ function UserCard({
           </div>
         </div>
         {/* Group, addons and time, then Limits and Caught up - no dots, like
-            the Groups cards. On a narrow card the time starts a second line
+            the Groups cards. The time starts a second line
             with the two after it. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm text-muted whitespace-nowrap">
+        <div className="user-card-meta mt-3 flex flex-wrap items-center gap-x-2.5 text-sm text-muted whitespace-nowrap">
           <span className="flex items-center gap-1.5">
             <UserGroupIcon className="w-4 h-4 text-secondary" />
             {user.groups.length > 0 ? (
@@ -1425,7 +1423,7 @@ function UserCard({
             <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
           </span>
         </div>
-        <div className="mt-1.5 flex items-center justify-between gap-3">
+        <div className="mt-2.5 flex items-center justify-between gap-3">
           <p className="text-xs text-subtle">
             {user.lastSeen === 'Never' ? 'Never seen' : `Last seen ${user.lastSeen}`}
           </p>

@@ -1284,9 +1284,10 @@ body {
   contain-intrinsic-size: auto 150px 225px;
 }
 
-/* Users page card: drag handle, picture, name and switch on one line. The
-   badges take their own full-width line on a narrow card and sit right after
-   the name once the card is wide enough for both. */
+/* Users page card, one thing per line: drag handle, picture, name and
+   switch; then the badges; then group and addons; then time, Limits and
+   Caught up; then last seen. The cards stay narrow (see .user-card-grid) so
+   no line leaves a gap beside the name. */
 .user-card {
   container-type: inline-size;
 }
@@ -1302,7 +1303,7 @@ body {
 .user-card-avatar { grid-area: avatar; display: flex; margin-right: 12px; }
 .user-card-name-cell { grid-area: name; min-width: 0; }
 .user-card-toggle { grid-area: toggle; display: flex; margin-left: 10px; }
-/* Narrow card: the time starts a new line, with Limits and Caught up after it. */
+/* The time starts its own line, with Limits and Caught up after it. */
 .user-card-break { flex-basis: 100%; height: 0; }
 .user-card-badges {
   grid-area: badges;
@@ -1313,14 +1314,10 @@ body {
   margin-top: 12px;
   min-width: 0;
 }
-@container (min-width: 470px) {
-  .user-card-break { display: none; }
-  .user-card-head {
-    grid-template-columns: auto auto minmax(0, max-content) auto minmax(0, 1fr) auto;
-    grid-template-areas: "drag avatar name badges . toggle";
-  }
-  .user-card-badges { margin-top: 0; margin-left: 10px; flex-wrap: nowrap; }
-}
+.user-card-name { font-size: 17px; }
+.user-card-meta { row-gap: 8px; }
+/* As many ~300px cards as fit: 3 at 1280, 5 at 1920, more on wider screens. */
+.user-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 16px; }
 
 /* Addons page card. Narrow (phone, 1280 laptop): icon, name and switch on
    top, then version + counts + select box, then the tags (desktop only).
