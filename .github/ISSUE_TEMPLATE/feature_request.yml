@@ -1,0 +1,68 @@
+name: 💡 Feature request
+description: Suggest an improvement or a new feature
+title: "[Idea]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Start with the problem you're trying to solve; the solution can come second.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation or annoyance behind the idea.
+      placeholder: "Every time I set up a new profile I have to ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like SlickSync to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've tried
+      description: Workarounds or other tools you use today.
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Which providers does it touch?
+      multiple: true
+      options:
+        - Nuvio
+        - Stremio
+        - Jellyfin
+        - AIOStreams
+        - AIOMetadata
+        - All of them
+        - Not provider-specific
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in the app?
+      options:
+        - Users and households
+        - Activity and Now Playing
+        - Discover and catalogs
+        - Nuvio collections and home rows
+        - Addons
+        - Vault
+        - Notifications
+        - Backups
+        - Security and sign-in
+        - Something else
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Mockups, links or screenshots.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and didn't find this one.
+          required: true

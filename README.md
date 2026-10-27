@@ -485,3 +485,11 @@ See [`README.upstream.md`](./README.upstream.md) for the original project's own 
 ## License
 
 MIT — see [`LICENSE`](./LICENSE). Original work © iamneur0 (Syncio); Nuvio integration concepts © Avangelista; Vault design inspiration © Sonicx161 (AIOManager); modifications © slicknsliding (SlickSync).
+
+---
+
+<div align="center">
+
+[🐛 Report a bug](https://github.com/slicknsliding/slicksync/issues/new?template=bug_report.yml) · [💡 Suggest an improvement](https://github.com/slicknsliding/slicksync/issues/new?template=feature_request.yml) · [❓ Ask a question](https://github.com/slicknsliding/slicksync/issues/new?template=question.yml) · [⬆️ Back to top](#slicksync)
+
+</div>
