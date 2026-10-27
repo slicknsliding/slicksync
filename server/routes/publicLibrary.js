@@ -1,6 +1,8 @@
 const express = require('express');
 const { publicMessage } = require('../utils/publicError');
 const { isOutage, OUTAGE_ANSWER } = require('../utils/outage');
+const { recentlyWatchedGroups, latestProfileLabel } = require('../utils/memberHome');
+const { buildStremioLinks, buildNuvioAppUrl } = require('../utils/appLinks');
 const jwt = require('jsonwebtoken');
 const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
@@ -2832,9 +2834,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         item.totalDuration += (a.watchTimeSeconds || 0);
       });
       
-      const mostWatched = [...itemCounts.entries()]
+      // The top five for their Home (mostWatched stays the first, for older pages).
+      const mostWatchedList = [...itemCounts.entries()]
         .sort((a, b) => b[1].totalDuration - a[1].totalDuration)
-        .slice(0, 1)
+        .slice(0, 5)
         .map(([id, data]) => ({
           id,
           name: data.name,
@@ -2842,7 +2845,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           poster: data.poster,
           count: data.count,
           totalDuration: data.totalDuration
-        }))[0] || null;
+        }));
+      const mostWatched = mostWatchedList[0] || null;
 
       // Binge watches (3+ episodes of same series in one day)
       const bingeWatches = [];
@@ -2922,6 +2926,11 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         videoId: s.videoId,
         lastPosition: s.lastPosition ?? null,
         totalDuration: s.totalDuration ?? null,
+        // Resume in their app once paused - the same episode-aware links as Continue Watching.
+        ...(s.itemId ? {
+          stremioAppUrl: buildStremioLinks(s.itemId, s.itemType === 'series' ? 'series' : 'movie', s.season, s.episode).appUrl,
+          nuvioAppUrl: buildNuvioAppUrl(s.itemType === 'series' ? 'series' : 'movie', s.itemId),
+        } : {}),
         ...(nuvioSave(s) !== undefined ? { nuvioSavedAt: nuvioSave(s), ...(nuvioSave(s) != null ? { reportedAtTimestamp: nuvioSave(s) } : {}) }
           : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
       }));
@@ -2979,6 +2988,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           ...(m.paused === true ? { paused: true } : {}),
           ...(typeof m.playingUntilTimestamp === 'number' ? { playingUntilTimestamp: m.playingUntilTimestamp } : {}),
           ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {}),
+          ...(m.stremioAppUrl ? { stremioAppUrl: m.stremioAppUrl } : {}),
+          ...(m.nuvioAppUrl ? { nuvioAppUrl: m.nuvioAppUrl } : {}),
           ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {})
         })));
       } catch (error) {
@@ -3013,6 +3024,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         watchTimeByDay,
         nowPlaying,
         mostWatched,
+        mostWatchedList,
+        recentlyWatched: await recentlyWatchedGroups(prisma, user.accountId || DEFAULT_ACCOUNT_ID, userId),
+        profileLabel: await latestProfileLabel(prisma, user.accountId || DEFAULT_ACCOUNT_ID, userId),
         bingeWatches: bingeWatches.slice(0, 5),
         user: {
           id: user.id,
@@ -3736,6 +3750,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           remainingMinutes: r.remainingMinutes ?? null,
           lastWatchedAt: r.lastWatchedAt,
           providerType: r.providerType,
+          profileLabel: r.profileLabel || null,
           // Only Stremio and Nuvio have an address that opens their app on a
           // title; every other sign-in gets the title's page.
           appUrl: r.appUrl || null,
@@ -3744,6 +3759,25 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       pushError(res, error, 'Could not load Continue Watching');
+    }
+  });
+
+  // ---- Upcoming on the person's own Home ----
+  // The household's "Coming up" list narrowed to the shows this person has
+  // watched (their own history), soonest first.
+  router.get('/upcoming', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId);
+      const accountId = user.accountId || DEFAULT_ACCOUNT_ID;
+      const { getUpcomingEpisodes } = require('../utils/episodeAlerts');
+      const [all, theirs] = await Promise.all([
+        getUpcomingEpisodes(prisma, accountId, 120),
+        prisma.episodeWatchHistory.findMany({ where: { accountId, userId: user.id }, distinct: ['showId'], select: { showId: true } }),
+      ]);
+      const shows = new Set(theirs.map((r) => r.showId));
+      res.json({ items: all.filter((e) => shows.has(e.showId)).slice(0, 40) });
+    } catch (error) {
+      pushError(res, error, 'Could not load Upcoming');
     }
   });
 

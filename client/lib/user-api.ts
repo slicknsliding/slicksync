@@ -608,6 +608,27 @@ export interface NowPlayingItem {
   reportedAtTimestamp?: number;
   paused?: boolean;
   playingUntilTimestamp?: number;
+  // Where playback stands (ms), and when it stood there (live rows), for the
+  // banner's "About 41:12 of 1:06:30".
+  lastPosition?: number | null;
+  totalDuration?: number | null;
+  positionAt?: number | null;
+  // Resume links once it is paused (Stremio and Nuvio).
+  stremioAppUrl?: string;
+  nuvioAppUrl?: string;
+}
+
+/** One entry of Recently watched: a film, or back-to-back episodes of one show. */
+export interface RecentlyWatchedGroup {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster: string | null;
+  season: number | null;
+  fromEpisode: number | null;
+  toEpisode: number | null;
+  count: number;
+  watchedAt: string;
 }
 
 export interface UserActivityData {
@@ -617,6 +638,11 @@ export interface UserActivityData {
   watchTimeByDay: WatchTimeByDay[];
   nowPlaying: NowPlayingItem[];
   mostWatched: MostWatchedItem | null;
+  /** Top five, most watched first. */
+  mostWatchedList?: MostWatchedItem[];
+  recentlyWatched?: RecentlyWatchedGroup[];
+  /** The Nuvio (or AIOStreams) profile they watch under, if known. */
+  profileLabel?: string | null;
   bingeWatches: BingeWatch[];
   user: {
     id: string;
@@ -965,11 +991,28 @@ export interface ContinueWatchingCardData {
   remainingMinutes: number | null;
   lastWatchedAt: string;
   providerType: string;
+  /** Nuvio: the profile it is watched under. */
+  profileLabel?: string | null;
   /** Opens their app on the title - Stremio and Nuvio only. */
   appUrl: string | null;
   /** The title's page. */
   webUrl: string | null;
 }
+export interface UpcomingEpisodeItem {
+  showId: string;
+  showName: string | null;
+  poster: string | null;
+  season: number;
+  episode: number;
+  title: string | null;
+  airDate: string;
+}
+export const userUpcoming = {
+  async list(userId: string, authKey: string): Promise<{ items: UpcomingEpisodeItem[] }> {
+    return request(`/public-library/upcoming?${new URLSearchParams({ userId })}`, { authKey });
+  },
+};
+
 export const userContinueWatching = {
   async list(userId: string, authKey: string): Promise<{ items: ContinueWatchingCardData[] }> {
     return request(`/public-library/continue-watching?${new URLSearchParams({ userId })}`, { authKey });

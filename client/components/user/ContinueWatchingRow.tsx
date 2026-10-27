@@ -53,6 +53,16 @@ function episodeLine(c: ContinueWatchingCardData): string {
   return c.progressPercent != null ? `Resume · ${c.progressPercent}% watched` : 'Resume';
 }
 
+/** The badge on the picture: time left when resuming, Up next for the next episode. */
+function leftLabel(c: ContinueWatchingCardData): string {
+  if (!c.resume) return 'Up next';
+  if (c.remainingMinutes != null) {
+    const m = c.remainingMinutes;
+    return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min ` : ''}left` : `${m} min left`;
+  }
+  return c.progressPercent != null ? `${c.progressPercent}% watched` : 'Resume';
+}
+
 // The link a card, and its menu's first line, goes to.
 function openingOf(card: ContinueWatchingCardData) {
   const appUrl = safeAppUrl(card.appUrl);
@@ -77,6 +87,7 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
         ) : (
           <div className="w-full h-full flex items-center justify-center"><PlayIcon className="w-8 h-8 text-subtle" /></div>
         )}
+        <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full text-[11px] font-semibold pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>{leftLabel(card)}</span>
         {card.resume && card.progressPercent != null && (
           <div className="absolute bottom-0 left-0 right-0 h-1.5 pointer-events-none" style={{ background: 'rgba(0,0,0,0.55)' }}>
             <div
@@ -89,7 +100,10 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
       <div className="p-3">
         <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{card.name}</p>
         <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{episodeLine(card)}</p>
-        <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm" className="mt-2">{app}</Badge>
+        <div className="flex items-center gap-2 mt-2 min-w-0">
+          <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm">{app}</Badge>
+          {card.profileLabel && <span className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{card.profileLabel}</span>}
+        </div>
       </div>
     </>
   );
@@ -128,7 +142,50 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
   );
 });
 
-export function ContinueWatchingRow() {
+// List view: one row per title - picture, title, what's next, time left, app and the ... menu.
+const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
+  card: ContinueWatchingCardData;
+  menuOpen: boolean;
+  onToggleMenu: (card: ContinueWatchingCardData, button: HTMLElement) => void;
+}) {
+  const { appUrl, href, app } = openingOf(card);
+  const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
+  const inner = (
+    <>
+      <span className="relative w-24 h-[54px] shrink-0 rounded-lg overflow-hidden" style={{ background: 'var(--color-surface-elevated)' }}>
+        {image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={cachedImageUrl(image, 185) || image} onError={onImageError} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+        )}
+        {card.resume && card.progressPercent != null && (
+          <span className="absolute left-0 bottom-0 h-1" style={{ width: `${Math.min(100, Math.max(3, card.progressPercent))}%`, background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))' }} />
+        )}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>{card.name}</span>
+        <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{episodeLine(card)}</span>
+      </span>
+      <span className="hidden sm:block w-28 shrink-0 text-xs" style={{ color: 'var(--color-text-muted)' }}>{leftLabel(card)}</span>
+      <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm" className="shrink-0">{app}</Badge>
+    </>
+  );
+  return (
+    <div className="flex items-center gap-2 px-2 py-2 border-b last:border-b-0" style={{ borderColor: 'var(--color-surface-border)' }} data-continue-card={card.showId}>
+      {href ? (
+        <a href={href} target={appUrl ? undefined : '_blank'} rel={appUrl ? undefined : 'noopener noreferrer'}
+          aria-label={`${appUrl ? `Resume in ${app}` : 'Open'} ${card.name}`} className="flex-1 min-w-0 flex items-center gap-4 rounded-lg">
+          {inner}
+        </a>
+      ) : <div className="flex-1 min-w-0 flex items-center gap-4">{inner}</div>}
+      <button type="button" onClick={(e) => onToggleMenu(card, e.currentTarget)} aria-label={`More for ${card.name}`} aria-haspopup="dialog" aria-expanded={menuOpen}
+        className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors" style={{ color: 'var(--color-text-muted)' }}>
+        <EllipsisHorizontalIcon className="w-5 h-5" />
+      </button>
+    </div>
+  );
+});
+
+export function ContinueWatchingRow({ view = 'grid' }: { view?: 'grid' | 'list' } = {}) {
   const { userId, authKey } = useUserAuth();
   // Kept with the person it was read for, so a profile switch never shows the last one's row.
   const [loaded, setLoaded] = useState<{ forUser: string; items: ContinueWatchingCardData[] } | null>(null);
@@ -218,11 +275,19 @@ export function ContinueWatchingRow() {
   return (
     <section className="mb-8" aria-label="Continue Watching">
       <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Continue Watching</h3>
-      <ScrollRow className="flex gap-3 pb-1">
-        {cards.map((card) => (
-          <Card key={card.showId} card={card} menuOpen={menuFor?.showId === card.showId} onToggleMenu={toggleMenu} />
-        ))}
-      </ScrollRow>
+      {view === 'list' ? (
+        <div className="rounded-2xl px-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+          {cards.map((card) => (
+            <ListRow key={card.showId} card={card} menuOpen={menuFor?.showId === card.showId} onToggleMenu={toggleMenu} />
+          ))}
+        </div>
+      ) : (
+        <ScrollRow className="flex gap-3 pb-1">
+          {cards.map((card) => (
+            <Card key={card.showId} card={card} menuOpen={menuFor?.showId === card.showId} onToggleMenu={toggleMenu} />
+          ))}
+        </ScrollRow>
+      )}
       {menuFor && cards.some((c) => c.showId === menuFor.showId) && (() => {
         const { appUrl, href, app } = openingOf(menuFor);
         const own = choosesApp(menuFor);
