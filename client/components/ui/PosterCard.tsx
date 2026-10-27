@@ -229,7 +229,9 @@ export const PosterCard = memo(function PosterCard({
         {enablePosterRatings && !isRpdbPoster(item, rpdbEnabled) && (
           <div className="absolute bottom-1.5 left-1.5 right-1.5">
             <RatingBadges
-              imdbRating={item.imdbRating}
+              // The title page's own IMDb score where it has loaded, so the
+              // badge matches it (and Highest rated's order).
+              imdbRating={ratings?.imdbRating ?? item.imdbRating}
               rottenTomatoes={ratings?.rottenTomatoes}
               metacritic={ratings?.metacritic}
             />
