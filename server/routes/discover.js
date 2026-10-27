@@ -159,7 +159,20 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       const items = type === 'both'
         ? interleave(...(await Promise.all([searchOne('movie'), searchOne('series')])))
         : await searchOne(type)
-      const shown = items.filter((i) => matchesGenre(i, genre) && matchesFacets(i, facets))
+      // Cinemeta's search answers carry no genres for most titles, so with a
+      // genre picked those are looked up first (fetchMetadata is cached).
+      let checked = items
+      if (genre) {
+        const { fetchMetadata } = require('../utils/notify')
+        checked = await Promise.all(items.map(async (i) => {
+          if (Array.isArray(i.genres) && i.genres.length) return i
+          try {
+            const meta = await fetchMetadata(i.id, i.type, null)
+            return { ...i, genres: Array.isArray(meta?.genres) ? meta.genres : [] }
+          } catch { return i }
+        }))
+      }
+      const shown = checked.filter((i) => matchesGenre(i, genre) && matchesFacets(i, facets))
       send(shown)
       warmShown(shown)
     } catch (error) {
