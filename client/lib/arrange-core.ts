@@ -21,7 +21,11 @@ export type MenuArrangement = {
 
 export type Density = 'comfortable' | 'compact';
 
+export type PageDesign = 'classic' | 'v2';
+
 export type Arrangement = {
+  /** Page design (Themes → Page design): Classic, or v2's grouped cards. */
+  design?: PageDesign;
   pages?: Record<string, PageArrangement>;
   menu?: MenuArrangement;
   density?: Density;

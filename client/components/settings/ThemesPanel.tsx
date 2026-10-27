@@ -1,5 +1,6 @@
 'use client';
 
+import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
 import { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
@@ -635,6 +636,8 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 </p>
               </>
             )}
+
+            <PageDesignChoice />
 
             <MenuArranger topNavi={layoutMode === 'nebula'} />
 

@@ -31,6 +31,9 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } fro
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -103,7 +106,9 @@ export default function UsersPage() {
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [peopleFilter, setPeopleFilter] = useState<'all' | 'dormant'>('all');
+  const [peopleFilter, setPeopleFilter] = useState<'all' | 'dormant' | 'watching' | 'fix' | 'off'>('all');
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -250,8 +255,21 @@ export default function UsersPage() {
   }, [users, groups]);
 
   const dormantCount = usersDisplay.filter((u) => u.dormant).length;
+  // v2's filters: who is watching, who needs a fix, who is switched off.
+  const watchingIds = useMemo(() => new Set(nowPlaying.map((np) => np.user.id)), [nowPlaying]);
+  const fixCount = usersDisplay.filter((u) => !!u.providerConnectionError).length;
+  const offCount = usersDisplay.filter((u) => u.status === 'expired').length;
+  const matchesFilter = (user: UserDisplay) => {
+    switch (peopleFilter) {
+      case 'dormant': return user.dormant;
+      case 'watching': return watchingIds.has(user.id);
+      case 'fix': return !!user.providerConnectionError;
+      case 'off': return user.status === 'expired';
+      default: return true;
+    }
+  };
   const filteredUsers = usersDisplay.filter(user =>
-    (peopleFilter === 'all' || user.dormant) && (
+    matchesFilter(user) && (
       (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
     )
@@ -296,6 +314,43 @@ export default function UsersPage() {
   // this one stat's own meaning changed. The two no longer sum to Total
   // Users as a result (they measure different things now); that's expected.
   const activeCount = new Set(nowPlaying.map((np) => np.user.id)).size;
+
+  // v2: groups as sections the account can move, fold and hide, and people
+  // it can hide (lib/arrange.tsx). Sections follow the Groups page's order;
+  // anyone in no group gathers at the end.
+  const v2Groups = useMemo<V2Group[]>(() => groups.map((g) => ({ key: `g:${g.id}`, name: g.name, colorIndex: g.colorIndex, addons: g.addons })), [groups]);
+  const groupArrange = usePageArrangement('users', useMemo(() => [...v2Groups.map((g) => g.key), NO_GROUP_KEY], [v2Groups]));
+  const peopleArrangeOwn = usePageArrangement('users-people', useMemo(() => users.map((u) => u.id), [users]));
+  const peopleArrange = { ...peopleArrangeOwn, arranging: groupArrange.arranging };
+  // The bar's Reset puts both back: the groups and anyone hidden.
+  const pageArrange = { ...groupArrange, isDefault: groupArrange.isDefault && peopleArrangeOwn.isDefault, reset: () => { groupArrange.reset(); peopleArrangeOwn.reset(); } };
+  const v2People = useMemo<V2Person[]>(() => filteredUsers.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    avatarUrl: u.avatarUrl,
+    useGravatar: u.useGravatar,
+    colorIndex: u.colorIndex,
+    appLabel: providerLabel(u),
+    appColor: u.providerType === 'nuvio' ? '#8fb4f0' : u.providerType === 'jellyfin' ? (u.jellyfinServerKind && u.jellyfinServerKind !== 'jellyfin' ? '#b3aaff' : '#7dd3fc') : '#c4b5fd',
+    groups: u.groups,
+    status: u.status,
+    connectionError: u.providerConnectionError,
+    lastSeen: u.lastSeen,
+    watchTime: u.watchTime,
+    addonCount: u.addonCount,
+  })), [filteredUsers]);
+  const watchingTitles = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const np of nowPlaying) if (!m.has(np.user.id)) m.set(np.user.id, np.item?.titlePending ? '' : (np.item?.name || ''));
+    return m;
+  }, [nowPlaying]);
+  const v2Summary = (() => {
+    const parts = [`${users.length} ${users.length === 1 ? 'person' : 'people'} in ${groups.length} group${groups.length === 1 ? '' : 's'}`];
+    if (activeCount) parts.push(`${activeCount} watching`);
+    if (fixCount) parts.push(`${fixCount} need${fixCount === 1 ? 's' : ''} a fix`);
+    return parts.join(' · ');
+  })();
   const expiredCount = usersDisplay.filter(u => u.status === 'expired').length;
 
   const toggleSelect = useCallback((id: string) => {
@@ -531,7 +586,10 @@ export default function UsersPage() {
   );
   const syncAllButton = isTV ? (
     <TVFocusable onEnterPress={handleSyncAll}>{syncAllButtonInner}</TVFocusable>
+  ) : v2 ? (
+    <div className="flex items-center gap-2"><ArrangeButton arrange={groupArrange} />{syncAllButtonInner}</div>
   ) : syncAllButtonInner;
+  const subtitle = isLoading ? 'Loading...' : v2 ? v2Summary : `${users.length} total user${users.length !== 1 ? 's' : ''}`;
 
   return (
     <Wrapper>
@@ -541,7 +599,7 @@ export default function UsersPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Users"
-          subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
           actions={syncAllButton}
         />
       )}
@@ -557,11 +615,11 @@ export default function UsersPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Users"
-          subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
           actions={syncAllButton}
         />
       )}
-      {layoutMode === 'nebula' && (
+      {layoutMode === 'nebula' && !v2 && (
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
           <NebulaCompactStatCard label="Total Users" value={isLoading ? '...' : users.length} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
           <NebulaCompactStatCard label="Active" value={isLoading ? '...' : activeCount} icon={<CheckIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
@@ -598,8 +656,9 @@ export default function UsersPage() {
           </div>
         );
       })}
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
+      {v2 && <ArrangeBar arrange={pageArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters and controls */}
         <PageToolbar
           selectionConfig={{
@@ -613,7 +672,17 @@ export default function UsersPage() {
             onChange: (value) => setSearchQuery(value),
             placeholder: 'Search users...',
           }}
-          filterTabs={{
+          filterTabs={v2 ? {
+            options: [
+              { key: 'all', label: 'Everyone', count: usersDisplay.length },
+              { key: 'watching', label: 'Watching', count: activeCount },
+              { key: 'fix', label: 'Needs a fix', count: fixCount },
+              { key: 'off', label: 'Off', count: offCount },
+            ],
+            activeKey: peopleFilter,
+            onChange: (key) => setPeopleFilter(key as typeof peopleFilter),
+            layoutId: 'users-people-filter',
+          } : {
             options: [
               { key: 'all', label: 'All' },
               { key: 'dormant', label: 'Dormant', count: dormantCount },
@@ -658,7 +727,47 @@ export default function UsersPage() {
           </div>
         ) : (
           <>
-            {/* Users grid/list */}
+            {/* Users grid/list - v2 groups people by their group instead. */}
+            {v2 ? (
+              <>
+                <PeopleV2
+                  people={v2People}
+                  groups={v2Groups}
+                  arrange={groupArrange}
+                  peopleArrange={peopleArrange}
+                  view={viewMode === 'list' ? 'list' : 'grid'}
+                  watching={watchingTitles}
+                  syncing={syncingUserIds}
+                  onSync={async (p) => {
+                    handleSyncStart(p.id);
+                    try {
+                      await api.syncUser(p.id);
+                      toast.success(`Synced ${p.name}`);
+                    } catch (err) {
+                      toast.error(`Couldn’t sync ${p.name}`, { line: err instanceof Error ? err.message : undefined });
+                    } finally {
+                      handleSyncEnd(p.id);
+                    }
+                  }}
+                  onFix={(p) => {
+                    setReconnectUserId(p.id);
+                    setReconnectUserName(p.name);
+                    setReconnectProvider(users.find((u) => u.id === p.id)?.providerType || 'stremio');
+                    setIsReconnectModalOpen(true);
+                  }}
+                />
+                <HiddenTray
+                  arrange={groupArrange}
+                  labelOf={(key) => `${v2Groups.find((g) => g.key === key)?.name ?? 'No group'} (group)`}
+                  extra={peopleArrange.hidden.map((id) => ({
+                    id: `p:${id}`,
+                    label: usersDisplay.find((u) => u.id === id)?.name ?? 'Someone',
+                    show: () => peopleArrange.show(id),
+                  }))}
+                  note="Hidden only here: they keep syncing and watching as normal. Tap one to bring it back."
+                />
+              </>
+            ) : (
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
@@ -856,6 +965,7 @@ export default function UsersPage() {
                 )}
               </AnimatePresence>
             </LayoutGroup>
+            )}
 
             {/* Empty state */}
             {filteredUsers.length === 0 && (

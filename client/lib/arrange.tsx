@@ -9,7 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { api } from '@/lib/api';
 import {
   arrangeKeys, moveKey, orderKeys, stepKey, tidyPage, withFolded, withHidden,
-  type Arrangement, type MenuArrangement, type PageArrangement,
+  type Arrangement, type MenuArrangement, type PageArrangement, type PageDesign,
 } from '@/lib/arrange-core';
 
 const STORE_KEY = 'slicksync-arrange';
@@ -141,4 +141,18 @@ export function useMenuArrangement() {
     });
   }, [update]);
   return { menu, setMenu };
+}
+
+/** Classic or v2 (Themes → Page design), for this account. */
+export function usePageDesign() {
+  const { arrangement, update } = useArrangement();
+  const design: PageDesign = arrangement.design === 'v2' ? 'v2' : 'classic';
+  const setDesign = useCallback((d: PageDesign) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, design: d };
+      if (d === 'classic') delete out.design;
+      return out;
+    });
+  }, [update]);
+  return { design, setDesign };
 }

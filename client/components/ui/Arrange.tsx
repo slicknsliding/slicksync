@@ -137,14 +137,21 @@ export function SectionMenu({ arrange, id, label, noun = 'section' }: { arrange:
 }
 
 /** What's hidden on this page, each one a click from coming back. */
-export function HiddenTray({ arrange, labelOf, note }: { arrange: PageArrange; labelOf: (id: string) => ReactNode; note?: string }) {
-  if (arrange.hidden.length === 0) return null;
+export function HiddenTray({ arrange, labelOf, note, extra = [] }: {
+  arrange: PageArrange;
+  labelOf: (id: string) => ReactNode;
+  note?: string;
+  /** More hidden things kept by another arrangement on the same page (a page's people, beside its groups). */
+  extra?: { id: string; label: ReactNode; show: () => void }[];
+}) {
+  const entries = [...arrange.hidden.map((id) => ({ id, label: labelOf(id), show: () => arrange.show(id) })), ...extra];
+  if (entries.length === 0) return null;
   // Outside Arrange mode the tray stays out of the way: one quiet line.
   if (!arrange.arranging) {
     return (
       <button type="button" className="arrange-hidden-line" onClick={() => arrange.setArranging(true)}>
         <EyeSlashIcon className="w-4 h-4" />
-        {arrange.hidden.length} hidden on this page
+        {entries.length} hidden on this page
       </button>
     );
   }
@@ -153,13 +160,13 @@ export function HiddenTray({ arrange, labelOf, note }: { arrange: PageArrange; l
       <div className="flex items-center gap-2.5">
         <EyeSlashIcon className="w-5 h-5 text-muted" />
         <b className="text-sm">Hidden on this page</b>
-        <span className="text-muted text-[13px]">{arrange.hidden.length}</span>
+        <span className="text-muted text-[13px]">{entries.length}</span>
       </div>
       <div className="flex flex-wrap gap-2.5 mt-3">
-        {arrange.hidden.map((id) => (
-          <button key={id} type="button" className="arrange-chip" onClick={() => arrange.show(id)} title="Show it again">
+        {entries.map((e) => (
+          <button key={e.id} type="button" className="arrange-chip" onClick={e.show} title="Show it again">
             <EyeIcon className="w-4 h-4" />
-            {labelOf(id)}
+            {e.label}
           </button>
         ))}
       </div>
@@ -174,18 +181,20 @@ export function HiddenTray({ arrange, labelOf, note }: { arrange: PageArrange; l
  * folding hides.
  */
 export function ArrangeSection({
-  arrange, id, title, meta, actions, children, noun,
+  arrange, id, title, label: labelProp, meta, actions, children, noun,
 }: {
   arrange: PageArrange;
   id: string;
   title: ReactNode;
-  /** Plain-text name for buttons' labels. */
+  /** Plain-text name for the buttons, when the title isn't plain text. */
+  label?: string;
+  /** Small text beside the title (counts). */
   meta?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   noun?: string;
 }) {
-  const label = typeof title === 'string' ? title : id;
+  const label = labelProp || (typeof title === 'string' ? title : id);
   const folded = arrange.isFolded(id);
   return (
     <section className={arrange.arranging ? 'arrange-section arrange-section-on' : 'arrange-section'} aria-label={label}>
