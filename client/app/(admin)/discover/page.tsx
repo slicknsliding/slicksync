@@ -693,9 +693,17 @@ export default function DiscoverPage() {
   // lens's rows can be moved, folded and hidden. Rows are saved per lens.
   const lensArrange = usePageArrangement('discover-lenses', lensesAvail.map((l) => l.key), { layout: 'tiles' });
   const lenses = v2 ? lensArrange.shown.map((k) => lensesAvail.find((l) => l.key === k)!).filter(Boolean) : lensesAvail;
+  // Hiding the open lens moves to the first one kept; Undo or Cancel bringing
+  // it back (while arranging) returns to it. Picking a lens forgets it.
+  const bumpedLens = useRef<Lens | null>(null);
   useEffect(() => {
-    if (v2 && lenses.length > 0 && !lenses.some((l) => l.key === lens)) setLens(lenses[0].key);
-  }, [v2, lenses, lens]);
+    if (!v2 || lenses.length === 0) return;
+    const back = bumpedLens.current;
+    if (back && lenses.some((l) => l.key === back)) { bumpedLens.current = null; if (back !== lens) setLens(back); return; }
+    if (!lensArrange.arranging) bumpedLens.current = null;
+    if (!lenses.some((l) => l.key === lens)) { if (lensArrange.arranging) bumpedLens.current = lens; setLens(lenses[0].key); }
+  }, [v2, lenses, lens, lensArrange.arranging]);
+  const pickLens = (key: Lens) => { bumpedLens.current = null; setLens(key); };
   const libraryOn = instantOnly.length > 0 && !describing;
   const airingOn = seasonalAnime.length > 0 || !!seasonalUnavailable;
   const trendingOn = keepByWatched(simklTrending).length > 0;
@@ -1040,7 +1048,7 @@ export default function DiscoverPage() {
                   filterTabs={{
                     options: lenses.map((l) => ({ key: l.key, label: l.label, count: l.count })),
                     activeKey: lens,
-                    onChange: (key) => setLens(key as Lens),
+                    onChange: (key) => pickLens(key as Lens),
                     layoutId: 'discover-lens-tabs',
                   }}
                 />
@@ -1048,10 +1056,10 @@ export default function DiscoverPage() {
             ) : (
             <div className="grid grid-cols-6 gap-1.5 w-full sm:w-auto sm:flex sm:flex-wrap sm:gap-2">
               {lenses.map((l, i) => (
-                <Focus key={l.key} tv={isTV} onEnter={() => setLens(l.key)}>
+                <Focus key={l.key} tv={isTV} onEnter={() => pickLens(l.key)}>
                   <button
                     type="button"
-                    onClick={() => setLens(l.key)}
+                    onClick={() => pickLens(l.key)}
                     aria-pressed={lens === l.key}
                     className={`px-1.5 sm:px-4 py-2 sm:py-1.5 rounded-full text-[14px] sm:text-[15px] font-medium text-center whitespace-nowrap transition-colors ${lens === l.key ? 'text-default disc-choice-on' : 'text-muted hover:text-default'}`}
                     style={{ gridColumn: `span ${lensSpan(i)}` }}

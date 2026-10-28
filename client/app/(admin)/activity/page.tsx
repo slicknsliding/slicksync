@@ -2293,11 +2293,19 @@ function ActivityPageContent() {
   // link asked for it by name (the Dashboard's Open Graveyard).
   const firstTab = tabArrange.shown[0];
   const askedForTab = searchParams.get('view');
+  // Undo or Cancel bringing back the tab that was open (while arranging) returns to it.
+  const bumpedTab = useRef<typeof viewMode | null>(null);
   useEffect(() => {
     if (askedForTab) return;
-    if (firstTab && !tabArrange.shown.includes(viewMode)) setViewMode(firstTab as typeof viewMode);
+    const back = bumpedTab.current;
+    if (back && tabArrange.shown.includes(back)) { bumpedTab.current = null; if (back !== viewMode) setViewMode(back); return; }
+    if (!tabArrange.arranging) bumpedTab.current = null;
+    if (firstTab && !tabArrange.shown.includes(viewMode)) {
+      if (tabArrange.arranging) bumpedTab.current = viewMode;
+      setViewMode(firstTab as typeof viewMode);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabArrange.shown.join(','), viewMode]);
+  }, [tabArrange.shown.join(','), viewMode, tabArrange.arranging]);
 
   // Page design v2: each tab's own sections can be moved, folded and hidden
   // too. They share the Arrange button with the tabs, and one Reset.
@@ -2689,7 +2697,7 @@ function ActivityPageContent() {
               return tabArrange.shown.concat(tabArrange.shown.includes(viewMode) ? [] : [viewMode]).map((k) => all.find((o) => o.key === k)).filter((o): o is (typeof all)[number] => !!o);
             })(),
             activeKey: viewMode,
-            onChange: (key) => setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'),
+            onChange: (key) => { bumpedTab.current = null; setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'); },
             layoutId: 'activity-primary-tabs',
           }}
         />
