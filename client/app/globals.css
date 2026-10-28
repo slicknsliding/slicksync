@@ -1762,6 +1762,13 @@ body {
   background: var(--color-surface); cursor: pointer; flex: none;
 }
 .arrange-pill:disabled { opacity: 0.45; cursor: default; }
+.arrange-pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.arrange-bar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+@media (max-width: 639px) {
+  .arrange-bar { flex-wrap: wrap; row-gap: 10px; }
+  .arrange-bar-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; }
+  .arrange-bar-actions .arrange-pill { padding-left: 4px; padding-right: 4px; }
+}
 .arrange-pill-main { background: var(--color-primary); border-color: transparent; color: #fff; padding: 6px 14px; }
 .arrange-icon {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1935,3 +1942,79 @@ select:not(.appearance-none) {
 @media (max-width: 639px) {
   input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select { font-size: 16px !important; }
 }
+
+/* Arrange, round 2: drag, empty sections, per-number eye, width and card size (components/ui/Arrange.tsx, lib/arrange.tsx). */
+.arrange-grip { color: var(--color-primary); cursor: grab; touch-action: none; }
+.arrange-grip:active { cursor: grabbing; }
+.arrange-lifted {
+  box-shadow: 0 24px 54px -12px rgba(0, 0, 0, 0.8);
+  background: var(--color-bg); border-radius: 14px;
+  outline: 1px solid var(--color-primary); outline-offset: 6px; opacity: 0.97;
+}
+.arrange-empty {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 92px; padding: 16px; border-radius: 16px; font-size: 14px; font-weight: 500;
+  border: 1px dashed color-mix(in srgb, var(--color-primary) 55%, transparent); color: var(--color-text-muted);
+}
+.arrange-seg { display: inline-flex; padding: 2px; border-radius: 9px; border: 1px solid var(--color-surface-border); background: var(--color-surface); }
+.arrange-seg button { padding: 4px 9px; border-radius: 7px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); background: transparent; border: 0; cursor: pointer; }
+.arrange-seg button:hover:not(.on) { color: var(--color-text); }
+.arrange-seg button.on { background: var(--color-primary); color: #fff; }
+.v2-numbers-cell { position: relative; }
+.v2-numbers-eye { position: absolute; top: 0; right: 0; width: 28px; height: 28px; }
+@media (max-width: 599px) { .v2-numbers-arranging .v2-numbers-cell { padding-right: 36px; } }
+/* Stretch to size (Arrange → the round handle on a card's corner). --cw is the
+   card width from 600px wide up: the grid fits as many as there's room for, so
+   rows always end flush. --cp is cards per row on a phone. */
+@media (min-width: 600px) {
+  .v2-grid[data-cw], .v2-tiles[data-cw], .arrange-cardgrid[data-cw] { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--cw)), 1fr)) !important; }
+  .arrange-cardrow[data-cw] { grid-auto-columns: min(var(--cw), 100%) !important; }
+  .v2-grid[data-cards="S"] .v2-card { padding: 10px 12px; gap: 6px; }
+  .v2-grid[data-cards="S"] .v2-card-foot { padding-top: 6px; justify-content: flex-end; }
+  .v2-grid[data-cards="S"] .v2-card-foot > span:first-child { display: none; }
+  .v2-grid[data-cards="S"] .text-\[17px\], .v2-grid[data-cards="S"] .text-lg { font-size: 14.5px; }
+  .v2-grid[data-cards="L"] .v2-card { padding: 22px 24px; gap: 14px; }
+  .v2-grid[data-cards="L"] .text-\[17px\], .v2-grid[data-cards="L"] .text-lg { font-size: 20px; }
+}
+@media (max-width: 599px) {
+  .v2-grid[data-cp], .v2-tiles[data-cp], .arrange-cardgrid[data-cp] { display: grid; grid-template-columns: repeat(var(--cp), minmax(0, 1fr)) !important; }
+  .arrange-cardrow[data-cp] { grid-auto-columns: calc((100% - (var(--cp) - 1) * 12px) / var(--cp)) !important; }
+  .v2-grid[data-cards-phone="S"] { gap: 10px; }
+  .v2-grid[data-cards-phone="S"] .v2-card { padding: 10px 12px; gap: 6px; }
+  .v2-grid[data-cards-phone="S"] .v2-card-foot { padding-top: 6px; justify-content: flex-end; }
+  .v2-grid[data-cards-phone="S"] .v2-card-foot > span:first-child { display: none; }
+  .v2-grid[data-cards-phone="S"] .text-\[17px\], .v2-grid[data-cards-phone="S"] .text-lg { font-size: 14.5px; }
+}
+.stretch-handle {
+  position: absolute; z-index: 22; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  display: flex; align-items: center; justify-content: center; border-radius: 999px; border: 0;
+  background: var(--color-primary); color: #fff; cursor: nwse-resize; touch-action: none;
+  box-shadow: 0 0 0 3px var(--color-bg, #0b0d14), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.stretch-handle-on { transform: scale(1.12); }
+.stretch-handle:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+@media (pointer: coarse) { .stretch-handle { width: 36px; height: 36px; margin: -18px 0 0 -18px; } }
+.stretch-ghost {
+  position: absolute; z-index: 20; pointer-events: none; border-radius: 16px;
+  border: 2px dashed var(--color-primary); background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+.stretch-label {
+  position: absolute; z-index: 21; pointer-events: none; padding: 7px 13px; border-radius: 999px; white-space: nowrap;
+  font-size: 13px; font-weight: 700; color: #fff; background: var(--color-primary); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+/* Sections that carry their own width sit in a grid: no stacking margin on top of its gap. */
+.grid > .arrange-section + .arrange-section { margin-top: 0; }
+/* Tasks: each tile while arranging gets a small floating strip (grip, pin, arrows, eye). */
+.arrange-tile-on { border-radius: 16px; }
+.arrange-tile-strip {
+  position: absolute; top: -12px; right: 10px; z-index: 5; display: flex; align-items: center; gap: 4px;
+  padding: 3px 5px; border-radius: 12px; background: var(--color-bg); border: 1px solid var(--color-surface-border);
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.7);
+}
+.arrange-pinned {
+  position: absolute; top: -10px; left: 10px; z-index: 5; display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; background: var(--color-primary);
+}
+.arrange-tile-on:has(.arrange-pinned) .v2-tool { border-color: var(--color-primary); }
+.arrange-drop { outline: 2px dashed var(--color-primary); outline-offset: 6px; border-radius: 14px; }
+@media (max-width: 1023px) { .arrange-seg-width { display: none; } }

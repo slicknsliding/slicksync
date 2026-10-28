@@ -23,6 +23,7 @@ import { usePageArrangement } from '@/lib/arrange';
 import { formatLastSync } from '@/lib/relativeTime';
 import type { Addon, Group, User } from '@/lib/api';
 import { V2Button, V2Status } from './V2Bits';
+import { V2TitleEdit, type TitlePatch } from './V2TitleEdit';
 import { V2DetailHead, V2MoreMenu, V2Numbers, V2Tiles, type V2MenuItem } from './V2Detail';
 
 export type GroupV2Watch = {
@@ -48,6 +49,8 @@ type Props = {
   usersSyncing: boolean;
   onSync: () => void;
   onEdit: () => void;
+  /** Saves a new name and/or description (the pencil on the title); false when it failed. */
+  onRename: (patch: TitlePatch) => Promise<boolean>;
   onChangePicture: () => void;
   onToggleActive: () => void;
   onClearMembers: () => void;
@@ -137,11 +140,18 @@ export function GroupV2(p: Props) {
   );
 
   const head = (
+    <V2TitleEdit name={group?.name || 'Group'} description={group?.description} canEdit={!!group} onSave={p.onRename} label="name">
+    {(edit) => (
     <V2DetailHead
       lead={lead}
       style={groupWash(group?.colorIndex)}
-      title={p.isLoading && !group ? 'Loading...' : (group?.name || 'Group')}
-      status={<V2Status tone={active ? 'ok' : 'off'}>{active ? 'All synced' : 'Switched off'}</V2Status>}
+      title={p.isLoading && !group ? 'Loading...' : edit.title}
+      status={(
+        <>
+          {edit.description && <div className="basis-full min-w-0 mb-0.5">{edit.description}</div>}
+          <V2Status tone={active ? 'ok' : 'off'}>{active ? 'All synced' : 'Switched off'}</V2Status>
+        </>
+      )}
       facts={`${nPeople} ${nPeople === 1 ? 'person' : 'people'} · ${nAddons} ${nAddons === 1 ? 'addon' : 'addons'} · synced ${formatLastSync(group?.lastSyncedAt)}`}
       actions={(
         <>
@@ -159,6 +169,8 @@ export function GroupV2(p: Props) {
       )}
       more={more}
     />
+    )}
+    </V2TitleEdit>
   );
 
   const numbers = (

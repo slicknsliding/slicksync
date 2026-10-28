@@ -22,6 +22,7 @@ import { toast } from '@/components/ui/Toast';
 import { ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { useMenuArrangement, usePageDesign, type PageArrange } from '@/lib/arrange';
 import { arrangeMenu } from '@/lib/adminMenu';
+import { PAGE_HEADER_MODES, usePageHeader, type PageHeaderMode } from '@/lib/pageHeader';
 import { V2SetRow, V2Seg, V2Switch } from '@/components/v2/SettingsV2';
 import { V2Button } from '@/components/v2/V2Bits';
 import {
@@ -549,6 +550,40 @@ function MoreMenuRow({ v2 }: { v2: boolean }) {
   );
 }
 
+// The title row at the top of each page: one slim row, the big centred title, or
+// just the buttons. Phones open on Compact and wide screens on Full until a
+// choice is saved; it applies to every page in either layout.
+const PAGE_HEADER_LINE = 'The title and buttons at the top of each page. Compact is one slim row; Full is the big centred title; Minimal drops the title and keeps just the buttons.';
+function PageHeaderRow({ v2 }: { v2: boolean }) {
+  const { mode, setMode } = usePageHeader();
+  if (v2) {
+    return (
+      <V2SetRow
+        title="Page header"
+        line={PAGE_HEADER_LINE}
+        control={<V2Seg<PageHeaderMode> label="Page header" value={mode} options={PAGE_HEADER_MODES} onChange={setMode} />}
+      />
+    );
+  }
+  return (
+    <div className="mt-5 rounded-xl p-4" style={{ border: '1px solid var(--color-surface-border)' }}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Page header</p>
+          <p className="text-xs text-muted">{PAGE_HEADER_LINE}</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Page header">
+          {PAGE_HEADER_MODES.map((o) => (
+            <button key={o.id} type="button" role="radio" aria-checked={mode === o.id} className={mode === o.id ? 'on' : ''} onClick={() => setMode(o.id)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // A theme as a swatch: its colours, its name under it, a ring when it's the one in use.
 function ThemeSwatch({ name, bg, surface, primary, secondary, selected, onSelect, onDelete }: {
   name: string; bg: string; surface: string; primary: string; secondary: string;
@@ -778,6 +813,8 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
             )}
 
             <PageDesignChoice v2={v2} />
+
+            <PageHeaderRow v2={v2} />
 
             <MenuFold v2={v2}>
               <MenuArranger topNavi={layoutMode === 'nebula'} />

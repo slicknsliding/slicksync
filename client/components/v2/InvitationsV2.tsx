@@ -6,13 +6,16 @@
 // folded and hidden, and single invites hidden, through Arrange.
 
 import Link from 'next/link';
-import { EyeIcon, LinkIcon } from '@heroicons/react/24/outline';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowTopRightOnSquareIcon, ClipboardDocumentIcon, DocumentDuplicateIcon, EyeIcon, LinkIcon, PencilSquareIcon, QrCodeIcon, TrashIcon,
+} from '@heroicons/react/24/outline';
 import { UserAvatar } from '@/components/ui';
 import { GroupPicture } from './GroupPicture';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { V2Button, V2Card, V2Grid, V2List, V2Status } from './V2Bits';
+import { V2Button, V2Card, V2Grid, V2Item, V2List, V2Status, type V2CardMenuItem } from './V2Bits';
 
 export type V2Request = {
   id: string;
@@ -59,7 +62,7 @@ function usesText(inv: V2Invite) {
   return inv.maxUses ? `${inv.uses} of ${inv.maxUses} used` : `${inv.uses} used`;
 }
 
-export function InvitationsV2({ requests, invites, arrange, inviteArrange, view, busy, onApprove, onReject, onCopy, now }: {
+export function InvitationsV2({ requests, invites, arrange, inviteArrange, view, busy, onApprove, onReject, onCopy, onEdit, onDuplicate, onCopyCode, onShowQr, onDelete, now }: {
   requests: V2Request[];
   invites: V2Invite[];
   arrange: PageArrange;
@@ -69,8 +72,23 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
   onApprove: (r: V2Request) => void;
   onReject: (r: V2Request) => void;
   onCopy: (i: V2Invite) => void;
+  onEdit: (i: V2Invite) => void;
+  onDuplicate: (i: V2Invite) => void;
+  onCopyCode: (i: V2Invite) => void;
+  onShowQr: (i: V2Invite) => void;
+  /** Asks first (the page's own confirm). */
+  onDelete: (i: V2Invite) => void;
   now: number;
 }) {
+  const router = useRouter();
+  const menu = (i: V2Invite): V2CardMenuItem[] => [
+    { label: 'Open', icon: <ArrowTopRightOnSquareIcon className="w-4 h-4" />, onClick: () => router.push(`/invitations/${i.id}`) },
+    { label: 'Edit', icon: <PencilSquareIcon className="w-4 h-4" />, onClick: () => onEdit(i) },
+    { label: 'Duplicate', icon: <DocumentDuplicateIcon className="w-4 h-4" />, onClick: () => onDuplicate(i) },
+    { label: 'Copy code', icon: <ClipboardDocumentIcon className="w-4 h-4" />, onClick: () => onCopyCode(i) },
+    { label: 'Show QR', icon: <QrCodeIcon className="w-4 h-4" />, onClick: () => onShowQr(i) },
+    { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(i) },
+  ];
   const hidden = new Set(inviteArrange.hidden);
   const hideBtn = (i: V2Invite) => (
     <button type="button" className="arrange-icon" aria-label={`Hide ${i.code}`} title="Hide on this page"
@@ -130,7 +148,7 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
     return <V2Status tone="live">Open</V2Status>;
   };
   const invTile = (i: V2Invite) => (
-    <Link key={i.id} href={`/invitations/${i.id}`} className="v2-link">
+    <V2Item key={i.id} view="card" href={`/invitations/${i.id}`} items={menu(i)} menuLabel={`${i.code} options`} arranging={arrange.arranging}>
       <V2Card action={inviteAction(i)}>
         <div className="flex items-center gap-3 min-w-0">
           {bar(i, 'h-10')}
@@ -145,10 +163,10 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
           <span className="text-muted">{ends(i, now).text}</span>
         </div>
       </V2Card>
-    </Link>
+    </V2Item>
   );
   const invRow = (i: V2Invite) => (
-    <Link key={i.id} href={`/invitations/${i.id}`} className="v2-row">
+    <V2Item key={i.id} view="row" href={`/invitations/${i.id}`} items={menu(i)} menuLabel={`${i.code} options`} arranging={arrange.arranging}>
       {bar(i, 'h-8')}
       <b className="text-default font-mono w-[150px] shrink-0 truncate">{i.code}</b>
       <span className="text-muted text-[13px] w-[140px] shrink-0 truncate max-sm:hidden">{joins(i)}</span>
@@ -156,7 +174,7 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
       <span className="v2-col w-[120px] text-[13px]">{usesText(i)}</span>
       <span className="text-muted text-[13px] flex-1 min-w-0 truncate">{ends(i, now).text}</span>
       {inviteAction(i)}
-    </Link>
+    </V2Item>
   );
 
   return (
@@ -166,10 +184,10 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
           if (requests.length === 0) return null;
           const waiting = requests.filter((r) => r.status === 'pending').length;
           return (
-            <ArrangeSection key={key} arrange={arrange} id={key} label="Waiting for you" noun="section"
+            <ArrangeSection key={key} arrange={arrange} id={key} label="Waiting for you" noun="section" cards
               title={<span className="flex items-center gap-2.5"><span className="w-3 h-3 rounded shrink-0" style={{ background: 'var(--color-warning, #f59e0b)' }} />Waiting for you</span>}
               meta={`${waiting} request${waiting === 1 ? '' : 's'}`}>
-              {view === 'grid' ? <V2Grid>{requests.map(reqTile)}</V2Grid> : <V2List>{requests.map(reqRow)}</V2List>}
+              {view === 'grid' ? <V2Grid stretch={{ arrange: arrange, id: key }}>{requests.map(reqTile)}</V2Grid> : <V2List>{requests.map(reqRow)}</V2List>}
             </ArrangeSection>
           );
         }
@@ -177,10 +195,10 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
         const shown = invites.filter((i) => !hidden.has(i.id));
         const open = invites.filter((i) => i.isActive && !ends(i, now).over).length;
         return (
-          <ArrangeSection key={key} arrange={arrange} id={key} title="Invites" meta={`${open} open`} noun="section">
+          <ArrangeSection key={key} arrange={arrange} id={key} title="Invites" meta={`${open} open`} noun="section" cards>
             {shown.length === 0
               ? <p className="text-sm text-muted py-2">Every invite is hidden on this page.</p>
-              : view === 'grid' ? <V2Grid>{shown.map(invTile)}</V2Grid> : <V2List>{shown.map(invRow)}</V2List>}
+              : view === 'grid' ? <V2Grid stretch={{ arrange: arrange, id: key }}>{shown.map(invTile)}</V2Grid> : <V2List>{shown.map(invRow)}</V2List>}
           </ArrangeSection>
         );
       })}

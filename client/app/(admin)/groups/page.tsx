@@ -171,6 +171,12 @@ export default function GroupsPage() {
     group.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // v2: a card per group with its people and addons; Arrange moves and hides
+  // groups on this page (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const groupArrange = usePageArrangement('groups', useMemo(() => filteredGroups.map((g) => g.id), [filteredGroups]));
+
   // Register this page's drag-end logic with the layout-level DndContext,
   // same shared mechanism Addons/Users/Vault already use.
   const { registerDragEndHandler } = useVaultDrag();
@@ -193,18 +199,16 @@ export default function GroupsPage() {
       api.reorderGroups(reorderedIds).catch((err: any) => {
         toast.error(err.message || 'Failed to save new order');
       });
+      // v2 draws groups in the page's arranged order once one is saved, so a
+      // drop keeps that in step with the server's order.
+      if (v2 && !groupArrange.isDefault) groupArrange.moveTo(String(active.id), String(over.id));
     };
     return registerDragEndHandler(handleDragEnd);
-  }, [filteredGroups, registerDragEndHandler]);
+  }, [filteredGroups, registerDragEndHandler, v2, groupArrange]);
 
   // Nebula's stat row - real totals from the same groupsDisplay data already rendered.
   const totalMembers = groupsDisplay.reduce((sum, g) => sum + (g.userCount || 0), 0);
 
-  // v2: a card per group with its people and addons; Arrange moves and hides
-  // groups on this page (lib/arrange.tsx).
-  const { design } = usePageDesign();
-  const v2 = design === 'v2' && !isTV;
-  const groupArrange = usePageArrangement('groups', useMemo(() => filteredGroups.map((g) => g.id), [filteredGroups]));
   const [groupAddonNames, setGroupAddonNames] = useState<Record<string, string[]>>({});
   const [syncingGroupIds, setSyncingGroupIds] = useState<Set<string>>(new Set());
   const groupIdsKey = groups.map((g) => g.id).join(',');
@@ -487,6 +491,18 @@ export default function GroupsPage() {
                       setSyncingGroupIds((prev) => { const n = new Set(prev); n.delete(g.id); return n; });
                     }
                   }}
+                  onClone={(g) => { const d = groupsDisplay.find((x) => x.id === g.id); if (d) setCloneTarget(d); }}
+                  onToggleActive={async (g) => {
+                    const on = !g.isActive;
+                    try {
+                      await api.toggleGroupStatus(g.id, on);
+                      toast.success(`${g.name} switched ${on ? 'on' : 'off'}`);
+                      setGroups((prev) => prev.map((x) => (x.id === g.id ? { ...x, isActive: on } : x)));
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : `Couldn’t switch ${g.name} ${on ? 'on' : 'off'}`);
+                    }
+                  }}
+                  onDelete={(g) => { const d = groupsDisplay.find((x) => x.id === g.id); if (d) setDeleteTarget(d); }}
                 />
                 <HiddenTray arrange={groupArrange} labelOf={(id) => groupsDisplay.find((g) => g.id === id)?.name ?? 'A group'}
                   note="Hidden only here: the group keeps syncing as normal. Tap one to bring it back." />

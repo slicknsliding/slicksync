@@ -20,6 +20,7 @@ import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { NavMoreMenu } from './NavMoreMenu';
 import type { MenuItem } from '@/lib/adminMenu';
+import { useIsPhoneWidth } from '@/lib/pageHeader';
 
 // Matches Sidebar.tsx's isItemActive exactly - a sub-route (e.g.
 // /catalogs/[id] or /catalogs/nuvio-collections) should keep its parent nav
@@ -89,6 +90,7 @@ export function NebulaBar({
   const pathname = usePathname();
   const router = useRouter();
   const isTV = useIsTV();
+  const phoneWidth = useIsPhoneWidth();
   const floatAway = useStepAsideOnScroll();
   const reduceMotion = useReducedMotion();
   const navId = useId();
@@ -217,6 +219,8 @@ export function NebulaBar({
   const smallLogo = !isTV && look.logo === 'small';
   const noLogo = !isTV && look.logo === 'hidden';
   const inline = !isTV && isWide && look.rows === 1 && look.align === 'left';
+  // A phone: every page in rows of three equal pills, no sideways scroll.
+  const grid = !isTV && phoneWidth && !inline;
   const moreItems = isTV ? [] : more;
   // With no logo, the logo row only shows when it has something to hold.
   const logoRowHidden = noLogo && !inline && !isScrolled && placement !== 'bar';
@@ -230,10 +234,10 @@ export function NebulaBar({
         tabIndex={isTV ? -1 : undefined}
         onClick={closeMobileNav}
         aria-current={isActiveLink ? 'page' : undefined}
-        className={`${isTV ? 'nav-item-hover-pill flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap' : `nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold ${inline ? 'px-3' : 'px-4'} py-2 rounded-full whitespace-nowrap`} ${isActiveLink ? 'nebula-link-on' : 'text-muted'}`}
+        className={`${isTV ? 'nav-item-hover-pill flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap' : `nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold ${inline ? 'px-3' : 'px-4'} py-2 rounded-full whitespace-nowrap${grid ? ' !px-1 !gap-1 !text-[13px] justify-center min-w-0' : ''}`} ${isActiveLink ? 'nebula-link-on' : 'text-muted'}`}
       >
         <Icon className={isTV ? 'w-3.5 h-3.5 shrink-0' : 'w-4 h-4 shrink-0'} />
-        {link.label}
+        {grid ? <span className="truncate">{link.label}</span> : link.label}
       </Link>
     );
     // This row previously had no D-pad wiring at all - Up out of
@@ -283,7 +287,10 @@ export function NebulaBar({
           this is for - reverted. dropdownPosition="up" (the default) is
           correct since this sits at the BOTTOM of the screen. */}
       {placement === 'float' && (
-      <div className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2 transition-[opacity,transform] duration-200 ${floatAway ? 'opacity-0 translate-y-3 pointer-events-none' : ''}`}>
+      <div data-account-float className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2 transition-[opacity,transform] duration-200 ${floatAway ? 'opacity-0 translate-y-3 pointer-events-none' : ''}`}>
+        {/* A bar pinned to the bottom of the screen (Library's Select bar) sets
+            data-bottom-bar on the body; the picture steps aside while it's up. */}
+        <style>{'body[data-bottom-bar] [data-account-float]{opacity:0;pointer-events:none}'}</style>
         {/* TorBox referral used to float here as its own pill above the
             panel switcher - needed its own size/position pass on every
             layout and viewport, and still read inconsistently across
@@ -481,7 +488,12 @@ export function NebulaBar({
                     className={isTV ? 'flex flex-col items-center gap-1 pt-1.5' : logoRowHidden ? 'flex flex-col items-center gap-3' : 'flex flex-col items-center gap-3 mt-4 pt-4'}
                     style={logoRowHidden ? undefined : { borderTop: '1px solid var(--color-surface-border)' }}
                   >
-                  {sections.map((section) => (
+                  {grid ? (
+                    <div className="grid grid-cols-3 gap-2 w-full">
+                      {sections.flatMap((section) => section.items).map(renderLink)}
+                      {moreMenu && <div className="min-w-0 [&>button]:w-full [&>button]:justify-center [&>button]:!px-1 [&>button]:!gap-1 [&>button]:!text-[13px]">{moreMenu}</div>}
+                    </div>
+                  ) : sections.map((section) => (
             // Each section is its own row, same as Sidebar.tsx's vertical
             // stack of groups - spacing alone marks the grouping, no text
             // label above either row. flex-nowrap + overflow-x-auto instead

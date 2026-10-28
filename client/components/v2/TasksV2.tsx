@@ -6,18 +6,19 @@
 // only draws them. Anything that needs its own controls (pick a person, type
 // a passphrase) opens in a panel; Delete all and Reset sit in each tile's ⋯.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { Children, createContext, isValidElement, useContext, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, ArchiveBoxIcon, ArrowUturnLeftIcon,
   BoltIcon, CheckCircleIcon, ClockIcon, Cog6ToothIcon, DocumentArrowDownIcon,
   DocumentDuplicateIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIcon, FolderArrowDownIcon, HeartIcon,
   LinkIcon, LockClosedIcon, PaperAirplaneIcon, PuzzlePieceIcon, TrashIcon, UserIcon,
-  UsersIcon, WrenchScrewdriverIcon,
+  UsersIcon, WrenchScrewdriverIcon, MapPinIcon, ChevronUpIcon, ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { Badge, Button, Modal, UserAvatar } from '@/components/ui';
-import { ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
-import type { PageArrange } from '@/lib/arrange';
+import { ArrangeBar, ArrangeGrid, ArrangeGrip, ArrangeIconButton, ArrangeSection, HiddenTray, StretchHandle } from '@/components/ui/Arrange';
+import { SortableItem, useSortableScope, usePageArrangement, usePinned, type PageArrange } from '@/lib/arrange';
+import { pinFirst } from '@/lib/arrange-core';
 import { api, type AddonSnapshot, type BackupFile, type Group, type User } from '@/lib/api';
 import { displayEmail, providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -170,6 +171,68 @@ function nextLine(d: Date | null): string {
 }
 
 /** One task: icon, name, one line, then an optional state, its one button and its ⋯. */
+// Tiles in a section: ordered, pinned first, hidden and dragged by what was arranged (lib/arrange.tsx).
+type TileCtx = {
+  arrange: PageArrange;
+  tiles: PageArrange;
+  pinned: string[];
+  togglePin: (key: string) => void;
+};
+const TileContext = createContext<TileCtx | null>(null);
+const tileKeyOf = (section: string, el: ReactElement<{ title?: string }>) => `${section}/${el.props.title ?? ''}`;
+
+function TileGrid({ section, children }: { section: string; children: ReactNode }) {
+  const ctx = useContext(TileContext);
+  const kids = Children.toArray(children).filter((c): c is ReactElement<{ title?: string }> => isValidElement(c));
+  const byKey = new Map(kids.map((k) => [tileKeyOf(section, k), k]));
+  const ctxTiles = ctx?.tiles;
+  const inSection = ctxTiles ? ctxTiles.shown.filter((k) => byKey.has(k)) : [...byKey.keys()];
+  const ordered = pinFirst(inSection, (k) => k, ctx?.pinned);
+  const arranging = !!ctx?.arrange.arranging;
+  const scope = useSortableScope({
+    keys: ordered,
+    onMove: (key, over) => ctxTiles?.moveTo(key, over),
+    enabled: arranging,
+    layout: 'tiles',
+  });
+  return (
+    <div className="v2-tiles v2-tiles-2" {...(ctx?.arrange.cardAttrs(section) || {})}>
+      {ordered.map((key, i) => {
+        const el = byKey.get(key)!;
+        if (!ctx) return <div key={key} className="min-w-0">{el}</div>;
+        const pinned = ctx.pinned.includes(key);
+        const label = el.props.title || 'tile';
+        const move = (dir: -1 | 1) => {
+          const other = ordered[i + dir];
+          if (other) ctx.tiles.moveTo(key, other);
+        };
+        return (
+          <SortableItem key={key} scope={scope} itemKey={key}>
+            {(d) => (
+              <div ref={d.ref as React.Ref<HTMLDivElement>} style={d.style} className={`min-w-0 relative${arranging ? ' arrange-tile-on' : ''}${d.className ? ` ${d.className}` : ''}`}>
+                {el}
+                {arranging && (
+                  <>
+                    {pinned && <span className="arrange-pinned"><MapPinIcon className="w-3 h-3" />Pinned first</span>}
+                    <span className="arrange-tile-strip">
+                      <ArrangeGrip drag={d} label={label} />
+                      <ArrangeIconButton label={pinned ? `Unpin ${label}` : `Pin ${label} first`} on={pinned} onClick={() => ctx.togglePin(key)}><MapPinIcon className="w-4 h-4" /></ArrangeIconButton>
+                      <ArrangeIconButton label={`Move ${label} up`} disabled={i === 0} onClick={() => move(-1)}><ChevronUpIcon className="w-4 h-4" /></ArrangeIconButton>
+                      <ArrangeIconButton label={`Move ${label} down`} disabled={i === ordered.length - 1} onClick={() => move(1)}><ChevronDownIcon className="w-4 h-4" /></ArrangeIconButton>
+                      <ArrangeIconButton label={`Hide ${label}`} onClick={() => ctx.tiles.hide(key)}><EyeIcon className="w-4 h-4" /></ArrangeIconButton>
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+          </SortableItem>
+        );
+      })}
+      {ctx && <StretchHandle arrange={ctx.arrange} id={section} />}
+    </div>
+  );
+}
+
 function TaskTile({ icon, title, line, state, button, more, dropProps }: {
   icon: ReactNode;
   title: string;
@@ -238,8 +301,28 @@ function PassphraseField({ value, onChange, placeholder }: { value: string; onCh
   );
 }
 
+const ALL_TILE_KEYS = [
+  'schedules/Sync every group', 'schedules/Backup', 'schedules/Check addons', 'schedules/Maintenance',
+  'everyday/Sync everyone', 'everyday/Addons', 'everyday/Automation', 'everyday/AIOSync',
+  'data/Libraries', 'data/Watch history', 'data/Addon templates', 'data/Configuration',
+  'safe/Backups', 'safe/Recovery kit', 'safe/Move to a new server',
+];
+
 export function TasksV2(p: TasksV2Props) {
-  const { arrange, busy } = p;
+  const { arrange: sections0, busy } = p;
+  // Each tile can also be pinned first, moved and hidden: saved as 'tasks-tiles' (and the page's pins),
+  // arranged together with the sections under the one Arrange button.
+  const tiles = usePageArrangement('tasks-tiles', ALL_TILE_KEYS);
+  const pins = usePinned('tasks');
+  const { arranging } = sections0;
+  const setTilesArranging = tiles.setArranging;
+  useEffect(() => { setTilesArranging(arranging); }, [arranging, setTilesArranging]);
+  const arrange = useMemo(() => ({
+    ...sections0,
+    reset: () => { sections0.reset(); tiles.reset(); pins.reset(); },
+    isDefault: sections0.isDefault && tiles.isDefault && pins.pinned.length === 0,
+  }), [sections0, tiles, pins]);
+  const tileCtx = useMemo<TileCtx>(() => ({ arrange: sections0, tiles, pinned: pins.pinned, togglePin: pins.toggle }), [sections0, tiles, pins.pinned, pins.toggle]);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [synced, setSynced] = useState<{ userId: string; name: string }[]>([]);
   useEffect(() => {
@@ -262,7 +345,7 @@ export function TasksV2(p: TasksV2Props) {
     schedules: {
       meta: `${schedulesOn} on`,
       body: (
-        <div className="v2-tiles v2-tiles-2">
+        <TileGrid section="schedules">
           <TaskTile
             icon={<ArrowPathIcon className="w-[18px] h-[18px]" />}
             title="Sync every group"
@@ -296,12 +379,12 @@ export function TasksV2(p: TasksV2Props) {
             line="Off-site backups, database upkeep and updates"
             button={<V2Button onClick={p.onOpenMaintenance}>Open</V2Button>}
           />
-        </div>
+        </TileGrid>
       ),
     },
     everyday: {
       body: (
-        <div className="v2-tiles v2-tiles-2">
+        <TileGrid section="everyday">
           <TaskTile
             icon={<UsersIcon className="w-[18px] h-[18px]" />}
             title="Sync everyone"
@@ -339,12 +422,12 @@ export function TasksV2(p: TasksV2Props) {
               : 'Copy watched titles and resume points between sign-ins'}
             button={<Link href="/tasks/aiosync" className="v2-btn">Open</Link>}
           />
-        </div>
+        </TileGrid>
       ),
     },
     data: {
       body: (
-        <div className="v2-tiles v2-tiles-2">
+        <TileGrid section="data">
           <TaskTile
             icon={<FolderArrowDownIcon className="w-[18px] h-[18px]" />}
             title="Libraries"
@@ -378,12 +461,12 @@ export function TasksV2(p: TasksV2Props) {
               { label: 'Reset config', icon: <ExclamationTriangleIcon className={ic} />, onClick: p.onResetConfig, danger: true },
             ]}
           />
-        </div>
+        </TileGrid>
       ),
     },
     safe: {
       body: (
-        <div className="v2-tiles v2-tiles-2">
+        <TileGrid section="safe">
           <TaskTile
             icon={<ArchiveBoxIcon className="w-[18px] h-[18px]" />}
             title="Backups"
@@ -402,7 +485,7 @@ export function TasksV2(p: TasksV2Props) {
             line="Bring this install to another machine"
             button={<V2Button onClick={() => setPanel('move')}>Start</V2Button>}
           />
-        </div>
+        </TileGrid>
       ),
     },
   };
@@ -420,15 +503,21 @@ export function TasksV2(p: TasksV2Props) {
   const selectedHistoryUser = p.users.find((u) => u.id === p.selectedHistoryUserId);
 
   return (
-    <>
+    <TileContext.Provider value={tileCtx}>
       <ArrangeBar arrange={arrange} />
-      {arrange.shown.map((key) => {
-        const def = TASK_SECTIONS.find((s) => s.key === key);
-        const s = sections[key];
-        if (!def || !s) return null;
-        return <ArrangeSection key={key} arrange={arrange} id={key} title={def.label} meta={s.meta} noun="section">{s.body}</ArrangeSection>;
-      })}
-      <HiddenTray arrange={arrange} labelOf={(id) => `${TASK_SECTIONS.find((s) => s.key === id)?.label ?? 'Section'} (section)`} />
+      <ArrangeGrid>
+        {sections0.shown.map((key) => {
+          const def = TASK_SECTIONS.find((s) => s.key === key);
+          const s = sections[key];
+          if (!def || !s) return null;
+          return <ArrangeSection key={key} arrange={sections0} id={key} title={def.label} meta={s.meta} noun="section" cards>{s.body}</ArrangeSection>;
+        })}
+      </ArrangeGrid>
+      <HiddenTray
+        arrange={arrange}
+        labelOf={(id) => `${TASK_SECTIONS.find((s) => s.key === id)?.label ?? 'Section'} (section)`}
+        extra={tiles.hidden.map((k) => ({ id: `tile-${k}`, label: k.split('/')[1] || k, show: () => tiles.show(k) }))}
+      />
 
       {schedModal('sched-sync', 'Sync every group', (
         <select value={p.syncFrequency} onChange={(e) => p.onSyncFrequency(e.target.value)} className="input-base px-3 py-2 w-full text-sm" aria-label="How often groups sync">
@@ -638,7 +727,7 @@ export function TasksV2(p: TasksV2Props) {
           </div>
         </div>
       </Modal>
-    </>
+    </TileContext.Provider>
   );
 }
 

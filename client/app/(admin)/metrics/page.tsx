@@ -503,9 +503,9 @@ export default function MetricsPage() {
   // Each tab's panels in this account's own arrangement (lib/arrange.tsx).
   // Panels that only show when there's data join the list only then.
   // v2 keeps the taste panels and the recap folded until they are wanted.
-  const metricsUsersArrange = usePageArrangement('metrics-users', ['hero', 'members', 'recap', ...(tasteProfiles.length > 0 ? ['taste'] : []), ...(tasteOverlap.length > 0 ? ['overlap'] : [])], { defaultFolded: v2 ? ['taste', 'overlap', 'recap'] : [] });
-  const metricsContentArrange = usePageArrangement('metrics-content', ['numbers', 'top', 'engagement']);
-  const metricsAdminArrange = usePageArrangement('metrics-admin', ['numbers', ...(!!(metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0) ? ['joins'] : []), 'lifecycle', 'health', 'addons']);
+  const metricsUsersArrange = usePageArrangement('metrics-users', ['hero', 'members', 'recap', ...(tasteProfiles.length > 0 ? ['taste'] : []), ...(tasteOverlap.length > 0 ? ['overlap'] : [])], { defaultFolded: v2 ? ['taste', 'overlap', 'recap'] : [], widths: v2 });
+  const metricsContentArrange = usePageArrangement('metrics-content', ['numbers', 'top', 'engagement'], { widths: v2 });
+  const metricsAdminArrange = usePageArrangement('metrics-admin', ['numbers', ...(!!(metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0) ? ['joins'] : []), 'lifecycle', 'health', 'addons'], { widths: v2 });
   const tabArrange = viewMode === 'users' ? metricsUsersArrange : viewMode === 'content' ? metricsContentArrange : viewMode === 'admin' ? metricsAdminArrange : null;
 
   // ---- v2: the same data, drawn as v2 sections (components/v2/MetricsV2.tsx).

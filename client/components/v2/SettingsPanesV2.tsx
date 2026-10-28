@@ -6,7 +6,7 @@
 // page uses - nothing is saved any differently - and lays them out as short
 // rows and tiles in sections that can be moved, folded and hidden.
 
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   CheckIcon, ClipboardDocumentIcon, ComputerDesktopIcon, DevicePhoneMobileIcon, PencilIcon, TrashIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -18,7 +18,7 @@ import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { api, type PasskeyRow, type PushDevice, type SyncSettings } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
-import type { PageArrange } from '@/lib/arrange';
+import { NEEDS_KIND_NAMES, useNeedsDismiss, type PageArrange } from '@/lib/arrange';
 import { V2Tiles } from './V2Detail';
 import { V2Button } from './V2Bits';
 import { V2Rows, V2SetRow, V2Switch, V2ToggleTile, V2Word, V2_SELECT_CLASS } from './SettingsV2';
@@ -181,9 +181,9 @@ export function SyncV2({ arrange, sync, save }: { arrange: PageArrange; sync: Sy
 
 // ---------------------------------------------------------- Notifications
 
-export const NOTIFICATION_KEYS = ['where', 'people', 'syncing', 'safe', 'recaps', 'devices'];
+export const NOTIFICATION_KEYS = ['where', 'needsHidden', 'people', 'syncing', 'safe', 'recaps', 'devices'];
 const NOTIFICATION_LABELS = {
-  where: 'Where they go', people: 'People', syncing: 'Syncing and addons', safe: 'Keeping safe', recaps: 'Recaps', devices: 'Devices',
+  where: 'Where they go', needsHidden: 'Hidden from Needs you', people: 'People', syncing: 'Syncing and addons', safe: 'Keeping safe', recaps: 'Recaps', devices: 'Devices',
 };
 
 type Tile = { key: keyof SyncSettings; title: string; also: string; line: string; hint?: string; def?: boolean };
@@ -235,6 +235,21 @@ export function NotificationsV2({ arrange, sync, setSync, save, saveMany, webhoo
   };
 }) {
   const isOn = (t: Tile) => (t.def ? sync[t.key] !== false : !!sync[t.key]);
+  // What the Dashboard's Needs you was told to stop showing, to bring back.
+  const needsAway = useNeedsDismiss();
+  // Read once: a snooze that ends while the page is open just stays listed until the next visit.
+  const [now] = useState(() => Date.now());
+  const putAway = [
+    ...[...needsAway.muted].map((k) => ({ id: `kind-${k}`, name: NEEDS_KIND_NAMES[k] || k, how: 'not shown', show: () => needsAway.mute(k, false) })),
+    ...Object.entries(needsAway.dismissed)
+      .filter(([, d]) => d.until === undefined || d.until > now)
+      .map(([key, d]) => ({
+        id: key,
+        name: d.label || 'Something you dismissed',
+        how: d.until ? `snoozed until ${new Date(d.until).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'dismissed',
+        show: () => needsAway.restore(key),
+      })),
+  ];
   const group = (id: string, title: string, tiles: Tile[], extraFor?: (t: Tile) => ReactNode) => (
     <ArrangeSection key={id} arrange={arrange} id={id} title={title} meta={`${tiles.filter(isOn).length} of ${tiles.length} on`} noun="section">
       <V2Tiles wide={2}>
@@ -253,6 +268,26 @@ export function NotificationsV2({ arrange, sync, setSync, save, saveMany, webhoo
   };
 
   const sections: Record<string, ReactNode> = {
+    needsHidden: putAway.length > 0 ? (
+      <ArrangeSection key="needsHidden" arrange={arrange} id="needsHidden" title="Hidden from Needs you" meta={String(putAway.length)} noun="section">
+        <V2Rows>
+          <V2SetRow
+            title="On the Dashboard"
+            line="Things you dismissed or chose not to see. A dismissed one shows again by itself if something about it changes."
+            below={(
+              <div className="flex flex-col gap-2">
+                {putAway.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+                    <span className="flex-1 min-w-0 text-[13.5px] break-words" style={{ color: 'var(--color-text)' }}>{p.name} · <span className="text-muted whitespace-nowrap">{p.how}</span></span>
+                    <V2Button onClick={p.show}>Show again</V2Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          />
+        </V2Rows>
+      </ArrangeSection>
+    ) : null,
     where: (
       <ArrangeSection key="where" arrange={arrange} id="where" title="Where they go" noun="section">
         <V2Rows>

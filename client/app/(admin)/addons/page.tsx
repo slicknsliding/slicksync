@@ -35,7 +35,8 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
-import { AddonsV2, type V2Addon } from '@/components/v2/AddonsV2';
+import { AddonsV2, type V2Addon, type V2AddonActions } from '@/components/v2/AddonsV2';
+import { V2SelectButton } from '@/components/v2/V2Bits';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -253,6 +254,8 @@ export default function AddonsPage() {
 
   // Multi-select state - NO isSelectMode, just selectedIds
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // v2: Select mode (a circle on each card); Classic always shows its tick boxes.
+  const [selecting, setSelecting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -421,6 +424,9 @@ export default function AddonsPage() {
     healthError: a.healthCheckError,
     groups: addonGroups[a.id] || [],
     groupCount: a.groupCount,
+    tag: a.customTag,
+    isProtected: a.isProtected,
+    configUrl: getConfigureUrl(a),
   })), [shownAddons, addonGroups]);
   const offlineCount = addonsDisplay.filter((a) => a.isOnline === false).length;
   const v2Subtitle = `${addons.length} addon${addons.length === 1 ? '' : 's'}${offlineCount ? ` · ${offlineCount} not answering` : ''}`;
@@ -683,6 +689,40 @@ export default function AddonsPage() {
   }, [filteredAddons, registerDragEndHandler, handleToggleProtect, handleSetTag]);
 
 
+  // What the v2 card menu does: the same handlers and modals Classic uses.
+  const v2Actions = useMemo<V2AddonActions>(() => {
+    const find = (id: string) => addonsDisplay.find((x) => x.id === id);
+    return {
+      rename: async (a, name) => {
+        const previous = a.name;
+        setAddons((prev) => prev.map((x) => (x.id === a.id ? { ...x, name } : x)));
+        try {
+          await api.updateAddon(a.id, { name });
+          toast.success(`Renamed to ${name}`);
+        } catch (err) {
+          setAddons((prev) => prev.map((x) => (x.id === a.id ? { ...x, name: previous } : x)));
+          toast.error(`Couldn’t rename ${previous}`, { line: err instanceof Error ? err.message : undefined });
+        }
+      },
+      clone: (a) => { const d = find(a.id); if (d) setCloneTarget(d); },
+      toggleActive: async (a) => {
+        const next = !a.isActive;
+        try {
+          await api.toggleAddonStatus(a.id, next);
+          toast.success(`Addon ${next ? 'activated' : 'deactivated'}`);
+          setAddons((prev) => prev.map((x) => (x.id === a.id ? ({ ...x, isActive: next } as Addon) : x)));
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : `Failed to toggle ${a.name}`);
+        }
+      },
+      toggleProtect: (a) => { const d = find(a.id); if (d) handleToggleProtect(d, !d.isProtected); },
+      setTag: (a, tag) => { const d = find(a.id); if (d) handleSetTag(d, tag); },
+      createTag: (a, name) => { const d = find(a.id); if (d) handleCreateAndSetTag(d, name); },
+      moveToVault: (a) => { const d = find(a.id); if (d) setMoveToVaultTarget(d); },
+      remove: (a) => { const d = find(a.id); if (d) setDeleteTarget(d); },
+    };
+  }, [addonsDisplay, handleToggleProtect, handleSetTag, handleCreateAndSetTag]);
+
   const handleReloadAllAddons = async () => {
     setIsReloading(true);
     try {
@@ -721,7 +761,10 @@ export default function AddonsPage() {
   const reloadAllButton = isTV ? (
     <TVFocusable onEnterPress={handleReloadAllAddons}>{reloadAllButtonInner}</TVFocusable>
   ) : v2 ? (
-    <div className="flex items-center gap-2"><ArrangeButton arrange={kindArrange} />{reloadAllButtonInner}</div>
+    <div className="flex items-center gap-2 flex-wrap justify-end">
+      <V2SelectButton on={selecting} onToggle={() => { if (selecting) setSelectedIds(new Set()); setSelecting(!selecting); }} />
+      <ArrangeButton arrange={kindArrange} />{reloadAllButtonInner}
+    </div>
   ) : reloadAllButtonInner;
   const subtitle = isLoading ? 'Loading...' : v2 ? v2Subtitle : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`;
 
@@ -770,7 +813,7 @@ export default function AddonsPage() {
       {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
-          selectionConfig={{
+          selectionConfig={v2 && !selecting ? undefined : {
             totalCount: filteredAddons.length,
             selectedCount: selectedIds.size,
             onSelectAll: selectAll,
@@ -935,6 +978,12 @@ export default function AddonsPage() {
                   pins={addonPins}
                   view={viewMode === 'list' ? 'list' : 'grid'}
                   reloading={reloadingIds}
+                  tags={addonTags}
+                  tagColors={addonTagColors}
+                  actions={v2Actions}
+                  selecting={selecting}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
                   onReload={async (a) => {
                     setReloadingIds((prev) => new Set(prev).add(a.id));
                     try {

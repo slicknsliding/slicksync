@@ -800,6 +800,19 @@ export default function GroupDetailPage() {
     }
   }, [params.id, refetchData]);
 
+  // The pencil on the v2 title: name and/or description in one save.
+  const handleRename = useCallback(async (patch: { name?: string; description?: string }) => {
+    try {
+      await api.updateGroup(params.id as string, patch);
+      toast.success('Group updated');
+      await refetchData();
+      return true;
+    } catch (err) {
+      toast.error((err instanceof Error && err.message) || 'Failed to update group');
+      return false;
+    }
+  }, [params.id, refetchData]);
+
   // Handle toggle active status
   const handleToggleActive = useCallback(async () => {
     try {
@@ -1024,6 +1037,7 @@ export default function GroupDetailPage() {
             usersSyncing={usersSyncing}
             onSync={handleSync}
             onEdit={() => setIsEditModalOpen(true)}
+            onRename={handleRename}
             onChangePicture={() => setShowAvatarPicker(true)}
             onToggleActive={handleToggleActive}
             onClearMembers={() => setIsClearMembersModalOpen(true)}
@@ -1552,8 +1566,8 @@ function EditGroupForm({ group, onClose }: { group: Group | null; onClose: () =>
       toast.success('Group updated successfully');
       onClose();
       window.location.reload();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update group');
+    } catch (err) {
+      toast.error((err instanceof Error && err.message) || 'Failed to update group');
     } finally {
       setIsLoading(false);
     }

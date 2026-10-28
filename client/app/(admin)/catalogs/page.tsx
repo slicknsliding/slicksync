@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type Ref } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -14,15 +14,15 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
-import { usePageArrangement, usePageDesign } from '@/lib/arrange';
-import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { SortableItem, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeGrip, HiddenTray } from '@/components/ui/Arrange';
 import { CatalogsV2 } from '@/components/v2/CatalogsV2';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { avatarColorFill } from '@/components/ui/Avatar';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
-  ShieldExclamationIcon,
+  ShieldExclamationIcon, EyeIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/solid';
 import { JellyfinLogo } from '@/components/jellyfin/JellyfinLogo';
@@ -234,7 +234,21 @@ export default function ListsPage() {
   const v2 = design === 'v2';
   const { viewMode, setViewMode } = useDefaultViewMode();
   const catalogKeys = useMemo(() => [...lists.filter((l) => l.pinned), ...lists.filter((l) => !l.pinned)].map((l) => l.id), [lists]);
-  const catalogArrange = usePageArrangement('catalogs', catalogKeys);
+  const catalogArrangeOwn = usePageArrangement('catalogs', catalogKeys);
+  // The two collection pills are arranged too: moved and hidden one by one,
+  // by their own keys, while the page is being arranged.
+  const collectionKeys = useMemo(() => ['nuvio', 'jellyfin'], []);
+  const collectionArrange = usePageArrangement('catalogs-collections', collectionKeys, { layout: 'grid' });
+  const catalogArrange = {
+    ...catalogArrangeOwn,
+    isDefault: catalogArrangeOwn.isDefault && collectionArrange.isDefault,
+    reset: () => { catalogArrangeOwn.reset(); collectionArrange.reset(); },
+    setArranging: (v: React.SetStateAction<boolean>) => {
+      const on = typeof v === 'function' ? v(catalogArrangeOwn.arranging) : v;
+      catalogArrangeOwn.setArranging(on);
+      collectionArrange.setArranging(on);
+    },
+  };
 
   const heading = { title: 'Catalogs', subtitle: v2 && loaded ? `${lists.length} catalog${lists.length === 1 ? '' : 's'} of your own` : 'Your custom collections of movies and shows.' };
 
@@ -312,7 +326,36 @@ export default function ListsPage() {
   // The pills share one width so they read as a set: side by side when the
   // header's left column has room, wrapping and left-aligned when it doesn't
   // (half-width windows, phones), shrinking on the narrowest phones.
-  const collectionsButtons = (
+  const collectionPills: Record<string, { label: string; node: React.ReactNode }> = {
+    nuvio: { label: 'Nuvio Collections', node: nuvioCollectionsButton },
+    jellyfin: { label: 'Jellyfin Collections', node: aiostreamsCollectionsButton },
+  };
+  const collectionsButtons = v2 ? (
+    <div className="w-full flex flex-wrap items-center gap-3">
+      {collectionArrange.shown.map((key) => {
+        const pill = collectionPills[key];
+        if (!pill) return null;
+        return (
+          <SortableItem key={key} scope={collectionArrange.sort} itemKey={key}>
+            {(d) => (
+              <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex items-center gap-2 min-w-0 max-w-full ${d.className}`}>
+                {pill.node}
+                {collectionArrange.arranging && (
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    <ArrangeGrip drag={d} label={pill.label} />
+                    <button type="button" className="arrange-icon" aria-label={`Hide ${pill.label}`} title="Hide on this page"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); collectionArrange.hide(key); }}>
+                      <EyeIcon className="w-4 h-4" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+          </SortableItem>
+        );
+      })}
+    </div>
+  ) : (
     <div className="w-full flex flex-wrap items-center gap-3">
       {nuvioCollectionsButton}
       {aiostreamsCollectionsButton}
@@ -368,10 +411,22 @@ export default function ListsPage() {
 
           {v2 && lists.length > 0 && (
             <>
-              <CatalogsV2 lists={lists} arrange={catalogArrange} view={viewMode === 'list' ? 'list' : 'grid'} coverStyle={coverColorStyle} />
-              <HiddenTray arrange={catalogArrange} labelOf={(id) => lists.find((l) => l.id === id)?.name ?? 'A catalog'}
-                note="Hidden only here: the catalog keeps working everywhere it's used. Tap one to bring it back." />
+              <CatalogsV2
+                lists={lists}
+                arrange={catalogArrangeOwn}
+                view={viewMode === 'list' ? 'list' : 'grid'}
+                coverStyle={coverColorStyle}
+                onTogglePin={handleTogglePin}
+                onRename={(l) => { setRenaming(l); setRenameValue(l.name); }}
+                onCover={setCoverPicker}
+                onDelete={setDeleting}
+              />
             </>
+          )}
+          {v2 && (
+            <HiddenTray arrange={catalogArrangeOwn} labelOf={(id) => lists.find((l) => l.id === id)?.name ?? 'A catalog'}
+              extra={collectionArrange.hidden.map((key) => ({ id: `c:${key}`, label: collectionPills[key]?.label ?? 'A collection', show: () => collectionArrange.show(key) }))}
+              note="Hidden only here: the catalog keeps working everywhere it's used. Tap one to bring it back." />
           )}
 
           {!v2 && lists.length > 0 && (() => {

@@ -367,18 +367,17 @@ export default function UserSharesPage() {
           background: 'var(--color-surface)',
         }}
       >
-        {/* Selection indicator */}
-        {isSelected && (
-          <div 
-            className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-primary)' }}
-          >
-            <CheckIconSolid className="w-4 h-4 text-white" />
-          </div>
-        )}
-
         {/* Poster */}
         <div className="aspect-[2/3] relative overflow-hidden">
+          {/* Selection indicator */}
+          {isSelected && (
+            <div
+              className="absolute bottom-2 right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--color-primary)' }}
+            >
+              <CheckIconSolid className="w-4 h-4 text-white" />
+            </div>
+          )}
           {share.poster ? (
             <img 
               src={share.poster} 
@@ -402,7 +401,7 @@ export default function UserSharesPage() {
           <a
             href={stremioLink}
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-2 left-2 p-1.5 rounded-full transition-opacity opacity-80 hover:opacity-100"
+            className="absolute top-2 right-2 p-1.5 rounded-full transition-opacity opacity-80 hover:opacity-100"
             style={{ background: 'rgba(0,0,0,0.7)' }}
             title="Open"
           >
@@ -412,20 +411,18 @@ export default function UserSharesPage() {
           {/* New badge */}
           {type === 'received' && !share.viewedAt && (
             <div 
-              className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-xs font-medium"
+              className="absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-medium"
               style={{ background: 'var(--color-primary-solid)', color: 'white' }}
             >
               New
             </div>
           )}
+        </div>
 
-          {/* Type badge */}
-          <div 
-            className="absolute bottom-2 right-2 px-2 py-0.5 rounded text-xs font-medium"
-            style={{ background: 'rgba(0,0,0,0.7)', color: 'white' }}
-          >
-            {share.itemType === 'series' ? 'Series' : 'Movie'}
-          </div>
+        {/* The title, and what it is, under the poster */}
+        <div className="px-2 pt-2 pb-1.5 text-center min-w-0">
+          <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }} title={share.itemName}>{share.itemName}</p>
+          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{share.itemType === 'series' ? 'Series' : 'Movie'}</p>
         </div>
 
         {/* Action buttons */}
@@ -811,6 +808,7 @@ export default function UserSharesPage() {
             view={viewMode}
             onView={setViewMode}
             toolbar={<div className="flex flex-wrap items-center gap-3 mb-4">{searchAndFilter}</div>}
+            phoneBar={{ search: searchTerm, onSearch: setSearchTerm, people: filterUsers.map((u) => u.username), person: userFilter, onPerson: setUserFilter }}
             bulkBar={bulkBar}
             members={membersBox}
             selecting={selecting}

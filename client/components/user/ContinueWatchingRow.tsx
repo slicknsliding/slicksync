@@ -27,6 +27,7 @@ import { cachedImageUrl } from '@/lib/posterUrl';
 import { availableApps, linksFor, rememberApp, rememberedApp, rememberedShortcut, type OpenTargets, type OpenWithAppId } from '@/lib/openWith';
 import { userContinueWatching, userOpenTargets, type ContinueWatchingCardData } from '@/lib/user-api';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
+import { useCwTime } from '@/lib/arrange';
 
 const REFRESH_MS = 60 * 1000;
 const EMPTY: ContinueWatchingCardData[] = [];
@@ -53,6 +54,12 @@ function episodeLine(c: ContinueWatchingCardData): string {
   return c.progressPercent != null ? `Resume · ${c.progressPercent}% watched` : 'Resume';
 }
 
+/** Under the picture (Settings → Continue Watching: Under): just the episode, or Movie. */
+function episodeName(c: ContinueWatchingCardData): string {
+  if (c.season != null && c.episode != null) return `S${c.season} E${c.episode}${c.episodeTitle ? ` · ${c.episodeTitle}` : ''}`;
+  return 'Movie';
+}
+
 /** The badge on the picture: time left when resuming, Up next for the next episode. */
 function leftLabel(c: ContinueWatchingCardData): string {
   if (!c.resume) return 'Up next';
@@ -77,6 +84,8 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
 }) {
   const { appUrl, href, app } = openingOf(card);
   const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
+  // Settings: time left / Up next under the card instead of on the picture.
+  const under = useCwTime().where === 'under';
 
   const body = (
     <>
@@ -87,7 +96,7 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
         ) : (
           <div className="w-full h-full flex items-center justify-center"><PlayIcon className="w-8 h-8 text-subtle" /></div>
         )}
-        <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full text-[11px] font-semibold pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>{leftLabel(card)}</span>
+        {!under && <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full text-[11px] font-semibold pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>{leftLabel(card)}</span>}
         {card.resume && card.progressPercent != null && (
           <div className="absolute bottom-0 left-0 right-0 h-1.5 pointer-events-none" style={{ background: 'rgba(0,0,0,0.55)' }}>
             <div
@@ -99,10 +108,13 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
       </div>
       <div className="p-3">
         <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{card.name}</p>
-        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{episodeLine(card)}</p>
+        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{under ? episodeName(card) : episodeLine(card)}</p>
         <div className="flex items-center gap-2 mt-2 min-w-0">
           <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm">{app}</Badge>
           {card.profileLabel && <span className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{card.profileLabel}</span>}
+          {under && (card.resume
+            ? <span className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>{leftLabel(card)}</span>
+            : <span className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-primary)' }}>Up next</span>)}
         </div>
       </div>
     </>

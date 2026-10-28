@@ -151,7 +151,7 @@ export default function TasksPage() {
   // v2 page design (Themes → Page design); the TV app always keeps Classic.
   const { design } = usePageDesign();
   const v2 = design === 'v2' && !isTV;
-  const taskArrange = usePageArrangement('tasks', TASK_SECTION_KEYS);
+  const taskArrange = usePageArrangement('tasks', TASK_SECTION_KEYS, { widths: v2 });
   const { layoutMode } = useLayoutMode();
   // State for loading indicators
   const [syncingUsers, setSyncingUsers] = useState(false);

@@ -14,7 +14,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
 import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
-import { V2DetailHead, V2Numbers, V2ToolTile, V2Box, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2DetailHead, V2MoreMenu, V2Numbers, V2ToolTile, V2Box, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
 import { V2Button, V2Status, type V2Tone } from '@/components/v2/V2Bits';
 import { PillTool, CopyHistoryTool, TitleRows } from '@/components/v2/PersonV2';
 import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal, ColorPicker, DateTimePicker, InlineEdit, ToggleSwitch, Select, SyncBadge, Input, VersionBadge, ResourceBadge, UserAvatar } from '@/components/ui';
@@ -1668,16 +1668,28 @@ export default function UserDetailPage() {
     ];
 
     const syncing = isSyncing;
+    // On a phone: Sync and the ⋯ menu share the first row; Limits and Caught up
+    // sit side by side under them, half the width each. From sm up the wrappers
+    // vanish (contents) and the buttons run in one row, ⋯ last, as before.
     const actions = (
       <>
-        {needsFix && <V2Button primary onClick={() => setIsReconnectModalOpen(true)}>Fix sign-in</V2Button>}
-        {hasAddons && (
-          <V2Button primary={!needsFix} onClick={() => setIsSyncPreviewOpen(true)} disabled={syncing} icon={<ArrowPathIcon className={`w-4 h-4${syncing ? ' animate-spin' : ''}`} />}>
-            {syncing ? 'Syncing' : 'Sync'}
-          </V2Button>
-        )}
-        <LimitsButton id={user.id} name={name} size="md" onPickGroup={() => setIsEditDetailsOpen(true)} onReconnect={() => setIsReconnectModalOpen(true)} />
-        <CatchUpButton userId={user.id} name={name} hasServer={user.providerType === 'jellyfin'} />
+        <div className="flex items-center gap-2 max-sm:w-full sm:contents">
+          {needsFix && <V2Button primary onClick={() => setIsReconnectModalOpen(true)}>Fix sign-in</V2Button>}
+          {hasAddons && (
+            <V2Button primary={!needsFix} onClick={() => setIsSyncPreviewOpen(true)} disabled={syncing} icon={<ArrowPathIcon className={`w-4 h-4${syncing ? ' animate-spin' : ''}`} />}>
+              {syncing ? 'Syncing' : 'Sync'}
+            </V2Button>
+          )}
+          <span className="max-sm:ml-auto sm:order-last"><V2MoreMenu items={more} /></span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 max-sm:w-full sm:contents">
+          <div className="min-w-0 sm:contents max-sm:[&>span]:flex max-sm:[&>span]:w-full max-sm:[&_button]:w-full max-sm:[&_button]:justify-between">
+            <LimitsButton id={user.id} name={name} size="md" onPickGroup={() => setIsEditDetailsOpen(true)} onReconnect={() => setIsReconnectModalOpen(true)} />
+          </div>
+          <div className="min-w-0 sm:contents max-sm:[&>span]:flex max-sm:[&>span]:w-full max-sm:[&_button]:w-full max-sm:[&_button]:justify-between">
+            <CatchUpButton userId={user.id} name={name} hasServer={user.providerType === 'jellyfin'} />
+          </div>
+        </div>
       </>
     );
 
@@ -1856,7 +1868,6 @@ export default function UserDetailPage() {
             status={<V2Status tone={tone}>{words}</V2Status>}
             facts={facts}
             actions={actions}
-            more={more}
           />
         </div>
         <div className="empty:hidden mb-4"><SignInOfferBanner userId={user.id} /></div>

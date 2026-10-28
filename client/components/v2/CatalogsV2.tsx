@@ -4,13 +4,14 @@
 // (or its own cover), how many titles it has, and Open. In Arrange mode each
 // one can be moved or hidden on this page.
 
-import Link from 'next/link';
-import { RectangleStackIcon } from '@heroicons/react/24/outline';
+import { useRouter } from 'next/navigation';
+import { MapPinIcon, PencilIcon, PhotoIcon, RectangleStackIcon, StarIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { PosterThumb } from '@/components/ui';
 import { ArrangeControls } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import type { CustomList } from '@/lib/api';
-import { V2Button, V2Card, V2Grid, V2List } from './V2Bits';
+import { V2Button, V2Card, V2Grid, V2Grip, V2Item, V2List, type V2CardMenuItem } from './V2Bits';
 
 function Cover({ list, coverStyle, tall }: { list: CustomList; coverStyle: (i: number) => React.CSSProperties; tall: boolean }) {
   const h = tall ? 'h-40' : 'h-12';
@@ -48,45 +49,68 @@ function sub(list: CustomList) {
   return bits.join(' · ');
 }
 
-export function CatalogsV2({ lists, arrange, view, coverStyle }: {
+export function CatalogsV2({ lists, arrange, view, coverStyle, onTogglePin, onRename, onCover, onDelete }: {
   lists: CustomList[];
   arrange: PageArrange;
   view: 'grid' | 'list';
   coverStyle: (i: number) => React.CSSProperties;
+  onTogglePin: (l: CustomList) => void;
+  /** Opens the page's own rename box. */
+  onRename: (l: CustomList) => void;
+  /** Opens the page's own cover picker. */
+  onCover: (l: CustomList) => void;
+  /** Asks first (the page's own confirm). */
+  onDelete: (l: CustomList) => void;
 }) {
+  const router = useRouter();
   const byId = new Map(lists.map((l) => [l.id, l]));
   const shown = arrange.shown.map((id) => byId.get(id)).filter((l): l is CustomList => !!l);
   const action = (l: CustomList) => arrange.arranging
-    ? <ArrangeControls arrange={arrange} id={l.id} label={l.name} />
+    ? <span className="flex items-center gap-1.5 shrink-0"><V2Grip label={`Drag ${l.name}`} /><ArrangeControls arrange={arrange} id={l.id} label={l.name} /></span>
     : <V2Button>Open</V2Button>;
+  // A catalog someone else shared with you is read-only: nothing to change, so no menu (as in Classic).
+  const menu = (l: CustomList): V2CardMenuItem[] | undefined => l.isOwner ? [
+    { label: l.pinned ? 'Unpin from top' : 'Pin to top', icon: <MapPinIcon className="w-4 h-4" />, onClick: () => onTogglePin(l) },
+    { label: 'Rename', icon: <PencilIcon className="w-4 h-4" />, onClick: () => onRename(l) },
+    { label: 'Cover art', icon: <PhotoIcon className="w-4 h-4" />, onClick: () => onCover(l) },
+    { label: 'Content rating', icon: <StarIcon className="w-4 h-4" />, onClick: () => router.push(`/catalogs/${l.id}?openRating=1`) },
+    { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(l) },
+  ] : undefined;
+  // Dragging only while arranging; the page's own order saves the move.
+  const sortId = (l: CustomList) => arrange.arranging ? arrange.sort.prefix + l.id : undefined;
+  const sortItems = arrange.sort.keys.map((k) => arrange.sort.prefix + k);
 
   if (view === 'list') {
     return (
       <V2List>
-        {shown.map((l) => (
-          <Link key={l.id} href={`/catalogs/${l.id}`} className="v2-row">
-            <Cover list={l} coverStyle={coverStyle} tall={false} />
-            <b className="text-default flex-1 min-w-0 truncate">{l.name}</b>
-            <span className="v2-col w-[260px] text-muted text-[13px] truncate">{sub(l)}</span>
-            {action(l)}
-          </Link>
-        ))}
+        <SortableContext items={sortItems} strategy={verticalListSortingStrategy}>
+          {shown.map((l) => (
+            <V2Item key={l.id} view="row" href={`/catalogs/${l.id}`} sortId={sortId(l)} items={menu(l)} menuLabel={`${l.name} options`} arranging={arrange.arranging}>
+              <Cover list={l} coverStyle={coverStyle} tall={false} />
+              <b className="text-default flex-1 min-w-0 truncate">{l.name}</b>
+              <span className="v2-col w-[260px] text-muted text-[13px] truncate">{sub(l)}</span>
+              {action(l)}
+            </V2Item>
+          ))}
+        </SortableContext>
       </V2List>
     );
   }
   return (
-    <V2Grid>
-      {shown.map((l) => (
-        <Link key={l.id} href={`/catalogs/${l.id}`} className="v2-link">
-          <V2Card action={action(l)}>
-            <Cover list={l} coverStyle={coverStyle} tall />
-            <div className="min-w-0">
-              <div className="text-[17px] font-semibold text-default truncate">{l.name}</div>
-              <div className="text-muted text-[13px] truncate">{sub(l)}</div>
-            </div>
-          </V2Card>
-        </Link>
-      ))}
+    <V2Grid stretch={{ arrange, id: 'cards', label: 'catalogs' }}>
+      <SortableContext items={sortItems} strategy={rectSortingStrategy}>
+        {shown.map((l) => (
+          <V2Item key={l.id} view="card" href={`/catalogs/${l.id}`} sortId={sortId(l)} items={menu(l)} menuLabel={`${l.name} options`} arranging={arrange.arranging}>
+            <V2Card action={action(l)}>
+              <Cover list={l} coverStyle={coverStyle} tall />
+              <div className="min-w-0">
+                <div className="text-[17px] font-semibold text-default truncate">{l.name}</div>
+                <div className="text-muted text-[13px] truncate">{sub(l)}</div>
+              </div>
+            </V2Card>
+          </V2Item>
+        ))}
+      </SortableContext>
     </V2Grid>
   );
 }

@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { Badge, UserAvatar, YearInReviewCard } from '@/components/ui';
 import { ScrollRow } from '@/components/ui/ScrollRow';
-import { ArrangePanel, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { ArrangeGrid, ArrangePanel, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import type { AtRiskUser, HealthStatus, MetricsData, TasteOverlapPair, TasteProfile } from '@/lib/api';
 import {
@@ -23,7 +23,7 @@ import {
   TopItemsSection,
   UserLifecycleCard,
 } from '@/components/admin';
-import { V2Box, V2Numbers, V2Tiles } from './V2Detail';
+import { V2Box, V2Numbers, V2Tiles, v2HiddenNumbers, type V2NumberItem } from './V2Detail';
 import { V2Button, V2Status, type V2Tone } from './V2Bits';
 
 /** Minutes the way v2 words them: "42 min", "6 h 05 min". */
@@ -107,14 +107,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
   const avatar = (u: { id: string; username: string; email?: string; avatarUrl?: string | null; useGravatar?: boolean }, size: 'xs' | 'sm' | 'md' = 'sm') => (
     <UserAvatar userId={u.id} name={u.username} email={u.email} src={u.useGravatar ? undefined : (u.avatarUrl ?? undefined)} useGravatar={u.useGravatar} size={size} className="shrink-0" />
   );
-  return (
-    <div className="space-y-6">
-      {arrange.shown.map((id) => {
-        switch (id) {
-          case 'hero':
-            return (
-              <ArrangeSection key={id} arrange={arrange} id={id} title="Watch time" meta={periodMeta}>
-                <V2Numbers items={[
+  const numberItems: V2NumberItem[] = [
                   {
                     label: periodLabel,
                     value: isLoading ? '…' : metricsWatched(totalMinutes),
@@ -123,7 +116,16 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                   { label: 'Watching now', value: isLoading ? '…' : String(watchingNow) },
                   { label: 'Each, on average', value: isLoading ? '…' : metricsWatched(avgMinutes) },
                   { label: 'Best streak', value: isLoading ? '…' : `${bestStreak} ${bestStreak === 1 ? 'day' : 'days'}` },
-                ]} />
+                ];
+  const hiddenNumbers = v2HiddenNumbers(arrange, numberItems, 'hero');
+  return (
+    <ArrangeGrid>
+      {arrange.shown.map((id) => {
+        switch (id) {
+          case 'hero':
+            return (
+              <ArrangeSection key={id} arrange={arrange} id={id} title="Watch time" meta={periodMeta}>
+                <V2Numbers arrange={arrange} scope="hero" items={numberItems} />
                 <V2Box className="mt-3">
                   <div className="h-40 md:h-56">{chart}</div>
                 </V2Box>
@@ -162,8 +164,8 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
           case 'taste':
             if (tasteProfiles.length === 0) return null;
             return (
-              <ArrangeSection key={id} arrange={arrange} id={id} title="Taste" meta="what each person leans to">
-                <V2Tiles wide={2}>
+              <ArrangeSection key={id} arrange={arrange} id={id} title="Taste" meta="what each person leans to" cards>
+                <V2Tiles wide={2} stretch={{ arrange: arrange, id: id }}>
                   {tasteProfiles.map((p) => {
                     const mins = Math.round(p.totalSeconds / 60);
                     return (
@@ -243,8 +245,8 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
             return null;
         }
       })}
-      <HiddenTray arrange={arrange} labelOf={labelOf} />
-    </div>
+      <HiddenTray arrange={arrange} labelOf={labelOf} extra={hiddenNumbers} />
+    </ArrangeGrid>
   );
 }
 
@@ -265,19 +267,21 @@ export function MetricsContentV2({ arrange, isLoading, error, periodKey, data, c
   const shows = data?.summary?.totalShows || 0;
   const share = movies + shows > 0 ? Math.round((movies / (movies + shows)) * 100) : 0;
   const mostWatched = admin?.topItems?.series?.[0]?.name;
+  const numberItems: V2NumberItem[] = [
+                  { label: 'Movies watched', value: isLoading ? '…' : String(movies) },
+                  { label: 'Shows watched', value: isLoading ? '…' : String(shows) },
+                  { label: 'Most watched', value: isLoading ? '…' : (mostWatched || 'N/A') },
+                  { label: 'Binge sessions', value: isLoading ? '…' : String(admin?.interestingMetrics?.totalBingeSessions || 0) },
+                ];
+  const hiddenNumbers = v2HiddenNumbers(arrange, numberItems, 'numbers');
   return (
-    <div className="space-y-6">
+    <ArrangeGrid>
       {arrange.shown.map((id) => {
         switch (id) {
           case 'numbers':
             return (
               <ArrangePanel key={id} arrange={arrange} id={id} label="Numbers" ownHeading={false}>
-                <V2Numbers items={[
-                  { label: 'Movies watched', value: isLoading ? '…' : String(movies) },
-                  { label: 'Shows watched', value: isLoading ? '…' : String(shows) },
-                  { label: 'Most watched', value: isLoading ? '…' : (mostWatched || 'N/A') },
-                  { label: 'Binge sessions', value: isLoading ? '…' : String(admin?.interestingMetrics?.totalBingeSessions || 0) },
-                ]} />
+                <V2Numbers arrange={arrange} scope="numbers" items={numberItems} />
               </ArrangePanel>
             );
           case 'top':
@@ -332,8 +336,8 @@ export function MetricsContentV2({ arrange, isLoading, error, periodKey, data, c
             return null;
         }
       })}
-      <HiddenTray arrange={arrange} labelOf={labelOf} />
-    </div>
+      <HiddenTray arrange={arrange} labelOf={labelOf} extra={hiddenNumbers} />
+    </ArrangeGrid>
   );
 }
 
@@ -358,19 +362,21 @@ export function MetricsAdminV2({ arrange, isLoading, data, joinsChart, joinsTota
   const health = admin?.serverHealth;
   const healthTone: V2Tone = health?.status === 'healthy' ? 'ok' : health?.status === 'warning' ? 'warn' : health?.status ? 'bad' : 'off';
   const healthWords = health?.status === 'healthy' ? 'Healthy' : health?.status === 'warning' ? 'Needs a look' : health?.status ? 'Needs a fix' : 'Unknown';
+  const numberItems: V2NumberItem[] = [
+                  { label: 'Busiest hour', value: isLoading ? '…' : `${im?.mostActiveHour || 0}:00` },
+                  { label: 'Watched at weekends', value: isLoading ? '…' : `${(im?.weekendWatchPercentage || 0).toFixed(1)}%` },
+                  { label: 'Finished what they started', value: isLoading ? '…' : `${(im?.completionRate || 0).toFixed(1)}%` },
+                  { label: 'Average session', value: isLoading ? '…' : metricsWatched(Math.round(im?.avgSessionDuration || 0)) },
+                ];
+  const hiddenNumbers = v2HiddenNumbers(arrange, numberItems, 'numbers');
   return (
-    <div className="space-y-6">
+    <ArrangeGrid>
       {arrange.shown.map((id) => {
         switch (id) {
           case 'numbers':
             return (
               <ArrangePanel key={id} arrange={arrange} id={id} label="Numbers" ownHeading={false}>
-                <V2Numbers items={[
-                  { label: 'Busiest hour', value: isLoading ? '…' : `${im?.mostActiveHour || 0}:00` },
-                  { label: 'Watched at weekends', value: isLoading ? '…' : `${(im?.weekendWatchPercentage || 0).toFixed(1)}%` },
-                  { label: 'Finished what they started', value: isLoading ? '…' : `${(im?.completionRate || 0).toFixed(1)}%` },
-                  { label: 'Average session', value: isLoading ? '…' : metricsWatched(Math.round(im?.avgSessionDuration || 0)) },
-                ]} />
+                <V2Numbers arrange={arrange} scope="numbers" items={numberItems} />
               </ArrangePanel>
             );
           case 'joins':
@@ -438,8 +444,8 @@ export function MetricsAdminV2({ arrange, isLoading, data, joinsChart, joinsTota
             return null;
         }
       })}
-      <HiddenTray arrange={arrange} labelOf={labelOf} />
-    </div>
+      <HiddenTray arrange={arrange} labelOf={labelOf} extra={hiddenNumbers} />
+    </ArrangeGrid>
   );
 }
 

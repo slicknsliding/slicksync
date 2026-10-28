@@ -10,7 +10,15 @@ export type PageArrangement = {
   folded?: string[];
   /** Sections a page folds by default that were opened. */
   unfolded?: string[];
+  /** How much of the page's width a section takes, by key. A key not listed keeps the page's default. */
+  widths?: Record<string, SectionSize>;
+  /** How big the cards in a row or grid are, stretched to size while arranging (by key). Not listed: the page's own size. */
+  cards?: Record<string, CardSizing>;
 };
+
+export type SectionSize = 'full' | 'half' | 'third';
+/** A stretched card size: `w` the card width (px) from 600px wide up, `p` cards per row on a phone. */
+export type CardSizing = { w?: number; p?: number };
 
 export type MenuArrangement = {
   order?: string[];
@@ -35,6 +43,8 @@ export type Arrangement = {
   density?: Density;
   /** Now Playing: who is watching sits on the picture ('on'); under it otherwise. */
   nowPlayingWho?: 'on';
+  /** Continue Watching: time left / Up next under the card ('under'); on the picture otherwise. */
+  cwTime?: 'under';
   /** Where SlickSync opens: a page's address, e.g. '/activity'. */
   startPage?: string;
   /** Grid or list, per page. */
@@ -45,6 +55,19 @@ export type Arrangement = {
   filters?: Record<string, string>;
   /** Pinned items, per page: always first. */
   pinned?: Record<string, string[]>;
+  /** What the Dashboard's Needs you no longer shows (see useNeedsDismiss). */
+  needs?: NeedsDismissals;
+};
+
+export type NeedsDismissals = {
+  /** Kinds of tile turned off: 'signin', 'request', 'vault'. */
+  muted?: string[];
+  /**
+   * Single tiles put away, by tile key. `sig` is the tile's state when it was
+   * put away (a new error changes it, and the tile comes back); `until` is
+   * when a snooze ends (milliseconds), none for "dismiss".
+   */
+  dismissed?: Record<string, { sig: string; until?: number; label?: string }>;
 };
 
 /**
@@ -85,10 +108,11 @@ export function pinFirst<T>(items: T[], keyOf: (item: T) => string, pinned: stri
 }
 
 /** Moves `key` one step up or down among the shown keys; returns the new full order. */
-export function stepKey(keys: string[], page: PageArrangement | undefined, key: string, dir: -1 | 1): string[] {
+export function stepKey(keys: string[], page: PageArrangement | undefined, key: string, dir: -1 | 1, skip?: Set<string>): string[] {
   const ordered = orderKeys(keys, page?.order);
   const hidden = new Set(page?.hidden || []);
-  const shown = ordered.filter((k) => !hidden.has(k));
+  // `skip`: keys that aren't drawn right now (an empty section outside Arrange mode).
+  const shown = ordered.filter((k) => !hidden.has(k) && !skip?.has(k));
   const i = shown.indexOf(key);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= shown.length) return ordered;
@@ -128,5 +152,7 @@ export function tidyPage(page: PageArrangement): PageArrangement | undefined {
   if (page.hidden?.length) out.hidden = page.hidden;
   if (page.folded?.length) out.folded = page.folded;
   if (page.unfolded?.length) out.unfolded = page.unfolded;
+  if (page.widths && Object.keys(page.widths).length) out.widths = page.widths;
+  if (page.cards && Object.keys(page.cards).length) out.cards = page.cards;
   return Object.keys(out).length ? out : undefined;
 }

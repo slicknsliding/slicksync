@@ -1219,6 +1219,15 @@ function VaultPageContent() {
               onOpen={openEditModal}
               onCopy={handleCopy}
               onTest={handleTest}
+              revealed={revealed}
+              onReveal={handleReveal}
+              onSnooze={handleSnooze}
+              onRotate={(entry) => {
+                window.open(entry.dashboardUrl || undefined, '_blank', 'noopener,noreferrer');
+                openEditModal(entry);
+              }}
+              onMoveToAddons={handleMoveToAddons}
+              onDelete={handleDelete}
             />
             <HiddenTray
               arrange={sectionArrange}

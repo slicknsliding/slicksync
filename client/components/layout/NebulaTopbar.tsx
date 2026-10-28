@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HomeIcon,
   MagnifyingGlassIcon,
@@ -20,6 +20,7 @@ import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 import { NebulaBar, type NebulaNavSection } from './NebulaBar';
 import { useMenuArrangement } from '@/lib/arrange';
 import { arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
+import { PAGE_HEADER_CSS, useIconifyActions, usePageHeader } from '@/lib/pageHeader';
 
 // Replaces the sidebar for pages rendering Nebula layout mode (see
 // lib/layout-mode.tsx's NEBULA_ELIGIBLE_PATHS) - brand sits on its own row
@@ -157,6 +158,62 @@ export function NebulaPageHeading({
       from Rename/Delete/the bell, not bunched in with them. */
   leading?: ReactNode;
 }) {
+  // Themes → Layout → Page header: Compact and Minimal draw their own, slimmer
+  // row; Full is the layout below, as it has always been.
+  const { mode } = usePageHeader();
+  const actionsRef = useRef<HTMLDivElement>(null);
+  useIconifyActions(actionsRef, mode === 'compact');
+  // No title of its own (a sub-page whose big title sits under this row): just
+  // the back control, any buttons, and the palette and bell.
+  if (!title) {
+    return (
+      <div className="mb-3 md:mb-4 flex items-center gap-x-2 gap-y-2 flex-wrap">
+        {leading && <div className="flex items-center min-w-0 max-w-full">{leading}</div>}
+        <div className="flex-1" />
+        {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
+        <TopbarActions />
+      </div>
+    );
+  }
+  if (mode !== 'full') {
+    const compact = mode === 'compact';
+    return (
+      <div className="mb-4 md:mb-6">
+        <style>{PAGE_HEADER_CSS}</style>
+        <div
+          data-page-header={mode}
+          className={`flex items-center gap-x-2 gap-y-2 flex-wrap ${compact ? '' : 'pb-2.5'}`}
+          style={compact ? undefined : { borderBottom: '1px solid var(--color-surface-border)' }}
+        >
+          {leading && <div className="flex items-center min-w-0 max-w-full">{leading}</div>}
+          {compact ? (
+            <div className="min-w-[8rem] flex-1">
+              <h1 className="text-xl md:text-2xl font-bold font-display leading-tight text-default line-clamp-2 break-words">{title}</h1>
+              {subtitle && <p className="text-xs md:text-sm text-muted leading-snug mt-0.5 line-clamp-2">{subtitle}</p>}
+            </div>
+          ) : (
+            <h1 className="sr-only">{title}</h1>
+          )}
+          {actions && (
+            <div
+              ref={actionsRef}
+              data-ph-actions={compact ? 'icons' : 'slim'}
+              className={`flex items-center flex-wrap ${compact ? 'gap-1.5 shrink-0 ml-auto' : 'gap-2 flex-1 min-w-0'}`}
+            >
+              {actions}
+            </div>
+          )}
+          {!actions && !compact && <div className="flex-1" />}
+          <TopbarActions />
+        </div>
+        {stats && (
+          <div className="mt-3 w-full flex justify-center">
+            {stats}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     // On desktop switch from flex to a 3-column grid so the title sits in the
     // MIDDLE column (centered on the page) while actions stay right-aligned in

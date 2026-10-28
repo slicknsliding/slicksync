@@ -20,12 +20,12 @@ import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem, Invitation, InviteRequest, User, VaultEntry } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { usePageArrangement, usePageDesign } from '@/lib/arrange';
-import { ArrangeBar, ArrangeButton, ArrangePanel, ArrangeSection, HiddenTray, PanelControls } from '@/components/ui/Arrange';
+import { NEEDS_KIND_NAMES, NEEDS_WEEK, useCwTime, useNeedsDismiss, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeGrid, ArrangePanel, ArrangeSection, HiddenTray, PanelControls, StretchHandle } from '@/components/ui/Arrange';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { NowPlayingV2, NeedsYouTiles, PersonRow, type NeedsYouItem } from '@/components/v2/DashboardV2';
 import { V2Button, V2Status } from '@/components/v2/V2Bits';
-import { V2MoreMenu, V2Numbers, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2MoreMenu, V2Numbers, v2HiddenNumbers, type V2MenuItem } from '@/components/v2/V2Detail';
 import { judgeEntry } from '@/components/v2/VaultV2';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import {
@@ -183,6 +183,8 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // both call sites (Continue Watching appears twice on this page).
   onMenuOpenChange: (open: boolean, key: string) => void;
 }) {
+  // Settings → Themes: time left / Up next under the card, with the episode name.
+  const under = useCwTime().where === 'under';
   // position/preventDefault still come from the hook, but which card's menu
   // is actually rendered open is driven by isMenuOpen (lifted to the parent)
   // rather than this hook's own isOpen - each card had its own independent
@@ -319,7 +321,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               set. Over a dark track, so it stays clearly visible against any
               poster art. Sits in its own thin strip below the thumbnail
               rather than overlaid on it, so nothing covers it. */}
-          {wide && (
+          {wide && !under && (
             <span className="absolute left-2 top-2 z-[1] px-2 py-[3px] rounded-full text-[11px] font-semibold text-white pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)' }}>
               {timeLeftChip(item)}
             </span>
@@ -340,10 +342,27 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         {wide ? (
           <div className="pt-1.5 min-w-0">
             <p className="text-[13.5px] font-semibold text-default truncate">{item.showName}</p>
-            <p className="text-xs text-muted truncate">
-              {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
-              {item.contentType === 'series' && item.nextEpisode ? ` · S${item.nextEpisode.season} E${item.nextEpisode.episode}` : ''}
-            </p>
+            {under ? (
+              <>
+                <p className="text-xs text-muted truncate">
+                  {item.contentType === 'series' && item.nextEpisode
+                    ? `S${item.nextEpisode.season} E${item.nextEpisode.episode}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
+                    : 'Movie'}
+                </p>
+                <p className="text-xs text-muted truncate">
+                  {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
+                  {' · '}
+                  {item.resume
+                    ? <b className="font-semibold text-default">{timeLeftChip(item)}</b>
+                    : <span className="font-semibold" style={{ color: 'var(--color-primary)' }}>Up next</span>}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted truncate">
+                {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
+                {item.contentType === 'series' && item.nextEpisode ? ` · S${item.nextEpisode.season} E${item.nextEpisode.episode}` : ''}
+              </p>
+            )}
           </div>
         ) : (
         <div className="p-2">
@@ -871,32 +890,47 @@ export default function DashboardPage() {
     const id = setInterval(() => { if (document.visibilityState === 'visible') loadNeeds(); }, 2 * 60 * 1000);
     return () => clearInterval(id);
   }, [v2, loadNeeds]);
-  const failingUsers = useMemo(() => needUsers.filter((u) => !!(u as { providerConnectionError?: string | null }).providerConnectionError), [needUsers]);
-  const pendingRequests = useMemo(() => needInvites.flatMap((inv) => (inv.requests || []).filter((r) => r.status === 'pending').map((r) => ({ inv, r }))), [needInvites]);
-  const vaultNeeds = useMemo(() => {
+  // Tiles the admin put away (one at a time, or a whole kind) stay out of the list.
+  const needsAway = useNeedsDismiss();
+  const connErr = (u: User) => (u as { providerConnectionError?: string | null }).providerConnectionError || '';
+  const allFailing = useMemo(() => needUsers.filter((u) => !!connErr(u)), [needUsers]);
+  const allRequests = useMemo(() => needInvites.flatMap((inv) => (inv.requests || []).filter((r) => r.status === 'pending').map((r) => ({ inv, r }))), [needInvites]);
+  const allVault = useMemo(() => {
     const at = Date.now();
     return needVault.filter((e) => e.isActive !== false && judgeEntry(e, at).need !== null).map((e) => ({ e, j: judgeEntry(e, at) }));
   }, [needVault]);
+  const { isPutAway } = needsAway;
+  const failingUsers = useMemo(() => allFailing.filter((u) => !isPutAway(`fix-${u.id}`, 'signin', connErr(u))), [allFailing, isPutAway]);
+  const pendingRequests = useMemo(() => allRequests.filter(({ r }) => !isPutAway(`ask-${r.id}`, 'request', 'pending')), [allRequests, isPutAway]);
+  const vaultNeeds = useMemo(() => allVault.filter(({ e, j }) => !isPutAway(`vault-${e.id}`, 'vault', String(j.need))), [allVault, isPutAway]);
   const needsCount = failingUsers.length + pendingRequests.length + vaultNeeds.length;
   const hasNeeds = needsCount > 0;
 
+  // Now Playing, Continue Watching and Needs you are always keys: while there
+  // is nothing in them they only show in Arrange mode (as a dashed placeholder),
+  // so they can still be moved, folded and hidden.
   const dashKeys = useMemo(() => v2 ? [
-    ...(hasNeeds ? ['needsYou'] : []),
-    ...(hasNowPlaying ? ['nowPlaying'] : []),
-    'stats',
-    ...(hasContinue ? ['continue'] : []),
+    'needsYou', 'nowPlaying', 'stats', 'continue',
     'upcoming',
     'recent', 'topViewers', 'recentAddons',
   ] : [
-    'stats',
-    ...(hasNowPlaying ? ['nowPlaying'] : []),
-    ...(hasContinue ? ['continue'] : []),
+    'stats', 'nowPlaying', 'continue',
     'upcoming',
     ...(isOriginal ? ['syncActivity'] : []),
     'recent', 'topViewers', 'recentAddons',
     ...(isOriginal ? ['quickActions'] : []),
-  ], [v2, hasNeeds, hasNowPlaying, hasContinue, isOriginal]);
-  const dashArrange = usePageArrangement('dashboard', dashKeys);
+  ], [v2, isOriginal]);
+  const dashEmpty = useMemo(() => [
+    ...(v2 && !hasNeeds ? ['needsYou'] : []),
+    ...(!hasNowPlaying ? ['nowPlaying'] : []),
+    ...(!hasContinue ? ['continue'] : []),
+  ], [v2, hasNeeds, hasNowPlaying, hasContinue]);
+  const dashArrange = usePageArrangement('dashboard', dashKeys, {
+    empty: dashEmpty,
+    layout: 'grid',
+    widths: v2,
+    defaultWidth: { recent: 'half', topViewers: 'half' },
+  });
 
   // v2: the same data and handlers, grouped the way the approved mockup
   // shows them (Page design v2, Themes). Needs you first, then Now Playing as
@@ -941,6 +975,8 @@ export default function DashboardPage() {
     const needsItems: NeedsYouItem[] = [
       ...failingUsers.map((u) => ({
         key: `fix-${u.id}`,
+        kind: 'signin',
+        sig: connErr(u),
         person: { id: u.id, name: u.username, email: u.email, colorIndex: u.colorIndex, avatarUrl: u.avatarUrl, useGravatar: u.useGravatar },
         title: u.username,
         line: 'Sign-in stopped working',
@@ -948,6 +984,8 @@ export default function DashboardPage() {
       })),
       ...pendingRequests.map(({ inv, r }) => ({
         key: `ask-${r.id}`,
+        kind: 'request',
+        sig: 'pending',
         person: { name: r.username || r.email, email: r.email },
         title: r.username || r.email,
         line: `Wants to join ${inv.groupName || 'your household'}`,
@@ -960,6 +998,8 @@ export default function DashboardPage() {
       })),
       ...vaultNeeds.map(({ e, j }) => ({
         key: `vault-${e.id}`,
+        kind: 'vault',
+        sig: String(j.need),
         person: null,
         icon: <PuzzlePieceIcon className="w-5 h-5" />,
         title: e.name,
@@ -994,51 +1034,81 @@ export default function DashboardPage() {
       </div>
     );
 
+    const putAway = (it: NeedsYouItem, how: 'dismiss' | 'snooze' | 'kind') => {
+      if (how === 'kind') needsAway.mute(it.kind, true);
+      else needsAway.dismiss(it.key, it.sig, how === 'snooze' ? NEEDS_WEEK : undefined, it.title);
+    };
+    // What the admin put away, so it can be brought back while arranging.
+    const KIND_NAMES = NEEDS_KIND_NAMES;
+    const needsTray: { id: string; label: string; show: () => void }[] = [
+      ...[...needsAway.muted].map((k) => ({ id: `needs-kind-${k}`, label: `Needs you: ${KIND_NAMES[k] || k}`, show: () => needsAway.mute(k, false) })),
+      ...[
+        ...allFailing.map((u) => ({ key: `fix-${u.id}`, kind: 'signin', name: u.username })),
+        ...allRequests.map(({ r }) => ({ key: `ask-${r.id}`, kind: 'request', name: r.username || r.email })),
+        ...allVault.map(({ e }) => ({ key: `vault-${e.id}`, kind: 'vault', name: e.name })),
+      ]
+        .filter((t) => !needsAway.muted.has(t.kind) && needsAway.dismissed[t.key] && !needsItems.some((n) => n.key === t.key))
+        .map((t) => ({ id: `needs-${t.key}`, label: `Needs you: ${t.name}`, show: () => needsAway.restore(t.key) })),
+    ];
+    const statItems = [
+      { label: 'Watching now', value: isLoading ? '…' : activeUsers },
+      { label: 'Watched today', value: isLoading ? '…' : `${watchedToday} ${watchedToday === 1 ? 'title' : 'titles'}` },
+      { label: 'Watch time today', value: isLoading ? '…' : hm(todaySeconds / 60) },
+      { label: 'Active this week', value: isLoading ? '…' : `${metricsData?.summary?.activeUsers ?? 0} of ${stats.totalUsers}` },
+    ];
+
     const linkAll = (href: string, label: string) => <Link href={href} className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>{label}</Link>;
-    const half = 'lg:col-span-1';
-    const full = 'lg:col-span-2';
+    const span = (id: string) => dashArrange.spanClass(id);
     const panel = (id: string): React.ReactNode => {
       switch (id) {
         case 'needsYou':
           return (
-            <div key={id} className={full}>
-              <ArrangeSection arrange={dashArrange} id={id} title="Needs you" meta={needsItems.length}>
-                <NeedsYouTiles items={needsItems} />
+            <div key={id} className={span(id)}>
+              <ArrangeSection
+                arrange={dashArrange} id={id} title="Needs you" cards
+                meta={dashArrange.isEmpty(id) ? 'nothing right now' : needsItems.length}
+                emptyNote={dashArrange.isEmpty(id) ? 'Needs you · shows when something needs you' : undefined}
+              >
+                <NeedsYouTiles items={needsItems} onPutAway={putAway} stretch={{ arrange: dashArrange, id }} />
               </ArrangeSection>
             </div>
           );
         case 'nowPlaying':
           return (
-            <div key={id} className={full}>
-              <ArrangeSection arrange={dashArrange} id={id} title="Now Playing" meta={`${metricsData?.nowPlaying?.length ?? 0} watching`}>
+            <div key={id} className={span(id)}>
+              <ArrangeSection
+                arrange={dashArrange} id={id} title="Now Playing"
+                meta={dashArrange.isEmpty(id) ? 'nobody watching' : `${metricsData?.nowPlaying?.length ?? 0} watching`}
+                emptyNote={dashArrange.isEmpty(id) ? 'Now Playing · shows when someone is watching' : undefined}
+              >
                 <NowPlayingV2 rows={metricsData?.nowPlaying ?? []} providerByUser={providerByUser} moreHref="/activity" />
               </ArrangeSection>
             </div>
           );
         case 'stats':
           return (
-            <div key={id} className={full}>
-              <V2Numbers
-                items={[
-                  { label: 'Watching now', value: isLoading ? '…' : activeUsers },
-                  { label: 'Watched today', value: isLoading ? '…' : `${watchedToday} ${watchedToday === 1 ? 'title' : 'titles'}` },
-                  { label: 'Watch time today', value: isLoading ? '…' : hm(todaySeconds / 60) },
-                  { label: 'Active this week', value: isLoading ? '…' : `${metricsData?.summary?.activeUsers ?? 0} of ${stats.totalUsers}` },
-                ]}
-              />
+            <div key={id} className={span(id)}>
+              <ArrangeSection arrange={dashArrange} id={id} title="At a glance">
+                <V2Numbers arrange={dashArrange} scope="stats" items={statItems} />
+              </ArrangeSection>
             </div>
           );
         case 'continue':
           return (
-            <div key={id} className={full}>
-              <ArrangeSection arrange={dashArrange} id={id} title="Continue Watching" meta="everyone">
+            <div key={id} className={span(id)}>
+              <ArrangeSection
+                arrange={dashArrange} id={id} title="Continue Watching" cards
+                meta={dashArrange.isEmpty(id) ? 'empty right now' : 'everyone'}
+                emptyNote={dashArrange.isEmpty(id) ? 'Continue Watching · shows when someone has something to resume' : undefined}
+              >
                 <div
+                  {...dashArrange.cardAttrs(id)}
                   ref={scrollRowRef}
                   onPointerDown={handleRowPointerDown}
                   onPointerMove={handleRowPointerMove}
                   onPointerUp={handleRowPointerUp}
                   onPointerLeave={handleRowPointerUp}
-                  className="grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]"
+                  className="arrange-cardrow grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]"
                 >
                   {continueWatching.map((item, index) => (
                     <ContinueWatchingCard
@@ -1053,13 +1123,14 @@ export default function DashboardPage() {
                       onMenuOpenChange={handleMenuOpenChange}
                     />
                   ))}
+                  <StretchHandle arrange={dashArrange} id={id} kind="row" label="Continue Watching" />
                 </div>
               </ArrangeSection>
             </div>
           );
         case 'upcoming':
           return (
-            <div key={id} className={full}>
+            <div key={id} className={span(id)}>
               <ArrangeSection arrange={dashArrange} id={id} title="Coming up">
                 <UpcomingEpisodesPanel className="" v2 watchers={upcomingWatchers} />
               </ArrangeSection>
@@ -1067,7 +1138,7 @@ export default function DashboardPage() {
           );
         case 'recent':
           return (
-            <div key={id} className={half}>
+            <div key={id} className={span(id)}>
               <ArrangeSection arrange={dashArrange} id={id} title="Recent activity" actions={linkAll('/activity', 'View all →')}>
                 <div className="v2-list">
                   {isLoading ? (
@@ -1101,7 +1172,7 @@ export default function DashboardPage() {
           );
         case 'topViewers':
           return (
-            <div key={id} className={half}>
+            <div key={id} className={span(id)}>
               <ArrangeSection arrange={dashArrange} id={id} title="Top viewers this week" actions={linkAll('/users', 'See all →')}>
                 <div className="v2-list">
                   {isLoading ? (
@@ -1126,7 +1197,7 @@ export default function DashboardPage() {
           );
         case 'recentAddons':
           return (
-            <div key={id} className={full}>
+            <div key={id} className={span(id)}>
               <ArrangeSection arrange={dashArrange} id={id} title="Recent addons" actions={linkAll('/addons', 'View all →')}>
                 {isLoading ? (
                   <div className="text-center py-8 text-sm text-muted">Loading...</div>
@@ -1185,10 +1256,10 @@ export default function DashboardPage() {
         )}
         <SetupChecklist />
         <ArrangeBar arrange={dashArrange} />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-5 gap-y-7 items-start">
+        <ArrangeGrid>
           {dashArrange.shown.map((id) => panel(id))}
-        </div>
-        <HiddenTray arrange={dashArrange} labelOf={(id) => DASH_LABELS[id] || id} note="Hidden only here. Tap one to bring it back." />
+        </ArrangeGrid>
+        <HiddenTray arrange={dashArrange} labelOf={(id) => (id === 'stats' ? 'At a glance' : DASH_LABELS[id] || id)} extra={[...v2HiddenNumbers(dashArrange, statItems, 'stats'), ...needsTray]} />
       </>
     );
 
@@ -1305,7 +1376,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start" style={{ gridAutoFlow: 'dense' }}>
               {dashArrange.shown.map((id) => {
                 const dashPanel = (pid: string, label: string, span: string, node: React.ReactNode) => (pid === id ? (
-                  <ArrangePanel key={pid} arrange={dashArrange} id={pid} label={label} className={span} ownHeading={pid !== 'stats' && pid !== 'quickActions'}>{node}</ArrangePanel>
+                  <ArrangePanel key={pid} arrange={dashArrange} id={pid} label={label} className={span} ownHeading={pid !== 'stats' && pid !== 'quickActions'} emptyNote={dashArrange.isEmpty(pid) ? (pid === 'nowPlaying' ? 'Now Playing · nobody is watching' : 'Continue Watching · empty right now') : undefined}>{node}</ArrangePanel>
                 ) : null);
                 return (
                   <Fragment key={id}>
@@ -1662,7 +1733,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 items-stretch" style={{ gridAutoFlow: 'dense' }}>
           {dashArrange.shown.map((id) => {
             const dashPanel = (pid: string, label: string, span: string, node: React.ReactNode) => (pid === id ? (
-              <ArrangePanel key={pid} arrange={dashArrange} id={pid} label={label} className={span} ownHeading={pid !== 'stats' && pid !== 'quickActions'}>{node}</ArrangePanel>
+              <ArrangePanel key={pid} arrange={dashArrange} id={pid} label={label} className={span} ownHeading={pid !== 'stats' && pid !== 'quickActions'} emptyNote={dashArrange.isEmpty(pid) ? (pid === 'nowPlaying' ? 'Now Playing · nobody is watching' : 'Continue Watching · empty right now') : undefined}>{node}</ArrangePanel>
             ) : null);
             return (
               <Fragment key={id}>

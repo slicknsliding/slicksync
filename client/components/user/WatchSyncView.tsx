@@ -12,13 +12,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeftIcon, ArrowRightIcon, ArrowDownIcon, ArrowsRightLeftIcon, ArrowsUpDownIcon,
-  ArrowUturnLeftIcon, ShieldCheckIcon, MagnifyingGlassIcon, ChevronDownIcon, CheckIcon,
+  ArrowUturnLeftIcon, ShieldCheckIcon, MagnifyingGlassIcon, ChevronDownIcon, CheckIcon, ClockIcon, QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { Button } from '@/components/ui';
+import { Button, Modal } from '@/components/ui';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { KeepInStepCard } from '@/components/user/KeepInStepCard';
@@ -450,7 +450,8 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
   const [confirmCopy, setConfirmCopy] = useState(false);
   const copyRef = useRef<HTMLDivElement>(null);
   const closeCopy = useCallback(() => setConfirmCopy(false), []);
-  useDismiss(confirmCopy, copyRef, closeCopy);
+  // v2 asks in a popup (Modal), which closes itself; the inline card needs this.
+  useDismiss(confirmCopy && !v2, copyRef, closeCopy);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [watched, setWatched] = useState(true);
@@ -587,7 +588,7 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
   const otherSignIns = (sides || []).filter((s) => s.provider !== fromChoice?.sideInfo.provider && s.provider !== toChoice?.sideInfo.provider);
   const backButton = (
     <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push(home === 'tasks' ? '/tasks' : `/users/${encodeURIComponent(userId)}`)}>
-      {home === 'tasks' ? 'Tasks' : (person || 'Back')}
+      {v2 ? 'Back' : home === 'tasks' ? 'Tasks' : (person || 'Back')}
     </Button>
   );
   const subtitle = 'Watched titles and resume points between any sign-ins and profiles - copy once, or keep them in step. Nothing is removed.';
@@ -601,18 +602,44 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
   ] : [];
 
   // The "copy into ...?" question, anchored by whoever opens it.
+  const copyChips = (cls: string) => fromChoice && toChoice && (
+    <div className={`${cls} flex flex-wrap items-center gap-2 p-2.5 rounded-xl text-xs font-semibold bg-surface-hover`}>
+      <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: FROM_C }}><ProfilePic profile={fromChoice.profile} person={fromChoice.sideInfo.person || personInfo} kind={fromChoice.sideInfo.kind} size={22} /><span className="truncate">{fromChoice.profileName || choiceLabel(fromChoice)}</span></span>
+      <span className="text-muted">→</span>
+      <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: TO_C }}><ProfilePic profile={toChoice.profile} person={toChoice.sideInfo.person || personInfo} kind={toChoice.sideInfo.kind} size={22} /><span className="truncate">{toChoice.profileName || choiceLabel(toChoice)}</span></span>
+    </div>
+  );
   const copyConfirm = (place: string) => fromChoice && toChoice && (
     <div className={`absolute z-30 ${place} rounded-2xl border border-default p-4 shadow-2xl`} style={{ background: 'var(--color-surface)' }}>
       <div className="font-semibold text-sm text-default">{copyLabel} into {choiceLabel(toChoice)}?</div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-2 p-2.5 rounded-xl text-xs font-semibold bg-surface-hover">
-        <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: FROM_C }}><ProfilePic profile={fromChoice.profile} person={fromChoice.sideInfo.person || personInfo} kind={fromChoice.sideInfo.kind} size={22} /><span className="truncate">{fromChoice.profileName || choiceLabel(fromChoice)}</span></span>
-        <span className="text-muted">→</span>
-        <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: TO_C }}><ProfilePic profile={toChoice.profile} person={toChoice.sideInfo.person || personInfo} kind={toChoice.sideInfo.kind} size={22} /><span className="truncate">{toChoice.profileName || choiceLabel(toChoice)}</span></span>
-      </div>
+      {copyChips('mt-2.5')}
       <p className="text-sm text-muted mt-2">Watched marks and resume points are added there. Nothing is removed, and you can undo it from this page for 7 days.</p>
       <div className="flex justify-end gap-2 mt-3">
         <Button variant="secondary" size="sm" onClick={() => setConfirmCopy(false)}>Cancel</Button>
         <button type="button" onClick={() => { setConfirmCopy(false); void runCopy(); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}>{copyLabel}</button>
+      </div>
+    </div>
+  );
+  // v2: the same look as every other "are you sure" window.
+  const copyConfirmV2 = fromChoice && toChoice && (
+    <div className="v2-confirm">
+      <div className="flex items-start gap-3.5">
+        <span className="shrink-0 flex items-center justify-center rounded-xl" style={{ width: 42, height: 42, color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 16%, transparent)' }} aria-hidden="true">
+          <QuestionMarkCircleIcon className="w-5 h-5" />
+        </span>
+        <div className="min-w-0 flex-1 pr-6">
+          <div className="text-[19px] font-bold leading-snug" style={{ color: 'var(--color-text)' }}>{copyLabel}?</div>
+          {copyChips('mt-3')}
+          <p className="text-sm leading-relaxed mt-3" style={{ color: 'var(--color-text)' }}>Watched marks and resume points are added there. Nothing is removed.</p>
+          <div className="flex items-start gap-2 text-[13px] mt-3 px-3 py-2.5 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+            <ClockIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+            <span>You can undo it from this page for 7 days.</span>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-5">
+        <button type="button" className="v2-btn justify-center" style={{ padding: '10px 16px' }} onClick={closeCopy}>Cancel</button>
+        <button type="button" className="v2-btn v2-btn-main justify-center" style={{ padding: '10px 16px' }} onClick={() => { setConfirmCopy(false); void runCopy(); }}>{copyLabel}</button>
       </div>
     </div>
   );
@@ -621,17 +648,19 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={home === 'tasks'
+          // v2: just Back; the page's own title (AIOSync) sits under it.
+          title={v2 ? '' : <Breadcrumbs items={home === 'tasks'
             ? [{ label: 'Tasks', href: '/tasks' }, { label: 'AIOSync' }]
             : [{ label: 'Users', href: '/users' }, { label: person || 'Person', href: `/users/${encodeURIComponent(userId)}` }, { label: 'AIOSync' }]} className="text-xl font-semibold" />}
           subtitle={v2 ? undefined : subtitle}
-          actions={backButton}
+          leading={v2 ? backButton : undefined}
+          actions={v2 ? undefined : backButton}
         />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-4 md:p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
           {layoutMode === 'nebula' && (
-            <NebulaPageHeading title={v2 ? (home === 'tasks' ? 'Tasks' : 'Users') : 'AIOSync'} subtitle={v2 ? undefined : subtitle} leading={backButton} />
+            <NebulaPageHeading title={v2 ? '' : 'AIOSync'} subtitle={v2 ? undefined : subtitle} leading={backButton} />
           )}
           {v2 && (
             <V2DetailHead
@@ -644,7 +673,10 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                   <button type="button" disabled={!toCopy.length || copying} onClick={() => setConfirmCopy((o) => !o)} aria-expanded={confirmCopy} className="v2-btn v2-btn-main">
                     {copying ? 'Copying…' : preview ? copyLabel : 'Copy'}
                   </button>
-                  {confirmCopy && fromChoice && toChoice && copyConfirm('left-0 sm:left-auto sm:right-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))]')}
+                  {/* A bottom sheet on a phone, a small window on a PC. */}
+                  <Modal isOpen={confirmCopy && !!fromChoice && !!toChoice} onClose={closeCopy} ariaLabel={`${copyLabel}?`} size="sm" lightweight sheet>
+                    {copyConfirmV2}
+                  </Modal>
                 </div>
               )}
             />

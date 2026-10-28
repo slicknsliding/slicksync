@@ -277,34 +277,6 @@ export default function UsersPage() {
     )
   );
 
-  // Register this page's drag-end logic with the layout-level DndContext,
-  // same shared mechanism Addons/Vault already use - only one page is ever
-  // mounted at a time, so there's no cross-page collision despite the
-  // "currently registered handler" being a single shared ref.
-  const { registerDragEndHandler } = useVaultDrag();
-  useEffect(() => {
-    const handleDragEnd = (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-      const oldIndex = filteredUsers.findIndex(u => u.id === active.id);
-      const newIndex = filteredUsers.findIndex(u => u.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
-      const reorderedIds = filteredUsers.map(u => u.id);
-      const [movedId] = reorderedIds.splice(oldIndex, 1);
-      reorderedIds.splice(newIndex, 0, movedId);
-      setUsers(prev => {
-        const byId = new Map(prev.map(u => [u.id, u]));
-        const reorderedUsers = reorderedIds.map(id => byId.get(id)).filter((u): u is User => !!u);
-        const rest = prev.filter(u => !reorderedIds.includes(u.id));
-        return [...reorderedUsers, ...rest];
-      });
-      api.reorderUsers(reorderedIds).catch((err: any) => {
-        toast.error(err.message || 'Failed to save new order');
-      });
-    };
-    return registerDragEndHandler(handleDragEnd);
-  }, [filteredUsers, registerDragEndHandler]);
-
   // Nebula's stat row - real counts from the same usersDisplay data the
   // grid/table already render, not a new fetch.
   // "Active" here is who's watching right now (live nowPlaying, deduped by
@@ -339,10 +311,71 @@ export default function UsersPage() {
     groups: u.groups,
     status: u.status,
     connectionError: u.providerConnectionError,
+    hasAddons: hasAddonList(u),
     lastSeen: u.lastSeen,
     watchTime: u.watchTime,
     addonCount: u.addonCount,
   })), [filteredUsers]);
+  // Register this page's drag-end logic with the layout-level DndContext,
+  // same shared mechanism Addons/Vault already use - only one page is ever
+  // mounted at a time, so there's no cross-page collision despite the
+  // "currently registered handler" being a single shared ref.
+  // v2 groups people by their group: dropping someone on a person in another
+  // group's section moves them to that group; within a group it reorders.
+  const { registerDragEndHandler } = useVaultDrag();
+  const v2GroupKeyOf = useCallback((u: UserDisplay) => {
+    const g = v2Groups.find((x) => x.name === u.groups[0]);
+    return g ? g.key : NO_GROUP_KEY;
+  }, [v2Groups]);
+  useEffect(() => {
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = filteredUsers.findIndex(u => u.id === active.id);
+      const newIndex = filteredUsers.findIndex(u => u.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      if (v2) {
+        const mover = filteredUsers[oldIndex];
+        const target = filteredUsers[newIndex];
+        const fromKey = v2GroupKeyOf(mover);
+        const toKey = v2GroupKeyOf(target);
+        if (fromKey !== toKey) {
+          const toGroup = v2Groups.find((g) => g.key === toKey);
+          const fromGroup = v2Groups.find((g) => g.key === fromKey);
+          void (async () => {
+            try {
+              if (toGroup) await api.addUserToGroup(toGroup.key.replace(/^g:/, ''), mover.id);
+              if (fromGroup) await api.removeUserFromGroup(fromGroup.key.replace(/^g:/, ''), mover.id);
+              toast.success(`Moved ${mover.name} to ${toGroup?.name ?? 'No group'}`);
+            } catch (err) {
+              toast.error(`Couldn’t move ${mover.name}`, { line: err instanceof Error ? err.message : undefined });
+            } finally {
+              try {
+                const [u, g] = await Promise.all([api.getUsers(), api.getGroups()]);
+                setUsers(u);
+                setGroups(g);
+              } catch { /* keep what is shown */ }
+            }
+          })();
+          return;
+        }
+      }
+      const reorderedIds = filteredUsers.map(u => u.id);
+      const [movedId] = reorderedIds.splice(oldIndex, 1);
+      reorderedIds.splice(newIndex, 0, movedId);
+      setUsers(prev => {
+        const byId = new Map(prev.map(u => [u.id, u]));
+        const reorderedUsers = reorderedIds.map(id => byId.get(id)).filter((u): u is User => !!u);
+        const rest = prev.filter(u => !reorderedIds.includes(u.id));
+        return [...reorderedUsers, ...rest];
+      });
+      api.reorderUsers(reorderedIds).catch((err: any) => {
+        toast.error(err.message || 'Failed to save new order');
+      });
+    };
+    return registerDragEndHandler(handleDragEnd);
+  }, [filteredUsers, registerDragEndHandler, v2, v2Groups, v2GroupKeyOf]);
+
   const watchingTitles = useMemo(() => {
     const m = new Map<string, string>();
     for (const np of nowPlaying) if (!m.has(np.user.id)) m.set(np.user.id, np.item?.titlePending ? '' : (np.item?.name || ''));
@@ -530,6 +563,15 @@ export default function UsersPage() {
 
   const hasSelection = selectedIds.size > 0;
 
+  // The same fix-the-sign-in flow from the Fix sign-in button and the
+  // "Sign-in problem" pill, in both designs.
+  const openReconnect = useCallback((userId: string, userName: string) => {
+    setReconnectUserId(userId);
+    setReconnectUserName(userName);
+    setReconnectProvider(users.find((u) => u.id === userId)?.providerType || 'stremio');
+    setIsReconnectModalOpen(true);
+  }, [users]);
+
   const handleSyncStart = useCallback((userId: string) => {
     setSyncingUserIds((prev) => {
       const newSet = new Set(prev);
@@ -683,6 +725,7 @@ export default function UsersPage() {
               { key: 'watching', label: 'Watching', count: activeCount },
               { key: 'fix', label: 'Needs a fix', count: fixCount },
               { key: 'off', label: 'Off', count: offCount },
+              { key: 'dormant', label: 'Dormant', count: dormantCount },
             ],
             activeKey: peopleFilter,
             onChange: (key) => setPeopleFilter(key as typeof peopleFilter),
@@ -755,12 +798,36 @@ export default function UsersPage() {
                       handleSyncEnd(p.id);
                     }
                   }}
-                  onFix={(p) => {
-                    setReconnectUserId(p.id);
-                    setReconnectUserName(p.name);
-                    setReconnectProvider(users.find((u) => u.id === p.id)?.providerType || 'stremio');
-                    setIsReconnectModalOpen(true);
+                  onFix={(p) => openReconnect(p.id, p.name)}
+                  onReloadAddons={async (p) => {
+                    try {
+                      const res = await api.getUserStremioAddons(p.id);
+                      toast.success(`Reloaded ${p.name}’s addons`, { line: `${res.length} on their account.` });
+                      refreshUsersQuietly();
+                    } catch (err) {
+                      toast.error(`Couldn’t reload ${p.name}’s addons`, { line: err instanceof Error ? err.message : undefined });
+                    }
                   }}
+                  onImportAddons={async (p) => {
+                    toast.success(`Importing addons from ${p.name}...`);
+                    try {
+                      const result = await api.importUserAddons(p.id);
+                      toast.success(result.message || `Successfully imported ${result.importedCount} addon${result.importedCount !== 1 ? 's' : ''}`);
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : `Failed to import addons from ${p.name}`);
+                    }
+                  }}
+                  onToggleActive={async (p) => {
+                    const on = p.status === 'expired';
+                    try {
+                      await api.toggleUserStatus(p.id, on);
+                      toast.success(`${p.name} switched ${on ? 'on' : 'off'}`);
+                      setUsers((prev) => prev.map((u) => (u.id === p.id ? { ...u, status: on ? 'active' : 'inactive' } : u)));
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : `Couldn’t switch ${p.name} ${on ? 'on' : 'off'}`);
+                    }
+                  }}
+                  onDelete={(p) => { const u = usersDisplay.find((x) => x.id === p.id); if (u) setDeleteTarget(u); }}
                 />
                 <HiddenTray
                   arrange={groupArrange}
@@ -789,12 +856,7 @@ export default function UsersPage() {
                             isSelected={selectedIds.has(user.id)}
                             onToggleSelect={() => toggleSelect(user.id)}
                             onDelete={() => setDeleteTarget(user)}
-                            onReconnect={(userId, userName) => {
-                              setReconnectUserId(userId);
-                              setReconnectUserName(userName);
-                              setReconnectProvider(users.find((u) => u.id === userId)?.providerType || 'stremio');
-                              setIsReconnectModalOpen(true);
-                            }}
+                            onReconnect={openReconnect}
                             onToggleStatus={(userId, newStatus) => {
                               setUsers(prev => prev.map(u =>
                                 u.id === userId
@@ -906,10 +968,7 @@ export default function UsersPage() {
                                         </Badge>
                                       )}
                                       {user.providerConnectionError && (
-                                        <ExclamationTriangleIcon
-                                          className="w-4 h-4 text-warning shrink-0"
-                                          title={user.providerConnectionError}
-                                        />
+                                        <SignInPill user={user} onReconnect={openReconnect} />
                                       )}
                                     </div>
                                     <p className="text-sm text-subtle">
@@ -1186,6 +1245,24 @@ function SortableUserRow({ id, onClick, className, children }: { id: string; onC
   );
 }
 
+// The amber "Sign-in problem" pill: says what is wrong in words (the bare
+// warning triangle only explained itself on hover) and a tap starts the same
+// fix-the-sign-in flow as Fix sign-in. The error text is its tooltip.
+function SignInPill({ user, onReconnect }: { user: UserDisplay; onReconnect?: (userId: string, userName: string) => void }) {
+  return (
+    <button
+      type="button"
+      title={user.providerConnectionError || 'Sign-in problem'}
+      aria-label={`Sign-in problem for ${user.name}: ${user.providerConnectionError || 'sign-in stopped working'}`}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReconnect?.(user.id, user.name); }}
+      className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium cursor-pointer relative z-10 bg-warning-muted text-warning border border-transparent hover:border-current transition-colors"
+    >
+      <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+      Sign-in problem
+    </button>
+  );
+}
+
 // User Card Component - single click opens, long press/right-click shows menu
 function UserCard({
   user,
@@ -1343,12 +1420,11 @@ function UserCard({
                 {providerTypeLabel(user.secondaryProviderType)}
               </Badge>
             )}
-            {user.providerConnectionError && (
-              <ExclamationTriangleIcon
-                className="w-4 h-4 text-warning shrink-0"
-                title={user.providerConnectionError}
-              />
-            )}
+            {user.providerConnectionError ? (
+              // A broken sign-in says so instead of a sync state: "Synced"
+              // beside it would only contradict it.
+              <SignInPill user={user} onReconnect={onReconnect} />
+            ) : (
             <SyncBadge
               key={`sync-badge-${user.id}`}
               userId={user.id}
@@ -1371,6 +1447,7 @@ function UserCard({
               isSyncing={syncingUserIds.has(user.id)}
               size="sm"
             />
+            )}
           </div>
           <div className="user-card-toggle">
             <ToggleSwitch

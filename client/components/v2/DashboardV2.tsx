@@ -6,10 +6,14 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { V2MoreMenu } from './V2Detail';
 import { UserAvatar, Avatar } from '@/components/ui';
 import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
 import type { MetricsData } from '@/lib/api';
 import { V2Status, type V2Tone } from './V2Bits';
+import { StretchHandle } from '@/components/ui/Arrange';
+import type { PageArrange } from '@/lib/arrange';
 
 export type NowPlayingRows = MetricsData['nowPlaying'];
 
@@ -96,6 +100,10 @@ export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref,
 
 export type NeedsYouItem = {
   key: string;
+  /** What kind of tile this is ('signin', 'request', 'vault'): "don't show this kind again" acts on it. */
+  kind: string;
+  /** The tile's state: a put-away tile comes back when this changes. */
+  sig: string;
   /** A person of ours (picture from their account) or just a name. */
   person: { id?: string; name: string; email?: string; colorIndex?: number; avatarUrl?: string | null; useGravatar?: boolean } | null;
   /** Shown when there is no person (a service). */
@@ -105,10 +113,18 @@ export type NeedsYouItem = {
   actions: ReactNode;
 };
 
-/** What needs the admin: one tile each, with the button that fixes it. */
-export function NeedsYouTiles({ items }: { items: NeedsYouItem[] }) {
+/**
+ * What needs the admin: one tile each, with the button that fixes it. Given
+ * `onPutAway`, every tile has an ✕ with a menu: dismiss it, snooze it for a
+ * week, or stop showing that kind. `stretch` lets the tiles be stretched to size while arranging.
+ */
+export function NeedsYouTiles({ items, onPutAway, stretch }: {
+  items: NeedsYouItem[];
+  onPutAway?: (item: NeedsYouItem, how: 'dismiss' | 'snooze' | 'kind') => void;
+  stretch?: { arrange: PageArrange; id: string };
+}) {
   return (
-    <div className="v2-tiles v2-tiles-3">
+    <div className="v2-tiles v2-tiles-3" {...(stretch ? stretch.arrange.cardAttrs(stretch.id) : {})}>
       {items.map((it) => (
         <div key={it.key} className="v2-tool" style={{ alignItems: 'center', borderColor: 'color-mix(in srgb, var(--color-warning, #f59e0b) 35%, var(--color-surface-border))' }}>
           {it.person
@@ -121,8 +137,22 @@ export function NeedsYouTiles({ items }: { items: NeedsYouItem[] }) {
             <span className="block text-[12.5px] truncate" style={{ color: 'var(--color-warning, #f59e0b)' }}>{it.line}</span>
           </span>
           <span className="flex gap-2 shrink-0">{it.actions}</span>
+          {onPutAway && (
+            <V2MoreMenu
+              small
+              label={`Put away ${it.title}`}
+              icon={<XMarkIcon className="w-4 h-4" />}
+              items={[
+                { label: 'Dismiss this one', onClick: () => onPutAway(it, 'dismiss') },
+                { label: 'Snooze for a week', onClick: () => onPutAway(it, 'snooze') },
+                { label: 'Don’t show this kind again', onClick: () => onPutAway(it, 'kind') },
+              ]}
+              menuLabel="Bring it back from Settings → Notifications, or while arranging this page."
+            />
+          )}
         </div>
       ))}
+      {stretch && <StretchHandle arrange={stretch.arrange} id={stretch.id} label="Needs you" />}
     </div>
   );
 }

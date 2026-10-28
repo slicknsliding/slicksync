@@ -256,7 +256,8 @@ export default function InvitationDetailPage() {
     <>
       {!isNebula && (
         <Header
-          title={
+          // v2: just Back; the page's own title (the code) sits under it.
+          title={v2 ? '' : (
             <Breadcrumbs
               items={[
                 { label: 'Invitations', href: '/invitations' },
@@ -264,7 +265,12 @@ export default function InvitationDetailPage() {
               ]}
               className="text-xl font-semibold"
             />
-          }
+          )}
+          leading={v2 ? (
+            <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
+              Back
+            </Button>
+          ) : undefined}
           actions={v2 ? undefined : detailActions}
         />
       )}
@@ -273,7 +279,7 @@ export default function InvitationDetailPage() {
       <div className={isNebula ? 'mx-auto' : ''} style={isNebula ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {isNebula && (
           <NebulaPageHeading
-            title={v2 ? 'Invitations' : invitation.name || code}
+            title={v2 ? '' : invitation.name || code}
             subtitle={v2 ? undefined : 'Invitations'}
             leading={
               <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>

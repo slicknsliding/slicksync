@@ -1,7 +1,9 @@
 'use client';
 
+import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BellIcon, MagnifyingGlassIcon, Bars3Icon } from '@heroicons/react/24/outline';
+import { PAGE_HEADER_CSS, useIconifyActions, usePageHeader } from '@/lib/pageHeader';
 import { Avatar } from '../ui/Avatar';
 import { TopbarActions } from './TopbarActions';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
@@ -42,6 +44,76 @@ export function Header({
   const isMobileMenuOpen = isMobileMenuOpenProp !== undefined ? isMobileMenuOpenProp : isMobileMenuOpenContext;
 
   const INSTANCE_TYPE = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') as 'public' | 'private';
+
+  // Themes → Layout → Page header: Compact and Minimal draw a slimmer row;
+  // Full is the layout further down, as it has always been.
+  const { mode } = usePageHeader();
+  const actionsRef = useRef<HTMLDivElement>(null);
+  useIconifyActions(actionsRef, mode === 'compact');
+  if (mode !== 'full') {
+    const compact = mode === 'compact';
+    return (
+      <motion.header
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="sticky top-0 z-30"
+        style={{
+          background: 'color-mix(in srgb, var(--color-bg) 94%, transparent)',
+          backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid transparent',
+          borderImage: 'linear-gradient(90deg, var(--color-primary-muted), transparent 60%) 1',
+        }}
+      >
+        <style>{PAGE_HEADER_CSS}</style>
+        <div data-page-header={mode} className="px-4 md:px-6 lg:px-8 py-2 md:py-3 flex items-center gap-x-2 gap-y-2 flex-wrap">
+          {leading ? <div className="flex items-center shrink-0">{leading}</div> : null}
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 -ml-2 rounded-lg hover:bg-surface-hover transition-colors shrink-0"
+            aria-label="Open menu"
+          >
+            <Bars3Icon className="w-6 h-6 text-default" />
+          </button>
+          {compact && title ? (
+            <div className="min-w-[8rem] flex-1">
+              <h1
+                className="text-xl md:text-2xl font-bold font-display tracking-tight leading-tight line-clamp-2 break-words"
+                style={{
+                  background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 120%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                {title}
+              </h1>
+              {subtitle ? <p className="text-xs md:text-sm mt-0.5 leading-snug line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p> : null}
+            </div>
+          ) : (
+            <>
+              {title ? <h1 className="sr-only">{title}</h1> : null}
+              {!actions || compact ? <div className="flex-1" /> : null}
+            </>
+          )}
+          {actions ? (
+            <div
+              ref={actionsRef}
+              data-ph-actions={compact ? 'icons' : 'slim'}
+              className={`flex items-center flex-wrap ${compact ? 'gap-1.5 shrink-0 ml-auto' : 'gap-2 flex-1 min-w-0'}`}
+            >
+              {actions}
+            </div>
+          ) : null}
+          <TopbarActions
+            activities={activities}
+            inviteHistory={inviteHistory}
+            taskHistory={taskHistory}
+          />
+        </div>
+      </motion.header>
+    );
+  }
 
   return (
     <motion.header
@@ -88,6 +160,7 @@ export function Header({
             <Bars3Icon className="w-6 h-6 text-default" />
           </button>
 
+          {title ? (
           <div>
             <motion.h1
               initial={{ opacity: 0, x: -20 }}
@@ -115,6 +188,7 @@ export function Header({
               </motion.p>
             ) : null}
           </div>
+          ) : null}
         </div>
 
         {/* Right section. Actions render BEFORE the bell so on mobile the

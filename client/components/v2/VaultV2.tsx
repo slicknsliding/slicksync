@@ -6,11 +6,15 @@
 // beside it. Sections move, fold and hide, and single entries hide, through
 // Arrange.
 
-import { ArrowPathIcon, DocumentDuplicateIcon, EyeIcon, KeyIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowPathIcon, ArrowPathRoundedSquareIcon, BellSnoozeIcon, DocumentDuplicateIcon, EyeIcon, EyeSlashIcon, KeyIcon,
+  PencilSquareIcon, PlayIcon, PuzzlePieceIcon, TrashIcon,
+} from '@heroicons/react/24/outline';
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import type { VaultEntry } from '@/lib/api';
-import { V2Button, V2Card, V2Grid, V2List, V2Status, type V2Tone } from './V2Bits';
+import { V2Button, V2Card, V2CardMenuItem, V2Grid, V2Grip, V2Item, V2List, V2Status, type V2Tone } from './V2Bits';
 
 export const VAULT_SECTIONS = [
   { key: 's:needs', label: 'Needs you' },
@@ -37,7 +41,7 @@ export function judgeEntry(e: VaultEntry, now: number): Judged {
   return { tone: 'live', words: 'Working', line: ends || e.lastCheckMessage || 'Last check passed', need: null };
 }
 
-export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, onOpen, onCopy, onTest }: {
+export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete }: {
   entries: VaultEntry[];
   labels: Record<string, string>;
   arrange: PageArrange;
@@ -48,6 +52,16 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   onOpen: (e: VaultEntry) => void;
   onCopy: (e: VaultEntry) => void;
   onTest: (e: VaultEntry) => void;
+  /** Secrets shown on screen right now, by entry id. */
+  revealed: Record<string, string>;
+  onReveal: (e: VaultEntry) => void;
+  onSnooze: (e: VaultEntry) => void;
+  /** Opens the provider's dashboard and the edit form together. */
+  onRotate: (e: VaultEntry) => void;
+  /** Asks first (the page's own confirm). */
+  onMoveToAddons: (e: VaultEntry) => void;
+  /** Asks first (the page's own confirm). */
+  onDelete: (e: VaultEntry) => void;
 }) {
   const hidden = new Set(entryArrange.hidden);
   const judged = entries.map((e) => ({ e, j: judgeEntry(e, now) }));
@@ -55,10 +69,13 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   const buttons = (e: VaultEntry, j: Judged) => {
     if (arrange.arranging) {
       return (
-        <button type="button" className="arrange-icon" aria-label={`Hide ${e.name}`} title="Hide on this page"
-          onClick={(ev) => { ev.stopPropagation(); entryArrange.hide(e.id); }}>
-          <EyeIcon className="w-4 h-4" />
-        </button>
+        <span className="flex items-center gap-1.5">
+          <V2Grip label={`Drag ${e.name}`} />
+          <button type="button" className="arrange-icon" aria-label={`Hide ${e.name}`} title="Hide on this page"
+            onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); entryArrange.hide(e.id); }}>
+            <EyeIcon className="w-4 h-4" />
+          </button>
+        </span>
       );
     }
     const main = j.need === 'fix'
@@ -77,12 +94,23 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
       </span>
     );
   };
-  const open = (e: VaultEntry) => ({
-    role: 'button' as const,
-    tabIndex: 0,
-    onClick: () => onOpen(e),
-    onKeyDown: (ev: React.KeyboardEvent) => { if (ev.key === 'Enter') onOpen(e); },
-  });
+  const menu = (e: VaultEntry): V2CardMenuItem[] => {
+    const days = daysUntil(e.expiresAt, now);
+    const snoozed = !!e.snoozedUntil && new Date(e.snoozedUntil).getTime() > now;
+    const alertWorthy = days !== null && (days < 0 || days <= (e.notifyDaysBefore ?? 7));
+    return [
+      { label: 'Run check now', icon: <PlayIcon className="w-4 h-4" />, disabled: e.testType === 'manual', onClick: () => onTest(e) },
+      { label: 'Edit', icon: <PencilSquareIcon className="w-4 h-4" />, onClick: () => onOpen(e) },
+      { label: revealed[e.id] ? 'Hide value' : 'Reveal', icon: revealed[e.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />, onClick: () => onReveal(e) },
+      { label: 'Snooze 7 days', icon: <BellSnoozeIcon className="w-4 h-4" />, disabled: !alertWorthy || snoozed, onClick: () => onSnooze(e) },
+      { label: 'Rotate now', icon: <ArrowPathRoundedSquareIcon className="w-4 h-4" />, disabled: !e.dashboardUrl, onClick: () => onRotate(e) },
+      { label: 'Move to Addons', icon: <PuzzlePieceIcon className="w-4 h-4" />, onClick: () => onMoveToAddons(e) },
+      { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(e) },
+    ];
+  };
+  const secretLine = (e: VaultEntry) => revealed[e.id]
+    ? <div className="font-mono text-[13px] text-default mt-1 break-all select-all">{revealed[e.id]}</div>
+    : null;
   const icon = (size: number) => (
     <span className="rounded-[14px] flex items-center justify-center shrink-0 text-muted" style={{ width: size, height: size, background: 'var(--color-surface-elevated, var(--color-surface-hover))' }}>
       <KeyIcon className="w-1/2 h-1/2" />
@@ -90,7 +118,7 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   );
   const kind = (e: VaultEntry) => [labels[e.category] || e.category, e.provider].filter(Boolean).join(' · ');
   const tile = ({ e, j }: { e: VaultEntry; j: Judged }) => (
-    <div key={e.id} className="v2-link cursor-pointer" {...open(e)}>
+    <V2Item key={e.id} view="card" href="/vault" sortId={e.id} items={menu(e)} menuLabel={`${e.name} options`} arranging={arrange.arranging} onOpen={() => onOpen(e)}>
       <V2Card footer="Tap to edit" action={buttons(e, j)}>
         <div className="flex items-center gap-3.5 min-w-0">
           {icon(48)}
@@ -102,21 +130,23 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
         <div>
           <V2Status tone={j.tone}>{j.words}</V2Status>
           <div className="text-muted text-[13px] mt-1 truncate">{j.line}</div>
+          {secretLine(e)}
         </div>
       </V2Card>
-    </div>
+    </V2Item>
   );
   const row = ({ e, j }: { e: VaultEntry; j: Judged }) => (
-    <div key={e.id} className="v2-row cursor-pointer" {...open(e)}>
+    <V2Item key={e.id} view="row" href="/vault" sortId={e.id} items={menu(e)} menuLabel={`${e.name} options`} arranging={arrange.arranging} onOpen={() => onOpen(e)}>
       {icon(38)}
       <div className="flex-1 min-w-0">
         <b className="text-default block truncate">{e.name}</b>
         <div className="text-muted text-[12.5px] truncate">{kind(e)}</div>
+        {secretLine(e)}
       </div>
       <div className="v2-col w-[150px]"><V2Status tone={j.tone}>{j.words}</V2Status></div>
       <div className="v2-col w-[200px] text-muted text-[13px] truncate">{j.line}</div>
       {buttons(e, j)}
-    </div>
+    </V2Item>
   );
 
   return (
@@ -127,13 +157,17 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
         const shown = all.filter(({ e }) => !hidden.has(e.id));
         const needs = key === 's:needs';
         return (
-          <ArrangeSection key={key} arrange={arrange} id={key} noun="section"
+          <ArrangeSection key={key} arrange={arrange} id={key} noun="section" cards
             label={needs ? 'Needs you' : 'Working'}
             title={<span className="flex items-center gap-2.5"><span className="w-3 h-3 rounded shrink-0" style={{ background: needs ? 'var(--color-error, #ef4444)' : 'var(--color-success, #22c55e)' }} />{needs ? 'Needs you' : 'Working'}</span>}
             meta={`${all.length}`}>
             {shown.length === 0
               ? <p className="text-sm text-muted py-2">Every entry here is hidden on this page.</p>
-              : view === 'grid' ? <V2Grid>{shown.map(tile)}</V2Grid> : <V2List>{shown.map(row)}</V2List>}
+              : (
+                <SortableContext items={shown.map(({ e }) => e.id)} strategy={view === 'grid' ? rectSortingStrategy : verticalListSortingStrategy}>
+                  {view === 'grid' ? <V2Grid stretch={{ arrange: arrange, id: key }}>{shown.map(tile)}</V2Grid> : <V2List>{shown.map(row)}</V2List>}
+                </SortableContext>
+              )}
           </ArrangeSection>
         );
       })}

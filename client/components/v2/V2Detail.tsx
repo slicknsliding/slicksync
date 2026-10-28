@@ -7,7 +7,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
+import { EllipsisHorizontalIcon, EyeIcon } from '@heroicons/react/24/outline';
+import type { PageArrange } from '@/lib/arrange';
+import { StretchHandle } from '@/components/ui/Arrange';
 
 export type V2MenuItem = {
   label: string;
@@ -18,7 +20,16 @@ export type V2MenuItem = {
 };
 
 /** The ⋯ button and its menu, drawn over the page so nothing clips it. */
-export function V2MoreMenu({ items, label = 'More' }: { items: V2MenuItem[]; label?: string }) {
+export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel }: {
+  items: V2MenuItem[];
+  label?: string;
+  /** Another icon on the button (a small ✕ that opens a menu). */
+  icon?: ReactNode;
+  /** A small, plain button for use inside a tile. */
+  small?: boolean;
+  /** A line of explanation above the items. */
+  menuLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -73,15 +84,15 @@ export function V2MoreMenu({ items, label = 'More' }: { items: V2MenuItem[]; lab
       <button
         ref={btnRef}
         type="button"
-        className="v2-btn"
-        style={{ padding: '7px 10px' }}
+        className={small ? 'arrange-icon arrange-icon-plain' : 'v2-btn'}
+        style={small ? undefined : { padding: '7px 10px' }}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => { setPos(null); setOpen((v) => !v); }}
       >
-        <EllipsisHorizontalIcon className="w-5 h-5" />
+        {icon ?? <EllipsisHorizontalIcon className="w-5 h-5" />}
       </button>
       {open && typeof document !== 'undefined' && createPortal(
         <div
@@ -90,6 +101,7 @@ export function V2MoreMenu({ items, label = 'More' }: { items: V2MenuItem[]; lab
           className="arrange-menu"
           style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, right: 'auto', zIndex: 60, visibility: pos ? 'visible' : 'hidden' }}
         >
+          {menuLabel && <div className="px-2.5 pt-1.5 pb-1 text-[12.5px] text-muted">{menuLabel}</div>}
           {items.map((it) => (
             <button
               key={it.label}
@@ -155,19 +167,55 @@ export function V2DetailHead({ lead, title, pill, status, facts, actions, more, 
   );
 }
 
-/** A row of numbers in one box: label, value, an optional small line under it. */
-export function V2Numbers({ items }: { items: { label: string; value: ReactNode; sub?: ReactNode }[] }) {
+export type V2NumberItem = { label: string; value: ReactNode; sub?: ReactNode; /** What hiding it is saved under; the label when left out. */ key?: string };
+
+const numberKey = (scope: string, it: V2NumberItem) => `${scope}/${it.key ?? it.label}`;
+
+/**
+ * A row of numbers in one box: label, value, an optional small line under it.
+ *
+ * Given a page's `arrange`, each number can be hidden on its own: while
+ * arranging every number has an eye, and a hidden number is left out (it
+ * waits in the page's tray: pass v2HiddenNumbers(...) as the tray's `extra`).
+ * `scope` keeps two strips on one page apart.
+ */
+export function V2Numbers({ items, arrange, scope = 'numbers' }: { items: V2NumberItem[]; arrange?: PageArrange; scope?: string }) {
+  const visible = arrange ? items.filter((it) => !arrange.isItemHidden(numberKey(scope, it))) : items;
+  if (visible.length === 0) {
+    return arrange?.arranging
+      ? <div className="arrange-empty">Every number here is hidden. Tap one in the tray below to bring it back.</div>
+      : null;
+  }
+  const arranging = !!arrange?.arranging;
   return (
-    <div className="v2-numbers" style={{ ['--v2-n' as string]: items.length }}>
-      {items.map((it) => (
-        <div key={it.label} className="min-w-0">
+    <div className={`v2-numbers${arranging ? ' v2-numbers-arranging' : ''}`} style={{ ['--v2-n' as string]: visible.length }}>
+      {visible.map((it) => (
+        <div key={it.label} className="min-w-0 v2-numbers-cell">
           <div className="text-muted text-[12.5px]">{it.label}</div>
           <div className="v2-number">{it.value}</div>
           {it.sub && <div className="text-muted text-[12px] truncate">{it.sub}</div>}
+          {arranging && arrange && (
+            <button
+              type="button"
+              className="arrange-icon v2-numbers-eye"
+              aria-label={`Hide ${it.label}`}
+              title={`Hide ${it.label}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); arrange.setItemHidden(numberKey(scope, it), true); }}
+            >
+              <EyeIcon className="w-4 h-4" />
+            </button>
+          )}
         </div>
       ))}
     </div>
   );
+}
+
+/** The hidden numbers of a V2Numbers strip, as entries for HiddenTray's `extra`. */
+export function v2HiddenNumbers(arrange: PageArrange, items: V2NumberItem[], scope = 'numbers') {
+  return items
+    .filter((it) => arrange.isItemHidden(numberKey(scope, it)))
+    .map((it) => ({ id: numberKey(scope, it), label: it.label, show: () => arrange.setItemHidden(numberKey(scope, it), false) }));
 }
 
 /** A tile for a tool used now and then: icon, name, one line, and what happens on a click. */
@@ -202,6 +250,16 @@ export function V2Box({ children, className = '', pad = true }: { children: Reac
 }
 
 /** Tiles in columns: one on a phone, `wide` from tablets up (more on big screens). */
-export function V2Tiles({ children, wide = 2 }: { children: ReactNode; wide?: 2 | 3 | 4 }) {
-  return <div className={`v2-tiles v2-tiles-${wide}`}>{children}</div>;
+export function V2Tiles({ children, wide = 2, stretch }: {
+  children: ReactNode;
+  wide?: 2 | 3 | 4;
+  /** The page's arrange and this group's key: the tiles can be stretched to size while arranging. */
+  stretch?: { arrange: PageArrange; id: string; label?: string };
+}) {
+  return (
+    <div className={`v2-tiles v2-tiles-${wide}`} {...(stretch ? stretch.arrange.cardAttrs(stretch.id) : {})}>
+      {children}
+      {stretch && <StretchHandle arrange={stretch.arrange} id={stretch.id} label={stretch.label} />}
+    </div>
+  );
 }

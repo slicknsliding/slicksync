@@ -494,6 +494,7 @@ export default function UserLibraryPage() {
           onDeleteSelected={handleDeleteSelected}
           deleting={deletingIds.size > 0}
           canDelete={canDeleteLibraryItems}
+          onDeleteOne={handleDeleteItem}
           linkOf={getStremioLink}
           watchTimeOf={(item) => formatWatchTime(item.state?.overallTimeWatched)}
           appName={appLabel}
@@ -511,10 +512,10 @@ export default function UserLibraryPage() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row gap-4 mb-6"
+        className="flex flex-wrap items-center gap-2 sm:gap-4 mb-6"
       >
         {/* Search */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-0">
           <MagnifyingGlassIcon
             className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
             style={{ color: 'var(--color-text-muted)' }}
@@ -535,7 +536,7 @@ export default function UserLibraryPage() {
 
         {/* Selection actions */}
         {selectedItems.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 max-sm:order-last max-sm:w-full">
             <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
               {selectedItems.length} selected
             </span>
@@ -566,7 +567,7 @@ export default function UserLibraryPage() {
           </div>
         )}
 
-        {/* View toggle */}
+        {/* View toggle: a small two-icon pill at the right of the search */}
         <ViewModeToggle
           mode={viewMode}
           onChange={(mode) => setViewMode(mode)}

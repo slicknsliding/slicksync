@@ -9,7 +9,7 @@ import { useState, type ReactNode } from 'react';
 import { ArrowPathIcon, BeakerIcon, ClipboardDocumentIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { ToggleSwitch } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
-import { useNowPlayingWho, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { useCwTime, useNowPlayingWho, usePageDesign, type PageArrange } from '@/lib/arrange';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { MeHead, MeRow, MeRows, MeSeg } from './MeBits';
 import { V2Button } from './V2Bits';
@@ -49,6 +49,7 @@ export function MeSettingsV2(p: SettingsV2Props) {
   const { layoutMode, setLayoutMode } = useLayoutMode();
   const { design, setDesign } = usePageDesign();
   const { where, setWhere } = useNowPlayingWho();
+  const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
   const [themesOpen, setThemesOpen] = useState(false);
 
   const section = (key: string): ReactNode => {
@@ -79,6 +80,9 @@ export function MeSettingsV2(p: SettingsV2Props) {
               </MeRow>
               <MeRow title="Now Playing" line="Your app and room: under the picture, or on it">
                 <MeSeg value={where} onChange={(w) => setWhere(w === 'on' ? 'on' : 'under')} options={[{ key: 'under', label: 'Under' }, { key: 'on', label: 'On the picture' }]} />
+              </MeRow>
+              <MeRow title="Continue Watching" line="Time left: on the picture, or under it with the episode name">
+                <MeSeg value={cwWhere} onChange={(w) => setCwWhere(w === 'under' ? 'under' : 'on')} options={[{ key: 'on', label: 'On the picture' }, { key: 'under', label: 'Under' }]} />
               </MeRow>
               <MeRow title="Page design" line="Classic, or v2’s grouped sections">
                 <MeSeg value={design} onChange={(d) => setDesign(d === 'v2' ? 'v2' : 'classic')} options={[{ key: 'classic', label: 'Classic' }, { key: 'v2', label: 'v2' }]} />

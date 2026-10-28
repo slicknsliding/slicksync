@@ -353,18 +353,20 @@ const ActivityCard = memo(function ActivityCard({
         </button>
       )}
 
-      {/* User avatar */}
-      <Avatar
-        name={userInfo?.username || 'You'}
-        email={userInfo?.email}
-        useGravatar={userInfo?.useGravatar}
-        colorIndex={userInfo?.colorIndex || 0}
-        size="sm"
-      />
+      {/* User avatar (a phone shows the person under the title instead) */}
+      <div className="max-sm:hidden">
+        <Avatar
+          name={userInfo?.username || 'You'}
+          email={userInfo?.email}
+          useGravatar={userInfo?.useGravatar}
+          colorIndex={userInfo?.colorIndex || 0}
+          size="sm"
+        />
+      </div>
 
       {/* Activity details */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm max-sm:hidden" style={{ color: 'var(--color-text-muted)' }}>
           <span className="font-medium" style={{ color: 'var(--color-text)' }}>
             {userInfo?.username || 'You'}
           </span>{' '}
@@ -372,16 +374,16 @@ const ActivityCard = memo(function ActivityCard({
         </p>
 
         {/* Content info */}
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-start sm:items-center gap-2 mt-1 max-sm:mt-0">
           {session.itemType === 'movie' ? (
-            <FilmIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
+            <FilmIcon className="w-4 h-4 shrink-0 max-sm:mt-0.5" style={{ color: 'var(--color-primary)' }} />
           ) : (
-            <TvIcon className="w-4 h-4" style={{ color: '#10b981' }} />
+            <TvIcon className="w-4 h-4 shrink-0 max-sm:mt-0.5" style={{ color: '#10b981' }} />
           )}
           <button
             type="button"
             onClick={() => onFilterByContent?.(session.itemName)}
-            className="font-medium text-left transition-colors hover:opacity-80"
+            className="font-medium text-left transition-colors hover:opacity-80 max-sm:line-clamp-2 max-sm:text-sm min-w-0"
             style={{ color: 'var(--color-text)' }}
           >
             {session.itemName}
@@ -394,8 +396,21 @@ const ActivityCard = memo(function ActivityCard({
           </button>
         </div>
 
+        {/* A phone: the person and when, on their own line under the title */}
+        <div className="sm:hidden mt-1.5 flex items-center gap-2 text-xs min-w-0" style={{ color: 'var(--color-text-muted)' }}>
+          <Avatar
+            name={userInfo?.username || 'You'}
+            email={userInfo?.email}
+            useGravatar={userInfo?.useGravatar}
+            colorIndex={userInfo?.colorIndex || 0}
+            size="xs"
+          />
+          <span className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{userInfo?.username || 'You'}</span>
+          <span style={{ color: 'var(--color-text-subtle)' }}>· {formatTimestamp(timestamp)}</span>
+        </div>
+
         {/* Session meta: duration & start/end time */}
-        <div className="mt-3 flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="mt-3 max-sm:mt-1.5 flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
           <ClockIcon className="w-3 h-3" />
           {!session.isSynthetic && session.durationSeconds !== undefined && (
             <span>
@@ -414,7 +429,7 @@ const ActivityCard = memo(function ActivityCard({
       </div>
 
       {/* Timestamp */}
-      <div className="text-right">
+      <div className="text-right max-sm:hidden">
         <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>{formatTimestamp(timestamp)}</p>
       </div>
     </motion.div>

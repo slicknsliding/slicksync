@@ -116,6 +116,9 @@ export default function InvitationsPage() {
   // Duplicate state
   const [duplicateTarget, setDuplicateTarget] = useState<InvitationDisplay | null>(null);
 
+  // QR for an invite chosen from a v2 card's ⋯ menu (Classic's card has its own).
+  const [qrTarget, setQrTarget] = useState<V2Invite | null>(null);
+
   // Fetch invitations, groups, and requests
   useEffect(() => {
     const fetchData = async () => {
@@ -458,6 +461,14 @@ export default function InvitationsPage() {
                   copyToClipboard(`${window.location.origin}/invite/${i.code}`);
                   toast.success('Invite link copied', { line: i.code });
                 }}
+                onEdit={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setEditTarget(d); }}
+                onDuplicate={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setDuplicateTarget(d); }}
+                onCopyCode={(i) => {
+                  copyToClipboard(i.code);
+                  toast.success('Invitation code copied to clipboard');
+                }}
+                onShowQr={(i) => setQrTarget(i)}
+                onDelete={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setDeleteTarget(d); }}
                 now={renderedAt}
               />
               <HiddenTray
@@ -810,6 +821,24 @@ export default function InvitationsPage() {
             onClose={() => setEditTarget(null)}
           />
         )}
+      </Modal>
+
+      <Modal isOpen={!!qrTarget} onClose={() => setQrTarget(null)} title="Scan to join" size="sm">
+        {qrTarget && (() => {
+          const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${qrTarget.code}`;
+          return (
+            <div className="text-center space-y-3">
+              <div className="inline-block p-3 rounded-xl bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/qr?data=${encodeURIComponent(url)}`} alt={`QR code for invitation ${qrTarget.name || qrTarget.code}`} width={240} height={240} />
+              </div>
+              <p className="text-sm text-muted">
+                Point a phone camera at this. It opens the invite, they connect their own account, and sync sets them up - nothing to type, no credentials through you.
+              </p>
+              <code className="block text-xs text-subtle break-all">{url}</code>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* Duplicate Invitation Modal */}

@@ -20,6 +20,7 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { formatRelativeTime } from '@/lib/relativeTime';
 import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { V2DetailHead, V2Box, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2TitleEdit } from '@/components/v2/V2TitleEdit';
 import { V2Button, V2Status } from '@/components/v2/V2Bits';
 import {
   AddonBlock, BackupChainV2, CatalogsV2, GivenToV2, HealthStripV2, ManifestV2, ProxyV2, ResourcesV2,
@@ -1414,7 +1415,23 @@ export default function AddonDetailPage() {
         ? <V2Status tone="live">Online</V2Status>
         : <V2Status tone="bad">Not answering</V2Status>;
 
+  // The title and description change in place (pencil), saved with the same
+  // call the Edit window makes.
+  const saveTitle = async (patch: { name?: string; description?: string }) => {
+    try {
+      await api.updateAddon(addon.id, patch);
+      setAddon({ ...addon, ...patch });
+      toast.success('Addon updated successfully');
+      return true;
+    } catch (err) {
+      toast.error((err instanceof Error && err.message) || 'Failed to update addon');
+      return false;
+    }
+  };
+
   const v2Head = (
+    <V2TitleEdit name={addon.name} description={addon.description} canEdit onSave={saveTitle} label="name">
+    {(edit) => (
     <V2DetailHead
       lead={
         <button type="button" onClick={openEdit} title="Edit this addon" aria-label="Edit this addon" className="w-16 h-16 rounded-[18px] flex items-center justify-center bg-surface-elevated border border-default overflow-hidden">
@@ -1425,9 +1442,14 @@ export default function AddonDetailPage() {
           )}
         </button>
       }
-      title={addon.name}
+      title={edit.title}
       pill={addon.version ? <VersionBadge version={addon.version} size="sm" /> : undefined}
-      status={v2Status}
+      status={(
+        <>
+          {edit.description && <div className="basis-full min-w-0 mb-0.5">{edit.description}</div>}
+          {v2Status}
+        </>
+      )}
       facts={v2Facts}
       actions={
         <>
@@ -1457,6 +1479,8 @@ export default function AddonDetailPage() {
         </div>
       ) : undefined}
     />
+    )}
+    </V2TitleEdit>
   );
 
   const v2Sections: Record<string, ReactNode> = {

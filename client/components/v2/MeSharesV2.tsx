@@ -6,12 +6,13 @@
 // bulk bar. Search, the person filter and grid / list stay on this page.
 
 import type { CSSProperties, ReactNode } from 'react';
-import { BookmarkIcon, CheckIcon, FilmIcon, TrashIcon, TvIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon, CheckIcon, FilmIcon, MagnifyingGlassIcon, TrashIcon, TvIcon } from '@heroicons/react/24/outline';
 import { ViewModeToggle } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
+import { useIsPhoneWidth } from '@/lib/pageHeader';
 import type { Share } from '@/lib/user-api';
-import { MeHead, MeSeg } from './MeBits';
+import { FiltersMenu, MeHead, MeSeg } from './MeBits';
 import { V2List } from './V2Bits';
 import { V2MoreMenu } from './V2Detail';
 
@@ -23,7 +24,7 @@ export type SharesTab = 'received' | 'sent';
 export function MeSharesV2({
   arrange, tab, onTab, received, sent, receivedCount, sentCount, unviewed, view, onView, toolbar, bulkBar, members,
   selecting, onSelecting, selected, onToggle, busy, inLibrary, linkOf, when,
-  onAddToLibrary, onMarkViewed, onRemove, onClear, empty,
+  onAddToLibrary, onMarkViewed, onRemove, onClear, empty, phoneBar,
 }: {
   arrange: PageArrange;
   tab: SharesTab;
@@ -54,7 +55,17 @@ export function MeSharesV2({
   onRemove: (id: string, type: SharesTab) => void;
   onClear: () => void;
   empty: ReactNode;
+  /** The search and person filter, for the phone's two-row toolbar. */
+  phoneBar?: {
+    search: string;
+    onSearch: (v: string) => void;
+    /** Usernames to filter by; none means no Filters button. */
+    people: string[];
+    person: string;
+    onPerson: (v: string) => void;
+  };
 }) {
+  const phone = useIsPhoneWidth();
   const fresh = received.filter((s) => !s.viewedAt);
   const earlier = received.filter((s) => !!s.viewedAt);
 
@@ -133,19 +144,66 @@ export function MeSharesV2({
       />
       <ArrangeBar arrange={arrange} />
 
-      <div className="flex flex-wrap items-center gap-2.5 mb-3">
-        <MeSeg
-          value={tab}
-          onChange={onTab}
-          options={[
-            { key: 'received', label: <>Sent to you <span className="opacity-80">{receivedCount}</span></> },
-            { key: 'sent', label: <>You sent <span className="opacity-80">{sentCount}</span></> },
-          ]}
-        />
-        <button type="button" className="v2-btn" aria-pressed={selecting} onClick={() => { onSelecting(!selecting); if (selecting) onClear(); }}>{selecting ? 'Done' : 'Select'}</button>
-        <ViewModeToggle mode={view} onChange={onView} />
-      </div>
-      {toolbar}
+      {(() => {
+        const seg = (
+          <MeSeg
+            value={tab}
+            onChange={onTab}
+            options={[
+              { key: 'received', label: <>Sent to you <span className="opacity-80">{receivedCount}</span></> },
+              { key: 'sent', label: <>You sent <span className="opacity-80">{sentCount}</span></> },
+            ]}
+          />
+        );
+        const selectBtn = <button type="button" className="v2-btn shrink-0" aria-pressed={selecting} onClick={() => { onSelecting(!selecting); if (selecting) onClear(); }}>{selecting ? 'Done' : 'Select'}</button>;
+        // A phone: row 1 is the search, Filters (with a count) and grid / list;
+        // row 2 is the tabs, Select at the end.
+        if (phone && phoneBar) {
+          return (
+            <>
+              <div className="flex items-center gap-2 mb-2.5">
+                <label className="relative flex-1 min-w-0">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                  <input
+                    type="text"
+                    value={phoneBar.search}
+                    onChange={(e) => phoneBar.onSearch(e.target.value)}
+                    placeholder="Find a title"
+                    aria-label="Find a title"
+                    className="w-full min-w-0 pl-9 pr-3 py-2 rounded-xl text-sm"
+                    style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  />
+                </label>
+                {phoneBar.people.length > 0 && (
+                  <FiltersMenu
+                    title="From"
+                    all="all"
+                    value={phoneBar.person}
+                    onChange={phoneBar.onPerson}
+                    options={[{ key: 'all', label: 'Everyone' }, ...phoneBar.people.map((n) => ({ key: n, label: n }))]}
+                  />
+                )}
+                <ViewModeToggle mode={view} onChange={onView} />
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                {seg}
+                <span className="flex-1" />
+                {selectBtn}
+              </div>
+            </>
+          );
+        }
+        return (
+          <>
+            <div className="flex flex-wrap items-center gap-2.5 mb-3">
+              {seg}
+              {selectBtn}
+              <ViewModeToggle mode={view} onChange={onView} />
+            </div>
+            {toolbar}
+          </>
+        );
+      })()}
       {bulkBar}
 
       {keys.map((k) => {
