@@ -1373,7 +1373,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Changed your mind? Undo steps back one change at a time, and Cancel puts the page back exactly as it was before you pressed Arrange. Reset goes all the way back to SlickSync’s own layout.',
     ],
     details: [
-      'Outside Arrange, each section’s ⋯ menu does the quick things: move up or down, fold, hide, or arrange the whole page.',
+      'Outside Arrange, the chevron beside a section’s name folds it; moving and hiding happen in Arrange.',
       'Hiding only tidies the page. People keep syncing, addons keep working, and invites stay open.',
       'Something with nothing in it right now (Now Playing with nobody watching) stays listed while you arrange, as a dashed box, so you can still move or hide it.',
       'On the Dashboard the numbers sit in their own "At a glance" section, and while arranging each number has its own eye. On Discover you can reorder or hide the Titles, People, For you and Watchlist tabs and each row; on Tasks each tile can be pinned first, moved or hidden.',
@@ -1422,7 +1422,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Appearance',
     keywords: ['compact', 'density', 'smaller cards', 'start page', 'open on', 'home page', 'grid or list', 'list view', 'default view', 'remember filter', 'keep filter', 'time left', 'up next', 'episode name', 'continue watching'],
     answer: 'Settings → Themes → Layout. Density starts on Compact, which fits more cards and rows on screen; Comfortable gives them more room; Start page picks where SlickSync opens; "Keep each page’s filter" brings back the filter you last picked on Users, Addons and the Vault. Grid or list is chosen once here and every page follows it.',
-    tips: ['Phones always show the grid. A person’s own Library, Activity and Shares pages keep their own grid or list switch.', 'Now Playing puts who is watching and the app on a line under the picture; pick On the picture to have them over the artwork instead. Each person has the same choice in their own Settings.', 'Continue Watching shows the time left (or Up next) on the picture. Pick Under to move it below the card, beside who is watching, with the episode’s name on its own line. Each person has this choice too.'],
+    tips: ['Phones always show the grid. A person’s own Library, Activity and Shares pages keep their own grid or list switch.', 'Now Playing puts who is watching and the app on a line under the picture; pick On the picture to have them over the artwork instead. Each person has the same choice in their own Settings.', 'Now Playing progress puts the bar, how far in, how long is left and when it ends on the picture; pick Under to have them below the card. When an app hasn’t said where someone is yet (Nuvio until they pause), the card estimates it from when it started and says so.', 'Continue Watching shows the time left (or Up next) on the picture. Pick Under to move it below the card, beside who is watching, with the episode’s name on its own line. Each person has this choice too.'],
     related: ['arrange-pages', 'page-design-v2'],
     href: '/settings',
     linkLabel: 'Open Settings',

@@ -8,11 +8,10 @@
 // your own keys uses useSortableScope + SortableItem + ArrangeGrip from
 // lib/arrange.tsx (documented there).
 
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
-import { createPortal } from 'react-dom';
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   AdjustmentsHorizontalIcon, ArrowUturnLeftIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon,
-  EllipsisHorizontalIcon, EyeIcon, EyeSlashIcon, MapPinIcon,
+  EyeIcon, EyeSlashIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
 import { SortableItem, useGrip, type PageArrange, type SortableState } from '@/lib/arrange';
 import type { SectionSize } from '@/lib/arrange-core';
@@ -344,103 +343,6 @@ export function FoldButton({ arrange, id, label }: { arrange: PageArrange; id: s
   );
 }
 
-/** A section's ⋯ menu: the quick moves without entering Arrange mode. */
-export function SectionMenu({ arrange, id, label, noun = 'section' }: { arrange: PageArrange; id: string; label: string; noun?: string }) {
-  const [open, setOpen] = useState(false);
-  // Drawn over the page (not inside the panel, which clips what spills out
-  // of it), below the button - or above it when there's no room below - and
-  // kept inside the screen at the edges.
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (!open || !btnRef.current) return;
-    const r = btnRef.current.getBoundingClientRect();
-    const width = 240;
-    const height = menuRef.current?.offsetHeight || 230;
-    const below = r.bottom + 6 + height <= window.innerHeight - 8;
-    const top = below ? r.bottom + 6 : Math.max(8, r.top - 6 - height);
-    const left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPos({ top: Math.round(top), left: Math.round(left) });
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
-      close();
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btnRef.current?.focus(); } };
-    document.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
-    // Scrolling moves the menu with its button (a tap often nudges the page);
-    // it closes only once the button has left the screen.
-    const follow = () => {
-      const r = btnRef.current?.getBoundingClientRect();
-      if (!r || r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
-      const height = menuRef.current?.offsetHeight || 220;
-      const below = r.bottom + 6 + height <= window.innerHeight - 8;
-      setPos({
-        top: Math.round(below ? r.bottom + 6 : Math.max(8, r.top - 6 - height)),
-        left: Math.round(Math.min(Math.max(8, r.right - 240), window.innerWidth - 240 - 8)),
-      });
-    };
-    window.addEventListener('scroll', follow, { passive: true });
-    window.addEventListener('resize', close);
-    return () => {
-      document.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', follow);
-      window.removeEventListener('resize', close);
-    };
-  }, [open]);
-  const folded = arrange.isFolded(id);
-  const item = (icon: ReactNode, text: string, onClick: () => void, disabled = false) => (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      className="arrange-menu-item"
-      onClick={() => { setOpen(false); onClick(); }}
-    >
-      {icon}
-      {text}
-    </button>
-  );
-  return (
-    <div className="relative shrink-0">
-      <button
-        ref={btnRef}
-        type="button"
-        className="arrange-icon arrange-icon-plain"
-        aria-label={`${label} options`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => { setPos(null); setOpen((v) => !v); }}
-      >
-        <EllipsisHorizontalIcon className="w-5 h-5" />
-      </button>
-      {open && typeof document !== 'undefined' && createPortal(
-        <div
-          ref={menuRef}
-          className="arrange-menu"
-          role="menu"
-          style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, right: 'auto', zIndex: 60, visibility: pos ? 'visible' : 'hidden' }}
-        >
-          {item(<ChevronUpIcon className="w-4 h-4" />, 'Move up', () => arrange.move(id, -1), !arrange.canMove(id, -1))}
-          {item(<ChevronDownIcon className="w-4 h-4" />, 'Move down', () => arrange.move(id, 1), !arrange.canMove(id, 1))}
-          {item(folded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />, folded ? `Unfold this ${noun}` : `Fold this ${noun}`, () => arrange.fold(id, !folded))}
-          {item(<EyeSlashIcon className="w-4 h-4" />, `Hide this ${noun}`, () => arrange.hide(id))}
-          {item(<AdjustmentsHorizontalIcon className="w-4 h-4" />, 'Arrange the whole page', () => arrange.setArranging(true))}
-        </div>,
-        document.body,
-      )}
-    </div>
-  );
-}
-
 /**
  * What's hidden on this page, each one a click from coming back. Only while
  * arranging: outside Arrange mode nothing about hidden things shows.
@@ -473,12 +375,11 @@ export function HiddenTray({ arrange, labelOf, extra = [] }: {
 }
 
 /**
- * One arrangeable section: its heading row (fold chevron, title, and either
- * the ⋯ menu or, while arranging, the arrows and eye) and its body, which
- * folding hides.
+ * One arrangeable section: its heading row (fold chevron, title, and while
+ * arranging the arrows and eye) and its body, which folding hides.
  */
 export function ArrangeSection({
-  arrange, id, title, label: labelProp, meta, actions, children, noun, emptyNote, cards,
+  arrange, id, title, label: labelProp, meta, actions, children, emptyNote, cards,
 }: {
   arrange: PageArrange;
   id: string;
@@ -520,9 +421,7 @@ export function ArrangeSection({
         <span className="flex-1" />
         {/* On a phone the section's own controls take a line under its title, so neither gets squeezed. */}
         {!arrange.arranging && actions && <div className="flex items-center gap-2 max-sm:order-last max-sm:basis-full">{actions}</div>}
-        {arrange.arranging
-          ? <ArrangeControls arrange={arrange} id={id} label={label} cards={cards} />
-          : <SectionMenu arrange={arrange} id={id} label={label} noun={noun} />}
+        {arrange.arranging && <ArrangeControls arrange={arrange} id={id} label={label} cards={cards} />}
       </div>
       {!folded && <div className="mt-3">{emptyNote ? <div className="arrange-empty">{emptyNote}</div> : children}</div>}
     </section>
@@ -578,9 +477,7 @@ export function ArrangePanel({
             <b className="text-base font-semibold font-display flex-1 min-w-0 truncate">
               {label} <span className="text-muted font-normal text-[13px]">· folded</span>
             </b>
-            {arrange.arranging
-              ? <ArrangeControls arrange={arrange} id={id} label={label} />
-              : <SectionMenu arrange={arrange} id={id} label={label} noun="panel" />}
+            {arrange.arranging && <ArrangeControls arrange={arrange} id={id} label={label} />}
           </div>
         ) : <div className="flex-1 min-h-0">{emptyNote ? <div className="arrange-empty">{emptyNote}</div> : children}</div>}
       </div>
@@ -590,13 +487,10 @@ export function ArrangePanel({
   );
 }
 
-/** The fold chevron and ⋯ menu inside an ArrangePanel's own heading. */
+/** The fold chevron, and while arranging the controls, inside an ArrangePanel's own heading. */
 export function PanelControls({ side }: { side: 'start' | 'end' }) {
   const ctx = useContext(PanelContext);
   if (!ctx) return null;
   if (side === 'start') return <FoldButton arrange={ctx.arrange} id={ctx.id} label={ctx.label} />;
-  // While arranging, the arrows and eye take the ⋯ menu's place.
-  return ctx.arrange.arranging
-    ? <ArrangeControls arrange={ctx.arrange} id={ctx.id} label={ctx.label} />
-    : <SectionMenu arrange={ctx.arrange} id={ctx.id} label={ctx.label} noun="panel" />;
+  return ctx.arrange.arranging ? <ArrangeControls arrange={ctx.arrange} id={ctx.id} label={ctx.label} /> : null;
 }

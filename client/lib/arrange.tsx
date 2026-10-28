@@ -509,6 +509,20 @@ export function useNowPlayingWho() {
   return { where, setWhere };
 }
 
+/** Now Playing: the progress bar and times on the picture (the default) or under the card. */
+export function useNowPlayingProgress() {
+  const { arrangement, update } = useArrangement();
+  const where: 'on' | 'under' = arrangement.nowPlayingProgress === 'under' ? 'under' : 'on';
+  const setWhere = useCallback((w: 'on' | 'under') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, nowPlayingProgress: 'under' };
+      if (w === 'on') delete out.nowPlayingProgress;
+      return out;
+    });
+  }, [update]);
+  return { where, setWhere };
+}
+
 /** Continue Watching: time left and Up next on the picture (the default) or under the card, with the episode name. */
 export function useCwTime() {
   const { arrangement, update } = useArrangement();

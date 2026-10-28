@@ -3002,6 +3002,13 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         nowPlaying.length = 0;
         nowPlaying.push(...keep);
       }
+      try {
+        // Runtime, the episode's name, and an estimate when the app hasn't said (shown only).
+        const { addEstimate } = require('../utils/nowPlayingEstimate');
+        for (const np of nowPlaying) addEstimate(np, np.startTime ? new Date(np.startTime).getTime() : undefined);
+      } catch (error) {
+        console.warn('[PublicLibrary] Failed to add Now Playing estimates:', error.message);
+      }
 
       res.json({
         sessions: activityItems,

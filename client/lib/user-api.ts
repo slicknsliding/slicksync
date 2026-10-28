@@ -597,6 +597,7 @@ export interface NowPlayingItem {
     episode?: number;
     // A proxy stream whose title isn't known yet - name is plain words.
     titlePending?: boolean;
+    episodeTitle?: string;
   };
   startTime: string;
   videoId?: string;
@@ -613,6 +614,9 @@ export interface NowPlayingItem {
   lastPosition?: number | null;
   totalDuration?: number | null;
   positionAt?: number | null;
+  // Estimated from when it started and the title's runtime (the app hasn't said).
+  positionEstimated?: boolean;
+  durationEstimated?: boolean;
   // Resume links once it is paused (Stremio and Nuvio).
   stremioAppUrl?: string;
   nuvioAppUrl?: string;

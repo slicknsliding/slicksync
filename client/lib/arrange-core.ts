@@ -45,6 +45,8 @@ export type Arrangement = {
   nowPlayingWho?: 'on';
   /** Continue Watching: time left / Up next under the card ('under'); on the picture otherwise. */
   cwTime?: 'under';
+  /** Now Playing: the bar and times under the card ('under'); on the picture otherwise. */
+  nowPlayingProgress?: 'under';
   /** Where SlickSync opens: a page's address, e.g. '/activity'. */
   startPage?: string;
   /** Grid or list, per page. */

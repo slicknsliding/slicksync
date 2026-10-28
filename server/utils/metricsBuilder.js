@@ -585,6 +585,16 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
     console.warn('[MetricsBuilder] Failed to read profile names:', error.message)
   }
 
+  // The title's runtime and the episode's name, and how far in when the app
+  // hasn't said (an estimate, shown only - see utils/nowPlayingEstimate.js).
+  // After the merge, so nothing above mistakes an estimate for a checkpoint.
+  try {
+    const { addEstimate } = require('./nowPlayingEstimate')
+    for (const np of nowPlaying) addEstimate(np, np.watchedAtTimestamp)
+  } catch (error) {
+    console.warn('[MetricsBuilder] Failed to add Now Playing estimates:', error.message)
+  }
+
   // Most recent first.
   nowPlaying.sort((a, b) => b.watchedAtTimestamp - a.watchedAtTimestamp)
   return nowPlaying

@@ -28,7 +28,7 @@ import { PersonPushRow } from '@/components/user/PersonPushRow';
 import { ProfilePictureEditor } from '@/components/user/ProfilePictureEditor';
 import { HistoryImportTile } from '@/components/user/HistoryImportTile';
 import { useIsTV } from '@/lib/hooks/useIsTV';
-import { useCwTime, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { useCwTime, useNowPlayingProgress, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeSettingsV2, SETTINGS_SECTIONS } from '@/components/v2/MeSettingsV2';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -162,6 +162,7 @@ export default function UserSettingsPage() {
   const { design, setDesign } = usePageDesign();
   const { where: npWhere, setWhere: setNpWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
+  const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
   const v2Arrange = usePageArrangement('settings', [...SETTINGS_SECTIONS], { defaultFolded: ['leave'] });
@@ -715,6 +716,19 @@ export default function UserSettingsPage() {
             <div className="menu-seg" role="radiogroup" aria-label="Now Playing">
               {(['under', 'on'] as const).map((w) => (
                 <button key={w} type="button" role="radio" aria-checked={npWhere === w} className={npWhere === w ? 'on' : ''} onClick={() => setNpWhere(w)}>
+                  {w === 'under' ? 'Under' : 'On the picture'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Now Playing progress</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>How far in and when it ends: on the picture, or under it</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Now Playing progress">
+              {(['on', 'under'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={npProgress === w} className={npProgress === w ? 'on' : ''} onClick={() => setNpProgress(w)}>
                   {w === 'under' ? 'Under' : 'On the picture'}
                 </button>
               ))}

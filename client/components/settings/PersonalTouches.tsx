@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCwTime, useDensity, useKeepFilters, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCwTime, useDensity, useKeepFilters, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -18,6 +18,7 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
   const { keep, setKeep } = useKeepFilters();
   const { where, setWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
+  const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   // The v2 Settings draws these as rows.
   if (v2) {
     return (
@@ -31,6 +32,11 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           title="Now Playing"
           line="Who’s watching: under the picture, or on it"
           control={<V2Seg<'under' | 'on'> label="Now Playing" value={where} options={[{ id: 'under' as const, label: 'Under' }, { id: 'on' as const, label: 'On the picture' }]} onChange={setWhere} />}
+        />
+        <V2SetRow
+          title="Now Playing progress"
+          line="How far in and when it ends: on the picture, or under it"
+          control={<V2Seg<'on' | 'under'> label="Now Playing progress" value={npProgress} options={[{ id: 'on' as const, label: 'On the picture' }, { id: 'under' as const, label: 'Under' }]} onChange={setNpProgress} />}
         />
         <V2SetRow
           title="Continue Watching"
@@ -77,6 +83,19 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
         <div className="menu-seg" role="radiogroup" aria-label="Now Playing">
           {(['under', 'on'] as const).map((w) => (
             <button key={w} type="button" role="radio" aria-checked={where === w} className={where === w ? 'on' : ''} onClick={() => setWhere(w)}>
+              {w === 'under' ? 'Under' : 'On the picture'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Now Playing progress</p>
+          <p className="text-xs text-muted">How far in and when it ends: on the picture, or under it</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Now Playing progress">
+          {(['on', 'under'] as const).map((w) => (
+            <button key={w} type="button" role="radio" aria-checked={npProgress === w} className={npProgress === w ? 'on' : ''} onClick={() => setNpProgress(w)}>
               {w === 'under' ? 'Under' : 'On the picture'}
             </button>
           ))}

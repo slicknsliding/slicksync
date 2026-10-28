@@ -5571,7 +5571,7 @@ export interface MetricsData {
   };
   nowPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
-    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean };
+    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean; episodeTitle?: string };
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)
@@ -5582,6 +5582,10 @@ export interface MetricsData {
     // checkpointed yet.
     lastPosition?: number | null;
     totalDuration?: number | null;
+    // Worked out from when it started and the title's runtime, because the app
+    // hasn't said (server/utils/nowPlayingEstimate.js): the card says so.
+    positionEstimated?: boolean;
+    durationEstimated?: boolean;
     // Pre-built episode-aware deep links (server/utils/appLinks.js, same
     // builder Continue Watching uses) - absent when we don't have a real
     // item id to link to (e.g. an unmatched proxy-only entry).
