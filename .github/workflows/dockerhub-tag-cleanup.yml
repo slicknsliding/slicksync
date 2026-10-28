@@ -1,0 +1,47 @@
+name: Docker Hub tag cleanup
+
+# Docker Hub keeps only the two floating tags, private and public. This
+# removes every other tag (old per-version tags, latest). Run it from the
+# Actions tab, or by pushing a tag named hub-cleanup-<anything>.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'hub-cleanup-*'
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete every tag except private and public
+        env:
+          HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -eu
+          REPO="$HUB_USER/slicksync"
+          JWT=$(curl -fsS -X POST https://hub.docker.com/v2/users/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\":\"$HUB_USER\",\"password\":\"$HUB_TOKEN\"}" | jq -r .token)
+          [ -n "$JWT" ] && [ "$JWT" != null ] || { echo "Docker Hub sign-in failed"; exit 1; }
+          TAGS=""
+          URL="https://hub.docker.com/v2/repositories/$REPO/tags?page_size=100"
+          while [ -n "$URL" ] && [ "$URL" != null ]; do
+            PAGE=$(curl -fsS -H "Authorization: Bearer $JWT" "$URL")
+            TAGS="$TAGS $(echo "$PAGE" | jq -r '.results[].name')"
+            URL=$(echo "$PAGE" | jq -r .next)
+          done
+          deleted=0; failed=0
+          for t in $TAGS; do
+            case "$t" in private|public) continue ;; esac
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $JWT" \
+              "https://hub.docker.com/v2/repositories/$REPO/tags/$t/")
+            if [ "$code" = 204 ]; then deleted=$((deleted+1)); else failed=$((failed+1)); echo "Could not delete $t ($code)"; fi
+          done
+          echo "Deleted $deleted tags, $failed failed."
+          LEFT=$(curl -fsS -H "Authorization: Bearer $JWT" "https://hub.docker.com/v2/repositories/$REPO/tags?page_size=100" | jq -r '[.results[].name] | join(", ")')
+          echo "Left on Docker Hub: $LEFT"
+          [ "$failed" = 0 ]
