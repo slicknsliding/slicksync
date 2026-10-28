@@ -4,6 +4,7 @@
 // Home: the show's artwork, how far in they are, and - once it's paused or
 // stopped - Resume in their app. Nothing here while nothing plays.
 
+import type { ReactNode } from 'react';
 import { PlayIcon } from '@heroicons/react/24/solid';
 import { playbackFreshness } from '@/lib/playbackFreshness';
 import { useSharedNow } from '@/lib/useSharedNow';
@@ -12,6 +13,7 @@ import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 import { estimatedPosition, formatClock } from '@/components/ui/NowPlayingPosition';
 import { providerTypeLabel } from '@/lib/providers';
 import type { NowPlayingItem } from '@/lib/user-api';
+import { useNowPlayingWho } from '@/lib/arrange';
 
 // Only the two apps' own addresses may open from here.
 const safeAppUrl = (u: string | null | undefined) => (u && /^(stremio|nuvio):/i.test(u) ? u : null);
@@ -22,7 +24,24 @@ function minutesLeft(totalMs: number, atMs: number): string {
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m} min left`;
 }
 
-export function NowPlayingBanner({ row, provider, profileLabel }: { row: NowPlayingItem; provider: string | null; profileLabel?: string | null }) {
+// What the banner reads from a row: a person's own Now Playing item and the
+// admin pages' rows (who is watching what) both fit.
+export type NowPlayingBannerRow = Pick<NowPlayingItem, 'item' | 'lastPosition' | 'totalDuration' | 'positionAt' | 'stremioAppUrl' | 'nuvioAppUrl' | 'source' | 'elapsedFrozen' | 'reportedAtTimestamp' | 'paused' | 'playingUntilTimestamp'> & {
+  /** The room or device it is on, when the app reports one ("Living room"). */
+  device?: { name: string | null; client: string | null } | null;
+};
+
+export function NowPlayingBanner({ row, provider, profileLabel, who, compact = false, flush = false }: {
+  row: NowPlayingBannerRow;
+  provider: string | null;
+  profileLabel?: string | null;
+  /** Admin pages: who is watching (picture and name), shown ahead of "Playing in". */
+  who?: ReactNode;
+  /** A smaller banner, for when several people are watching. */
+  compact?: boolean;
+  /** No space under it (the page spaces it). */
+  flush?: boolean;
+}) {
   const now = useSharedNow();
   const imdb = imdbOf(row.item.id);
   const { url: art, onError } = useArtworkFallback([
@@ -37,22 +56,28 @@ export function NowPlayingBanner({ row, provider, profileLabel }: { row: NowPlay
   const progress = total && at != null ? Math.min(100, (at / total) * 100) : null;
   const resumeUrl = !playing ? safeAppUrl(provider === 'nuvio' ? row.nuvioAppUrl : row.stremioAppUrl) : null;
   const episode = row.item.season && row.item.episode ? `Season ${row.item.season}, Episode ${row.item.episode}` : null;
-  const where = [app, profileLabel].filter(Boolean).join(' · ');
+  const where = [app, profileLabel, row.device?.name || row.device?.client].filter(Boolean).join(' · ');
+  // Who and where: on a line under the picture (the default) or on it.
+  const under = useNowPlayingWho().where === 'under';
+  const whoLine = (
+    <p className={`flex items-center gap-2 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
+      {who}
+      <span className={`w-2 h-2 rounded-full shrink-0 ${playing ? 'animate-pulse' : ''}`} style={{ background: playing ? '#22c55e' : '#facc15', boxShadow: playing ? '0 0 0 4px rgba(34,197,94,.2)' : undefined }} />
+      <span className="min-w-0 truncate">{playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
+    </p>
+  );
 
-  return (
-    <section aria-label="Now Playing" className="relative mb-8 rounded-[20px] overflow-hidden h-[230px] sm:h-[300px] min-[2000px]:h-[340px]" style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
+  const banner = (
+    <section aria-label="Now Playing" className={`relative rounded-[20px] overflow-hidden ${flush || under ? '' : 'mb-8 '}${compact ? 'h-[176px]' : 'h-[230px] sm:h-[300px] min-[2000px]:h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
       {art && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center' }} />
       )}
       {/* Dark on the side the words sit on, so they read on every theme. */}
       <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.96) 0%, rgba(10,12,20,.85) 45%, rgba(10,12,20,.15) 100%)' }} />
-      <div className="relative h-full flex flex-col justify-end gap-2 p-5 sm:p-8 max-w-full sm:max-w-[60%]">
-        <p className="flex items-center gap-2 text-[13px]" style={{ color: '#e5e7eb' }}>
-          <span className={`w-2 h-2 rounded-full ${playing ? 'animate-pulse' : ''}`} style={{ background: playing ? '#22c55e' : '#facc15', boxShadow: playing ? '0 0 0 4px rgba(34,197,94,.2)' : undefined }} />
-          {playing ? `Playing in ${where}` : `Paused in ${where}`}
-        </p>
-        <h2 className="text-2xl sm:text-[34px] font-bold leading-tight text-white truncate">{row.item.name}</h2>
+      <div className={`relative h-full flex flex-col justify-end max-w-full ${compact ? 'p-3 gap-0.5 sm:max-w-[80%]' : 'gap-2 p-5 sm:p-8 sm:max-w-[60%]'}`}>
+        {!under && whoLine}
+        <h2 className={`font-bold leading-tight text-white truncate ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
         {episode && <p className="text-sm" style={{ color: '#d1d5db' }}>{episode}</p>}
         {progress != null && (
           <div className="h-1.5 rounded-full mt-1.5" style={{ background: 'rgba(255,255,255,.18)' }}>
@@ -65,8 +90,8 @@ export function NowPlayingBanner({ row, provider, profileLabel }: { row: NowPlay
           </p>
         )}
         {resumeUrl && (
-          <div className="flex gap-2 mt-1.5">
-            <a href={resumeUrl} className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white" style={{ background: 'var(--color-primary)' }}>
+          <div className={`flex gap-2 ${compact ? 'mt-0.5' : 'mt-1.5'}`}>
+            <a href={resumeUrl} className={`inline-flex items-center gap-2 rounded-full font-semibold text-white ${compact ? 'px-3 py-1 text-xs' : 'px-4 py-2 text-sm'}`} style={{ background: 'var(--color-primary)' }}>
               <PlayIcon className="w-4 h-4" />
               Resume in {app}
             </a>
@@ -74,5 +99,12 @@ export function NowPlayingBanner({ row, provider, profileLabel }: { row: NowPlay
         )}
       </div>
     </section>
+  );
+  if (!under) return banner;
+  return (
+    <div className={`min-w-0 ${flush ? '' : 'mb-8'}`}>
+      {banner}
+      {whoLine}
+    </div>
   );
 }

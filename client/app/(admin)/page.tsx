@@ -17,11 +17,16 @@ import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
 import { NowPlayingSection } from '@/components/admin/NowPlayingSection';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
-import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
+import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem, Invitation, InviteRequest, User, VaultEntry } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { usePageArrangement } from '@/lib/arrange';
-import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray, PanelControls } from '@/components/ui/Arrange';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, ArrangeSection, HiddenTray, PanelControls } from '@/components/ui/Arrange';
+import { CreateUserModal } from '@/components/modals/CreateUserModal';
+import { NowPlayingV2, NeedsYouTiles, PersonRow, type NeedsYouItem } from '@/components/v2/DashboardV2';
+import { V2Button, V2Status } from '@/components/v2/V2Bits';
+import { V2MoreMenu, V2Numbers, type V2MenuItem } from '@/components/v2/V2Detail';
+import { judgeEntry } from '@/components/v2/VaultV2';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import {
   UsersIcon,
@@ -373,12 +378,15 @@ const DASH_LABELS: Record<string, string> = {
   stats: 'Numbers', nowPlaying: 'Now Playing', continue: 'Continue Watching', upcoming: 'Coming up',
   syncActivity: 'Sync Activity', recent: 'Recent Activity', topViewers: 'Top Viewers', recentAddons: 'Recent Addons',
   quickActions: 'Quick Actions',
+  needsYou: 'Needs you',
 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
   const [recentAddonsData, setRecentAddons] = useState<Addon[]>([]);
@@ -792,7 +800,50 @@ export default function DashboardPage() {
   const hasNowPlaying = !!(metricsData?.nowPlaying && metricsData.nowPlaying.length > 0);
   const hasContinue = continueWatching.length > 0;
   const isOriginal = layoutMode !== 'nebula';
-  const dashKeys = useMemo(() => [
+
+  // v2: what needs the admin (a sign-in that stopped, someone asking to join,
+  // a service ending), read separately from the page's main load.
+  const [needUsers, setNeedUsers] = useState<User[]>([]);
+  // Which app each person is in, for the Now Playing banners.
+  const nowPlayingProviders = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of needUsers) if (u.providerType) m.set(u.id, u.providerType);
+    for (const a of metricsData?.recentActivity || []) if (a.user.providerType && !m.has(a.user.id)) m.set(a.user.id, a.user.providerType);
+    return m;
+  }, [needUsers, metricsData]);
+  const [needInvites, setNeedInvites] = useState<Invitation[]>([]);
+  const [needVault, setNeedVault] = useState<VaultEntry[]>([]);
+  const [fixing, setFixing] = useState<{ id: string; name: string; provider: string } | null>(null);
+  const [answering, setAnswering] = useState<string | null>(null);
+  const loadNeeds = useCallback(async () => {
+    const [u, i, v] = await Promise.allSettled([api.getUsers(), api.getInvitations(), api.getVaultEntries()]);
+    if (u.status === 'fulfilled') setNeedUsers(Array.isArray(u.value) ? u.value : []);
+    if (i.status === 'fulfilled') setNeedInvites(Array.isArray(i.value) ? i.value : []);
+    if (v.status === 'fulfilled') setNeedVault(Array.isArray(v.value?.entries) ? v.value.entries : []);
+  }, []);
+  useEffect(() => {
+    if (!v2) return;
+    loadNeeds();
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadNeeds(); }, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [v2, loadNeeds]);
+  const failingUsers = useMemo(() => needUsers.filter((u) => !!(u as { providerConnectionError?: string | null }).providerConnectionError), [needUsers]);
+  const pendingRequests = useMemo(() => needInvites.flatMap((inv) => (inv.requests || []).filter((r) => r.status === 'pending').map((r) => ({ inv, r }))), [needInvites]);
+  const vaultNeeds = useMemo(() => {
+    const at = Date.now();
+    return needVault.filter((e) => e.isActive !== false && judgeEntry(e, at).need !== null).map((e) => ({ e, j: judgeEntry(e, at) }));
+  }, [needVault]);
+  const needsCount = failingUsers.length + pendingRequests.length + vaultNeeds.length;
+  const hasNeeds = needsCount > 0;
+
+  const dashKeys = useMemo(() => v2 ? [
+    ...(hasNeeds ? ['needsYou'] : []),
+    ...(hasNowPlaying ? ['nowPlaying'] : []),
+    'stats',
+    ...(hasContinue ? ['continue'] : []),
+    'upcoming',
+    'recent', 'topViewers', 'recentAddons',
+  ] : [
     'stats',
     ...(hasNowPlaying ? ['nowPlaying'] : []),
     ...(hasContinue ? ['continue'] : []),
@@ -800,8 +851,346 @@ export default function DashboardPage() {
     ...(isOriginal ? ['syncActivity'] : []),
     'recent', 'topViewers', 'recentAddons',
     ...(isOriginal ? ['quickActions'] : []),
-  ], [hasNowPlaying, hasContinue, isOriginal]);
+  ], [v2, hasNeeds, hasNowPlaying, hasContinue, isOriginal]);
   const dashArrange = usePageArrangement('dashboard', dashKeys);
+
+  // v2: the same data and handlers, grouped the way the approved mockup
+  // shows them (Page design v2, Themes). Needs you first, then Now Playing as
+  // the big banner from a person's Home, the numbers in one strip, and the
+  // rest as sections that move, fold and hide.
+  if (v2) {
+    const hm = (minutes: number) => {
+      const m = Math.max(0, Math.round(minutes));
+      return m < 60 ? `${m} min` : (m % 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${Math.floor(m / 60)} h`);
+    };
+    const nowDate = new Date(nowTick);
+    const dayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+    const watchedToday = (metricsData?.recentActivity || []).filter((a) => a.watchedAtTimestamp >= dayStart).length;
+    const todayEntry = metricsData?.watchTime?.byDay?.find((d) => d.date === metricsData.today);
+    let todaySeconds = (todayEntry?.hours || 0) * 3600;
+    for (const np of metricsData?.nowPlaying || []) {
+      const startMs = np.watchedAtTimestamp || new Date(np.watchedAt).getTime();
+      if (startMs) todaySeconds += Math.max(0, (nowTick - Math.max(startMs, dayStart)) / 1000);
+    }
+    const providerByUser = new Map<string, string>();
+    for (const u of needUsers) if (u.providerType) providerByUser.set(u.id, u.providerType);
+    for (const a of metricsData?.recentActivity || []) if (a.user.providerType && !providerByUser.has(a.user.id)) providerByUser.set(a.user.id, a.user.providerType);
+
+    const summary = [
+      `${stats.totalUsers} ${stats.totalUsers === 1 ? 'person' : 'people'}`,
+      activeUsers > 0 ? `${activeUsers} watching` : null,
+      needsCount > 0 ? `${needsCount} ${needsCount === 1 ? 'thing needs' : 'things need'} you` : null,
+    ].filter(Boolean).join(' · ');
+
+    const answerRequest = async (r: InviteRequest, accept: boolean) => {
+      setAnswering(r.id);
+      try {
+        if (accept) await api.acceptInviteRequest(r.id); else await api.rejectInviteRequest(r.id);
+        toast.success(accept ? `Approved ${r.username || r.email}` : `Declined ${r.username || r.email}`);
+        await loadNeeds();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Couldn’t answer that request');
+      } finally {
+        setAnswering(null);
+      }
+    };
+    const needsItems: NeedsYouItem[] = [
+      ...failingUsers.map((u) => ({
+        key: `fix-${u.id}`,
+        person: { id: u.id, name: u.username, email: u.email, colorIndex: u.colorIndex, avatarUrl: u.avatarUrl, useGravatar: u.useGravatar },
+        title: u.username,
+        line: 'Sign-in stopped working',
+        actions: <V2Button primary onClick={() => setFixing({ id: u.id, name: u.username, provider: u.providerType || 'stremio' })}>Fix sign-in</V2Button>,
+      })),
+      ...pendingRequests.map(({ inv, r }) => ({
+        key: `ask-${r.id}`,
+        person: { name: r.username || r.email, email: r.email },
+        title: r.username || r.email,
+        line: `Wants to join ${inv.groupName || 'your household'}`,
+        actions: (
+          <>
+            <V2Button disabled={answering === r.id} onClick={() => answerRequest(r, false)}>Decline</V2Button>
+            <V2Button primary disabled={answering === r.id} onClick={() => answerRequest(r, true)}>Approve</V2Button>
+          </>
+        ),
+      })),
+      ...vaultNeeds.map(({ e, j }) => ({
+        key: `vault-${e.id}`,
+        person: null,
+        icon: <PuzzlePieceIcon className="w-5 h-5" />,
+        title: e.name,
+        line: j.line,
+        actions: <V2Button primary={j.need === 'fix'} onClick={() => router.push('/vault')}>{j.need === 'fix' ? 'Fix' : 'Renew'}</V2Button>,
+      })),
+    ];
+
+    const moreItems: V2MenuItem[] = [
+      { label: 'Manage users', icon: <UsersIcon className="w-4 h-4" />, onClick: () => router.push('/users') },
+      { label: 'Manage groups', icon: <UserGroupIcon className="w-4 h-4" />, onClick: () => router.push('/groups') },
+      { label: 'Addons', icon: <PuzzlePieceIcon className="w-4 h-4" />, onClick: () => router.push('/addons') },
+      { label: `Invitations${stats.pendingInvites ? ` (${stats.pendingInvites} waiting)` : ''}`, icon: <EnvelopeIcon className="w-4 h-4" />, onClick: () => router.push('/invitations') },
+      { label: 'Open Activity', icon: <ClockIcon className="w-4 h-4" />, onClick: () => router.push('/activity') },
+    ];
+    const syncButton = (
+      <Button
+        variant="primary"
+        size={isOriginal ? 'md' : 'sm'}
+        leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
+        onClick={handleSyncAll}
+        isLoading={isSyncing}
+      >
+        Sync all
+      </Button>
+    );
+    const v2Actions = (
+      <div className="flex items-center gap-2 flex-wrap">
+        <ArrangeButton arrange={dashArrange} />
+        {syncButton}
+        <V2MoreMenu items={moreItems} />
+      </div>
+    );
+
+    const linkAll = (href: string, label: string) => <Link href={href} className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>{label}</Link>;
+    const half = 'lg:col-span-1';
+    const full = 'lg:col-span-2';
+    const panel = (id: string): React.ReactNode => {
+      switch (id) {
+        case 'needsYou':
+          return (
+            <div key={id} className={full}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Needs you" meta={needsItems.length}>
+                <NeedsYouTiles items={needsItems} />
+              </ArrangeSection>
+            </div>
+          );
+        case 'nowPlaying':
+          return (
+            <div key={id} className={full}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Now Playing" meta={`${metricsData?.nowPlaying?.length ?? 0} watching`}>
+                <NowPlayingV2 rows={metricsData?.nowPlaying ?? []} providerByUser={providerByUser} moreHref="/activity" />
+              </ArrangeSection>
+            </div>
+          );
+        case 'stats':
+          return (
+            <div key={id} className={full}>
+              <V2Numbers
+                items={[
+                  { label: 'Watching now', value: isLoading ? '…' : activeUsers },
+                  { label: 'Watched today', value: isLoading ? '…' : `${watchedToday} ${watchedToday === 1 ? 'title' : 'titles'}` },
+                  { label: 'Watch time today', value: isLoading ? '…' : hm(todaySeconds / 60) },
+                  { label: 'Active this week', value: isLoading ? '…' : `${metricsData?.summary?.activeUsers ?? 0} of ${stats.totalUsers}` },
+                ]}
+              />
+            </div>
+          );
+        case 'continue':
+          return (
+            <div key={id} className={full}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Continue Watching" meta="everyone">
+                <div
+                  ref={scrollRowRef}
+                  onPointerDown={handleRowPointerDown}
+                  onPointerMove={handleRowPointerMove}
+                  onPointerUp={handleRowPointerUp}
+                  onPointerLeave={handleRowPointerUp}
+                  className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
+                >
+                  {continueWatching.map((item, index) => (
+                    <ContinueWatchingCard
+                      key={`${item.userId}-${item.showId}`}
+                      item={item}
+                      priority={index < 6}
+                      wasDraggedRef={wasDraggedRef}
+                      onRemove={handleDismissContinueWatching}
+                      onOpenDetails={setDetailModalItem}
+                      isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                      onMenuOpenChange={handleMenuOpenChange}
+                    />
+                  ))}
+                </div>
+              </ArrangeSection>
+            </div>
+          );
+        case 'upcoming':
+          return (
+            <div key={id} className={full}>
+              <ArrangePanel arrange={dashArrange} id={id} label="Coming up">
+                <UpcomingEpisodesPanel className="" />
+              </ArrangePanel>
+            </div>
+          );
+        case 'recent':
+          return (
+            <div key={id} className={half}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Recent activity" actions={linkAll('/activity', 'View all →')}>
+                <div className="v2-list">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : recentActivityItems.length > 0 ? (
+                    recentActivityItems.map((np, index) => (
+                      <PersonRow
+                        key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
+                        href={`/users/${np.user.id}`}
+                        avatar={<UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />}
+                        when={np.isLive ? 'now' : new Date(np.watchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        extra={np.isLive ? <V2Status tone="live">Live</V2Status> : undefined}
+                      >
+                        <b>{np.user.username.split(' ')[0]}</b>{' '}
+                        <span className="text-muted">
+                          {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+                            <> {np.item.season !== undefined && np.item.season > 0
+                              ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
+                              : `E${String(np.item.episode).padStart(2, '0')}`}</>
+                          )}
+                        </span>
+                      </PersonRow>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+                  )}
+                </div>
+              </ArrangeSection>
+            </div>
+          );
+        case 'topViewers':
+          return (
+            <div key={id} className={half}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Top viewers this week" actions={linkAll('/users', 'See all →')}>
+                <div className="v2-list">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : topUsers.length > 0 ? (
+                    topUsers.map((user) => (
+                      <PersonRow
+                        key={user.id || user.name}
+                        href={`/users/${user.id}`}
+                        avatar={<UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="sm" />}
+                        when={`${hm(user.watchTime)}${user.streak > 0 ? ` · ${user.streak}-day streak` : ''}`}
+                      >
+                        <b>{user.name}</b>
+                      </PersonRow>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No user data</div>
+                  )}
+                </div>
+              </ArrangeSection>
+            </div>
+          );
+        case 'recentAddons':
+          return (
+            <div key={id} className={full}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Recent addons" actions={linkAll('/addons', 'View all →')}>
+                {isLoading ? (
+                  <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                ) : recentAddons.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {recentAddons.map((addon) => (
+                      <RecentAddonItem
+                        key={addon.id}
+                        addon={addon}
+                        isReloading={reloadingAddons.has(addon.id)}
+                        onReload={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (reloadingAddons.has(addon.id)) return;
+                          setReloadingAddons((prev) => new Set(prev).add(addon.id));
+                          try {
+                            await api.reloadAddon(addon.id);
+                            toast.success(`Reloaded ${addon.name}`);
+                          } catch (err) {
+                            toast.error((err as Error).message || 'Reload failed');
+                          } finally {
+                            setReloadingAddons((prev) => {
+                              const next = new Set(prev);
+                              next.delete(addon.id);
+                              return next;
+                            });
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-sm text-muted">No recent addons</div>
+                )}
+              </ArrangeSection>
+            </div>
+          );
+        default:
+          return null;
+      }
+    };
+
+    const body = (
+      <>
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
+            <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Failed to load dashboard data</p>
+              <p className="opacity-90">{error.message}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => refreshData()} className="ml-auto">
+              Retry
+            </Button>
+          </div>
+        )}
+        <SetupChecklist />
+        <ArrangeBar arrange={dashArrange} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-5 gap-y-7 items-start">
+          {dashArrange.shown.map((id) => panel(id))}
+        </div>
+        <HiddenTray arrange={dashArrange} labelOf={(id) => DASH_LABELS[id] || id} note="Hidden only here. Tap one to bring it back." />
+      </>
+    );
+
+    return (
+      <>
+        {isOriginal ? (
+          <>
+            <Header title="Dashboard" subtitle={summary} actions={v2Actions} />
+            <div className="p-6 lg:p-8">{body}</div>
+          </>
+        ) : (
+          <div className="px-4 md:px-6 pb-8 pt-6">
+            <div className="mx-auto" style={{ maxWidth: 'min(120rem, 92vw)' }}>
+              <NebulaPageHeading title="Dashboard" subtitle={summary} actions={v2Actions} />
+              {body}
+            </div>
+          </div>
+        )}
+
+        {detailModalItem && (
+          <MediaDetailModal
+            isOpen={!!detailModalItem}
+            onClose={() => setDetailModalItem(null)}
+            itemId={detailModalItem.showId}
+            itemType={detailModalItem.contentType}
+            videoId={detailModalItem.nextEpisode ? `${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}` : null}
+            fallbackTitle={detailModalItem.showName}
+            fallbackPoster={detailModalItem.poster}
+          />
+        )}
+        {fixing && (
+          <CreateUserModal
+            isOpen
+            onClose={() => setFixing(null)}
+            mode="reconnect"
+            userId={fixing.id}
+            userName={fixing.name}
+            providerType={fixing.provider}
+            onReconnectSuccess={() => {
+              setFixing(null);
+              loadNeeds();
+            }}
+          />
+        )}
+      </>
+    );
+  }
 
   // Nebula layout - same data/handlers as above (refreshData, continueWatching,
   // recentActivityItems, etc.), just a different arrangement: top nav instead
@@ -944,7 +1333,7 @@ export default function DashboardPage() {
                           </div>
                       <PanelControls side="end" />
                         </div>
-                        <NowPlayingSection items={metricsData?.nowPlaying ?? []} now={nowTick} fetchedAt={metricsAt} />
+                        <NowPlayingSection items={metricsData?.nowPlaying ?? []} now={nowTick} providerByUser={nowPlayingProviders} />
                       </div>
                     ))}
                     {dashPanel('continue', 'Continue Watching', 'lg:col-span-2', (
@@ -1283,7 +1672,7 @@ export default function DashboardPage() {
                         </div>
                   <PanelControls side="end" />
                       </div>
-                      <NowPlayingSection items={metricsData?.nowPlaying ?? []} now={nowTick} fetchedAt={metricsAt} />
+                      <NowPlayingSection items={metricsData?.nowPlaying ?? []} now={nowTick} providerByUser={nowPlayingProviders} />
                     </Card>
                   </PageSection>
                 ))}

@@ -18,6 +18,10 @@ import { userLibrary, LibraryItem } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { ViewModeToggle } from '@/components/ui';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { MeLibraryV2, LIBRARY_SECTIONS, type LibraryFilter } from '@/components/v2/MeLibraryV2';
+import { providerTypeLabel } from '@/lib/providers';
 
 type ViewMode = 'grid' | 'list';
 
@@ -311,6 +315,14 @@ export default function UserLibraryPage() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
+  // v2 (Themes -> Page design): one design for their own pages too.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const v2Arrange = usePageArrangement('library', [...LIBRARY_SECTIONS]);
+  const [typeFilter, setTypeFilter] = useState<LibraryFilter>('all');
+  const [selecting, setSelecting] = useState(false);
+
   // Load view mode preference
   useEffect(() => {
     const saved = localStorage.getItem('user-library-view-mode');
@@ -452,8 +464,44 @@ export default function UserLibraryPage() {
     return provider === 'nuvio' ? buildNuvioAppUrl(itemId, type) : buildStremioAppUrl(itemId, type);
   };
 
+  // v2: the search and Everything / Shows / Movies, applied together.
+  const v2Items = useMemo(
+    () => (typeFilter === 'all' ? filteredLibrary : filteredLibrary.filter((i) => i.type === typeFilter)),
+    [filteredLibrary, typeFilter],
+  );
+  const appLabel = provider === 'nuvio' || provider === 'stremio' ? providerTypeLabel(provider) : null;
+  const openAppUrl = provider === 'nuvio' ? 'nuvio://' : provider === 'stremio' ? 'stremio:///' : null;
+
   return (
     <div className="p-4 sm:p-8">
+      {v2 ? (
+        <MeLibraryV2
+          items={v2Items}
+          total={filteredLibrary.length}
+          arrange={v2Arrange}
+          view={viewMode}
+          onView={setViewMode}
+          search={search}
+          onSearch={setSearch}
+          filter={typeFilter}
+          onFilter={setTypeFilter}
+          selecting={selecting}
+          onSelecting={setSelecting}
+          selected={selectedItems}
+          onToggle={handleItemToggle}
+          onSelectAll={() => setSelectedItems(v2Items.map((i) => i._id).filter(Boolean))}
+          onClear={handleDeselectAll}
+          onDeleteSelected={handleDeleteSelected}
+          deleting={deletingIds.size > 0}
+          canDelete={canDeleteLibraryItems}
+          linkOf={getStremioLink}
+          watchTimeOf={(item) => formatWatchTime(item.state?.overallTimeWatched)}
+          appName={appLabel}
+          openAppUrl={openAppUrl}
+          subtitle={`${filteredLibrary.length} ${filteredLibrary.length === 1 ? 'title' : 'titles'}`}
+        />
+      ) : (
+      <>
       <UserPageHeader
         title="My Library"
         subtitle={`${filteredLibrary.length} items in your library`}
@@ -543,6 +591,9 @@ export default function UserLibraryPage() {
         </motion.div>
       )}
 
+      </>
+      )}
+
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-20">
@@ -588,7 +639,7 @@ export default function UserLibraryPage() {
       )}
 
       {/* Library - flat list, no date grouping */}
-      {!loading && !error && filteredLibrary.length > 0 && (
+      {!v2 && !loading && !error && filteredLibrary.length > 0 && (
         viewMode === 'grid' ? (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
             <AnimatePresence mode="popLayout">

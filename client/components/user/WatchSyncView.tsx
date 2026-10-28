@@ -25,6 +25,9 @@ import { KeepInStepCard } from '@/components/user/KeepInStepCard';
 import { toast } from '@/components/ui/Toast';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageDesign } from '@/lib/arrange';
+import { V2DetailHead } from '@/components/v2/V2Detail';
 import {
   api, type WatchCopySide, type WatchCopyPerson, type WatchCopyPreview, type WatchCopyItem, type WatchCopyOutcome, type WatchCopyRun, type WatchCopyHas,
 } from '@/lib/api';
@@ -429,6 +432,10 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [userId]);
   const { layoutMode } = useLayoutMode();
   const compact = useCoarsePointer();
+  // v2 page design (Themes → Page design); the TV app always keeps Classic.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
 
   const [person, setPerson] = useState<string>('');
   const [sides, setSides] = useState<WatchCopySide[] | null>(null);
@@ -587,6 +594,23 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
     { key: 'match', n: totals.match, label: 'need a match', color: 'var(--color-primary)' },
   ] : [];
 
+  // The "copy into ...?" question, anchored by whoever opens it.
+  const copyConfirm = (place: string) => fromChoice && toChoice && (
+    <div className={`absolute z-30 ${place} rounded-2xl border border-default p-4 shadow-2xl`} style={{ background: 'var(--color-surface)' }}>
+      <div className="font-semibold text-sm text-default">{copyLabel} into {choiceLabel(toChoice)}?</div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 p-2.5 rounded-xl text-xs font-semibold bg-surface-hover">
+        <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: FROM_C }}><ProfilePic profile={fromChoice.profile} person={fromChoice.sideInfo.person || personInfo} kind={fromChoice.sideInfo.kind} size={22} /><span className="truncate">{fromChoice.profileName || choiceLabel(fromChoice)}</span></span>
+        <span className="text-muted">→</span>
+        <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: TO_C }}><ProfilePic profile={toChoice.profile} person={toChoice.sideInfo.person || personInfo} kind={toChoice.sideInfo.kind} size={22} /><span className="truncate">{toChoice.profileName || choiceLabel(toChoice)}</span></span>
+      </div>
+      <p className="text-sm text-muted mt-2">Watched marks and resume points are added there. Nothing is removed, and you can undo it from this page for 7 days.</p>
+      <div className="flex justify-end gap-2 mt-3">
+        <Button variant="secondary" size="sm" onClick={() => setConfirmCopy(false)}>Cancel</Button>
+        <button type="button" onClick={() => { setConfirmCopy(false); void runCopy(); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}>{copyLabel}</button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {layoutMode !== 'nebula' && (
@@ -594,13 +618,30 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
           title={<Breadcrumbs items={home === 'tasks'
             ? [{ label: 'Tasks', href: '/tasks' }, { label: 'AIOSync' }]
             : [{ label: 'Users', href: '/users' }, { label: person || 'Person', href: `/users/${encodeURIComponent(userId)}` }, { label: 'AIOSync' }]} className="text-xl font-semibold" />}
-          subtitle={subtitle}
+          subtitle={v2 ? undefined : subtitle}
           actions={backButton}
         />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-4 md:p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-          {layoutMode === 'nebula' && <NebulaPageHeading title="AIOSync" subtitle={subtitle} leading={backButton} />}
+          {layoutMode === 'nebula' && (
+            <NebulaPageHeading title={v2 ? (home === 'tasks' ? 'Tasks' : 'Users') : 'AIOSync'} subtitle={v2 ? undefined : subtitle} leading={backButton} />
+          )}
+          {v2 && (
+            <V2DetailHead
+              lead={<span className="v2-tool-icon" style={{ width: 58, height: 58, borderRadius: 16 }}><ArrowsRightLeftIcon className="w-7 h-7" /></span>}
+              title="AIOSync"
+              facts="Copy watched titles and resume points between sign-ins. Nothing is removed."
+              actions={(
+                <div ref={copyRef} className="relative">
+                  <button type="button" disabled={!toCopy.length || copying} onClick={() => setConfirmCopy((o) => !o)} aria-expanded={confirmCopy} className="v2-btn v2-btn-main">
+                    {copying ? 'Copying…' : preview ? copyLabel : 'Copy'}
+                  </button>
+                  {confirmCopy && fromChoice && toChoice && copyConfirm('left-0 sm:left-auto sm:right-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))]')}
+                </div>
+              )}
+            />
+          )}
           {forSlot}
           <PageSection>
             {lastRun && (
@@ -700,12 +741,26 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
                   </label>
                 </div>
 
+                {v2 && (
+                  <p className="mt-3 flex items-center gap-2 text-xs" style={{ color: AMBER }}>
+                    <ShieldCheckIcon className="w-4 h-4 shrink-0" />
+                    SlickSync saves what {choiceLabel(toChoice)} has first, so you can undo this copy for 7 days.
+                  </p>
+                )}
                 {error && <div className="mt-5 text-sm" style={{ color: 'var(--color-error, #ef4444)' }}>{error}</div>}
                 {loading && <div className="mt-5 text-sm text-muted">Reading both sides — a long history takes a little while…</div>}
 
                 {preview && !loading && (
                   <>
-                    <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {v2 && (
+                      <div className="mt-7 flex items-baseline gap-2.5 flex-wrap">
+                        <h2 className="text-lg font-semibold">Titles to copy</h2>
+                        <span className="text-muted text-[13px]">
+                          {preview.items.filter((i) => i.type === 'movie').length.toLocaleString()} movies · {preview.items.filter((i) => i.type === 'series').length.toLocaleString()} shows
+                        </span>
+                      </div>
+                    )}
+                    <div className={`${v2 ? 'mt-3' : 'mt-5'} grid grid-cols-2 md:grid-cols-4 gap-2.5`}>
                       {tiles.map((t) => {
                         const on = filter === t.key;
                         return (
@@ -794,6 +849,7 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
                     {visible.length === 0 && <div className="mt-4 text-sm text-muted">Nothing here.</div>}
 
                     {/* In the top-bar layout the account button floats in the bottom-left corner; the bar starts after it. */}
+                    {!v2 && (
                     <div className={`sticky bottom-3 z-20 mt-4 flex items-center justify-between gap-3 pr-3.5 py-3 rounded-2xl border border-default ${layoutMode === 'nebula' ? 'pl-[4.25rem] md:pl-20' : 'pl-3.5'}`} style={{ background: 'var(--color-surface)', boxShadow: '0 -8px 30px -16px rgba(0,0,0,.7)' }}>
                       <div className="flex items-center gap-2 min-w-0 text-xs" style={{ color: AMBER }}>
                         <ShieldCheckIcon className="hidden sm:block w-4 h-4 shrink-0" />
@@ -806,23 +862,10 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
                         <button type="button" disabled={!toCopy.length || copying} onClick={() => setConfirmCopy((o) => !o)} aria-expanded={confirmCopy} className={`px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm text-white disabled:opacity-50 ${confirmCopy ? 'copy-btn-open' : ''}`} style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))', boxShadow: '0 8px 22px -10px var(--color-primary)' }}>
                           {copying ? 'Copying…' : copyLabel}
                         </button>
-                        {confirmCopy && (
-                          <div className="absolute z-30 left-0 right-0 bottom-full mb-3 sm:left-auto sm:w-[22rem] rounded-2xl border border-default p-4 shadow-2xl" style={{ background: 'var(--color-surface)' }}>
-                            <div className="font-semibold text-sm text-default">{copyLabel} into {choiceLabel(toChoice)}?</div>
-                            <div className="mt-2.5 flex flex-wrap items-center gap-2 p-2.5 rounded-xl text-xs font-semibold bg-surface-hover">
-                              <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: FROM_C }}><ProfilePic profile={fromChoice.profile} person={fromChoice.sideInfo.person || personInfo} kind={fromChoice.sideInfo.kind} size={22} /><span className="truncate">{fromChoice.profileName || choiceLabel(fromChoice)}</span></span>
-                              <span className="text-muted">→</span>
-                              <span className="inline-flex items-center gap-1.5 min-w-0" style={{ color: TO_C }}><ProfilePic profile={toChoice.profile} person={toChoice.sideInfo.person || personInfo} kind={toChoice.sideInfo.kind} size={22} /><span className="truncate">{toChoice.profileName || choiceLabel(toChoice)}</span></span>
-                            </div>
-                            <p className="text-sm text-muted mt-2">Watched marks and resume points are added there. Nothing is removed, and you can undo it from this page for 7 days.</p>
-                            <div className="flex justify-end gap-2 mt-3">
-                              <Button variant="secondary" size="sm" onClick={() => setConfirmCopy(false)}>Cancel</Button>
-                              <button type="button" onClick={() => { setConfirmCopy(false); void runCopy(); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}>{copyLabel}</button>
-                            </div>
-                          </div>
-                        )}
+                        {confirmCopy && copyConfirm('left-0 right-0 bottom-full mb-3 sm:left-auto sm:w-[22rem]')}
                       </div>
                     </div>
+                    )}
                   </>
                 )}
                 </>)}

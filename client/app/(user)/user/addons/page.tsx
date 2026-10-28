@@ -12,15 +12,25 @@ import {
   PlusIcon,
   GlobeAltIcon,
 } from '@heroicons/react/24/outline';
-import { useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
+import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userAddons, GroupAddon, StremioAddon } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { providerTypeLabel } from '@/lib/providers';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { MeAddonsV2, ADDON_SECTIONS } from '@/components/v2/MeAddonsV2';
+import { MeHead } from '@/components/v2/MeBits';
 
 type TabType = 'group' | 'stremio';
 
 export default function UserAddonsPage() {
   const { userId, authKey, provider, isReady } = useUserAuthHeaders();
+  const { userInfo } = useUserAuth();
+  // v2 (Themes -> Page design): one design for their own pages too.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const v2Arrange = usePageArrangement('addons', [...ADDON_SECTIONS]);
   const providerLabel = providerTypeLabel(provider);
   const [groupAddons, setGroupAddons] = useState<GroupAddon[]>([]);
   const [stremioAddons, setStremioAddons] = useState<StremioAddon[]>([]);
@@ -110,7 +120,35 @@ export default function UserAddonsPage() {
     }
   };
 
+  // Add one of their own (v2): the same call, then the list is read again.
+  const handleAddAddon = async (addonUrl: string): Promise<boolean> => {
+    if (!userId) return false;
+    try {
+      const res = await userAddons.addAddon(userId, addonUrl, undefined, authKey || undefined);
+      if (res && res.success === false) throw new Error(res.message || 'Failed to add addon');
+      const result = await userAddons.getAddons(userId, authKey || undefined);
+      setGroupAddons(result.groupAddons || []);
+      setStremioAddons(result.stremioAddons || []);
+      setExcludedIds(result.excludedAddonIds || []);
+      setProtectedNames(result.protectedAddonNames || []);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'Failed to add addon');
+      return false;
+    }
+  };
+
   // A Jellyfin-compatible server keeps no addon list SlickSync can manage.
+  if (provider === 'jellyfin' && v2) {
+    return (
+      <div className="p-4 sm:p-8">
+        <MeHead title="Your addons" sub="Your server has no addon list for SlickSync to manage" />
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          What you watch on your server still shows up in your activity, library and stats.
+        </p>
+      </div>
+    );
+  }
   if (provider === 'jellyfin') {
     return (
       <div className="p-4 sm:p-8">
@@ -118,6 +156,42 @@ export default function UserAddonsPage() {
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
           What you watch on your server still shows up in your activity, library and stats.
         </p>
+      </div>
+    );
+  }
+
+  if (v2) {
+    return (
+      <div className="p-4 sm:p-8">
+        {error && (
+          <div className="p-4 rounded-xl mb-6" style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}>
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 underline hover:no-underline">Dismiss</button>
+          </div>
+        )}
+        {loading ? (
+          <>
+            <MeHead title="Your addons" sub="Loading…" />
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
+            </div>
+          </>
+        ) : (
+          <MeAddonsV2
+            arrange={v2Arrange}
+            groupName={userInfo?.groupName}
+            providerLabel={providerLabel}
+            groupAddons={groupAddons}
+            excludedIds={excludedIds}
+            stremioAddons={stremioAddons}
+            protectedNames={protectedNames || []}
+            busy={actionLoading}
+            onToggleExclude={handleToggleExclude}
+            onToggleProtect={handleToggleProtect}
+            onRemove={handleRemoveAddon}
+            onAdd={handleAddAddon}
+          />
+        )}
       </div>
     );
   }

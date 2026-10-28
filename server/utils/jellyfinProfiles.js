@@ -117,6 +117,65 @@ async function signInHousehold({ probe, login, password, typedLogin, onSignIn, s
 }
 
 /**
+ * Rows that are not a real household profile. A person separated out of a
+ * household signs in at the same configuration, so their own household check
+ * listed everyone there again - the person they were separated from included -
+ * and built a second household that mirrors the first, with the original owner
+ * "Separated" in it. A row is such an echo when its owner was already someone
+ * else's profile (separated) before the row existed. Older data has them; they
+ * are ignored when reading, and tidied away by repairEchoedHouseholds.
+ */
+function echoRows(rows, memberRows) {
+  const since = new Map()
+  for (const m of memberRows) {
+    const at = new Date(m.createdAt).getTime()
+    if (!since.has(m.ownUserId) || at < since.get(m.ownUserId).at) since.set(m.ownUserId, { at, ownerUserId: m.ownerUserId })
+  }
+  return rows.filter((r) => {
+    const s = since.get(r.ownerUserId)
+    return s && s.at < new Date(r.createdAt).getTime()
+  }).map((r) => ({ row: r, trueOwnerId: since.get(r.ownerUserId).ownerUserId }))
+}
+
+async function memberRowsOf(prisma, ownerIds) {
+  if (!ownerIds.length) return []
+  return prisma.jellyfinProfile.findMany({ where: { ownUserId: { in: ownerIds } }, select: { ownUserId: true, ownerUserId: true, createdAt: true } })
+}
+
+/** The rows that really belong to these owners' households. */
+async function withoutEchoes(prisma, rows) {
+  const owners = [...new Set(rows.map((r) => r.ownerUserId))]
+  const echoes = new Set(echoRows(rows, await memberRowsOf(prisma, owners)).map((e) => e.row.id))
+  return echoes.size ? rows.filter((r) => !echoes.has(r.id)) : rows
+}
+
+/** True when this person is a separated profile of someone else's household. */
+async function isSeparatedMember(prisma, userId) {
+  const mine = await prisma.jellyfinProfile.findMany({ where: { ownUserId: userId } })
+  if (!mine.length) return false
+  return (await withoutEchoes(prisma, mine)).length > 0
+}
+
+/**
+ * Tidy the echoes of separated people's households. Only a row that repeats
+ * what the real household already has is removed: the person it names, or a
+ * server user the real owner's household lists too. Idempotent; returns how
+ * many went.
+ */
+async function repairEchoedHouseholds(prisma, accountId) {
+  const members = await prisma.jellyfinProfile.findMany({ where: { accountId, ownUserId: { not: null } } })
+  if (!members.length) return 0
+  const echoes = echoRows(await prisma.jellyfinProfile.findMany({ where: { accountId, ownerUserId: { in: [...new Set(members.map((m) => m.ownUserId))] } } }), members)
+  if (!echoes.length) return 0
+  const trueRows = await prisma.jellyfinProfile.findMany({ where: { accountId, ownerUserId: { in: [...new Set(echoes.map((e) => e.trueOwnerId))] } }, select: { ownerUserId: true, jellyfinUserId: true } })
+  const have = new Set(trueRows.map((t) => `${t.ownerUserId}:${t.jellyfinUserId}`))
+  const redundant = echoes.filter((e) => e.row.ownUserId === e.trueOwnerId || have.has(`${e.trueOwnerId}:${e.row.jellyfinUserId}`)).map((e) => e.row.id)
+  if (!redundant.length) return 0
+  const { count } = await prisma.jellyfinProfile.deleteMany({ where: { id: { in: redundant } } })
+  return count
+}
+
+/**
  * Keep the household on the person. A profile someone already separated into
  * their own person stays theirs, and an untracked one stays untracked; only
  * the sign-in is refreshed.
@@ -182,6 +241,8 @@ async function describeMain(decrypt, owner) {
 const lastLook = new Map()
 async function refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs = 0 } = {}) {
   if (!owner || owner.providerType !== 'jellyfin' || !hasHousehold(owner.jellyfinServerKind) || !owner.jellyfinToken) return 0
+  // A separated person belongs to the household they came from; they do not start another.
+  if (await isSeparatedMember(prisma, owner.id)) return 0
   const at = lastLook.get(owner.id) || 0
   if (minIntervalMs && Date.now() - at < minIntervalMs) return 0
   lastLook.set(owner.id, Date.now())
@@ -205,6 +266,12 @@ function scheduleHouseholdRefresh(prisma, decrypt, encrypt) {
   const run = async () => {
     try {
       const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', isActive: true, jellyfinToken: { not: null }, jellyfinServerKind: { in: [...HOUSEHOLD_KINDS] } } })
+      for (const accountId of new Set(owners.map((o) => o.accountId || 'default'))) {
+        try {
+          const n = await repairEchoedHouseholds(prisma, accountId)
+          if (n) console.log(`[JellyfinProfiles] tidied ${n} repeated household row(s)`)
+        } catch (e) { console.warn('[JellyfinProfiles] household tidy failed:', e?.message) }
+      }
       for (const o of owners) {
         try {
           mainNames.delete(o.id)
@@ -242,9 +309,9 @@ async function forgetProfileSignIn(prisma, profileId) {
 
 /** The profiles this person reads, with decrypted sign-ins, for the provider. */
 async function trackedProfiles(prisma, decrypt, userId) {
-  const rows = await prisma.jellyfinProfile.findMany({
+  const rows = await withoutEchoes(prisma, await prisma.jellyfinProfile.findMany({
     where: { ownerUserId: userId, skip: false, ownUserId: null, token: { not: null } },
-  })
+  }))
   const out = []
   for (const r of rows) {
     try {
@@ -256,7 +323,7 @@ async function trackedProfiles(prisma, decrypt, userId) {
 
 /** The household as the person page shows it. */
 async function describeHousehold(prisma, userId) {
-  const rows = await prisma.jellyfinProfile.findMany({ where: { ownerUserId: userId }, orderBy: { name: 'asc' } })
+  const rows = await withoutEchoes(prisma, await prisma.jellyfinProfile.findMany({ where: { ownerUserId: userId }, orderBy: { name: 'asc' } }))
   const people = await prisma.user.findMany({
     where: { id: { in: rows.map((r) => r.ownUserId).filter(Boolean) } },
     select: { id: true, username: true },
@@ -370,7 +437,10 @@ async function mergeProfileBack(prisma, { profile, owner }) {
   return { mergedInto: owner.id, removed: { id: person.id, username: person.username } }
 }
 
-module.exports = { describeMain, refreshHousehold, scheduleHouseholdRefresh,
+module.exports = { describeMain,
+  echoRows,
+  isSeparatedMember,
+  repairEchoedHouseholds, refreshHousehold, scheduleHouseholdRefresh,
   forgetPersonHousehold,
   forgetProfileSignIn,
   hasHousehold,

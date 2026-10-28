@@ -29,6 +29,9 @@ import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { toast } from '@/components/ui/Toast';
 import { ViewModeToggle } from '@/components/ui';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { MeSharesV2, SHARE_SECTIONS } from '@/components/v2/MeSharesV2';
 
 type TabType = 'received' | 'sent';
 type ViewMode = 'grid' | 'list';
@@ -54,6 +57,13 @@ export default function UserSharesPage() {
   const [selectedShares, setSelectedShares] = useState<Set<string>>(new Set());
   const [userFilter, setUserFilter] = useState<string>('all');
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+
+  // v2 (Themes -> Page design): one design for their own pages too.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const v2Arrange = usePageArrangement('shares', [...SHARE_SECTIONS]);
+  const [selecting, setSelecting] = useState(false);
 
   // Load view mode from localStorage
   useEffect(() => {
@@ -612,47 +622,10 @@ export default function UserSharesPage() {
     );
   };
 
-  return (
-    <div className="p-4 sm:p-8">
-      <UserPageHeader
-        title="Shares"
-        subtitle="Media shared with you and by you"
-      />
-
-      {/* Toolbar */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-wrap items-center gap-3 mb-6"
-      >
-        {/* Tabs */}
-        <div 
-          className="flex p-1 rounded-xl"
-          style={{ background: 'var(--color-surface)' }}
-        >
-          <button
-            onClick={() => { setActiveTab('received'); setSelectedShares(new Set()); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'received' ? 'seg-on' : 'seg-off'}`}
-          >
-            <InboxIcon className="w-4 h-4" />
-            Received
-            {unviewedCount > 0 && (
-              <span
-                className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'received' ? 'badge-flip' : 'seg-on'}`}
-              >
-                {unviewedCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => { setActiveTab('sent'); setSelectedShares(new Set()); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'sent' ? 'seg-on' : 'seg-off'}`}
-          >
-            <PaperAirplaneIcon className="w-4 h-4" />
-            Sent ({sentShares.length})
-          </button>
-        </div>
-
+  // The search and person filter, and the bar for the shares picked, are drawn the
+  // same in both designs.
+  const searchAndFilter = (
+    <>
         {/* Search */}
         <div 
           className="flex items-center gap-2 px-3 py-2 rounded-lg flex-1 min-w-48"
@@ -711,13 +684,11 @@ export default function UserSharesPage() {
           </div>
         )}
 
-        {/* View Mode Toggle */}
-        <ViewModeToggle
-          mode={viewMode}
-          onChange={(mode) => setViewMode(mode)}
-        />
-      </motion.div>
+    </>
+  );
 
+  const bulkBar = (
+    <>
       {/* Selection Bar */}
       {selectedShares.size > 0 && (
         <motion.div
@@ -766,6 +737,168 @@ export default function UserSharesPage() {
           </button>
         </motion.div>
       )}
+
+    </>
+  );
+
+  const membersBox = (
+    <>
+      {/* Group Members Info */}
+      {!loading && groupMembers.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mt-8 p-4 rounded-xl"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <UserGroupIcon className="w-5 h-5" style={{ color: 'var(--color-text-muted)' }} />
+            <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+              Group Members ({groupMembers.length})
+            </h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {groupMembers.map((member) => (
+              <div
+                key={member.id}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+                style={{ background: 'var(--color-surface-elevated)' }}
+              >
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-medium"
+                  style={{ background: `hsl(${(member.colorIndex || 0) * 60}, 70%, 50%)` }}
+                >
+                  {member.username.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-sm" style={{ color: 'var(--color-text)' }}>
+                  {member.username}
+                </span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </>
+  );
+
+  if (v2) {
+    const shareLink = (share: Share) => provider === 'nuvio'
+      ? buildNuvioAppUrl(share.itemId, share.itemType === 'series' ? 'series' : 'movie')
+      : buildStremioAppUrl(share.itemId, share.itemType === 'series' ? 'series' : 'movie');
+    return (
+      <div className="p-4 sm:p-8">
+        {error && (
+          <div className="p-4 rounded-xl mb-6" style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}>
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 underline hover:no-underline">Dismiss</button>
+          </div>
+        )}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
+          </div>
+        ) : (
+          <MeSharesV2
+            arrange={v2Arrange}
+            tab={activeTab}
+            onTab={(t) => { setActiveTab(t); setSelectedShares(new Set()); }}
+            received={filteredReceived}
+            sent={filteredSent}
+            receivedCount={receivedShares.length}
+            sentCount={sentShares.length}
+            unviewed={unviewedCount}
+            view={viewMode}
+            onView={setViewMode}
+            toolbar={<div className="flex flex-wrap items-center gap-3 mb-4">{searchAndFilter}</div>}
+            bulkBar={bulkBar}
+            members={membersBox}
+            selecting={selecting}
+            onSelecting={setSelecting}
+            selected={selectedShares}
+            onToggle={handleToggleSelect}
+            busy={actionLoading}
+            inLibrary={isInLibrary}
+            linkOf={shareLink}
+            when={formatRelativeTime}
+            onAddToLibrary={handleAddToLibrary}
+            onMarkViewed={handleMarkViewed}
+            onRemove={handleRemoveShare}
+            onClear={handleDeselectAll}
+            empty={(
+              <div className="text-center py-16">
+                {activeTab === 'received'
+                  ? <InboxIcon className="w-14 h-14 mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />
+                  : <PaperAirplaneIcon className="w-14 h-14 mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />}
+                <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--color-text)' }}>
+                  {searchTerm || userFilter !== 'all' ? 'No matches found' : activeTab === 'received' ? 'Nothing shared with you yet' : 'You haven’t sent anything yet'}
+                </h3>
+                <p style={{ color: 'var(--color-text-muted)' }}>
+                  {searchTerm || userFilter !== 'all'
+                    ? 'Try a different search or person.'
+                    : activeTab === 'received'
+                    ? 'When someone shares a title with you, it will show up here.'
+                    : 'Share a title from your library to recommend it to someone.'}
+                </p>
+              </div>
+            )}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 sm:p-8">
+      <UserPageHeader
+        title="Shares"
+        subtitle="Media shared with you and by you"
+      />
+
+      {/* Toolbar */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-wrap items-center gap-3 mb-6"
+      >
+        {/* Tabs */}
+        <div 
+          className="flex p-1 rounded-xl"
+          style={{ background: 'var(--color-surface)' }}
+        >
+          <button
+            onClick={() => { setActiveTab('received'); setSelectedShares(new Set()); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'received' ? 'seg-on' : 'seg-off'}`}
+          >
+            <InboxIcon className="w-4 h-4" />
+            Received
+            {unviewedCount > 0 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'received' ? 'badge-flip' : 'seg-on'}`}
+              >
+                {unviewedCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => { setActiveTab('sent'); setSelectedShares(new Set()); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'sent' ? 'seg-on' : 'seg-off'}`}
+          >
+            <PaperAirplaneIcon className="w-4 h-4" />
+            Sent ({sentShares.length})
+          </button>
+        </div>
+
+        {searchAndFilter}
+
+        {/* View Mode Toggle */}
+        <ViewModeToggle
+          mode={viewMode}
+          onChange={(mode) => setViewMode(mode)}
+        />
+      </motion.div>
+
+      {bulkBar}
 
       {/* Loading */}
       {loading && (
@@ -846,42 +979,7 @@ export default function UserSharesPage() {
         </AnimatePresence>
       )}
 
-      {/* Group Members Info */}
-      {!loading && groupMembers.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-8 p-4 rounded-xl"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <UserGroupIcon className="w-5 h-5" style={{ color: 'var(--color-text-muted)' }} />
-            <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-              Group Members ({groupMembers.length})
-            </h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {groupMembers.map((member) => (
-              <div
-                key={member.id}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full"
-                style={{ background: 'var(--color-surface-elevated)' }}
-              >
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                  style={{ background: `hsl(${(member.colorIndex || 0) * 60}, 70%, 50%)` }}
-                >
-                  {member.username.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-sm" style={{ color: 'var(--color-text)' }}>
-                  {member.username}
-                </span>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+      {membersBox}
     </div>
   );
 }

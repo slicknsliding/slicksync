@@ -194,12 +194,13 @@ export default function AdminClientLayout({
     <AdminAuthGate>
       <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
         <TVBackButton />
-        {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
-            hint/shortcut makes no sense there. */}
-        {!isTV && <CommandPalette />}
         <LiveEventsBridge />
         {!isTV && onboardingScopeReady && <OnboardingWizard />}
         <ArrangeProvider>
+        {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
+            hint/shortcut makes no sense there. Inside the arrangement so the
+            palette follows Page design (v2). */}
+        {!isTV && <CommandPalette />}
         {!isTV && <StartPageRedirect />}
         <VaultDragProvider>
           <LayoutDndWrapper>

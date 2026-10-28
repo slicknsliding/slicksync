@@ -214,6 +214,20 @@ export function useDensity() {
   return { density, setDensity };
 }
 
+/** Now Playing: who is watching under the picture (the default) or on it. */
+export function useNowPlayingWho() {
+  const { arrangement, update } = useArrangement();
+  const where: 'under' | 'on' = arrangement.nowPlayingWho === 'on' ? 'on' : 'under';
+  const setWhere = useCallback((w: 'under' | 'on') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, nowPlayingWho: 'on' };
+      if (w === 'under') delete out.nowPlayingWho;
+      return out;
+    });
+  }, [update]);
+  return { where, setWhere };
+}
+
 /** Where SlickSync opens for this account (Themes → Layout). '/' is the Dashboard. */
 export function useStartPage() {
   const { arrangement, update } = useArrangement();

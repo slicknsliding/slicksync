@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Card } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { ClipboardDocumentIcon, CheckIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
@@ -61,7 +61,7 @@ function buildRecipes(base: string, authHeader: string): Recipe[] {
   ];
 }
 
-export function ShortcutRecipes({ baseUrl, apiKey }: { baseUrl?: string | null; apiKey: string | null }) {
+export function ShortcutRecipes({ baseUrl, apiKey, bare = false }: { baseUrl?: string | null; apiKey: string | null; bare?: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -80,19 +80,26 @@ export function ShortcutRecipes({ baseUrl, apiKey }: { baseUrl?: string | null; 
     }
   };
 
+  // The v2 page design draws its own heading and box around this.
+  const Shell = bare ? Fragment : Card;
+  const shellProps = bare ? {} : { padding: 'lg' as const };
+  const intro = 'Apple doesn’t let a web app appear in the share sheet, so on an iPhone these three Shortcuts are how you hand SlickSync a link or ask it what you were watching. Your own address and key are already filled in – copy, paste, done.';
+
   return (
-    <Card padding="lg">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="p-2 rounded-lg bg-primary-muted shrink-0">
-          <DevicePhoneMobileIcon className="w-5 h-5 text-primary" />
+    <Shell {...shellProps}>
+      {bare ? (
+        <p className="text-xs text-muted mb-3">{intro}</p>
+      ) : (
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-primary-muted shrink-0">
+            <DevicePhoneMobileIcon className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold font-display text-default">iOS Shortcuts</h3>
+            <p className="text-xs text-muted">{intro}</p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <h3 className="text-base font-semibold font-display text-default">iOS Shortcuts</h3>
-          <p className="text-xs text-muted">
-            Apple doesn’t let a web app appear in the share sheet, so on an iPhone these three Shortcuts are how you hand SlickSync a link or ask it what you were watching. Your own address and key are already filled in – copy, paste, done.
-          </p>
-        </div>
-      </div>
+      )}
 
       <div className="space-y-2">
         {recipes.map((r) => {
@@ -149,6 +156,6 @@ export function ShortcutRecipes({ baseUrl, apiKey }: { baseUrl?: string | null; 
       <p className="text-xs text-subtle mt-3">
         The sync one changes real state – anyone holding that key can sync your household, so treat it like a password. Full walkthrough in <a href="/guides/ios-shortcuts" className="text-primary hover:underline">Guides → iOS Shortcuts</a>.
       </p>
-    </Card>
+    </Shell>
   );
 }

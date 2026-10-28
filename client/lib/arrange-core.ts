@@ -33,6 +33,8 @@ export type Arrangement = {
   pages?: Record<string, PageArrangement>;
   menu?: MenuArrangement;
   density?: Density;
+  /** Now Playing: who is watching sits on the picture ('on'); under it otherwise. */
+  nowPlayingWho?: 'on';
   /** Where SlickSync opens: a page's address, e.g. '/activity'. */
   startPage?: string;
   /** Grid or list, per page. */

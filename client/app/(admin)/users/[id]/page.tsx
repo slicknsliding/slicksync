@@ -12,6 +12,7 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
 import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { V2DetailHead, V2Numbers, V2ToolTile, V2Box, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
 import { V2Button, V2Status, type V2Tone } from '@/components/v2/V2Bits';
@@ -776,6 +777,8 @@ export default function UserDetailPage() {
     setIsDeleting(true);
     try {
       await api.deleteUser(params.id as string);
+      // v2 says where they went, with Undo (back on the People list).
+      if (v2) void showPersonDeletedWithUndo(user?.username || user?.name || 'This person');
       setIsDeleteModalOpen(false);
       router.push('/users');
     } catch {
@@ -785,7 +788,7 @@ export default function UserDetailPage() {
     } finally {
       setIsDeleting(false);
     }
-  }, [params.id, router]);
+  }, [params.id, router, v2, user]);
 
   // Handle avatar change (color, URL, or uploaded image)
   const handleAvatarSave = useCallback(async ({ alsoOnServer, ...data }: { avatarUrl?: string | null; colorIndex?: number; alsoOnServer?: boolean }) => {
@@ -2853,6 +2856,14 @@ export default function UserDetailPage() {
           userId={user.id}
           userName={user.username}
           onConfirm={handleSync}
+          person={{
+            email: user.email,
+            avatarUrl: user.avatarUrl,
+            useGravatar: user.useGravatar,
+            colorIndex: user.colorIndex || 0,
+            appLabel: user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio',
+            groupName: (groups.find((g) => (user.groupIds || (user.groupId ? [user.groupId] : [])).includes(g.id)) || {}).name,
+          }}
         />
       )}
 

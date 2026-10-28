@@ -18,6 +18,9 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TaskCategoryTiles } from '@/components/tasks/TaskCategoryTiles';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeButton } from '@/components/ui/Arrange';
+import { TasksV2, TASK_SECTIONS } from '@/components/v2/TasksV2';
 import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { toast } from '@/components/ui/Toast';
@@ -137,11 +140,18 @@ const TASK_CATEGORIES = [
   { key: 'schedule', label: 'Schedules & health', description: 'Maintenance that runs for you', icon: ClockIcon, count: 4 },
 ] as const;
 type TaskCategoryKey = typeof TASK_CATEGORIES[number]['key'];
+const TASK_SECTION_KEYS: string[] = TASK_SECTIONS.map((s) => s.key);
+const TASKS_SUBTITLE = 'Manage and export all your SlickSync data';
+const TASKS_V2_SUBTITLE = 'Everything you run now and then, and what runs by itself';
 
 export default function TasksPage() {
   const [taskCategory, setTaskCategory] = useState<TaskCategoryKey>('daily');
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
+  // v2 page design (Themes → Page design); the TV app always keeps Classic.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const taskArrange = usePageArrangement('tasks', TASK_SECTION_KEYS);
   const { layoutMode } = useLayoutMode();
   // State for loading indicators
   const [syncingUsers, setSyncingUsers] = useState(false);
@@ -1166,15 +1176,109 @@ export default function TasksPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Tasks"
-          subtitle="Manage and export all your SlickSync data"
+          subtitle={v2 ? TASKS_V2_SUBTITLE : TASKS_SUBTITLE}
+          actions={v2 ? <ArrangeButton arrange={taskArrange} /> : undefined}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? 'min(120rem, 92vw)' : '768px' }}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? 'min(120rem, 92vw)' : v2 ? undefined : '768px' }}>
       {layoutMode === 'nebula' && (
-        <NebulaPageHeading title="Tasks" subtitle="Manage and export all your SlickSync data" />
+        <NebulaPageHeading
+          title="Tasks"
+          subtitle={v2 ? TASKS_V2_SUBTITLE : TASKS_SUBTITLE}
+          actions={v2 ? <ArrangeButton arrange={taskArrange} /> : undefined}
+        />
       )}
+      {v2 ? (<>
+        <TasksV2
+          arrange={taskArrange}
+          users={users}
+          groups={groups}
+          syncFrequency={syncFrequency}
+          backupDays={backupDays}
+          healthCheckMinutes={healthCheckMinutes}
+          isHealthCheckLoading={isHealthCheckLoading}
+          onSyncFrequency={handleSyncFrequencyChange}
+          onBackupDays={handleBackupFrequencyChange}
+          onHealthMinutes={handleHealthCheckIntervalChange}
+          busy={{
+            syncingUsers, syncingGroups, reloadingAddons, repairingAddons, importingAddons, importingConfig,
+            isBackupRunning, isRunningHealthCheck, isExportingLibrary, isClearingLibrary, isExportingHistory,
+            isImportingHistory, isClearingHistory, isExportingDrk, isImportingDrk, isOfferingMigration, isReceivingMigration,
+          }}
+          onSyncAllUsers={handleSyncAllUsers}
+          onDeleteAllUsers={handleDeleteAllUsers}
+          onClearUserAddons={handleClearAllUserAddons}
+          onSyncAllGroups={handleSyncAllGroups}
+          onDeleteAllGroups={handleDeleteAllGroups}
+          onReloadAddons={handleReloadAllAddons}
+          onRepairAddons={handleRepairAddons}
+          onExportAddons={handleExportAddons}
+          onDeleteAllAddons={handleDeleteAllAddons}
+          onAddonDrop={handleAddonDrop}
+          onPickAddonFile={() => addonFileInputRef.current?.click()}
+          onOpenAutomation={() => setIsAutomationOpen(true)}
+          onExportConfig={handleExportConfig}
+          onResetConfig={handleResetConfig}
+          onConfigDrop={handleConfigDrop}
+          onPickConfigFile={() => configFileInputRef.current?.click()}
+          onOpenMaintenance={() => setIsMaintenanceOpen(true)}
+          onBackupNow={handleBackupNow}
+          onRunHealthCheck={handleRunHealthCheckNow}
+          selectedUserId={selectedUserId}
+          onSelectUser={setSelectedUserId}
+          onExportLibrary={handleExportLibrary}
+          onClearLibrary={handleClearLibrary}
+          selectedHistoryUserId={selectedHistoryUserId}
+          onSelectHistoryUser={setSelectedHistoryUserId}
+          onPickHistoryFile={() => historyFileInputRef.current?.click()}
+          onExportHistory={handleExportHistory}
+          onClearHistory={handleClearHistory}
+          snapshots={snapshots}
+          loadingSnapshots={loadingSnapshots}
+          deletingSnapshotId={deletingSnapshotId}
+          onNewTemplate={() => setIsCreateSnapshotOpen(true)}
+          onImportTemplateCode={() => setShowPasteTemplate(true)}
+          onShareTemplate={setSharingSnapshot}
+          onDeployTemplate={(snap) => { setDeployingSnapshot(snap); setDeployTargetUserId(''); }}
+          onDeleteTemplate={handleDeleteSnapshot}
+          backups={backups}
+          loadingBackups={loadingBackups}
+          restoringBackup={restoringBackup}
+          deletingBackup={deletingBackup}
+          formatBackupDate={formatBackupDate}
+          onDownloadBackup={handleDownloadBackup}
+          onUserRestore={openUserRestore}
+          onRestoreBackup={handleRestoreBackup}
+          onDeleteBackup={handleDeleteBackup}
+          kitExportPassphrase={drkExportPassphrase}
+          onKitExportPassphrase={setDrkExportPassphrase}
+          kitImportPassphrase={drkImportPassphrase}
+          onKitImportPassphrase={setDrkImportPassphrase}
+          onPickKitFile={() => drkFileInputRef.current?.click()}
+          onExportKit={handleExportDrk}
+          migrationCode={migrationCode}
+          receiveCode={receiveCode}
+          onReceiveCode={setReceiveCode}
+          onOfferMigration={handleOfferMigration}
+          onReceiveMigration={handleReceiveMigration}
+        />
+        <input ref={addonFileInputRef} type="file" accept=".json" onChange={handleAddonFileChange} className="hidden" />
+        <input ref={configFileInputRef} type="file" accept=".json" onChange={handleConfigFileChange} className="hidden" />
+        <input ref={historyFileInputRef} type="file" accept=".json" onChange={handleHistoryFileChange} className="hidden" />
+        <input
+          ref={drkFileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImportDrkFile(file);
+            e.target.value = '';
+          }}
+        />
+      </>) : (<>
         <TaskCategoryTiles categories={TASK_CATEGORIES} active={taskCategory} onSelect={(key) => setTaskCategory(key as TaskCategoryKey)} isTV={isTV} />
         {/* Every category stays mounted and is only hidden, so switching
             between them keeps a half-done import, the chosen user in a
@@ -2090,6 +2194,7 @@ export default function TasksPage() {
           <ScheduledTasksSection syncFrequency={syncFrequency} backupDays={backupDays} healthCheckMinutes={healthCheckMinutes} />
         </PageSection>
         </div>
+      </>)}
       </div>
       </div>
 

@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { SyncPreviewV2Body, type SyncPreviewPerson } from '@/components/v2/SyncPreviewV2';
 import { PlusIcon, MinusIcon, ArrowsUpDownIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
 // "Show me what this will do before it does it" for a user sync.
@@ -26,11 +29,16 @@ interface SyncPreviewDialogProps {
   userName: string;
   /** Runs the real sync. The dialog closes itself first. */
   onConfirm: () => void | Promise<void>;
+  /** v2 only: their picture and where they sign in, for the top of the window. */
+  person?: Omit<SyncPreviewPerson, 'id' | 'name'>;
 }
 
 interface PlanEntry { name: string; transportUrl: string; fingerprint: string }
 
-export function SyncPreviewDialog({ isOpen, onClose, userId, userName, onConfirm }: SyncPreviewDialogProps) {
+export function SyncPreviewDialog({ isOpen, onClose, userId, userName, onConfirm, person }: SyncPreviewDialogProps) {
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<{
@@ -76,6 +84,29 @@ export function SyncPreviewDialog({ isOpen, onClose, userId, userName, onConfirm
       setConfirming(false);
     }
   };
+
+  if (v2) {
+    // What stays: on both sides, matched by address like the rest of this file.
+    const stay = (plan?.desired || []).filter((a) => currentUrls.has(a.transportUrl));
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} ariaLabel={`Sync ${userName}`} size="lg">
+        <SyncPreviewV2Body
+          person={{ id: userId, name: userName, ...person }}
+          loading={loading}
+          error={error}
+          ready={!!plan}
+          added={added}
+          removed={removed}
+          reordered={reordered}
+          stay={stay}
+          nothingToDo={nothingToDo}
+          confirming={confirming}
+          onClose={onClose}
+          onConfirm={handleConfirm}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Sync ${userName}`} size="lg">

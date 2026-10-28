@@ -5128,6 +5128,12 @@ export interface DiscoverPerson {
   deathday?: string | null;
   placeOfBirth?: string | null;
   bio?: string | null;
+  /** Their IMDb name id (nm0000000), when TMDb or LumiereDB knows it. */
+  imdbId?: string | null;
+  /** 'wikipedia' when Wikipedia filled something TMDb had no answer for. */
+  factsFrom?: 'wikipedia' | null;
+  /** What Wikipedia filled: 'bio', 'birthday', 'birthplace'. */
+  factsFilled?: string[];
 }
 
 export type DiscoverKind = 'movie' | 'series' | 'both';

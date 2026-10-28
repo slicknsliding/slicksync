@@ -34,6 +34,16 @@ function yearsBetween(from: { y: number; m: number; d: number }, to: { y: number
   return age;
 }
 
+const FILLED_WORDS: Record<string, string> = { bio: 'about', birthday: 'birthday', birthplace: 'birthplace' };
+
+/** "About and birthday from Wikipedia" - what Wikipedia filled where TMDb had nothing. */
+export function wikipediaLine(filled: string[] | null | undefined): string | null {
+  const words = (['bio', 'birthday', 'birthplace'] as const).filter((k) => filled?.includes(k)).map((k) => FILLED_WORDS[k]);
+  if (words.length === 0) return null;
+  const what = words.length === 1 ? words[0] : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)} from Wikipedia`;
+}
+
 /** "Born July 3, 1962 · age 64", or with a death, "July 3, 1962 – March 1, 2020 (aged 57)". */
 export function bornLine(facts: Pick<DiscoverPerson, 'birthday' | 'deathday'>, now = new Date()): string | null {
   const b = parts(facts.birthday);

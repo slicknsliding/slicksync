@@ -2,24 +2,22 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ArrowTopRightOnSquareIcon,
-  ClipboardIcon,
-  CheckIcon,
   ArrowPathIcon,
-  UserIcon,
   ShieldCheckIcon,
-  ArrowRightIcon,
   FingerPrintIcon,
 } from '@heroicons/react/24/outline';
 import { userOAuth, userAuth as userAuthApi } from '@/lib/user-api';
 import { copyToClipboard } from '@/lib/clipboard';
-import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { useUserAuth, UserAuthProvider } from '@/lib/hooks/useUserAuth';
-import { useIsTV } from '@/lib/hooks/useIsTV';
+import {
+  PubFrame, PubLogo, PubCard, PubSeg, PubTile, PubButton, PubLink, PubBack, PubHeading,
+  PubField, PubOr, PubError, PubWaiting, PubCode, PubQr, pubInputStyle,
+} from '@/components/v2/PublicV2';
 import JellyfinSignIn, { type JellyfinCredentials, type JellyfinSignInApi } from '@/components/jellyfin/JellyfinSignIn';
 
 type LoginMode = 'user' | 'admin';
@@ -76,7 +74,6 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { login: userLogin, loginNuvio, loginJellyfin, isAuthenticated } = useUserAuth();
-  const isTV = useIsTV();
 
   // Mode state
   const initialMode = (searchParams.get('mode') as LoginMode) || 'user';
@@ -116,6 +113,12 @@ function LoginContent() {
   // sends someone whose sign-in needs renewing (signing in here renews it).
   const [userLoginType, setUserLoginType] = useState<'stremio' | 'nuvio' | 'jellyfin'>(
     searchParams.get('app') === 'nuvio' ? 'nuvio' : searchParams.get('app') === 'jellyfin' ? 'jellyfin' : 'stremio'
+  );
+  // Whether the person has picked a way in yet. The list of ways shows first,
+  // and nothing starts (no Stremio link, no Nuvio code) until one is picked -
+  // except from the ?app= link, which opens straight on that app.
+  const [userPicked, setUserPicked] = useState(
+    searchParams.get('app') === 'nuvio' || searchParams.get('app') === 'jellyfin' || searchParams.get('app') === 'stremio'
   );
 
   // Jellyfin-compatible servers: the person's portal signs in through
@@ -381,7 +384,7 @@ function LoginContent() {
   // isn't safe here.
   useEffect(() => {
     // Generate if user mode on the stremio tab, OR admin mode on its stremio tab
-    const shouldGenerate = (mode === 'user' && userLoginType === 'stremio') || (mode === 'admin' && adminLoginType === 'stremio');
+    const shouldGenerate = (mode === 'user' && userPicked && userLoginType === 'stremio') || (mode === 'admin' && adminLoginType === 'stremio');
     if (!shouldGenerate) {
       stremioAutoStartedRef.current = false;
       return;
@@ -390,7 +393,7 @@ function LoginContent() {
       stremioAutoStartedRef.current = true;
       generateOAuthLink();
     }
-  }, [mode, adminLoginType, userLoginType, oauthLink, isGenerating, generateOAuthLink]);
+  }, [mode, adminLoginType, userLoginType, userPicked, oauthLink, isGenerating, generateOAuthLink]);
 
   // Nuvio admin OAuth - kept as one self-contained function (start, countdown,
   // poll, login) rather than split across effects like the Stremio flow
@@ -429,6 +432,8 @@ function LoginContent() {
     if (isNuvioGenerating) return;
     setIsNuvioGenerating(true);
     setNuvioError(null);
+    // New code while the old one is still being checked: stop that check first.
+    stopNuvioPolling();
     try {
       const result = mode === 'admin' ? await api.startNuvioAdminOAuth() : await userOAuth.createNuvio();
       setNuvioCode(result.code);
@@ -498,7 +503,7 @@ function LoginContent() {
     } finally {
       setIsNuvioGenerating(false);
     }
-  }, [isNuvioGenerating, router, startNuvioCountdown, stopNuvioPolling, mode, loginNuvio, userOAuth]);
+  }, [isNuvioGenerating, router, startNuvioCountdown, stopNuvioPolling, mode, loginNuvio]);
 
   // Auto-generate Nuvio OAuth session when its tab is selected (admin's own
   // tab, or the user-mode equivalent). Fires at most once per tab-selection -
@@ -507,7 +512,7 @@ function LoginContent() {
   // code" button (rendered below whenever nuvioError is set) as the retry
   // path instead.
   useEffect(() => {
-    const shouldStart = (mode === 'admin' && adminLoginType === 'nuvio') || (mode === 'user' && userLoginType === 'nuvio');
+    const shouldStart = (mode === 'admin' && adminLoginType === 'nuvio') || (mode === 'user' && userPicked && userLoginType === 'nuvio');
     if (!shouldStart) {
       nuvioAutoStartedRef.current = false;
       return;
@@ -516,7 +521,7 @@ function LoginContent() {
       nuvioAutoStartedRef.current = true;
       handleStartNuvioOAuth();
     }
-  }, [mode, adminLoginType, userLoginType, nuvioCode, isNuvioGenerating, handleStartNuvioOAuth]);
+  }, [mode, adminLoginType, userLoginType, userPicked, nuvioCode, isNuvioGenerating, handleStartNuvioOAuth]);
 
   // Clean up Nuvio timers on unmount
   useEffect(() => {
@@ -709,6 +714,260 @@ function LoginContent() {
     router.replace(`/login?${newParams.toString()}`);
   };
 
+  // The one way in that is open right now, or null while the choices are showing.
+  const openMethod: 'stremio' | 'nuvio' | 'jellyfin' | null =
+    mode === 'admin'
+      ? (adminLoginType === 'credentials' ? null : adminLoginType)
+      : (userPicked ? userLoginType : null);
+  const inTwoFactor = openMethod === null && mode === 'admin' && !!twoFactorPendingToken;
+  const methodName = openMethod === 'stremio' ? 'Stremio' : openMethod === 'nuvio' ? 'Nuvio' : 'Jellyfin';
+
+  const goBackToChoices = () => {
+    setAdminError(null);
+    setUserError(null);
+    setNuvioError(null);
+    if (mode === 'admin') setAdminLoginType('credentials');
+    else setUserPicked(false);
+  };
+
+  // Picking a way in: the same start-up the old tabs did.
+  const pickStremio = () => {
+    if (mode === 'admin') setAdminLoginType('stremio');
+    else { setUserLoginType('stremio'); setUserPicked(true); }
+    if (!oauthLink) generateOAuthLink();
+  };
+  const pickNuvio = () => {
+    if (mode === 'admin') setAdminLoginType('nuvio');
+    else { setUserLoginType('nuvio'); setUserPicked(true); }
+    if (!nuvioCode) handleStartNuvioOAuth();
+  };
+  const pickJellyfin = () => {
+    if (mode === 'admin') { setAdminLoginType('jellyfin'); setAdminError(null); }
+    else { setUserLoginType('jellyfin'); setUserPicked(true); }
+  };
+
+  // Finishing in Stremio or Nuvio: the code, the link, a status line and the one button.
+  const renderOAuthPanel = (provider: 'stremio' | 'nuvio') => {
+    const isNuvio = provider === 'nuvio';
+    const name = isNuvio ? 'Nuvio' : 'Stremio';
+    const link = isNuvio ? nuvioWebUrl : oauthLink;
+    const code = isNuvio ? nuvioCode : oauthCode;
+    const expired = isNuvio ? nuvioTimeLeft === 'Expired' : isExpired;
+    const authenticating = isNuvio ? isNuvioAuthenticating : isAuthenticating;
+    const generating = isNuvio ? isNuvioGenerating : isGenerating;
+    const err = isNuvio ? nuvioError : mode === 'admin' ? adminError : userError;
+    const waiting = isNuvio
+      ? isNuvioPolling && nuvioTimeLeft !== 'Expired' && !nuvioError && !isNuvioAuthenticating
+      : isPolling && !isExpired && !err && !isAuthenticating;
+    const disabled = !link || expired || authenticating;
+    const line = isNuvio
+      ? (mode === 'admin'
+        ? <>Sign in to the <strong>admin dashboard</strong> with Nuvio, as an alternative to an account ID and password.</>
+        : <>Sign in with <strong>your own</strong> Nuvio account to watch here and share it with your group.</>)
+      : (mode === 'admin'
+        ? 'Link your Stremio account to your administrator profile.'
+        : 'Sign in with your Stremio account to access your library and settings.');
+    const note = isNuvio
+      ? (mode === 'admin'
+        ? 'Looking to connect a user’s Nuvio library instead? Do that from Users, not here.'
+        : 'This is for your personal viewing, not for admin dashboard access.')
+      : null;
+    const timer = isNuvio
+      ? (nuvioTimeLeft ? (nuvioTimeLeft === 'Expired' ? 'Expired' : `Expires in ${nuvioTimeLeft}`) : null)
+      : timeLeft;
+    return (
+      <div className="space-y-4 text-center">
+        <PubHeading title={`Finish in ${name}`} line={line} />
+        {note && <p className="text-xs -mt-2" style={{ color: 'var(--color-text-subtle)' }}>{note}</p>}
+        {link && !expired && !authenticating && (
+          <PubQr data={link} alt={`Scan with your phone to open ${name}`} />
+        )}
+        <div className="space-y-2">
+          {!isNuvio && (
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              Or copy the code and paste it at{' '}
+              <a href="https://link.stremio.com" target="_blank" rel="noopener noreferrer" className="underline hover:no-underline" style={{ color: 'var(--color-primary)' }}>
+                link.stremio.com
+              </a>
+            </p>
+          )}
+          <PubCode
+            code={code}
+            copied={isNuvio ? nuvioCopied : copied}
+            onCopy={isNuvio ? copyNuvioCode : copyCode}
+          />
+          {timer && (
+            <p className="text-sm font-mono" style={{ color: isNuvio ? 'var(--color-text-subtle)' : getTimeColor() }}>{timer}</p>
+          )}
+          {expired && !isNuvio && <p className="text-sm" style={{ color: 'var(--color-text-subtle)' }}>That code has expired.</p>}
+        </div>
+        {err && <PubError>{err}</PubError>}
+        {waiting && <PubWaiting tone="var(--color-success)">Waiting for you to approve it…</PubWaiting>}
+        <div className="grid gap-2">
+          <PubButton
+            primary
+            onClick={isNuvio ? openNuvioLink : openOAuthLink}
+            disabled={disabled}
+            icon={authenticating || generating
+              ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              : <ArrowTopRightOnSquareIcon className="w-5 h-5" />}
+          >
+            {authenticating
+              ? (mode === 'admin' ? 'Verifying...' : 'Signing in...')
+              : generating ? 'Generating Link...' : `Open ${name}`}
+          </PubButton>
+          <PubLink
+            onClick={isNuvio ? handleStartNuvioOAuth : generateOAuthLink}
+            disabled={generating}
+            icon={<ArrowPathIcon className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />}
+            className="py-2"
+          >
+            {isNuvio ? 'New code' : 'Refresh'}
+          </PubLink>
+        </div>
+      </div>
+    );
+  };
+
+  const renderJellyfinPanel = () => (
+    <div className="space-y-4">
+      <PubHeading
+        title="Sign in with Jellyfin"
+        line={mode === 'admin'
+          ? 'Sign in with your Jellyfin server, or the media server AIOStreams or AIOMetadata runs.'
+          : 'Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.'}
+      />
+      <JellyfinSignIn
+        api={mode === 'admin' ? adminJellyfinApi : userJellyfinApi}
+        onSubmit={mode === 'admin' ? handleAdminJellyfin : handleUserJellyfin}
+        submitLabel="Sign in"
+        compact
+      />
+    </div>
+  );
+
+  const renderTwoFactor = () => (
+    <form onSubmit={handleVerify2fa} className="space-y-4">
+      <PubHeading title="Two-step sign-in" line="Enter the 6-digit code from your authenticator app, or one of your backup codes." />
+      <PubField label="Code" htmlFor="twoFactorCode">
+        <input
+          id="twoFactorCode"
+          type="text"
+          inputMode="numeric"
+          autoFocus
+          value={twoFactorCode}
+          onChange={(e) => setTwoFactorCode(e.target.value.replace(/\s+/g, ''))}
+          className="w-full px-4 py-3.5 rounded-xl text-2xl font-mono font-bold tracking-[0.35em] text-center transition-all"
+          style={pubInputStyle}
+          placeholder="123456"
+          autoComplete="one-time-code"
+        />
+      </PubField>
+      {adminError && <PubError>{adminError}</PubError>}
+      <PubButton
+        primary
+        type="submit"
+        disabled={twoFactorVerifying || twoFactorCode.trim().length < 6}
+        icon={twoFactorVerifying ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
+      >
+        {twoFactorVerifying ? 'Verifying...' : 'Continue'}
+      </PubButton>
+      <div className="text-center">
+        <PubLink onClick={() => { setTwoFactorPendingToken(null); setTwoFactorCode(''); setAdminError(null); }}>Back</PubLink>
+      </div>
+    </form>
+  );
+
+  const renderAdminCredentials = () => {
+    const isPublic = INSTANCE_TYPE === 'public';
+    const hasOthers = isPublic || passkeyAvailable || oidcConfigured;
+    return (
+      <form onSubmit={handleAdminLogin} className="space-y-4">
+        <PubField label={isPublic ? 'Account ID' : 'Username'} htmlFor="username">
+          <input
+            id="username"
+            type="text"
+            value={adminUsername}
+            onChange={(e) => setAdminUsername(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl text-sm transition-all"
+            style={pubInputStyle}
+            placeholder={isPublic ? 'Your account ID' : 'admin'}
+            autoComplete={isPublic ? 'off' : 'username'}
+          />
+        </PubField>
+
+        <PubField label="Password" htmlFor="password">
+          <div className="relative">
+            <input
+              id="password"
+              type={adminPasswordVisible ? 'text' : 'password'}
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+              style={pubInputStyle}
+              placeholder="********"
+              autoComplete="current-password"
+            />
+            <PasswordToggleButton visible={adminPasswordVisible} onToggle={() => setAdminPasswordVisible((v) => !v)} />
+          </div>
+        </PubField>
+
+        {adminError && <PubError>{adminError}</PubError>}
+
+        <PubButton
+          primary
+          type="submit"
+          disabled={adminLoading || !adminUsername || !adminPassword}
+          icon={adminLoading ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
+        >
+          {adminLoading ? 'Signing in...' : 'Sign in'}
+        </PubButton>
+
+        {hasOthers && (
+          <>
+            <PubOr />
+            <div className="grid gap-2">
+              {passkeyAvailable && (
+                <PubButton onClick={handlePasskeyLogin} disabled={passkeyLoading} icon={<FingerPrintIcon className="w-5 h-5" />}>
+                  {passkeyLoading ? 'Waiting for your device...' : 'Use a passkey'}
+                </PubButton>
+              )}
+              {isPublic && <PubButton onClick={pickStremio}>Stremio</PubButton>}
+              {isPublic && <PubButton onClick={pickNuvio}>Nuvio</PubButton>}
+              {isPublic && <PubButton onClick={pickJellyfin}>Jellyfin</PubButton>}
+              {oidcConfigured && (
+                <PubButton onClick={handleStartOidc} icon={<ShieldCheckIcon className="w-5 h-5" />}>
+                  Continue with {oidcDisplayName}
+                </PubButton>
+              )}
+            </div>
+            {isPublic && <p className="text-xs text-center" style={{ color: 'var(--color-text-subtle)' }}>Jellyfin also covers AIOStreams and AIOMetadata.</p>}
+          </>
+        )}
+
+        {isPublic && (
+          <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+            No account yet?{' '}
+            <button type="button" onClick={() => router.push('/register')} className="hover:underline font-semibold" style={{ color: 'var(--color-primary)' }}>
+              Create one
+            </button>
+          </p>
+        )}
+      </form>
+    );
+  };
+
+  const renderUserChoices = () => (
+    <div className="space-y-2.5">
+      <PubTile name="Stremio" line="Sign in with your Stremio account" color="linear-gradient(135deg,#8b5cf6,#6d28d9)" onClick={pickStremio} />
+      <PubTile name="Nuvio" line="Sign in with your Nuvio account" color="linear-gradient(135deg,#6366f1,#a855f7)" onClick={pickNuvio} />
+      <PubTile name="Jellyfin" line="A Jellyfin server, AIOStreams or AIOMetadata" color="#0b2447" onClick={pickJellyfin} />
+      <p className="text-[12.5px] text-center pt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+        Use the same sign-in as your app. Nothing is changed in it.
+      </p>
+    </div>
+  );
+
   if (checkingAuth) {
     return (
       <div
@@ -720,953 +979,38 @@ function LoginContent() {
     );
   }
 
+  const logoSub = inTwoFactor
+    ? 'One more step'
+    : openMethod
+      ? `Signing in with ${methodName}`
+      : mode === 'user'
+        ? 'Sign in to see your library, your addons and what you’re watching'
+        : 'Sign in to run SlickSync';
+
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: 'var(--color-bg)' }}
-    >
-      {/* Background gradient */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {/* Drawn without a blur filter - see .glow in globals.css. */}
-        <div className="glow glow-corner-a" />
-        <div className="glow glow-corner-b" />
-      </div>
+    <PubFrame>
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+        <PubLogo sub={logoSub} />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full relative"
-        style={{ maxWidth: '448px' }}
-      >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-            style={{ background: 'var(--color-primary)' }}
-          >
-            <SlickSyncLogo className="w-10 h-10" />
-          </motion.div>
-          <h1
-            className="text-3xl font-bold font-display mb-2"
-            style={{ color: 'var(--color-text)' }}
-          >
-            SlickSync
-          </h1>
-          <p style={{ color: 'var(--color-text-muted)' }}>
-            Sign in to continue
-          </p>
-        </div>
+        <PubCard>
+          {openMethod === null && !inTwoFactor && (
+            <PubSeg
+              value={mode}
+              onChange={switchMode}
+              options={[{ value: 'user', label: 'I watch here' }, { value: 'admin', label: 'I run this' }]}
+            />
+          )}
+          {openMethod !== null && <PubBack onClick={goBackToChoices}>{mode === 'admin' ? 'Back to sign in' : 'All sign-in options'}</PubBack>}
 
-        {/* Mode Toggle */}
-        <div
-          className="p-1 rounded-xl mb-6 flex"
-          style={{ background: 'var(--color-surface)' }}
-        >
-          <button
-            onClick={() => switchMode('user')}
-            className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${mode === 'user' ? 'seg-on' : 'seg-off'}`}
-          >
-            <UserIcon className="w-4 h-4" />
-            User
-          </button>
-          <button
-            onClick={() => switchMode('admin')}
-            className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${mode === 'admin' ? 'seg-on' : 'seg-off'}`}
-          >
-            <ShieldCheckIcon className="w-4 h-4" />
-            Admin
-          </button>
-        </div>
-
-        {/* Login Card */}
-        <motion.div
-          className="rounded-2xl overflow-hidden"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-surface-border)',
-          }}
-        >
-          {/* Top accent */}
-          <div
-            className={`h-1 ${mode === 'user' ? 'bg-success' : 'bg-primary'}`}
-          />
-
-          <div className="p-6">
-            <AnimatePresence mode="wait">
-              {mode === 'admin' ? (
-                /* Admin Login Form */
-                <motion.div
-                  key="admin"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  className="space-y-4"
-                >
-                  {/* Admin Login Type Selector (Public Mode only) */}
-                  {INSTANCE_TYPE === 'public' && (
-                    <div className="flex gap-2 p-1 rounded-lg bg-bg-subtle mb-4">
-                      <button
-                        onClick={() => setAdminLoginType('credentials')}
-                        className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${adminLoginType === 'credentials'
-                          ? 'bg-surface shadow-sm text-default'
-                          : 'text-muted hover:text-default'
-                          }`}
-                      >
-                        UUID / Pass
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAdminLoginType('stremio');
-                          if (!oauthLink) generateOAuthLink();
-                        }}
-                        className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${adminLoginType === 'stremio'
-                          ? 'bg-surface shadow-sm text-default'
-                          : 'text-muted hover:text-default'
-                          }`}
-                      >
-                        Stremio Login
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAdminLoginType('nuvio');
-                          if (!nuvioCode) handleStartNuvioOAuth();
-                        }}
-                        className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${adminLoginType === 'nuvio'
-                          ? 'bg-surface shadow-sm text-default'
-                          : 'text-muted hover:text-default'
-                          }`}
-                      >
-                        Nuvio Login
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAdminLoginType('jellyfin');
-                          setAdminError(null);
-                        }}
-                        className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${adminLoginType === 'jellyfin'
-                          ? 'bg-surface shadow-sm text-default'
-                          : 'text-muted hover:text-default'
-                          }`}
-                      >
-                        Jellyfin
-                      </button>
-                    </div>
-                  )}
-                  {/* AIOStreams and AIOMetadata run Jellyfin-compatible servers and sign in here. */}
-                  {INSTANCE_TYPE === 'public' && <p className="text-xs text-center -mt-5" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>}
-
-                  {adminLoginType === 'jellyfin' ? (
-                    <div className="space-y-4">
-                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                        Sign in with your Jellyfin server, or the media server AIOStreams or AIOMetadata runs.
-                      </p>
-                      <JellyfinSignIn api={adminJellyfinApi} onSubmit={handleAdminJellyfin} submitLabel="Sign in" compact />
-                    </div>
-                  ) : adminLoginType === 'credentials' && twoFactorPendingToken ? (
-                    <form onSubmit={handleVerify2fa} className="space-y-4">
-                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                        Enter the 6-digit code from your authenticator app, or one of your backup codes.
-                      </p>
-                      <div>
-                        <label
-                          htmlFor="twoFactorCode"
-                          className="block text-sm font-medium mb-2"
-                          style={{ color: 'var(--color-text)' }}
-                        >
-                          Code
-                        </label>
-                        <input
-                          id="twoFactorCode"
-                          type="text"
-                          inputMode="numeric"
-                          autoFocus
-                          value={twoFactorCode}
-                          onChange={(e) => setTwoFactorCode(e.target.value.replace(/\s+/g, ''))}
-                          className="w-full px-4 py-3 rounded-xl text-sm font-mono tracking-widest text-center transition-all"
-                          style={{
-                            background: 'var(--color-bg)',
-                            border: '1px solid var(--color-surface-border)',
-                            color: 'var(--color-text)',
-                          }}
-                          placeholder="123456"
-                          autoComplete="one-time-code"
-                        />
-                      </div>
-
-                      {adminError && (
-                        <p className="text-sm text-center" style={{ color: 'var(--color-error)' }}>
-                          {adminError}
-                        </p>
-                      )}
-
-                      <button
-                        type="submit"
-                        disabled={twoFactorVerifying || twoFactorCode.trim().length < 6}
-                        className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                        style={{
-                          background: 'var(--color-primary-solid)',
-                          color: 'white',
-                          opacity: twoFactorVerifying || twoFactorCode.trim().length < 6 ? 0.5 : 1,
-                        }}
-                      >
-                        {twoFactorVerifying ? (
-                          <>
-                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Verifying...
-                          </>
-                        ) : (
-                          <>
-                            <ArrowRightIcon className="w-5 h-5" />
-                            Verify
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => { setTwoFactorPendingToken(null); setTwoFactorCode(''); setAdminError(null); }}
-                        className="w-full text-sm text-center hover:underline"
-                        style={{ color: 'var(--color-text-muted)' }}
-                      >
-                        Back
-                      </button>
-                    </form>
-                  ) : adminLoginType === 'credentials' ? (
-                    <form onSubmit={handleAdminLogin} className="space-y-4">
-                      <div>
-                        <label
-                          htmlFor="username"
-                          className="block text-sm font-medium mb-2"
-                          style={{ color: 'var(--color-text)' }}
-                        >
-                          {INSTANCE_TYPE === 'public' ? 'UUID' : 'Username'}
-                        </label>
-                        <input
-                          id="username"
-                          type="text"
-                          value={adminUsername}
-                          onChange={(e) => setAdminUsername(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl text-sm transition-all"
-                          style={{
-                            background: 'var(--color-bg)',
-                            border: '1px solid var(--color-surface-border)',
-                            color: 'var(--color-text)',
-                          }}
-                          placeholder={INSTANCE_TYPE === 'public' ? '00000000-0000-...' : 'admin'}
-                          autoComplete={INSTANCE_TYPE === 'public' ? 'off' : 'username'}
-                        />
-                      </div>
-
-                      <div>
-                        <label
-                          htmlFor="password"
-                          className="block text-sm font-medium mb-2"
-                          style={{ color: 'var(--color-text)' }}
-                        >
-                          Password
-                        </label>
-                        <div className="relative">
-                          <input
-                            id="password"
-                            type={adminPasswordVisible ? 'text' : 'password'}
-                            value={adminPassword}
-                            onChange={(e) => setAdminPassword(e.target.value)}
-                            className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
-                            style={{
-                              background: 'var(--color-bg)',
-                              border: '1px solid var(--color-surface-border)',
-                              color: 'var(--color-text)',
-                            }}
-                            placeholder="********"
-                            autoComplete="current-password"
-                          />
-                          <PasswordToggleButton visible={adminPasswordVisible} onToggle={() => setAdminPasswordVisible((v) => !v)} />
-                        </div>
-                      </div>
-
-                      {adminError && (
-                        <motion.p
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-sm"
-                          style={{ color: 'var(--color-error)' }}
-                        >
-                          {adminError}
-                        </motion.p>
-                      )}
-
-                      <button
-                        type="submit"
-                        disabled={adminLoading || !adminUsername || !adminPassword}
-                        className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                        style={{
-                          background: 'var(--color-primary-solid)',
-                          color: 'white',
-                          opacity: adminLoading || !adminUsername || !adminPassword ? 0.5 : 1,
-                        }}
-                      >
-                        {adminLoading ? (
-                          <>
-                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Signing in...
-                          </>
-                        ) : (
-                          <>
-                            <ArrowRightIcon className="w-5 h-5" />
-                            Sign in
-                          </>
-                        )}
-                      </button>
-
-                      {passkeyAvailable && (
-                        <button
-                          type="button"
-                          onClick={handlePasskeyLogin}
-                          disabled={passkeyLoading}
-                          className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                          style={{
-                            background: 'transparent',
-                            color: 'var(--color-text)',
-                            border: '1px solid var(--color-surface-border)',
-                            opacity: passkeyLoading ? 0.5 : 1,
-                          }}
-                        >
-                          <FingerPrintIcon className="w-5 h-5" />
-                          {passkeyLoading ? 'Waiting for your device...' : 'Use a passkey'}
-                        </button>
-                      )}
-
-                      {oidcConfigured && (
-                        <>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
-                            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
-                              or
-                            </span>
-                            <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleStartOidc}
-                            className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                            style={{
-                              background: 'transparent',
-                              border: '1px solid var(--color-surface-border)',
-                              color: 'var(--color-text)',
-                            }}
-                          >
-                            <ShieldCheckIcon className="w-5 h-5" />
-                            Continue with {oidcDisplayName}
-                          </button>
-                        </>
-                      )}
-
-                      {INSTANCE_TYPE === 'public' && (
-                        <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                          Don&apos;t have an account?{' '}
-                          <button
-                            type="button"
-                            onClick={() => router.push('/register')}
-                            className="hover:underline"
-                            style={{ color: 'var(--color-primary)' }}
-                          >
-                            Create one
-                          </button>
-                        </p>
-                      )}
-                    </form>
-                  ) : adminLoginType === 'stremio' ? (
-                    /* Admin Stremio Login UI */
-                    <div className="space-y-4">
-                      <p className="text-sm text-center mb-4" style={{ color: 'var(--color-text-muted)' }}>
-                        Link your Stremio account to your administrator profile.
-                      </p>
-
-                      <button
-                        onClick={openOAuthLink}
-                        disabled={!oauthLink || isExpired || isAuthenticating}
-                        className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                        style={{
-                          background: 'var(--color-primary-solid)',
-                          color: 'white',
-                          opacity: !oauthLink || isExpired || isAuthenticating ? 0.5 : 1,
-                        }}
-                      >
-                        {isAuthenticating ? (
-                          <>
-                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Verifying...
-                          </>
-                        ) : isGenerating ? (
-                          <>
-                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Generating Link...
-                          </>
-                        ) : (
-                          <>
-                            <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                            Open Stremio
-                          </>
-                        )}
-                      </button>
-
-                      {/* TV only: scan with a phone instead of fighting a
-                          D-pad remote with window.open() or the manual code
-                          below. */}
-                      {isTV && oauthLink && !isExpired && (
-                        <div className="flex flex-col items-center gap-2 pt-2">
-                          <div className="p-3 rounded-xl" style={{ background: 'white' }}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={`/api/qr?data=${encodeURIComponent(oauthLink)}`}
-                              alt="Scan with your phone to open Stremio"
-                              width={160}
-                              height={160}
-                            />
-                          </div>
-                          <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                            Scan with your phone to continue
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Manual code UI reused */}
-                      <div className="text-center space-y-3 pt-2">
-                        <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
-                          Verification Code
-                        </p>
-                        <button
-                          onClick={copyCode}
-                          disabled={!oauthCode}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
-                          style={{
-                            background: 'var(--color-bg)',
-                            border: '1px solid var(--color-surface-border)',
-                          }}
-                        >
-                          <span className="font-mono text-lg tracking-widest" style={{ color: 'var(--color-text)' }}>
-                            {oauthCode || '----'}
-                          </span>
-                          {copied ? (
-                            <CheckIcon className="w-4 h-4 text-success" />
-                          ) : (
-                            <ClipboardIcon className="w-4 h-4 text-muted" />
-                          )}
-                        </button>
-                      </div>
-
-                      {adminError && (
-                        <p className="text-sm text-center" style={{ color: 'var(--color-error)' }}>
-                          {adminError}
-                        </p>
-                      )}
-
-                      {/* Polling indicator reused */}
-                      {isPolling && !isExpired && !adminError && !isAuthenticating && (
-                        <div className="flex items-center justify-center gap-2 pt-2">
-                          <div className="flex gap-1">
-                            {[0, 1, 2].map((i) => (
-                              <motion.div
-                                key={i}
-                                className="w-1.5 h-1.5 rounded-full"
-                                style={{ background: 'var(--color-success)' }}
-                                animate={{ scale: [1, 1.3, 1], opacity: [0.4, 1, 0.4] }}
-                                transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                            Waiting for authorization...
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    /* Admin Nuvio Login UI - same shape as the Stremio panel
-                       above, but backed by Nuvio's own device-code fields */
-                    <div className="space-y-4">
-                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                        Sign in to the <strong>admin dashboard</strong> with Nuvio, as an alternative to a UUID and password.
-                      </p>
-                      <p className="text-xs text-center mb-4" style={{ color: 'var(--color-text-subtle)' }}>
-                        Looking to connect a user's Nuvio library instead? Do that from Users, not here.
-                      </p>
-
-                      <button
-                        onClick={openNuvioLink}
-                        disabled={!nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating}
-                        className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                        style={{
-                          background: 'var(--color-primary-solid)',
-                          color: 'white',
-                          opacity: !nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating ? 0.5 : 1,
-                        }}
-                      >
-                        {isNuvioAuthenticating ? (
-                          <>
-                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Verifying...
-                          </>
-                        ) : isNuvioGenerating ? (
-                          <>
-                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Generating Link...
-                          </>
-                        ) : (
-                          <>
-                            <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                            Open Nuvio
-                          </>
-                        )}
-                      </button>
-
-                      {/* TV only: scan with a phone instead of typing the
-                          code below with a D-pad remote. */}
-                      {isTV && nuvioWebUrl && nuvioTimeLeft !== 'Expired' && (
-                        <div className="flex flex-col items-center gap-2 pt-2">
-                          <div className="p-3 rounded-xl" style={{ background: 'white' }}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={`/api/qr?data=${encodeURIComponent(nuvioWebUrl)}`}
-                              alt="Scan with your phone to open Nuvio"
-                              width={160}
-                              height={160}
-                            />
-                          </div>
-                          <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                            Scan with your phone to continue
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="text-center space-y-3 pt-2">
-                        <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
-                          Verification Code
-                        </p>
-                        <button
-                          onClick={copyNuvioCode}
-                          disabled={!nuvioCode}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
-                          style={{
-                            background: 'var(--color-bg)',
-                            border: '1px solid var(--color-surface-border)',
-                          }}
-                        >
-                          <span className="font-mono text-lg tracking-widest" style={{ color: 'var(--color-text)' }}>
-                            {nuvioCode || '----'}
-                          </span>
-                          {nuvioCopied ? (
-                            <CheckIcon className="w-4 h-4 text-success" />
-                          ) : (
-                            <ClipboardIcon className="w-4 h-4 text-muted" />
-                          )}
-                        </button>
-                        {nuvioTimeLeft && (
-                          <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                            {nuvioTimeLeft === 'Expired' ? 'Expired' : `Expires in ${nuvioTimeLeft}`}
-                          </p>
-                        )}
-                      </div>
-
-                      {nuvioError && (
-                        <p className="text-sm text-center" style={{ color: 'var(--color-error)' }}>
-                          {nuvioError}
-                        </p>
-                      )}
-
-                      {(nuvioTimeLeft === 'Expired' || nuvioError) && !isNuvioGenerating && (
-                        <button
-                          type="button"
-                          onClick={handleStartNuvioOAuth}
-                          className="w-full text-sm text-center hover:underline"
-                          style={{ color: 'var(--color-primary)' }}
-                        >
-                          Generate a new code
-                        </button>
-                      )}
-
-                      {isNuvioPolling && nuvioTimeLeft !== 'Expired' && !nuvioError && !isNuvioAuthenticating && (
-                        <div className="flex items-center justify-center gap-2 pt-2">
-                          <div className="flex gap-1">
-                            {[0, 1, 2].map((i) => (
-                              <motion.div
-                                key={i}
-                                className="w-1.5 h-1.5 rounded-full"
-                                style={{ background: 'var(--color-success)' }}
-                                animate={{ scale: [1, 1.3, 1], opacity: [0.4, 1, 0.4] }}
-                                transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                            Waiting for authorization...
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </motion.div>
-              ) : (
-                /* User OAuth */
-                <motion.div
-                  key="user"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="space-y-4"
-                >
-                  {/* Provider switcher */}
-                  <div className="flex gap-2 p-1 rounded-lg bg-bg-subtle mb-4">
-                    <button
-                      onClick={() => {
-                        setUserLoginType('stremio');
-                        if (!oauthLink) generateOAuthLink();
-                      }}
-                      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${userLoginType === 'stremio'
-                        ? 'bg-surface shadow-sm text-default'
-                        : 'text-muted hover:text-default'
-                        }`}
-                    >
-                      Stremio Login
-                    </button>
-                    <button
-                      onClick={() => {
-                        setUserLoginType('nuvio');
-                        if (!nuvioCode) handleStartNuvioOAuth();
-                      }}
-                      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${userLoginType === 'nuvio'
-                        ? 'bg-surface shadow-sm text-default'
-                        : 'text-muted hover:text-default'
-                        }`}
-                    >
-                      Nuvio Login
-                    </button>
-                    <button
-                      onClick={() => setUserLoginType('jellyfin')}
-                      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${userLoginType === 'jellyfin'
-                        ? 'bg-surface shadow-sm text-default'
-                        : 'text-muted hover:text-default'
-                        }`}
-                    >
-                      Jellyfin
-                    </button>
-                  </div>
-                  {/* AIOStreams and AIOMetadata run Jellyfin-compatible servers and sign in here. */}
-                  <p className="text-xs text-center -mt-5" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>
-
-                  {userLoginType === 'jellyfin' ? (
-                  <>
-                  <p
-                    className="text-sm text-center mb-4"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
-                  </p>
-                  <JellyfinSignIn api={userJellyfinApi} onSubmit={handleUserJellyfin} submitLabel="Sign in" compact />
-                  </>
-                  ) : userLoginType === 'stremio' ? (
-                  <>
-                  <p
-                    className="text-sm text-center mb-4"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    Sign in with your Stremio account to access your library and settings.
-                  </p>
-
-                  {/* Open Stremio Button */}
-                  <button
-                    onClick={openOAuthLink}
-                    disabled={!oauthLink || isExpired || isAuthenticating}
-                    className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                    style={{
-                      background: 'var(--color-primary-solid)',
-                      color: 'white',
-                      opacity: !oauthLink || isExpired || isAuthenticating ? 0.5 : 1,
-                    }}
-                  >
-                    {isAuthenticating ? (
-                      <>
-                        <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Signing in...
-                      </>
-                    ) : isGenerating ? (
-                      <>
-                        <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Generating Link...
-                      </>
-                    ) : (
-                      <>
-                        <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                        Open Stremio
-                      </>
-                    )}
-                  </button>
-
-                  {/* TV only: scan with a phone instead of fighting a D-pad
-                      remote with window.open() or the manual code below. */}
-                  {isTV && oauthLink && !isExpired && (
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="p-3 rounded-xl" style={{ background: 'white' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/qr?data=${encodeURIComponent(oauthLink)}`}
-                          alt="Scan with your phone to open Stremio"
-                          width={160}
-                          height={160}
-                        />
-                      </div>
-                      <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                        Scan with your phone to continue
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Divider */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
-                    <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
-                      or
-                    </span>
-                    <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
-                  </div>
-
-                  {/* Manual code */}
-                  <div className="text-center space-y-3">
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                      Copy the code and paste it at{' '}
-                      <a
-                        href="https://link.stremio.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:no-underline"
-                        style={{ color: 'var(--color-primary)' }}
-                      >
-                        link.stremio.com
-                      </a>
-                    </p>
-
-                    <button
-                      onClick={copyCode}
-                      disabled={!oauthCode}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
-                      style={{
-                        background: 'var(--color-bg)',
-                        border: '1px solid var(--color-surface-border)',
-                      }}
-                    >
-                      <span
-                        className="font-mono text-lg tracking-widest"
-                        style={{ color: 'var(--color-text)' }}
-                      >
-                        {oauthCode || '----'}
-                      </span>
-                      {copied ? (
-                        <CheckIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} />
-                      ) : (
-                        <ClipboardIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Timer and refresh */}
-                  <div className="flex items-center justify-center gap-4 pt-2">
-                    {timeLeft && (
-                      <span className="text-sm font-mono" style={{ color: getTimeColor() }}>
-                        {timeLeft}
-                      </span>
-                    )}
-                    <button
-                      onClick={generateOAuthLink}
-                      disabled={isGenerating}
-                      className="text-sm flex items-center gap-1 hover:underline transition-all"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
-                      <ArrowPathIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </button>
-                  </div>
-
-                  {/* Error */}
-                  {userError && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-sm text-center"
-                      style={{ color: 'var(--color-error)' }}
-                    >
-                      {userError}
-                    </motion.p>
-                  )}
-
-                  {/* Polling indicator */}
-                  {isPolling && !isExpired && !userError && !isAuthenticating && (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="flex gap-1">
-                        {[0, 1, 2].map((i) => (
-                          <motion.div
-                            key={i}
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{ background: 'var(--color-success)' }}
-                            animate={{
-                              scale: [1, 1.3, 1],
-                              opacity: [0.4, 1, 0.4],
-                            }}
-                            transition={{
-                              duration: 1,
-                              repeat: Infinity,
-                              delay: i * 0.2,
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                        Waiting for authorization...
-                      </span>
-                    </div>
-                  )}
-                  </>
-                  ) : (
-                  <>
-                  <p
-                    className="text-sm text-center"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    Sign in with <strong>your own</strong> Nuvio account to watch here and share it with your group.
-                  </p>
-                  <p className="text-xs text-center mb-4" style={{ color: 'var(--color-text-subtle)' }}>
-                    This is for your personal viewing, not for admin dashboard access.
-                  </p>
-
-                  <button
-                    onClick={openNuvioLink}
-                    disabled={!nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating}
-                    className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                    style={{
-                      background: 'var(--color-primary-solid)',
-                      color: 'white',
-                      opacity: !nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating ? 0.5 : 1,
-                    }}
-                  >
-                    {isNuvioAuthenticating ? (
-                      <>
-                        <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Signing in...
-                      </>
-                    ) : isNuvioGenerating ? (
-                      <>
-                        <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Generating Link...
-                      </>
-                    ) : (
-                      <>
-                        <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                        Open Nuvio
-                      </>
-                    )}
-                  </button>
-
-                  {/* TV only: scan with a phone instead of typing the code
-                      below with a D-pad remote. */}
-                  {isTV && nuvioWebUrl && nuvioTimeLeft !== 'Expired' && (
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="p-3 rounded-xl" style={{ background: 'white' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/qr?data=${encodeURIComponent(nuvioWebUrl)}`}
-                          alt="Scan with your phone to open Nuvio"
-                          width={160}
-                          height={160}
-                        />
-                      </div>
-                      <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                        Scan with your phone to continue
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="text-center space-y-3 pt-2">
-                    <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
-                      Verification Code
-                    </p>
-                    <button
-                      onClick={copyNuvioCode}
-                      disabled={!nuvioCode}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
-                      style={{
-                        background: 'var(--color-bg)',
-                        border: '1px solid var(--color-surface-border)',
-                      }}
-                    >
-                      <span className="font-mono text-lg tracking-widest" style={{ color: 'var(--color-text)' }}>
-                        {nuvioCode || '----'}
-                      </span>
-                      {nuvioCopied ? (
-                        <CheckIcon className="w-4 h-4 text-success" />
-                      ) : (
-                        <ClipboardIcon className="w-4 h-4 text-muted" />
-                      )}
-                    </button>
-                    {nuvioTimeLeft && (
-                      <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                        {nuvioTimeLeft === 'Expired' ? 'Expired' : `Expires in ${nuvioTimeLeft}`}
-                      </p>
-                    )}
-                  </div>
-
-                  {nuvioError && (
-                    <p className="text-sm text-center" style={{ color: 'var(--color-error)' }}>
-                      {nuvioError}
-                    </p>
-                  )}
-
-                  {(nuvioTimeLeft === 'Expired' || nuvioError) && !isNuvioGenerating && (
-                    <button
-                      type="button"
-                      onClick={handleStartNuvioOAuth}
-                      className="w-full text-sm text-center hover:underline"
-                      style={{ color: 'var(--color-primary)' }}
-                    >
-                      Generate a new code
-                    </button>
-                  )}
-
-                  {isNuvioPolling && nuvioTimeLeft !== 'Expired' && !nuvioError && !isNuvioAuthenticating && (
-                    <div className="flex items-center justify-center gap-2 pt-2">
-                      <div className="flex gap-1">
-                        {[0, 1, 2].map((i) => (
-                          <motion.div
-                            key={i}
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{ background: 'var(--color-success)' }}
-                            animate={{ scale: [1, 1.3, 1], opacity: [0.4, 1, 0.4] }}
-                            transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
-                        Waiting for authorization...
-                      </span>
-                    </div>
-                  )}
-                  </>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-
-        {/* Footer */}
-        <p className="text-center mt-6 text-sm" style={{ color: 'var(--color-text-subtle)' }}>
-          {mode === 'user'
-            ? 'Sign in to access your library and share with your group.'
-            : 'Admin access for managing users, groups, and addons.'}
-        </p>
+          {openMethod === 'jellyfin' ? renderJellyfinPanel()
+            : openMethod === 'stremio' ? renderOAuthPanel('stremio')
+            : openMethod === 'nuvio' ? renderOAuthPanel('nuvio')
+            : inTwoFactor ? renderTwoFactor()
+            : mode === 'admin' ? renderAdminCredentials()
+            : renderUserChoices()}
+        </PubCard>
       </motion.div>
-    </div>
+    </PubFrame>
   );
 }
 

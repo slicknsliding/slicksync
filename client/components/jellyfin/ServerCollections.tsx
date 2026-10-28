@@ -6,11 +6,16 @@
 // server/utils/jellyfinServerCollections.js. A Jellyfin collection is
 // server-wide, so there is no profile to pick here.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ArrowPathIcon, CheckIcon, ServerStackIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import { Card, Button, Badge } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { usePageArrangement } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { V2DetailHead, V2Tiles } from '@/components/v2/V2Detail';
+import { V2Button, V2Status } from '@/components/v2/V2Bits';
+import { JfLead } from '@/components/v2/JellyfinCollectionsV2';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
 import { api, type JellyfinCollectionServer, type JellyfinCollectionsView } from '@/lib/api';
 
@@ -71,7 +76,46 @@ function CatalogTile({ c, busy, disabled, onToggle }: { c: CatalogRow; busy: boo
 }
 
 
-export function ServerCollections({ server, canSwitch, onSwitch }: { server: JellyfinCollectionServer; canSwitch: boolean; onSwitch: () => void }) {
+// A catalog in the v2 page design: its cover, its name, how many of its titles
+// the server has, and whether it is a collection there.
+function CatalogTileV2({ c, busy, disabled, onToggle }: { c: CatalogRow; busy: boolean; disabled: boolean; onToggle: () => void }) {
+  const { rpdbEnabled } = usePersonalFeatures();
+  const src = c.coverTitleId ? posterUrl({ id: c.coverTitleId, poster: c.cover }, rpdbEnabled) : cachedImageUrl(c.cover, 154);
+  const here = c.onServer;
+  return (
+    <button type="button" className="v2-tool disabled:cursor-not-allowed" onClick={onToggle} disabled={busy || disabled} aria-pressed={c.on}>
+      <span className="relative w-[44px] h-[62px] rounded-lg overflow-hidden bg-[var(--color-surface-hover)] shrink-0 flex items-center justify-center">
+        {src
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          : <Squares2X2Icon className="w-6 h-6 text-muted" />}
+        {busy && <span className="absolute inset-0 flex items-center justify-center bg-black/50"><ArrowPathIcon className="w-5 h-5 text-white animate-spin" /></span>}
+      </span>
+      <span className="flex-1 min-w-0 text-left">
+        <span className="block font-semibold text-[14.5px] text-default truncate">{c.name}</span>
+        <span className="block text-muted text-[12.5px] mt-0.5">
+          {here === null
+            ? `${c.titles} title${c.titles === 1 ? '' : 's'}`
+            : here === 0
+              ? 'None on this server'
+              : `${here} of ${c.titles} on this server`}
+        </span>
+      </span>
+      <span className="shrink-0 text-[13px] font-medium" style={{ color: c.on ? 'var(--color-success, #22c55e)' : 'var(--color-text-muted)' }}>{c.on ? 'On' : 'Off'}</span>
+    </button>
+  );
+}
+
+export function ServerCollections({ server, canSwitch, onSwitch, v2 = false, switcher }: {
+  server: JellyfinCollectionServer;
+  canSwitch: boolean;
+  onSwitch: () => void;
+  /** The v2 page design: the same catalogs and actions, drawn as v2. */
+  v2?: boolean;
+  /** v2's button for which server, sign-in and profile this is. */
+  switcher?: ReactNode;
+}) {
+  const arrange = usePageArrangement('jellyfin-server-collections', ['catalogs']);
   const path = api.jellyfinCollectionsPath(server.key);
   const [view, setView] = useState<JellyfinCollectionsView | null>(() => api.peekGet<JellyfinCollectionsView>(path) ?? null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -115,6 +159,72 @@ export function ServerCollections({ server, canSwitch, onSwitch }: { server: Jel
 
   const noPermission = !!view && !view.actor;
   const onCount = view?.catalogs.filter((c) => c.on).length || 0;
+
+  if (v2) {
+    const total = view?.catalogs.length || 0;
+    const status = !view ? undefined
+      : noPermission ? <V2Status tone="warn">Can’t manage collections</V2Status>
+        : view.lastError ? <V2Status tone="bad">Last sync didn’t finish</V2Status>
+          : <V2Status tone="ok">{onCount > 0 && view.lastSyncAt ? `Synced ${ago(view.lastSyncAt)}` : 'Kept in step every 30 minutes'}</V2Status>;
+    return (
+      <>
+        <V2DetailHead
+          lead={<JfLead />}
+          title="Jellyfin Collections"
+          status={status}
+          facts={view ? `${onCount} of ${total} catalog${total === 1 ? '' : 's'} on · on ${view.server.name}` : 'collections on a Jellyfin server'}
+          actions={(
+            <>
+              <ArrangeButton arrange={arrange} />
+              {view?.actor && (
+                <V2Button primary icon={<ArrowPathIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />} onClick={syncNow} disabled={syncing || onCount === 0}>
+                  {syncing ? 'Syncing' : 'Sync now'}
+                </V2Button>
+              )}
+            </>
+          )}
+        />
+        <ArrangeBar arrange={arrange} />
+        {switcher && <div className="mb-5">{switcher}</div>}
+
+        {view && (
+          <div className="v2-box v2-box-pad mb-4">
+            {noPermission ? (
+              <p className="text-sm text-default">
+                To make collections, SlickSync needs a sign-in on this server that may manage them, and {view.people.map((p) => p.username).join(', ')} can&rsquo;t.
+                In Jellyfin, open Dashboard &rarr; Users, pick one of them and allow them to manage collections &ndash; or add the server&rsquo;s administrator to SlickSync.
+              </p>
+            ) : (
+              <p className="text-sm text-default">
+                Tap a catalog to make it a collection on this server &ndash; it holds the catalog&rsquo;s titles the server has, under the catalog&rsquo;s name. Everyone on {view.server.name} who can see those titles sees it. Changes are made as {view.actor?.username}.
+                {view.actor && !view.actor.admin && (
+                  <span className="block mt-1 text-muted">Catalog covers need an administrator&rsquo;s sign-in on this server &ndash; {view.actor.username} isn&rsquo;t one, so Jellyfin picks the pictures.</span>
+                )}
+                {view.lastError && view.lastError !== 'no-permission' && <span className="block mt-1 text-error">The last sync didn&rsquo;t finish: {view.lastError}</span>}
+              </p>
+            )}
+          </div>
+        )}
+
+        {arrange.shown.includes('catalogs') && (
+          <ArrangeSection arrange={arrange} id="catalogs" title="Catalogs" meta={view ? `${onCount} of ${total} on` : undefined} noun="section">
+            {!view ? (
+              <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[86px] rounded-2xl bg-surface-hover animate-pulse" />)}</V2Tiles>
+            ) : view.catalogs.length === 0 ? (
+              <div className="v2-box v2-box-pad"><p className="text-sm text-muted text-center">No catalogs yet. Make one on the Catalogs page.</p></div>
+            ) : (
+              <V2Tiles wide={3}>
+                {view.catalogs.map((c) => (
+                  <CatalogTileV2 key={c.id} c={c} busy={busy === c.id} disabled={noPermission || (busy !== null && busy !== c.id)} onToggle={() => toggle(c)} />
+                ))}
+              </V2Tiles>
+            )}
+          </ArrangeSection>
+        )}
+        <div className="mt-4"><HiddenTray arrange={arrange} labelOf={() => 'Catalogs'} /></div>
+      </>
+    );
+  }
 
   return (
     <>

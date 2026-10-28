@@ -19,7 +19,10 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { Header } from '@/components/layout/Header';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { MediaDetailModal, Badge, PosterCard, PosterCardItem, VirtualPosterGrid } from '@/components/ui';
+import { MediaDetailModal, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, PageToolbar } from '@/components/ui';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { usePageDesign } from '@/lib/arrange';
+import { V2Button } from '@/components/v2/V2Bits';
 import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime, PersonSearchResult, DiscoverPerson, DiscoverFacets } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -30,7 +33,7 @@ import {
   GENRES, SORTS, WATCHLIST_SORTS, DECADES, RATINGS, LENGTHS, KINDS, describeGrid, uniqueById, mergeNew, retryDelay, pickSurprise,
   type Kind, type SortKey, type Decade, type Length, type WatchedFilter, type WatchlistSort,
 } from '@/lib/discoverWords';
-import { workAsPerson, bornLine } from '@/lib/personFacts';
+import { workAsPerson, bornLine, wikipediaLine } from '@/lib/personFacts';
 import {
   MagnifyingGlassIcon, SparklesIcon, UserIcon, ChevronDownIcon, AdjustmentsHorizontalIcon, XMarkIcon,
   ArrowsRightLeftIcon, CheckIcon, CalendarDaysIcon, MapPinIcon, BellIcon,
@@ -109,6 +112,8 @@ const yearOf = (s: string | null | undefined) => parseInt(/\d{4}/.exec(s || '')?
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
 
   const [address] = useState(personFromAddress);
@@ -741,7 +746,72 @@ export default function DiscoverPage() {
     </>
   );
 
+  const sortFilters = !isTV && (sortOptions || hasFilters) ? (
+      <div className="relative flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
+        {sortOptions && (
+          <div ref={sortPop.ref} className="flex-1 sm:flex-none sm:relative">
+            <button
+              type="button"
+              onClick={() => sortPop.setOpen(!sortPop.open)}
+              aria-expanded={sortPop.open}
+              className="w-full h-10 sm:h-9 px-3.5 sm:px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center justify-between sm:justify-start gap-1.5"
+              style={{ background: 'var(--color-surface-hover)' }}
+            >
+              <span><span className="text-muted">Sort</span> {sortLabel}</span>
+              <ChevronDownIcon className="w-3.5 h-3.5" />
+            </button>
+            {sortPop.open && (
+              <div ref={sortPop.fit} className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-52 p-1.5 rounded-2xl overflow-y-auto" style={panelStyle}>
+                {sortOptions.map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    onClick={() => pickSort(o.key)}
+                    className={`w-full h-10 px-3 rounded-lg text-sm text-left flex items-center justify-between ${sortValue === o.key ? 'text-default' : 'text-muted hover:text-default hover:bg-surface-hover'}`}
+                  >
+                    {o.label}
+                    {sortValue === o.key && <CheckIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {hasFilters && (
+          <div ref={filtersPop.ref} className={sortOptions ? 'sm:relative' : 'flex-1 sm:flex-none sm:relative'}>
+            <button
+              type="button"
+              onClick={() => filtersPop.setOpen(!filtersPop.open)}
+              aria-expanded={filtersPop.open}
+              aria-label={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
+              className={`relative h-10 sm:h-9 ${sortOptions ? 'w-10 sm:w-auto justify-center' : 'w-full sm:w-auto justify-between sm:justify-start'} sm:pl-3 sm:pr-2 px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center gap-2 disc-filters-btn ${filtersPop.open ? 'is-open' : ''}`}
+              data-open={filtersPop.open || undefined}
+            >
+              <AdjustmentsHorizontalIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+              <span className={sortOptions ? 'hidden sm:inline' : ''}>Filters</span>
+              {filterCount > 0 && (
+                <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary-solid)' }}>{filterCount}</span>
+              )}
+            </button>
+            {filtersPop.open && (
+              <div ref={filtersPop.fit} data-filters-panel className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-[min(560px,92vw)] p-5 rounded-2xl flex flex-col gap-4 overflow-y-auto overscroll-contain" style={panelStyle}>
+                {filtersBody}
+              </div>
+            )}
+          </div>
+        )}
+{!v2 && (
+          <button type="button" onClick={() => { void surprise(); }} aria-label="Surprise me" className="sm:hidden h-10 w-10 shrink-0 rounded-xl inline-flex items-center justify-center text-default" style={{ background: 'var(--color-surface-hover)' }}>
+          <ArrowsRightLeftIcon className="w-5 h-5" />
+        </button>
+)}
+      </div>
+  ) : null;
+
   const Wrapper = isTV ? TVPageProvider : Fragment;
+  const surpriseButton = (
+    <V2Button onClick={() => { void surprise(); }} icon={<ArrowsRightLeftIcon className="w-4 h-4" />}>Surprise me</V2Button>
+  );
   const spinner = (
     <div className="flex items-center justify-center py-24 text-muted">
       <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -788,19 +858,27 @@ export default function DiscoverPage() {
   const watchedNote = watchedFilter === 'hide' ? 'Hiding what you’ve watched' : watchedFilter === 'only' ? 'Only what you’ve watched' : enableWatchedIndicators ? '✓ marks what you’ve seen' : '';
   const rowHeading = (title: React.ReactNode, note?: React.ReactNode) => (
     <div className="flex items-baseline gap-2 mb-3 flex-wrap">
-      <h3 className="text-base font-semibold font-display text-default">{title}</h3>
+      {v2 ? <h2 className="text-lg font-semibold">{title}</h2> : <h3 className="text-base font-semibold font-display text-default">{title}</h3>}
       {note}
     </div>
   );
+  // v2 titles each part of a lens the way the other v2 pages title their sections.
+  const sectionTitle = v2 ? 'text-lg font-semibold' : 'text-lg sm:text-xl font-semibold font-display text-default';
 
   return (
     <Wrapper>
       {layoutMode !== 'nebula' && (
-        <Header title="Discover" subtitle="Browse or search for something to watch, then open it straight in Stremio or Nuvio" />
+        <Header
+          title="Discover"
+          subtitle={v2 ? 'Find something to watch for anyone in the house' : 'Browse or search for something to watch, then open it straight in Stremio or Nuvio'}
+          actions={v2 ? surpriseButton : undefined}
+        />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-4 md:p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-          {layoutMode === 'nebula' && <h1 className="sr-only">Discover</h1>}
+          {layoutMode === 'nebula' && (v2
+            ? <NebulaPageHeading title="Discover" subtitle="Find something to watch for anyone in the house" actions={surpriseButton} />
+            : <h1 className="sr-only">Discover</h1>)}
 
           {/* The search, what kind, and Surprise me. TV has no search - typing on a remote isn't worth it. */}
           <div className="flex flex-wrap items-center gap-3">
@@ -843,16 +921,30 @@ export default function DiscoverPage() {
                 </Focus>
               ))}
             </div>
-            <Focus tv={isTV} onEnter={() => { void surprise(); }}>
+            {v2 && sortFilters}
+            {!v2 && <Focus tv={isTV} onEnter={() => { void surprise(); }}>
               <button type="button" onClick={() => { void surprise(); }} className="h-10 px-3.5 rounded-xl text-sm font-medium text-default hidden sm:inline-flex items-center gap-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
                 <ArrowsRightLeftIcon className="w-4 h-4" />
                 Surprise me
               </button>
-            </Focus>
+            </Focus>}
           </div>
 
           {/* What you are looking through, and in what order and with what filters. */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            {v2 ? (
+              <div className="w-full">
+                <PageToolbar
+                  animate={false}
+                  filterTabs={{
+                    options: lenses.map((l) => ({ key: l.key, label: l.label, count: l.count })),
+                    activeKey: lens,
+                    onChange: (key) => setLens(key as Lens),
+                    layoutId: 'discover-lens-tabs',
+                  }}
+                />
+              </div>
+            ) : (
             <div className="grid grid-cols-6 gap-1.5 w-full sm:w-auto sm:flex sm:flex-wrap sm:gap-2">
               {lenses.map((l, i) => (
                 <Focus key={l.key} tv={isTV} onEnter={() => setLens(l.key)}>
@@ -869,66 +961,9 @@ export default function DiscoverPage() {
                 </Focus>
               ))}
             </div>
-
-            {!isTV && (sortOptions || hasFilters) && (
-              <div className="relative flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
-                {sortOptions && (
-                  <div ref={sortPop.ref} className="flex-1 sm:flex-none sm:relative">
-                    <button
-                      type="button"
-                      onClick={() => sortPop.setOpen(!sortPop.open)}
-                      aria-expanded={sortPop.open}
-                      className="w-full h-10 sm:h-9 px-3.5 sm:px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center justify-between sm:justify-start gap-1.5"
-                      style={{ background: 'var(--color-surface-hover)' }}
-                    >
-                      <span><span className="text-muted">Sort</span> {sortLabel}</span>
-                      <ChevronDownIcon className="w-3.5 h-3.5" />
-                    </button>
-                    {sortPop.open && (
-                      <div ref={sortPop.fit} className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-52 p-1.5 rounded-2xl overflow-y-auto" style={panelStyle}>
-                        {sortOptions.map((o) => (
-                          <button
-                            key={o.key}
-                            type="button"
-                            onClick={() => pickSort(o.key)}
-                            className={`w-full h-10 px-3 rounded-lg text-sm text-left flex items-center justify-between ${sortValue === o.key ? 'text-default' : 'text-muted hover:text-default hover:bg-surface-hover'}`}
-                          >
-                            {o.label}
-                            {sortValue === o.key && <CheckIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {hasFilters && (
-                  <div ref={filtersPop.ref} className={sortOptions ? 'sm:relative' : 'flex-1 sm:flex-none sm:relative'}>
-                    <button
-                      type="button"
-                      onClick={() => filtersPop.setOpen(!filtersPop.open)}
-                      aria-expanded={filtersPop.open}
-                      aria-label={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
-                      className={`relative h-10 sm:h-9 ${sortOptions ? 'w-10 sm:w-auto justify-center' : 'w-full sm:w-auto justify-between sm:justify-start'} sm:pl-3 sm:pr-2 px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center gap-2 disc-filters-btn ${filtersPop.open ? 'is-open' : ''}`}
-                      data-open={filtersPop.open || undefined}
-                    >
-                      <AdjustmentsHorizontalIcon className="w-5 h-5 sm:w-4 sm:h-4" />
-                      <span className={sortOptions ? 'hidden sm:inline' : ''}>Filters</span>
-                      {filterCount > 0 && (
-                        <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary-solid)' }}>{filterCount}</span>
-                      )}
-                    </button>
-                    {filtersPop.open && (
-                      <div ref={filtersPop.fit} data-filters-panel className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-[min(560px,92vw)] p-5 rounded-2xl flex flex-col gap-4 overflow-y-auto overscroll-contain" style={panelStyle}>
-                        {filtersBody}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <button type="button" onClick={() => { void surprise(); }} aria-label="Surprise me" className="sm:hidden h-10 w-10 shrink-0 rounded-xl inline-flex items-center justify-center text-default" style={{ background: 'var(--color-surface-hover)' }}>
-                  <ArrowsRightLeftIcon className="w-5 h-5" />
-                </button>
-              </div>
             )}
+
+            {!v2 && sortFilters}
           </div>
 
           {/* TV: the order and genre as rows of pills - a remote can't drive a popup. */}
@@ -963,7 +998,7 @@ export default function DiscoverPage() {
                 </div>
               )}
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="text-lg sm:text-xl font-semibold font-display text-default [text-wrap:balance]">
+                <h2 className={`${sectionTitle} [text-wrap:balance]`}>
                   {describing ? 'From your description' : describeGrid({ sort, kind, genre, decade, minRating, length, query: debouncedQuery })}
                 </h2>
                 {debouncedQuery && !isTV && (
@@ -1042,6 +1077,26 @@ export default function DiscoverPage() {
                               );
                             })()}
                             {person.person.bio && <p className="text-[15px] sm:text-[17px] leading-relaxed text-default" style={{ maxWidth: 720, opacity: 0.9 }}>{person.person.bio}</p>}
+                            {(() => {
+                              // Where the facts came from, and a way to read more: nothing
+                              // when TMDb had it all and there is no IMDb page to offer. The
+                              // IMDb link leaves the app, so it is not on TV.
+                              const said = person.person.factsFrom === 'wikipedia' ? wikipediaLine(person.person.factsFilled) : null;
+                              const none = !person.person.bio && person.source !== 'lumiere' ? 'No biography yet on TMDb or Wikipedia.' : null;
+                              const note = said && none ? `${said}. ${none}` : said || none;
+                              const imdb = !isTV && person.person.imdbId ? `https://www.imdb.com/name/${person.person.imdbId}/` : null;
+                              if (!note && !imdb) return null;
+                              return (
+                                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5 text-[14px] text-muted">
+                                  {note && <span>{note}</span>}
+                                  {imdb && (
+                                    <a href={imdb} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-[5px] rounded-full border border-default text-default font-semibold no-underline hover:opacity-80">
+                                      IMDb page ↗
+                                    </a>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                           <div className="flex flex-col items-center sm:items-end gap-3 shrink-0">
                             <span className="text-[17px] font-semibold text-default">{person.results.length} title{person.results.length === 1 ? '' : 's'}</span>
@@ -1110,17 +1165,23 @@ export default function DiscoverPage() {
                     <Pill key={m} tv={isTV} on={recMode === m} onClick={() => setRecMode(m)}>{m === 'personal' ? 'Personal' : 'Shared with…'}</Pill>
                   ))}
                   {isTV ? recUsers.map((u) => <Pill key={u.id} tv on={recUserId === u.id} onClick={() => setRecUserId(u.id)}>{u.name || u.username}</Pill>) : (
-                    <select value={recUserId} onChange={(e) => setRecUserId(e.target.value)} aria-label={recMode === 'personal' ? 'Show recommendations for' : 'First person'} className="h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0">
-                      {recUsers.map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
-                    </select>
+                    <label className={v2 ? 'v2-btn' : undefined}>
+                      {v2 && <span className="text-muted">For</span>}
+                      <select value={recUserId} onChange={(e) => setRecUserId(e.target.value)} aria-label={recMode === 'personal' ? 'Show recommendations for' : 'First person'} className={v2 ? 'bg-transparent text-default border-0 outline-none cursor-pointer font-medium' : 'h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0'}>
+                        {recUsers.map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
+                      </select>
+                    </label>
                   )}
                   {recMode === 'shared' && (
                     <>
-                      <span className="text-sm text-muted">and</span>
+                      {!v2 && <span className="text-sm text-muted">and</span>}
                       {isTV ? recUsers.filter((u) => u.id !== recUserId).map((u) => <Pill key={u.id} tv on={recUserId2 === u.id} onClick={() => setRecUserId2(u.id)}>{u.name || u.username}</Pill>) : (
-                        <select value={recUserId2} onChange={(e) => setRecUserId2(e.target.value)} aria-label="Second person" className="h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0">
-                          {recUsers.filter((u) => u.id !== recUserId).map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
-                        </select>
+                        <label className={v2 ? 'v2-btn' : undefined}>
+                          {v2 && <span className="text-muted">and</span>}
+                          <select value={recUserId2} onChange={(e) => setRecUserId2(e.target.value)} aria-label="Second person" className={v2 ? 'bg-transparent text-default border-0 outline-none cursor-pointer font-medium' : 'h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0'}>
+                            {recUsers.filter((u) => u.id !== recUserId).map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
+                          </select>
+                        </label>
                       )}
                     </>
                   )}
@@ -1212,7 +1273,7 @@ export default function DiscoverPage() {
               ) : (
                 <>
                   <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-                    <h2 className="text-lg sm:text-xl font-semibold font-display text-default">Nobody here has seen these</h2>
+                    <h2 className={sectionTitle}>Nobody here has seen these</h2>
                     {householdPicks.sharedAppeal && householdPicks.memberCount > 1 && (
                       <Badge variant="primary" size="sm" icon={<SparklesIcon className="w-3 h-3" />} title="In genres several people here like">House pick</Badge>
                     )}
@@ -1231,7 +1292,7 @@ export default function DiscoverPage() {
                 : shownWatchlist.length === 0 ? emptyNote('Nothing on your watchlist matches this view.')
                   : (
                     <>
-                      <h2 className="text-lg sm:text-xl font-semibold font-display text-default">Your watchlist</h2>
+                      <h2 className={sectionTitle}>Your watchlist</h2>
                       <p className="text-[13px] text-muted mt-1 mb-4">{[`${shownWatchlist.length} title${shownWatchlist.length === 1 ? '' : 's'}`, watchedNote].filter(Boolean).join(' · ')}</p>
                       <div className={GRID}>{shownWatchlist.map((item) => card(item, `wl:${item.id}`))}</div>
                     </>

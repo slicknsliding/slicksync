@@ -6,12 +6,12 @@ import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as Boo
 import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini, BellIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
-import { AddToListButton } from './AddToListButton';
+import { AddToListButton, CatalogPickerMenu } from './AddToListButton';
 import { buildAioStreamsAppUrl } from '@/lib/aiostreamsLink';
 import { OpenWithButton } from './OpenWithButton';
 import { CastMenu, type CastMenuTarget } from './CastMenu';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
-import { api, MediaDetails, DiscoverItem, SeriesSeason } from '@/lib/api';
+import { api, MediaDetails, DiscoverItem, SeriesSeason, type ContinueWatchingItem } from '@/lib/api';
 import { toast } from './Toast';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -21,6 +21,11 @@ import { useDragScroll } from '@/lib/hooks/useDragScroll';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
 import { ScrollRow } from '@/components/ui/ScrollRow';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { copyToClipboard } from '@/lib/clipboard';
+import { TitleActions, TitleFoldHeader, TitleWatching, TITLE_FOLD_RULE, TITLE_MENU_ICONS, type TitleApp, type TitleViewer } from '@/components/v2/TitleV2';
+import type { V2MenuItem } from '@/components/v2/V2Detail';
 
 interface MediaDetailModalProps {
   isOpen: boolean;
@@ -281,6 +286,33 @@ export function MediaDetailModal({
 
   const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators, enableWatchTogether } = usePersonalFeatures();
   const isTV = useIsTV();
+  // v2 (Themes → Page design): who is on it, one main Open/Resume button,
+  // the folds. TV keeps Classic.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const isNarrow = useIsMobile(640);
+  // Everyone here with this title in Continue Watching - the "Watching" line
+  // and the app the main button opens.
+  const [householdOn, setHouseholdOn] = useState<ContinueWatchingItem[]>([]);
+  useEffect(() => {
+    if (!v2 || !isOpen) return;
+    let cancelled = false;
+    api.getContinueWatching()
+      .then((r) => { if (!cancelled) setHouseholdOn(Array.isArray(r) ? r : []); })
+      .catch(() => { /* the line is additive - without it the window is just Open */ });
+    return () => { cancelled = true; };
+  }, [v2, isOpen]);
+  // The app picked with the arrow: this visit, and remembered on this device.
+  const [sessionApp, setSessionApp] = useState<TitleApp | null>(null);
+  const [rememberedTitleApp, setRememberedTitleApp] = useState<TitleApp | null>(null);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('slicksync-title-app');
+      if (v === 'stremio' || v === 'nuvio') setRememberedTitleApp(v);
+    } catch { /* storage blocked: Stremio is the default */ }
+  }, []);
+  const [castOpen, setCastOpen] = useState(true);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
   // true, then updates once the real Settings value loads) - the
@@ -855,6 +887,10 @@ export function MediaDetailModal({
     setCollectionExpanded(false);
   }, [effectiveId]);
   useEffect(() => {
+    setSessionApp(null);
+    setCatalogOpen(false);
+  }, [effectiveId]);
+  useEffect(() => {
     if (!isOpen || !effectiveId) return;
     setSimilarItems([]);
     setSimilarLoading(true);
@@ -1020,7 +1056,7 @@ export function MediaDetailModal({
   // One picture: the one at the top, reaching down past the title and
   // fading into a plain panel - no second copy behind the whole panel.
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying} sheet={v2}>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (
@@ -1109,7 +1145,7 @@ export function MediaDetailModal({
                   className="art-btn flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-transform group-hover:scale-105"
                 >
                   <PlayIcon className="w-5 h-5" />
-                  Play Trailer
+                  {v2 ? 'Play trailer' : 'Play Trailer'}
                 </span>
               </button>
             ))}
@@ -1141,7 +1177,7 @@ export function MediaDetailModal({
           <h2 className="text-2xl font-bold font-display text-default" style={heroImage && !isTrailerPlaying ? { textShadow: '0 2px 12px rgba(0,0,0,.6)' } : undefined}>{title}</h2>
           {/* On a computer, Bookmark and Watched sit right under the title,
               where the eye lands first - not mixed in with the app buttons. */}
-          {!isTV && !isLoading && details?.imdb_id && hasPersonalPills && (
+          {!isTV && !v2 && !isLoading && details?.imdb_id && hasPersonalPills && (
             <div className="hidden sm:flex items-center gap-2 mt-2">{personalPills}</div>
           )}
 
@@ -1241,7 +1277,7 @@ export function MediaDetailModal({
                     mouse/touch on PC and Mobile, just not yet D-pad-reachable
                     on TV. ml-auto pins it to the row's right edge on wide
                     screens; it simply wraps onto its own line on narrow ones. */}
-                {enableReactions && (
+                {enableReactions && !v2 && (
                   <div className="flex items-center gap-1.5 ml-auto">
                     <button
                       type="button"
@@ -1273,7 +1309,7 @@ export function MediaDetailModal({
 
               {/* On a phone, Bookmark, Watched and + Catalog are one row of
                   small pills straight after the ratings. */}
-              {!isTV && details.imdb_id && (
+              {!isTV && !v2 && details.imdb_id && (
                 <div className="flex sm:hidden items-center gap-1 flex-nowrap">
                   {personalPills}
                   <AddToListButton
@@ -1290,6 +1326,100 @@ export function MediaDetailModal({
                   comment for why rent/buy is excluded. Links to TMDb's
                   JustWatch attribution page, required by their API terms
                   when this data is displayed. */}
+
+              {/* v2: who here is on it, then one main button in the right app
+                  with Watchlist and Follow beside it, thumbs and the rest in
+                  the menu. */}
+              {v2 && details.imdb_id && (() => {
+                const imdb = details.imdb_id!;
+                const aioKind: 'movie' | 'series' = effectiveType === 'movie' ? 'movie' : 'series';
+                const here = householdOn.filter((i) => i.showId === effectiveId);
+                const lead = here[0];
+                const leadApp: TitleApp | null = lead ? (lead.providerType === 'nuvio' ? 'nuvio' : 'stremio') : null;
+                const app: TitleApp = sessionApp ?? leadApp ?? rememberedTitleApp ?? 'stremio';
+                const ep = lead?.nextEpisode || lead?.lastWatched || null;
+                const epText = ep ? `S${ep.season} E${ep.episode}` : '';
+                const label = lead
+                  ? (effectiveType === 'series' && epText ? `${lead.resume === false ? 'Continue with' : 'Resume'} ${epText}` : 'Resume')
+                  : 'Open';
+                const hrefs: Record<TitleApp, string> = {
+                  stremio: lead && leadApp === 'stremio' && lead.appUrl ? lead.appUrl : buildStremioAppUrl(imdb, effectiveType),
+                  nuvio: lead && leadApp === 'nuvio' && lead.appUrl ? lead.appUrl : buildNuvioAppUrl(imdb, effectiveType),
+                };
+                const viewers: TitleViewer[] = here.map((i) => {
+                  const e = i.nextEpisode || i.lastWatched;
+                  return {
+                    name: i.username,
+                    line: effectiveType === 'series' && e
+                      ? `${i.resume === false ? 'is up to' : 'is on'} S${e.season} E${e.episode}`
+                      : 'is partway through',
+                  };
+                });
+                const menu: V2MenuItem[] = [];
+                if (enableWatchedIndicators && selfWatched !== null) {
+                  menu.push({ label: selfWatched ? 'Mark not watched' : 'Mark watched', icon: TITLE_MENU_ICONS.watched, disabled: selfWatchedBusy, onClick: toggleSelfWatched });
+                }
+                menu.push({ label: 'Add to a catalog', icon: TITLE_MENU_ICONS.catalog, onClick: () => setCatalogOpen((v) => !v) });
+                menu.push({
+                  label: 'Share',
+                  icon: TITLE_MENU_ICONS.share,
+                  onClick: async () => {
+                    const url = `https://www.imdb.com/title/${imdb}`;
+                    const name = details.title || effectiveFallbackTitle;
+                    try {
+                      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') { await navigator.share({ title: name, url }); return; }
+                    } catch { /* cancelled or unavailable: copy it instead */ }
+                    if (await copyToClipboard(url)) toast.success('Link copied');
+                    else toast.error('Could not copy the link');
+                  },
+                });
+                menu.push({
+                  label: 'Not interested',
+                  icon: TITLE_MENU_ICONS.notInterested,
+                  onClick: async () => {
+                    try {
+                      await api.markNotInterested(effectiveId, effectiveType);
+                      toast.success('Got it', { line: 'This won’t be suggested again.' });
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Could not save that');
+                    }
+                  },
+                });
+                return (
+                  <>
+                    <TitleWatching viewers={viewers} />
+                    <TitleActions
+                      app={app}
+                      onPickApp={(a) => {
+                        setSessionApp(a);
+                        setRememberedTitleApp(a);
+                        try { localStorage.setItem('slicksync-title-app', a); } catch { /* not remembered */ }
+                      }}
+                      label={label}
+                      hrefs={hrefs}
+                      watchlist={enableWatchlist ? { on: inWatchlist, busy: watchlistBusy, onClick: toggleWatchlist } : undefined}
+                      follow={effectiveType === 'series' ? {
+                        label: !followRow ? 'Follow' : (followRow.muted ? 'Muted' : 'Following'),
+                        on: !!followRow && !followRow.muted,
+                        busy: followBusy,
+                        title: !followRow
+                          ? 'Follow - hear when this is renewed, canceled or dated'
+                          : followRow.muted ? 'Alerts muted - tap to turn them back on' : 'Following - tap to mute',
+                        onClick: toggleFollow,
+                      } : undefined}
+                      reactions={enableReactions ? { value: reaction, busy: reactionBusy, onToggle: toggleReaction } : undefined}
+                      isNarrow={isNarrow}
+                      menu={menu}
+                      extra={<OpenWithButton imdbId={imdb} type={aioKind} />}
+                    />
+                    {catalogOpen && (
+                      <div className="rounded-xl p-2 border border-default" style={{ background: 'var(--color-surface-hover)' }}>
+                        <CatalogPickerMenu item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Anime extras: the next-episode countdown AniList publishes
                   exact air times for (better than a vague date), and the
@@ -1354,7 +1484,7 @@ export function MediaDetailModal({
                   purple for Stremio, blue/orange for Nuvio - rather than the
                   generic accent color, so these read as "this specific
                   provider" the same way the badges already do. */}
-              {details.imdb_id && (() => {
+              {!v2 && details.imdb_id && (() => {
                 // sm:w-auto justify-center on each control - the mobile
                 // grid below (2 columns) needs every cell's control to fill
                 // its cell to actually read as a 2x2 grid rather than 4
@@ -1578,8 +1708,16 @@ export function MediaDetailModal({
               {/* Seasons and episodes. Series only, collapsed by default, and
                   the list is only fetched on expand - see loadSeasons. */}
               {effectiveType === 'series' && (
-                <div className="rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
-                  <button
+                <div className={v2 ? TITLE_FOLD_RULE : 'rounded-xl'} style={v2 ? undefined : { background: 'var(--color-surface-hover)' }}>
+                  {v2 && (
+                    <TitleFoldHeader
+                      title="Seasons and episodes"
+                      note={seasons && seasons.length > 0 ? `${seasons.length} season${seasons.length === 1 ? '' : 's'} · ${seasons.reduce((n, x) => n + x.episodes.length, 0)} episodes` : undefined}
+                      open={seasonsOpen}
+                      onToggle={loadSeasons}
+                    />
+                  )}
+                  {!v2 && <button
                     type="button"
                     onClick={loadSeasons}
                     className="w-full flex items-center justify-between gap-3 p-3 text-left"
@@ -1591,7 +1729,7 @@ export function MediaDetailModal({
                       )}
                     </span>
                     <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
-                  </button>
+                  </button>}
 
                   {seasonsOpen && (
                     <div className="px-3 pb-3">
@@ -1646,8 +1784,19 @@ export function MediaDetailModal({
                   a full-width bar holding two words and a lot of nothing -
                   it only takes real space once it is actually opened. */}
               {effectiveType === 'series' && enableWatchTogether && (
-                <div className={wtOpen ? 'rounded-xl border border-default bg-surface-hover/40' : ''}>
-                  <button
+                <div className={v2 ? TITLE_FOLD_RULE : (wtOpen ? 'rounded-xl border border-default bg-surface-hover/40' : '')}>
+                  {v2 && (
+                    <TitleFoldHeader
+                      title="Spoiler guard"
+                      icon={<ShieldCheckIcon className={`w-4 h-4 shrink-0 ${wtHasPact ? 'text-primary' : 'text-muted'}`} />}
+                      note={wtHasPact
+                        ? `${wtSelected.size} people${wtFrontier ? ` · everyone is at S${wtFrontier.season}E${wtFrontier.episode}${wtWaitingOn.length ? ` (waiting on ${wtWaitingOn.join(', ')})` : ''}` : ' · not everyone has started yet'}`
+                        : 'Set up'}
+                      open={wtOpen}
+                      onToggle={() => { setWtOpen((v) => !v); if (!wtOpen) loadWatchTogether(); }}
+                    />
+                  )}
+                  {!v2 && <button
                     type="button"
                     onClick={() => { setWtOpen((v) => !v); if (!wtOpen) loadWatchTogether(); }}
                     className={wtOpen
@@ -1667,7 +1816,7 @@ export function MediaDetailModal({
                       )}
                     </div>
                     <span className="text-xs text-muted shrink-0">{wtOpen ? 'Hide' : wtHasPact ? 'Edit' : 'Set up'}</span>
-                  </button>
+                  </button>}
                   {wtOpen && (
                     <div className="px-3 pb-3">
                       <p className="text-xs text-muted mb-2">
@@ -1726,8 +1875,12 @@ export function MediaDetailModal({
               )}
 
               {details.cast && details.cast.length > 0 && (
-                <div>
-                  <p className="text-base text-muted mb-2">Cast</p>
+                <div className={v2 ? TITLE_FOLD_RULE : undefined}>
+                  {v2 ? (
+                    <TitleFoldHeader title="Cast" note={String(details.cast.length)} open={castOpen} onToggle={() => setCastOpen((o) => !o)} />
+                  ) : (
+                    <p className="text-base text-muted mb-2">Cast</p>
+                  )}
                   <div
                     ref={castRowRef}
                     onPointerDown={handleCastPointerDown}
@@ -1735,7 +1888,7 @@ export function MediaDetailModal({
                     onPointerUp={handleCastPointerUp}
                     // Room above and left of the photos: the row hides what
                     // overflows it, and the hover ring sits outside the photo.
-                    className="flex gap-4 overflow-x-auto pt-1.5 pl-1 pb-1 pr-6 -mt-1.5 -ml-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                    className={`flex gap-4 overflow-x-auto pt-1.5 pl-1 pb-1 pr-6 -mt-1.5 -ml-1 no-scrollbar cursor-grab active:cursor-grabbing select-none${v2 && !castOpen ? ' hidden' : ''}`}
                   >
                     {details.cast.slice(0, 10).map((member) => {
                       const clickable = member.tmdbId != null && member.tmdbId !== '';
@@ -1827,7 +1980,7 @@ export function MediaDetailModal({
                     />
                   )}
                   {personView && (
-                    <div ref={personPanelRef} className="mt-4 rounded-xl border border-default bg-surface-hover/40 p-3 scroll-mt-4">
+                    <div ref={personPanelRef} className={`mt-4 rounded-xl border border-default bg-surface-hover/40 p-3 scroll-mt-4${v2 && !castOpen ? ' hidden' : ''}`}>
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-semibold text-default">
                           {personView.name}

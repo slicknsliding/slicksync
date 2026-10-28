@@ -27,6 +27,9 @@ import { providerTypeLabel } from '@/lib/providers';
 import { PersonPushRow } from '@/components/user/PersonPushRow';
 import { ProfilePictureEditor } from '@/components/user/ProfilePictureEditor';
 import { HistoryImportTile } from '@/components/user/HistoryImportTile';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { MeSettingsV2, SETTINGS_SECTIONS } from '@/components/v2/MeSettingsV2';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -154,6 +157,13 @@ export default function UserSettingsPage() {
   const { userId, authKey, isReady } = useUserAuthHeaders();
   const providerLabel = providerTypeLabel(provider);
   const { themeId, setTheme } = useTheme();
+  // Page design for their own pages: their own choice, saved with their
+  // account (Classic until they pick v2).
+  const { design, setDesign } = usePageDesign();
+  const { where: npWhere, setWhere: setNpWhere } = useNowPlayingWho();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const v2Arrange = usePageArrangement('settings', [...SETTINGS_SECTIONS], { defaultFolded: ['leave'] });
 
   // Self-service "delete my account" - only this user's own data, not the
   // whole shared instance (that's an admin-only action). Works in both
@@ -462,6 +472,62 @@ export default function UserSettingsPage() {
     ? (apiKeyVisible ? currentApiKey : currentApiKey.slice(0, 8) + '••••••••' + currentApiKey.slice(-4))
     : 'No API key';
 
+  const deleteModal = (
+    <ConfirmModal
+      isOpen={isDeleteModalOpen}
+      onClose={() => setIsDeleteModalOpen(false)}
+      onConfirm={handleDeleteAccount}
+      title="Delete Your Account?"
+      description={`This permanently deletes your own watch history, watchlist, and account. It does not delete the shared addons, groups, or any other household member's data - only what belongs to you (${userInfo?.username || 'this account'}). There is no undo. If you're sure, click 'Yes, delete my account' below.`}
+      confirmText="Yes, delete my account"
+      cancelText="No, keep my account"
+      variant="danger"
+      isLoading={isDeletingAccount}
+    />
+  );
+
+  if (v2) {
+    return (
+      <div className="p-4 sm:p-8">
+        <MeSettingsV2
+          arrange={v2Arrange}
+          providerLabel={providerLabel}
+          picture={<ProfilePictureEditor name={userInfo?.username || 'User'} email={userInfo?.email} />}
+          groupName={userInfo?.groupName}
+          memberSince={formatDate(userInfo?.createdAt)}
+          expires={userInfo?.expiresAt ? formatDate(userInfo.expiresAt) : null}
+          themeName={(themeMeta as Record<string, { name: string }>)[themeId]?.name || 'Custom'}
+          themeGrid={(
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {themeIds.map((id) => (
+                <ThemeCard key={id} themeId={id} meta={themeMeta[id]} isSelected={themeId === id} onSelect={() => setTheme(id)} />
+              ))}
+            </div>
+          )}
+          visibility={{ loaded: activityVisibilityLoaded, isPublic, busy: updating, toggle: handleToggleVisibility }}
+          publicStats={{ loaded: publicStatsLoaded, enabled: publicStatsEnabled, busy: savingPublicStats, url: publicStatsUrl, toggle: handleTogglePublicStats, copy: handleCopyPublicStatsUrl }}
+          exportData={{ busy: isExportingMyData, run: handleExportMyData }}
+          historyImport={userId && authKey ? <HistoryImportTile userId={userId} authKey={authKey} /> : null}
+          pushRow={<PersonPushRow userId={userId} authKey={authKey} />}
+          watchNotify={{ loaded: notifyOnWatchLoaded, on: notifyOnWatch, busy: isSavingNotifyOnWatch, toggle: handleToggleNotifyOnWatch }}
+          webhook={{ url: discordWebhookUrl, setUrl: setDiscordWebhookUrl, save: handleSaveWebhook, test: handleTestWebhook, testing: isTestingWebhook }}
+          apiKey={{
+            value: currentApiKey,
+            masked: maskedApiKey,
+            visible: apiKeyVisible,
+            toggleVisible: () => setApiKeyVisible(!apiKeyVisible),
+            copy: handleCopyApiKey,
+            generate: handleGenerateApiKey,
+            generating: isGeneratingKey,
+            scrobbleUrl: `${API_BASE}/scrobble`,
+          }}
+          onDelete={() => setIsDeleteModalOpen(true)}
+        />
+        {deleteModal}
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-8">
       <UserPageHeader
@@ -581,6 +647,80 @@ export default function UserSettingsPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Page design (their own pages; a TV always shows Classic) */}
+        {!isTV && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="rounded-xl overflow-hidden"
+          style={{
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-border)',
+          }}
+        >
+          <div
+            className="px-6 py-4 flex items-center gap-3"
+            style={{ borderBottom: '1px solid var(--color-surface-border)' }}
+          >
+            <div
+              className="w-9 h-9 rounded-lg flex items-center justify-center"
+              style={{ background: 'var(--color-secondary-muted)' }}
+            >
+              <PaintBrushIcon className="w-5 h-5" style={{ color: 'var(--color-secondary)' }} />
+            </div>
+            <div>
+              <h2 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                Page design
+              </h2>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                How your pages are laid out
+              </p>
+            </div>
+          </div>
+          <div className="p-6 flex flex-wrap gap-2.5">
+            {([
+              { id: 'classic', title: 'Classic', line: 'Your pages as they have always been' },
+              { id: 'v2', title: 'v2', line: 'Grouped sections, one clear button each, and Arrange to move or hide sections' },
+            ] as const).map((o) => {
+              const on = design === o.id;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setDesign(o.id)}
+                  className="flex-[1_1_220px] min-w-0 text-left rounded-[14px] px-4 py-3.5 transition-colors"
+                  style={{
+                    background: 'var(--color-surface-hover)',
+                    border: on ? '2px solid var(--color-primary)' : '1px solid var(--color-surface-border)',
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <b style={{ color: 'var(--color-text)' }}>{o.title}</b>
+                    {on && <span className="ml-auto whitespace-nowrap text-[13px]" style={{ color: 'var(--color-primary)' }}>✓ In use</span>}
+                  </span>
+                  <span className="block text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{o.line}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Now Playing</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Your app and room: under the picture, or on it</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Now Playing">
+              {(['under', 'on'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={npWhere === w} className={npWhere === w ? 'on' : ''} onClick={() => setNpWhere(w)}>
+                  {w === 'under' ? 'Under' : 'On the picture'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+        )}
 
         {/* Privacy Settings */}
         <motion.div
@@ -1021,17 +1161,7 @@ export default function UserSettingsPage() {
         </motion.div>
       </div>
 
-      <ConfirmModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDeleteAccount}
-        title="Delete Your Account?"
-        description={`This permanently deletes your own watch history, watchlist, and account. It does not delete the shared addons, groups, or any other household member's data - only what belongs to you (${userInfo?.username || 'this account'}). There is no undo. If you're sure, click 'Yes, delete my account' below.`}
-        confirmText="Yes, delete my account"
-        cancelText="No, keep my account"
-        variant="danger"
-        isLoading={isDeletingAccount}
-      />
+      {deleteModal}
     </div>
   );
 }

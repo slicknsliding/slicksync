@@ -12,6 +12,11 @@ import { Card, Button } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { GuideTopicV2, GUIDE_TOPIC_SECTIONS } from '@/components/v2/GuideTopicV2';
+import { V2Button } from '@/components/v2/V2Bits';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -39,6 +44,23 @@ export default function GuideTopicPage() {
 
   const entry = getHelpEntry(id);
 
+  // v2: the one obvious button sits in the page heading beside Arrange; the
+  // steps, how it works and worth knowing fold, move and hide.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const arrange = usePageArrangement('guide-topic', GUIDE_TOPIC_SECTIONS.map((x) => x.key));
+  const v2Actions = entry ? (
+    <div className="flex items-center gap-2 flex-wrap">
+      <ArrangeButton arrange={arrange} />
+      {entry.embed ? (
+        <V2Button primary icon={<BoltIcon className="w-4 h-4" />} onClick={() => setEmbedOpen(true)}>Open Automation here</V2Button>
+      ) : entry.href ? (
+        <V2Button primary icon={<ArrowTopRightOnSquareIcon className="w-4 h-4" />} onClick={() => router.push(entry.href!)}>{entry.linkLabel || 'Go there'}</V2Button>
+      ) : null}
+    </div>
+  ) : undefined;
+
   const related = (entry?.related || [])
     .map((rid) => getHelpEntry(rid))
     .filter((e): e is HelpEntry => Boolean(e));
@@ -64,15 +86,16 @@ export default function GuideTopicPage() {
               className="text-xl font-semibold"
             />
           }
+          actions={v2 ? v2Actions : undefined}
         />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(64rem, 92vw)' } : undefined}>
           {layoutMode === 'nebula' && entry && (
-            <NebulaPageHeading title={entry.title} subtitle={entry.category} />
+            <NebulaPageHeading title={entry.title} subtitle={entry.category} actions={v2 ? v2Actions : undefined} />
           )}
 
-          <PageSection delay={0.05} className="mb-4">
+          {!(v2 && entry) && <PageSection delay={0.05} className="mb-4">
             <button
               onClick={() => (back ? back.go() : router.push('/guides'))}
               className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
@@ -81,8 +104,9 @@ export default function GuideTopicPage() {
               <ArrowLeftIcon className="w-4 h-4" />
               {back ? back.label : 'All guides'}
             </button>
-          </PageSection>
+          </PageSection>}
 
+          {v2 && entry && <ArrangeBar arrange={arrange} />}
           {!entry ? (
             <PageSection delay={0.1}>
               <Card padding="lg">
@@ -95,6 +119,21 @@ export default function GuideTopicPage() {
                 </Button>
               </Card>
             </PageSection>
+          ) : v2 ? (
+            <>
+              <GuideTopicV2
+                entry={entry}
+                related={related}
+                arrange={arrange}
+                backLabel={back ? back.label : 'All guides'}
+                onBack={() => (back ? back.go() : router.push('/guides'))}
+              />
+              <HiddenTray
+                arrange={arrange}
+                labelOf={(key) => `${GUIDE_TOPIC_SECTIONS.find((x) => x.key === key)?.label ?? 'Section'} (section)`}
+                note="Hidden only here, for every guide. Tap one to bring it back."
+              />
+            </>
           ) : (
             <>
               {/* Summary - the same text the command palette shows inline */}

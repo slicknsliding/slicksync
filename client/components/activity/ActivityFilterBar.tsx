@@ -119,7 +119,7 @@ function Pill({ icon: Icon, label, value, options, onChange }: {
  * kind, finished or not, and when. Each only offers what the feed actually
  * holds, and the page keeps them in the address so a view can be shared.
  */
-export function ActivityFilterBar({ value, onChange, people, sources, profiles, profileApps = {} }: {
+export function ActivityFilterBar({ value, onChange, people, sources, profiles: allProfiles, profileApps = {}, profileSources }: {
   value: ActivityFilters;
   onChange: (next: ActivityFilters) => void;
   people: Option[];
@@ -127,9 +127,18 @@ export function ActivityFilterBar({ value, onChange, people, sources, profiles, 
   profiles: string[];
   /** Which app each profile belongs to, so the list can say so. */
   profileApps?: Record<string, string>;
+  /** The apps each profile's viewing came from: with an app picked, only its profiles are offered. */
+  profileSources?: Record<string, string[]>;
 }) {
   const [copying, setCopying] = useState(false);
-  const set = (patch: Partial<ActivityFilters>) => onChange({ ...value, ...patch });
+  const inSource = (p: string, source: string) => !source || !profileSources || (profileSources[p] || []).includes(source);
+  const profiles = allProfiles.filter((p) => inSource(p, value.source));
+  const set = (patch: Partial<ActivityFilters>) => {
+    const next = { ...value, ...patch };
+    // Picking an app drops a profile that belongs to another one.
+    if ('source' in patch && next.profile && !inSource(next.profile, next.source)) next.profile = '';
+    onChange(next);
+  };
   const today = new Date().toISOString().slice(0, 10);
 
   const copyLink = async () => {

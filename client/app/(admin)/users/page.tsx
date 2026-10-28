@@ -31,6 +31,7 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } fro
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
+import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
 import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
@@ -508,7 +509,9 @@ export default function UsersPage() {
     setIsDeleting(true);
     try {
       await api.deleteUser(deleteTarget.id);
-      toast.success(`${deleteTarget.name} deleted successfully`);
+      // v2 says where they went, with Undo; Classic keeps its plain toast.
+      if (v2) void showPersonDeletedWithUndo(deleteTarget.name, () => { api.getUsers().then(setUsers).catch(() => {}); });
+      else toast.success(`${deleteTarget.name} deleted successfully`);
       // Refresh users
       try {
         const usersData = await api.getUsers();
@@ -523,7 +526,7 @@ export default function UsersPage() {
       setIsDeleting(false);
       setDeleteTarget(null);
     }
-  }, [deleteTarget]);
+  }, [deleteTarget, v2]);
 
   const hasSelection = selectedIds.size > 0;
 

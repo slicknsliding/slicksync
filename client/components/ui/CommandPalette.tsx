@@ -15,6 +15,10 @@ import { api } from '@/lib/api';
 import { searchHelp, HelpEntry } from '@/lib/helpContent';
 import { searchSettings } from '@/lib/settingsIndex';
 import { cachedImageUrl } from '@/lib/posterUrl';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { PaletteV2Panel } from '@/components/v2/PaletteV2';
+import type { V2Tone } from '@/components/v2/V2Bits';
 
 // Global Ctrl+K/Cmd+K command palette - the trigger key shown adapts to the
 // OS (Mac gets the Cmd glyph, everyone else gets Ctrl), same convention
@@ -72,10 +76,53 @@ interface Result {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   /** A title result shows its poster in place of the icon. */
   poster?: string | null;
+  /** v2: a person's state in a word. */
+  person?: { tone: V2Tone; words: string };
+  /** v2: shown under Recent before anything is typed. */
+  recent?: boolean;
+}
+
+// v2: the last few places picked, kept on this device only.
+const RECENT_KEY = 'slicksync-palette-recent';
+
+function iconForId(id: string, href: string): Result['icon'] {
+  if (id.startsWith('user-')) return UsersIcon;
+  if (id.startsWith('addon-')) return PuzzlePieceIcon;
+  if (id.startsWith('list-')) return RectangleStackIcon;
+  if (id.startsWith('setting-')) return Cog6ToothIcon;
+  if (id.startsWith('title-')) return href.includes('t=series') ? TvIcon : FilmIcon;
+  return NAV_ITEMS.find((n) => n.href === href)?.icon || ArrowUpRightIcon;
+}
+
+function readRecent(): Result[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((r) => r && typeof r.id === 'string' && typeof r.label === 'string' && typeof r.href === 'string')
+      .slice(0, 3)
+      .map((r) => ({ id: r.id, label: r.label, sublabel: typeof r.sublabel === 'string' ? r.sublabel : undefined, href: r.href, icon: iconForId(r.id, r.href), recent: true }));
+  } catch {
+    return [];
+  }
+}
+
+function writeRecent(r: Result) {
+  try {
+    const kept = readRecent().filter((x) => x.id !== r.id);
+    const next = [r, ...kept].slice(0, 3).map(({ id, label, sublabel, href }) => ({ id, label, sublabel, href }));
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch { /* storage blocked: Recent just stays as it was */ }
 }
 
 export function CommandPalette() {
   const router = useRouter();
+  // v2 (Themes → Page design): grouped results, keys in the foot, an empty
+  // state with Recent and Pages. TV keeps Classic.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const [recent, setRecent] = useState<Result[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -101,7 +148,13 @@ export function CommandPalette() {
         api.getLocalIndex().catch(() => ({ items: [] })),
       ]);
       const results: Result[] = [
-        ...users.map((u) => ({ id: `user-${u.id}`, label: u.username, sublabel: 'User', href: `/users/${u.id}`, icon: UsersIcon })),
+        ...users.map((u) => {
+          // The same words the People page uses, minus anything live.
+          const x = u as { providerConnectionError?: string | null; expiresAt?: string | null };
+          const off = u.isActive === false || u.status === 'inactive' || (!!x.expiresAt && new Date(x.expiresAt).getTime() < Date.now());
+          const person: Result['person'] = x.providerConnectionError ? { tone: 'warn', words: 'Needs a fix' } : off ? { tone: 'off', words: 'Switched off' } : { tone: 'ok', words: 'All synced' };
+          return { id: `user-${u.id}`, label: u.username, sublabel: 'User', href: `/users/${u.id}`, icon: UsersIcon, person };
+        }),
         ...addons.map((a) => ({ id: `addon-${a.id}`, label: a.name, sublabel: 'Addon', href: `/addons/${a.id}`, icon: PuzzlePieceIcon })),
         ...lists.map((l) => ({ id: `list-${l.id}`, label: l.name, sublabel: 'Catalog', href: `/catalogs/${l.id}`, icon: RectangleStackIcon })),
         ...(titles.items || []).map((t) => ({
@@ -135,6 +188,7 @@ export function CommandPalette() {
           if (prev) return prev; // already open, let it handle its own Escape
           setQuery('');
           setActiveIndex(0);
+          setRecent(readRecent());
           loadEntities();
           return true;
         });
@@ -152,6 +206,7 @@ export function CommandPalette() {
         if (prev) return prev;
         setQuery('');
         setActiveIndex(0);
+        setRecent(readRecent());
         loadEntities();
         return true;
       });
@@ -172,7 +227,7 @@ export function CommandPalette() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return navResults.slice(0, 8);
+    if (!q) return v2 ? [...recent, ...navResults.filter((n) => !recent.some((r) => r.id === n.id)).slice(0, 8)] : navResults.slice(0, 8);
     const pool: Result[] = [
       ...NAV_ITEMS.filter((n) => n.label.toLowerCase().includes(q) || n.keywords.includes(q))
         .map((n) => ({ id: `nav-${n.href}`, label: n.label, href: n.href, icon: n.icon, sublabel: undefined })),
@@ -195,7 +250,7 @@ export function CommandPalette() {
     // alongside destinations rather than being crowded out - "how do I do X"
     // and "take me to X" are both legitimate reasons to open this.
     return pool.slice(0, 5);
-  }, [query, navResults, entities]);
+  }, [query, navResults, entities, v2, recent]);
 
   // Local how-to knowledge base. This used to only run when nav/entity
   // search came up completely empty, which meant a query like "vault" showed
@@ -210,6 +265,7 @@ export function CommandPalette() {
   useEffect(() => { setActiveIndex(0); }, [query]);
 
   const handleSelect = (result: Result) => {
+    if (v2) writeRecent(result);
     router.push(result.href);
     // Settings deep-links: if the user is ALREADY on /settings, a
     // query-only push doesn't remount the page, so its mount-time URL read
@@ -290,6 +346,23 @@ export function CommandPalette() {
               // palette stretched the full width of a desktop monitor.
               style={{ maxWidth: 'min(38rem, 100%)' }}
             >
+              {v2 ? (
+                <PaletteV2Panel
+                  query={query}
+                  onQuery={setQuery}
+                  inputRef={inputRef}
+                  onKeyDown={handleKeyDown}
+                  results={filtered}
+                  helpResults={helpResults}
+                  activeIndex={activeIndex}
+                  onActive={setActiveIndex}
+                  onPick={handleSelect}
+                  onPickHelp={handleSelectHelp}
+                  onBrowse={browseAllHelp}
+                  onClose={close}
+                  loading={loadingEntities}
+                />
+              ) : (
               <div
                 className="popup-panel rounded-2xl overflow-hidden"
               >
@@ -400,6 +473,7 @@ export function CommandPalette() {
                   )}
                 </div>
               </div>
+              )}
             </motion.div>
           </>
         )}

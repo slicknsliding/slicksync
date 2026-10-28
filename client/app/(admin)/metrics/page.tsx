@@ -62,9 +62,10 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { ScrollRow } from '@/components/ui/ScrollRow';
-import { usePageArrangement } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
 import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
+import { MetricsUsersV2, MetricsContentV2, MetricsAdminV2, MetricsHealthV2, type MetricsHealthPart } from '@/components/v2/MetricsV2';
 
 // Period options for filtering
 const PERIOD_OPTIONS = [
@@ -325,6 +326,8 @@ const METRICS_LABELS: Record<string, string> = {
 export default function MetricsPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [period, setPeriod] = useState('30d');
   // The yearly recap opens on request. It is a once-a-year read, and it
@@ -499,17 +502,174 @@ export default function MetricsPage() {
 
   // Each tab's panels in this account's own arrangement (lib/arrange.tsx).
   // Panels that only show when there's data join the list only then.
-  const metricsUsersArrange = usePageArrangement('metrics-users', ['hero', 'members', 'recap', ...(tasteProfiles.length > 0 ? ['taste'] : []), ...(tasteOverlap.length > 0 ? ['overlap'] : [])]);
+  // v2 keeps the taste panels and the recap folded until they are wanted.
+  const metricsUsersArrange = usePageArrangement('metrics-users', ['hero', 'members', 'recap', ...(tasteProfiles.length > 0 ? ['taste'] : []), ...(tasteOverlap.length > 0 ? ['overlap'] : [])], { defaultFolded: v2 ? ['taste', 'overlap', 'recap'] : [] });
   const metricsContentArrange = usePageArrangement('metrics-content', ['numbers', 'top', 'engagement']);
   const metricsAdminArrange = usePageArrangement('metrics-admin', ['numbers', ...(!!(metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0) ? ['joins'] : []), 'lifecycle', 'health', 'addons']);
   const tabArrange = viewMode === 'users' ? metricsUsersArrange : viewMode === 'content' ? metricsContentArrange : viewMode === 'admin' ? metricsAdminArrange : null;
+
+  // ---- v2: the same data, drawn as v2 sections (components/v2/MetricsV2.tsx).
+  const periodName = PERIOD_OPTIONS.find((o) => o.value === period)?.label.toLowerCase() ?? period;
+  const periodMeta = period === 'all' ? 'all time' : `last ${periodName}`;
+  const periodLabel = period === 'all' ? 'Watched, all time' : `Watched in ${periodName}`;
+  const v2Subtitle = 'How much the household watches, and how SlickSync is doing';
+  const v2WatchChart = isLoading ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">Loading…</div>
+  ) : watchTimeChartData.length === 0 ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">Nothing watched in this period yet</div>
+  ) : <WatchTimeChart data={watchTimeChartData} />;
+  const v2ContentChart = isLoading ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">Loading…</div>
+  ) : contentBreakdownData.length === 0 ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">No watch activity in this period</div>
+  ) : <ContentBreakdownChart data={contentBreakdownData} />;
+  const v2JoinsChart = metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0 ? (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={metricsData.userJoins.byDay}>
+        <defs>
+          <linearGradient id="colorUserJoinsV2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="var(--color-chart-3)" stopOpacity={0.4} />
+            <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+        <XAxis dataKey="date" stroke="#64748b" fontSize={12} tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} />
+        <YAxis stroke="#64748b" fontSize={12} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          labelFormatter={(value) => new Date(String(value)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+          formatter={(value) => [`${value} ${Number(value) === 1 ? 'person' : 'people'}`, 'Joined']}
+        />
+        <Area type="monotone" dataKey="count" stroke="var(--color-chart-3)" strokeWidth={2} fillOpacity={1} fill="url(#colorUserJoinsV2)" />
+      </AreaChart>
+    </ResponsiveContainer>
+  ) : null;
+
+  // The Health tab's parts: what each one says, and the issues under it with
+  // the same ignore buttons Classic has on its cards.
+  const healthParts: MetricsHealthPart[] = (() => {
+    const h = healthData;
+    if (!h) return [];
+    const works = (ok: boolean | null): { tone: 'ok' | 'warn' | 'off'; words: string } => (
+      ok === null ? { tone: 'off', words: 'Not checked' } : ok ? { tone: 'ok', words: 'Working' } : { tone: 'warn', words: 'Needs a look' }
+    );
+    const parts: MetricsHealthPart[] = [];
+    parts.push({
+      key: 'version', title: 'Version',
+      ...(h.version.updateAvailable ? { tone: 'warn' as const, words: 'Update available' } : { tone: 'ok' as const, words: 'Up to date' }),
+      line: h.version.updateAvailable ? `Running ${h.version.running}. ${h.version.latestRelease} is out.` : `Running ${h.version.running}${h.version.latestRelease ? '' : ' (couldn’t reach GitHub to look for a newer one)'}`,
+    });
+    parts.push({
+      key: 'sync', title: 'Sync', ...works(h.sync.driftCount === 0),
+      line: h.sync.driftCount > 0 ? `${h.sync.driftCount} of ${h.sync.usersTracked} accounts drifted from their group’s addons` : `${h.sync.usersTracked} ${h.sync.usersTracked === 1 ? 'account' : 'accounts'} tracked, none drifted`,
+      body: (h.sync.driftCount > 0 || h.sync.ignored.length > 0) ? (
+        <div>
+          {h.sync.drifted.map((d, i) => <HealthIssueRow key={i} title={d.title} detail={d.body} meta={healthTimeAgo(d.since)} onIgnore={() => toggleSyncIgnored(d.userId, true)} />)}
+          <HealthIgnoredList items={h.sync.ignored.map((u) => ({ id: u.userId, name: u.title }))} onUnignore={(id) => toggleSyncIgnored(id, false)} />
+        </div>
+      ) : undefined,
+    });
+    parts.push({
+      key: 'addons', title: 'Addons', ...works(h.addons.offlineCount === 0),
+      line: h.addons.offlineCount > 0 ? `${h.addons.offlineCount} of ${h.addons.checked} checked can’t be reached` : `${h.addons.checked} of ${h.addons.total} checked, all reachable`,
+      body: (h.addons.offlineCount > 0 || h.addons.ignored.length > 0 || h.addons.uptime.length > 0) ? (
+        <div>
+          {h.addons.offline.map((a) => <HealthIssueRow key={a.id} title={a.name} detail={a.error} meta={healthTimeAgo(a.lastChecked)} onIgnore={() => toggleAddonIgnored(a.id, true)} />)}
+          <HealthIgnoredList items={h.addons.ignored} onUnignore={(id) => toggleAddonIgnored(id, false)} />
+          {h.addons.uptime.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-default">
+              <p className="text-[10px] uppercase tracking-wide text-subtle mb-1.5">Uptime</p>
+              <div className="space-y-1">
+                {h.addons.uptime.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-default truncate">{a.name}</span>
+                    <span className={`flex-shrink-0 font-medium ${a.uptime30d < 99 ? 'text-warning' : 'text-subtle'}`}>{a.uptime7d.toFixed(1)}% (7d) · {a.uptime30d.toFixed(1)}% (30d)</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : undefined,
+    });
+    parts.push({
+      key: 'vault', title: 'Vault', ...works(h.vault.failingCount === 0 && h.vault.expiringCount === 0),
+      line: h.vault.failingCount > 0 || h.vault.expiringCount > 0 ? `${h.vault.failingCount} failing, ${h.vault.expiringCount} ending soon` : `${h.vault.total} ${h.vault.total === 1 ? 'credential' : 'credentials'} tracked, all passing`,
+      body: (h.vault.failingCount > 0 || h.vault.expiringCount > 0 || h.vault.ignored.length > 0) ? (
+        <div>
+          {h.vault.failing.map((v) => <HealthIssueRow key={`f-${v.id}`} title={v.name} detail={v.message || 'Check failed'} meta={healthTimeAgo(v.lastChecked)} onIgnore={() => toggleVaultIgnored(v.id, true)} />)}
+          {h.vault.expiring.map((v) => <HealthIssueRow key={`e-${v.id}`} title={v.name} detail="Expiring soon" meta={new Date(v.expiresAt).toLocaleDateString()} onIgnore={() => toggleVaultIgnored(v.id, true)} />)}
+          <HealthIgnoredList items={h.vault.ignored} onUnignore={(id) => toggleVaultIgnored(id, false)} />
+        </div>
+      ) : undefined,
+    });
+    if (h.proxy) {
+      const px = h.proxy;
+      parts.push({
+        key: 'proxy', title: 'Proxy',
+        ...(!px.configured ? { tone: 'off' as const, words: 'Not set up' } : px.healthIgnored ? { tone: 'off' as const, words: 'Ignored' } : works(px.ok)),
+        line: !px.configured ? 'The AIOStreams proxy isn’t set up on this instance' : px.ok === false && !px.healthIgnored ? `Stats unreachable${px.error ? `: ${px.error}` : ''}` : `Now Playing is reaching AIOStreams. Last poll ${healthTimeAgo(px.at)}`,
+        body: px.configured && (px.healthIgnored || px.ok === false) ? (
+          px.healthIgnored ? (
+            <button type="button" onClick={() => toggleProxyIgnored(false)} className="flex items-center gap-1.5 text-xs text-subtle hover:text-default transition-colors" title="Un-ignore">
+              <EyeIcon className="w-3.5 h-3.5" />
+              Ignored - proxy connectivity alerts are muted
+            </button>
+          ) : (
+            <HealthIssueRow title="Proxy stats unreachable" detail={px.error} meta={healthTimeAgo(px.at)} onIgnore={() => toggleProxyIgnored(true)} />
+          )
+        ) : undefined,
+      });
+    }
+    if ((h.servers?.length ?? 0) > 0) {
+      const servers = h.servers!;
+      parts.push({
+        key: 'servers', title: 'Servers', ...works(servers.every((s) => s.status === 'up')),
+        line: `${servers.length} ${servers.length === 1 ? 'server' : 'servers'} people sign in to`,
+        body: (
+          <div className="space-y-2">
+            {servers.map((s) => (
+              <div key={s.key} className="flex items-start justify-between gap-3 text-xs">
+                <div className="min-w-0">
+                  <p className="text-sm text-default truncate">{s.address}</p>
+                  <p className="text-subtle">
+                    {s.label}
+                    {s.version ? ` ${s.channel === 'nightly' ? `nightly${s.commit ? ` ${s.commit.slice(0, 7)}` : ''}` : s.version}` : ''}
+                    {s.updateAvailable && s.latest ? <span className="text-warning"> · {s.latest} is out</span> : null}
+                    {' · '}{s.people.length} {s.people.length === 1 ? 'person' : 'people'}
+                    {s.status === 'down' && s.since ? ` · down since ${healthTimeAgo(s.since)}` : ''}
+                    {s.status === 'partial'
+                      ? ` · ${s.people.filter((p) => p.state !== 'ok').map((p) => `${p.name} ${p.state === 'reconnect' ? 'needs to reconnect' : 'failing'}`).join(', ')}`
+                      : ''}
+                  </p>
+                </div>
+                <Badge variant={s.status === 'up' ? 'success' : s.status === 'down' ? 'error' : 'warning'} size="sm" className="flex-shrink-0">
+                  {s.status === 'up' ? 'Up' : s.status === 'down' ? 'Down' : 'Some failing'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        ),
+      });
+    }
+    if (h.lumiere) {
+      const lm = h.lumiere;
+      parts.push({
+        key: 'lumiere', title: 'LumiereDB',
+        ...(lm.state === 'ready' ? { tone: 'ok' as const, words: 'Working' } : lm.state === 'building' ? { tone: 'warn' as const, words: 'Getting ready' } : { tone: 'bad' as const, words: 'Not answering' }),
+        line: lm.state === 'ready' ? `${lm.address} · Discover search, Trending and Smart Catalogs are answered from IMDb’s data` : `${lm.address} · ${lm.message}`,
+      });
+    }
+    return parts;
+  })();
 
   return (
     <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title="Metrics"
-          subtitle="Track watch time, content consumption, and user activity"
+          subtitle={v2 ? v2Subtitle : 'Track watch time, content consumption, and user activity'}
           actions={<div className="flex items-center gap-3">{tabArrange && <ArrangeButton arrange={tabArrange} />}{periodSelect}</div>}
         />
       )}
@@ -519,7 +679,7 @@ export default function MetricsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Metrics"
-          subtitle="Track watch time, content consumption, and user activity"
+          subtitle={v2 ? v2Subtitle : 'Track watch time, content consumption, and user activity'}
           actions={<div className="flex items-center gap-2">{tabArrange && <ArrangeButton arrange={tabArrange} />}{periodSelect}</div>}
         />
       )}
@@ -555,7 +715,24 @@ export default function MetricsPage() {
             have. So: one hero that carries the headline number AND the
             chart, one dense members block that merges the leaderboard with
             streaks, and the recap demoted to a line you can open. */}
-        {viewMode === 'users' && (
+        {v2 && viewMode === 'users' && (
+          <MetricsUsersV2
+            arrange={metricsUsersArrange}
+            isLoading={isLoading}
+            periodMeta={periodMeta}
+            periodLabel={periodLabel}
+            totalMinutes={Math.round(watchTimeChartData.reduce((sum, d) => sum + (d.hours || 0), 0) * 60)}
+            trend={metricsData?.watchTime?.trend}
+            watchingNow={liveActiveUsersCount}
+            avgMinutes={Math.round(metricsData?.admin?.interestingMetrics?.avgWatchTimePerUser || 0)}
+            bestStreak={topUsersData.reduce((max, u) => Math.max(max, u.streak), 0)}
+            members={topUsersData}
+            chart={v2WatchChart}
+            tasteProfiles={tasteProfiles}
+            tasteOverlap={tasteOverlap}
+          />
+        )}
+        {!v2 && viewMode === 'users' && (
           <div className="space-y-6">
             {metricsUsersArrange.shown.map((id) => {
               switch (id) {
@@ -850,7 +1027,17 @@ export default function MetricsPage() {
         )}
 
         {/* Content Tab - Top Content + Engagement + Top Items + Watch Velocity + Started Playing */}
-        {viewMode === 'content' && (
+        {v2 && viewMode === 'content' && (
+          <MetricsContentV2
+            arrange={metricsContentArrange}
+            isLoading={isLoading}
+            error={!!error}
+            periodKey={period}
+            data={metricsData}
+            contentChart={v2ContentChart}
+          />
+        )}
+        {!v2 && viewMode === 'content' && (
           <div className="space-y-6">
             {metricsContentArrange.shown.map((id) => {
               switch (id) {
@@ -1024,7 +1211,16 @@ export default function MetricsPage() {
         )}
 
         {/* Admin Tab - All Admin Sections */}
-        {viewMode === 'admin' && (
+        {v2 && viewMode === 'admin' && (
+          <MetricsAdminV2
+            arrange={metricsAdminArrange}
+            isLoading={isLoading}
+            data={metricsData}
+            joinsChart={v2JoinsChart}
+            joinsTotal={(metricsData?.userJoins?.byDay || []).reduce((sum, day) => sum + day.count, 0)}
+          />
+        )}
+        {!v2 && viewMode === 'admin' && (
           <div className="space-y-6">
             {metricsAdminArrange.shown.map((id) => {
               switch (id) {
@@ -1261,6 +1457,15 @@ export default function MetricsPage() {
                 <p className="text-sm text-muted">Couldn&apos;t load health status.</p>
               </Card>
             </PageSection>
+          ) : v2 ? (
+            <MetricsHealthV2
+              health={healthData}
+              parts={healthParts}
+              refreshing={healthRefreshing}
+              onRefresh={() => loadHealth(true)}
+              timeAgo={healthTimeAgo}
+              extra={<DbStorageCard />}
+            />
           ) : (
             <>
               <PageSection className="mb-6">

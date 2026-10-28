@@ -7,6 +7,9 @@ import { Card, Button, Badge } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { ChangelogV2 } from '@/components/v2/ChangelogV2';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -229,6 +232,10 @@ const fetchChangelog = async (): Promise<Release[]> => {
 
 export default function ChangelogPage() {
   const { layoutMode } = useLayoutMode();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
   const appVersion = (process.env.NEXT_PUBLIC_APP_VERSION as string) || 'dev';
   const INSTANCE_TYPE = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') as 'public' | 'private';
   const [releases, setReleases] = useState<Release[]>([]);
@@ -308,14 +315,14 @@ export default function ChangelogPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: "What's New" }]} className="text-xl font-semibold" />}
-          subtitle="All notable changes to this project will be documented here."
+          subtitle={v2 ? 'Every SlickSync release, newest first' : 'All notable changes to this project will be documented here.'}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
-        <NebulaPageHeading title="What's New" subtitle="All notable changes to this project will be documented here." />
+        <NebulaPageHeading title="What's New" subtitle={v2 ? 'Every SlickSync release, newest first' : 'All notable changes to this project will be documented here.'} />
       )}
         {/* Loading State */}
         {isInitialLoading && (
@@ -368,8 +375,15 @@ export default function ChangelogPage() {
           </PageSection>
         )}
 
+        {/* Releases List - v2 */}
+        {v2 && !isInitialLoading && releases.length > 0 && (
+          <PageSection>
+            <ChangelogV2 releases={releases} appVersion={appVersion} copied={copied} onCopy={copyUpdateCommand} />
+          </PageSection>
+        )}
+
         {/* Releases List */}
-        {!isInitialLoading && releases.length > 0 && (
+        {!v2 && !isInitialLoading && releases.length > 0 && (
           <PageSection>
             <div className="space-y-4">
               {releases.map((release, index) => {

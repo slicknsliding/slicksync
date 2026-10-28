@@ -57,11 +57,12 @@ export function collectSettingsEntries(
   const byLabel = new Map<string, SettingsSearchEntry>();
   const keywordsFor = new Map(index.map((e) => [e.label.toLowerCase(), e]));
   const tabLabel = (key: string) => tabs.find((t) => t.key === key)?.label || '';
-  const add = (label: string, description: string, tab: string) => {
+  const add = (label: string, description: string, tab: string, also?: string) => {
     const id = label.toLowerCase();
     if (!label || byLabel.has(id)) return;
-    const known = keywordsFor.get(id);
-    byLabel.set(id, { label, description, tab, keywords: `${known?.keywords || ''} ${known?.section || ''} ${tabLabel(tab)}` });
+    // A setting v2 renamed still finds its keywords, and its older name finds it.
+    const known = keywordsFor.get(id) || (also ? keywordsFor.get(also.toLowerCase()) : undefined);
+    byLabel.set(id, { label, description, tab, keywords: `${known?.keywords || ''} ${known?.section || ''} ${tabLabel(tab)} ${also || ''}` });
   };
   // Every label-ish text on the mounted sections: an index entry whose control
   // is not drawn right now (a key pool before a key exists, the account id on
@@ -72,11 +73,11 @@ export function collectSettingsEntries(
       const tab = pane.dataset.settingsPane || '';
       for (const row of Array.from(pane.querySelectorAll<HTMLElement>('[data-setting]'))) {
         const ps = row.querySelectorAll('p');
-        add(row.dataset.setting || '', clean(ps[1]?.textContent), tab);
+        add(row.dataset.setting || '', clean(ps[1]?.textContent), tab, row.dataset.settingAlso);
       }
-      for (const el of Array.from(pane.querySelectorAll('label, h3'))) present.push(clean(el.textContent).toLowerCase());
+      for (const el of Array.from(pane.querySelectorAll('label, h2, h3'))) present.push(clean(el.textContent).toLowerCase());
       // Card headings for the blocks that are not rows (a key field, 2FA...).
-      for (const h of Array.from(pane.querySelectorAll('h3'))) {
+      for (const h of Array.from(pane.querySelectorAll('h2, h3'))) {
         const sub = h.parentElement?.querySelector('p');
         add(clean(h.textContent), clean(sub?.textContent), tab);
       }

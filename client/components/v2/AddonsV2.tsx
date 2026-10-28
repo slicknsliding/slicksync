@@ -1,17 +1,17 @@
 'use client';
 
-// Addons in the v2 page design: sorted by what they give (Streams, Catalogs,
-// Subtitles, Other), with health in words and which groups have each one.
-// Sections can be moved, folded and hidden, and single addons hidden, through
-// the page's Arrange mode.
+// Addons in the v2 page design: every addon together in one grid or list (the
+// page's filter tabs narrow it), with health in words, what each one gives
+// under its name and which groups have it. Pinned addons come first; single
+// addons can be pinned or hidden through the page's Arrange mode.
 
 import Link from 'next/link';
 import { ArrowPathIcon, EyeIcon, MapPinIcon, PuzzlePieceIcon } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { avatarColorFill } from '@/components/ui/Avatar';
-import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { pinFirst } from '@/lib/arrange-core';
+import { GroupPicture } from './GroupPicture';
 import { V2Button, V2Card, V2Grid, V2List, V2Status } from './V2Bits';
 
 export type V2Addon = {
@@ -24,26 +24,20 @@ export type V2Addon = {
   isActive: boolean;
   isOnline?: boolean;
   healthError?: string;
-  groups: { name: string; colorIndex?: number }[];
+  groups: { name: string; colorIndex?: number; avatarUrl?: string | null }[];
   groupCount: number;
 };
 
-export const ADDON_KINDS = [
-  { key: 'k:streams', label: 'Streams' },
-  { key: 'k:catalogs', label: 'Catalogs' },
-  { key: 'k:subtitles', label: 'Subtitles' },
-  { key: 'k:other', label: 'Other' },
-] as const;
-
-/** The one section an addon sits in: what it mainly gives. */
+/** What an addon mainly gives, in a word. */
 export function addonKind(a: V2Addon) {
-  if (a.resources.includes('stream')) return 'k:streams';
-  if (a.hasCatalogs || a.resources.includes('catalog')) return 'k:catalogs';
-  if (a.resources.includes('subtitles')) return 'k:subtitles';
-  return 'k:other';
+  if (a.resources.includes('stream')) return 'Streams';
+  if (a.hasCatalogs || a.resources.includes('catalog')) return 'Catalogs';
+  if (a.resources.includes('subtitles')) return 'Subtitles';
+  return 'Other';
 }
 
-const KIND_WORD: Record<string, string> = { 'k:streams': 'Streams', 'k:catalogs': 'Catalogs', 'k:subtitles': 'Subtitles', 'k:other': 'Other' };
+/** "v1.2.0 · Streams" */
+const kindLine = (a: V2Addon) => [a.version && `v${a.version.replace(/^v/i, '')}`, addonKind(a)].filter(Boolean).join(' · ');
 
 function Health({ a }: { a: V2Addon }) {
   if (!a.isActive) return <V2Status tone="off">Switched off</V2Status>;
@@ -63,15 +57,18 @@ function Logo({ a, size }: { a: V2Addon; size: number }) {
   );
 }
 
-function GivenTo({ a, max }: { a: V2Addon; max?: number }) {
+function Groups({ a, max }: { a: V2Addon; max?: number }) {
   if (a.groups.length === 0) {
-    return <span className="text-muted text-[13px]">{a.groupCount ? `${a.groupCount} group${a.groupCount === 1 ? '' : 's'}` : 'Not given to a group'}</span>;
+    return <span className="text-muted text-[13px]">{a.groupCount ? `${a.groupCount} group${a.groupCount === 1 ? '' : 's'}` : 'No group yet'}</span>;
   }
   const list = max ? a.groups.slice(0, max) : a.groups;
   return (
     <span className="flex gap-1.5 flex-wrap items-center">
       {list.map((g, i) => (
-        <span key={`${g.name}-${i}`} className="v2-chip text-default" style={{ borderColor: `color-mix(in srgb, ${avatarColorFill(g.colorIndex ?? 0)} 55%, transparent)` }}>{g.name}</span>
+        <span key={`${g.name}-${i}`} className="v2-chip gap-1.5 !pl-[3px] text-default" style={{ borderColor: `color-mix(in srgb, ${avatarColorFill(g.colorIndex ?? 0)} 55%, transparent)` }}>
+          <GroupPicture name={g.name} avatarUrl={g.avatarUrl} colorIndex={g.colorIndex} size="xs" ring={false} />
+          {g.name}
+        </span>
       ))}
       {max && a.groups.length > max && <span className="v2-chip text-muted">+{a.groups.length - max}</span>}
     </span>
@@ -85,7 +82,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
   view: 'grid' | 'list';
   reloading: Set<string>;
   onReload: (a: V2Addon) => void;
-  /** Pinned addons sit first in their section. */
+  /** Pinned addons sit first. */
   pins: { isPinned: (id: string) => boolean; toggle: (id: string) => void; pinned: string[] };
 }) {
   const pinBtn = (id: string, name: string) => {
@@ -125,14 +122,11 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
           <Logo a={a} size={48} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default truncate">{a.name}</span>{pinMark(a)}</div>
-            <div className="text-muted text-[12.5px] truncate">{[a.version && `v${a.version.replace(/^v/i, '')}`, KIND_WORD[addonKind(a)]].filter(Boolean).join(' · ')}</div>
+            <div className="text-muted text-[12.5px] truncate">{kindLine(a)}</div>
           </div>
         </div>
         <Health a={a} />
-        <div className="flex gap-1.5 flex-wrap items-center">
-          <span className="text-muted text-[13px]">Given to</span>
-          <GivenTo a={a} />
-        </div>
+        <Groups a={a} />
       </V2Card>
     </Link>
   );
@@ -141,29 +135,16 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
       <Logo a={a} size={38} />
       <div className="flex-1 min-w-0">
         <span className="flex items-center gap-1.5 min-w-0"><b className="text-default truncate">{a.name}</b>{pinMark(a)}</span>
-        <div className="text-muted text-[12.5px] truncate">{a.version ? `v${a.version.replace(/^v/i, '')}` : KIND_WORD[addonKind(a)]}</div>
+        <div className="text-muted text-[12.5px] truncate">{kindLine(a)}</div>
       </div>
       <div className="v2-col w-[170px]"><Health a={a} /></div>
-      <div className="v2-col w-[220px]"><GivenTo a={a} max={3} /></div>
+      <div className="v2-col w-[220px]"><Groups a={a} max={3} /></div>
       {action(a)}
     </Link>
   );
 
-  return (
-    <div>
-      {arrange.shown.map((key) => {
-        const all = addons.filter((a) => addonKind(a) === key);
-        if (all.length === 0) return null;
-        const members = pinFirst(all.filter((a) => !hidden.has(a.id)), (a) => a.id, pins.pinned);
-        const label = KIND_WORD[key];
-        return (
-          <ArrangeSection key={key} arrange={arrange} id={key} title={label} meta={`${all.length}`} noun="section">
-            {members.length === 0
-              ? <p className="text-sm text-muted py-2">Every addon here is hidden on this page.</p>
-              : view === 'grid' ? <V2Grid>{members.map(tile)}</V2Grid> : <V2List>{members.map(row)}</V2List>}
-          </ArrangeSection>
-        );
-      })}
-    </div>
-  );
+  const members = pinFirst(addons.filter((a) => !hidden.has(a.id)), (a) => a.id, pins.pinned);
+  if (addons.length === 0) return null;
+  if (members.length === 0) return <p className="text-sm text-muted py-2">Every addon here is hidden on this page.</p>;
+  return view === 'grid' ? <V2Grid>{members.map(tile)}</V2Grid> : <V2List>{members.map(row)}</V2List>;
 }

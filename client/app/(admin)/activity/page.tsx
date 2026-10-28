@@ -10,24 +10,25 @@ import { useTheme } from '@/lib/theme';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
-import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
 import { ActivityCardMenu, useCardMenuPress, type MenuTarget, type MenuWatcher } from '@/components/activity/ActivityCardMenu';
 import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
-import { NowPlayingPosition, ProfileChip } from '@/components/ui/NowPlayingPosition';
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { toast } from '@/components/ui/Toast';
 import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, SOURCE_ORDER, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, MetricsData, Invitation, Group } from '@/lib/api';
+import { api, MetricsData, Invitation, InviteRequest, Group } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { useDefaultViewMode } from '@/lib/viewMode';
-import { usePageArrangement } from '@/lib/arrange';
-import { ArrangeBar, ArrangeButton, ArrangeControls, HiddenTray } from '@/components/ui/Arrange';
+import { usePageArrangement, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeControls, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { NowPlayingV2, StatusRow } from '@/components/v2/DashboardV2';
+import { V2Button } from '@/components/v2/V2Bits';
+import { V2Numbers } from '@/components/v2/V2Detail';
 
 // Activity's tabs, in their default order. The account can reorder and hide
 // them (Arrange); the page opens on the first one it kept.
@@ -922,6 +923,85 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   return <TVFocusable onEnterPress={() => onOpenDetails?.(activity)}>{cardElement}</TVFocusable>;
 });
 
+// Page design v2: one viewing as a row - the poster (opens the title), who
+// watched, what and when, and one chip saying whether they finished it. Press
+// and hold (or right-click) opens the same menu the posters have.
+const ActivityRowV2 = memo(function ActivityRowV2({
+  activity,
+  onFilterByContent,
+  onOpenDetails,
+  onMenu,
+}: {
+  activity: ActivityItem;
+  onFilterByContent?: (name: string) => void;
+  onOpenDetails?: (activity: ActivityItem) => void;
+  onMenu?: (activity: ActivityItem, x: number, y: number) => void;
+}) {
+  const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
+  const press = useCardMenuPress((x, y) => onMenu?.(activity, x, y));
+  const episode = activity.contentType === 'series' && activity.episode !== undefined && activity.episode > 0
+    ? `${activity.season !== undefined && activity.season > 0 ? `S${String(activity.season).padStart(2, '0')}E` : 'E'}${String(activity.episode).padStart(2, '0')}`
+    : null;
+  const when = activity.dateOnly
+    ? activity.timestamp.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : formatTime(activity.timestamp) + (activity.endTime && !activity.isSynthetic ? ` → ${formatTime(activity.endTime)}` : '');
+  const bits = [
+    when,
+    activity.profileLabel || null,
+    !activity.isSynthetic && activity.durationSeconds !== undefined ? (activity.durationSeconds > 0 ? formatDuration(activity.durationSeconds) : '<1m') : null,
+    activity.requestCount ? `${activity.requestCount} ${activity.requestCount === 1 ? 'request' : 'requests'}` : null,
+    activity.debridService ? `Proxied · ${DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}` : null,
+  ].filter(Boolean);
+  const chip = activity.completed === true ? 'Done' : activity.completed === false ? 'Stopped early' : null;
+  return (
+    <div {...(onMenu ? press.handlers : {})} className="v2-row">
+      {activity.poster && !imageError ? (
+        <button
+          type="button"
+          className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface border border-default tap-card"
+          aria-label={`Open ${activity.contentName}`}
+          onClick={() => { if (press.suppressClick()) return; onOpenDetails?.(activity); }}
+        >
+          <img
+            src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+            srcSet={posterSrcSet({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+            sizes="40px"
+            alt=""
+            className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageError(true)}
+          />
+        </button>
+      ) : (
+        <button type="button" className="w-10 h-14 rounded-lg shrink-0 bg-surface-hover flex items-center justify-center" aria-label={`Open ${activity.contentName}`} onClick={() => onOpenDetails?.(activity)}>
+          {activity.contentType === 'movie' ? <FilmIcon className="w-5 h-5 text-muted" /> : <TvIcon className="w-5 h-5 text-muted" />}
+        </button>
+      )}
+      <Link href={`/users/${activity.userId}`} className="shrink-0 rounded-full" aria-label={`Open ${activity.userName}’s profile`}>
+        <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} useGravatar={activity.userUseGravatar} size="sm" />
+      </Link>
+      <div className="flex-1 min-w-0">
+        <p className="text-[14px] leading-snug">
+          <Link href={`/users/${activity.userId}`} className="font-semibold text-default hover:text-primary transition-colors">{activity.userName}</Link>{' '}
+          <span className="text-muted">{getActivityText(activity)}</span>{' '}
+          <button type="button" onClick={() => onFilterByContent?.(activity.contentName)} className="font-semibold text-default hover:text-primary transition-colors text-left">
+            {activity.contentName}
+          </button>
+          {episode && <span className="text-muted"> {episode}{activity.episodeName ? ` - ${activity.episodeName}` : ''}</span>}
+        </p>
+        <p className="text-muted text-[12px] truncate">{bits.join(' · ')}</p>
+      </div>
+      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+        {chip && <span className="v2-chip text-muted">{chip}</span>}
+        {!!activity.rewatchCount && activity.rewatchCount > 0 && <span className="text-[11px] font-medium text-primary">↻ {activity.rewatchCount + 1}×</span>}
+        <span className="text-xs text-subtle hidden sm:block">{activity.dateOnly ? '' : formatTimestamp(activity.timestamp)}</span>
+      </div>
+    </div>
+  );
+});
+
 // Task history helper functions
 function getTaskIcon(type: TaskType) {
   switch (type) {
@@ -1077,7 +1157,7 @@ const TaskHistoryCard = memo(function TaskHistoryCard({ task }: { task: TaskHist
 // Sarah". A claim is permanent until removed and beats every guess, so
 // history, taste profiles and watch-ahead all land on the right person even
 // when the whole household shares one login.
-function DeviceClaimsPanel() {
+function DeviceClaimsPanel({ v2 = false }: { v2?: boolean } = {}) {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.getDeviceClaims>> | null>(null);
   const [busyIp, setBusyIp] = useState<string | null>(null);
   const { hideSensitive } = useTheme();
@@ -1087,7 +1167,10 @@ function DeviceClaimsPanel() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (!data || data.devices.length === 0) return null;
+  if (!data) return null;
+  if (data.devices.length === 0) {
+    return v2 ? <p className="text-muted text-[13.5px]">No device has streamed through the proxy in the last 30 days.</p> : null;
+  }
 
   const claimTo = async (clientIp: string, userId: string) => {
     setBusyIp(clientIp);
@@ -1107,6 +1190,45 @@ function DeviceClaimsPanel() {
       setBusyIp(null);
     }
   };
+
+  if (v2) {
+    return (
+      <div>
+        <p className="text-muted text-[13.5px] mb-3">
+          Devices seen streaming through the proxy in the last 30 days. Claim one for a person and every stream from it counts as theirs - no more guessing on a shared login.
+        </p>
+        <div className="v2-list">
+          {data.devices.map((d) => (
+            <div key={d.clientIp} className="v2-row flex-wrap">
+              <div className="min-w-0 flex-1" style={{ flexBasis: '14rem' }}>
+                <p className="text-[14.5px] font-semibold">
+                  {hideSensitive ? '•••.•••.•••.•••' : d.clientIp}
+                  {d.claim?.label && <span className="text-muted font-normal"> · {d.claim.label}</span>}
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  {d.lastSeenAt ? `Last seen ${new Date(d.lastSeenAt).toLocaleString()}` : 'Not seen recently'}
+                  {d.lastTitle ? ` · ${d.lastTitle}` : ''}
+                  {!d.claim && d.guess?.username ? ` · best guess: ${d.guess.username}` : ''}
+                </p>
+              </div>
+              <select
+                value={d.claim?.userId || ''}
+                disabled={busyIp === d.clientIp}
+                onChange={(e) => claimTo(d.clientIp, e.target.value)}
+                aria-label="Who this device belongs to"
+                className="px-3 py-1.5 bg-surface border border-default rounded-lg text-sm text-default"
+              >
+                <option value="">{d.claim ? 'Remove claim' : 'Unclaimed - guessing'}</option>
+                {data.users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.username}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6">
@@ -1148,7 +1270,7 @@ function DeviceClaimsPanel() {
   );
 }
 
-function ProxyHistoryView() {
+function ProxyHistoryView({ v2Arrange }: { v2Arrange?: PageArrange } = {}) {
   const [proxyLogs, setProxyLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAddon, setSelectedAddon] = useState<string | null>(null);
@@ -1292,6 +1414,100 @@ function ProxyHistoryView() {
     </>
   );
 
+  // Page design v2: the numbers, who owns which device, and the latest
+  // requests as sections the account can move, fold and hide.
+  if (v2Arrange) {
+    const cached = proxyLogs.filter((l) => l.cacheHit).length;
+    const failed = proxyLogs.filter((l) => l.statusCode >= 400).length;
+    const addonSelect = (
+      <select
+        value={selectedAddon || ''}
+        onChange={(e) => setSelectedAddon(e.target.value || null)}
+        aria-label="Show requests for one addon"
+        className="px-3 py-1.5 bg-surface border border-default rounded-lg text-sm text-default"
+      >
+        <option value="">All addons</option>
+        {addons.map((addon) => (
+          <option key={addon.id} value={addon.id}>{addon.name}</option>
+        ))}
+      </select>
+    );
+    return (
+      <div className="flex flex-col">
+        {v2Arrange.shown.map((id) => {
+          if (id === 'numbers') {
+            return (
+              <ArrangeSection key={id} arrange={v2Arrange} id={id} title="Proxy">
+                <V2Numbers items={[
+                  { label: 'Requests shown', value: isLoading ? '…' : proxyLogs.length },
+                  { label: 'Served from cache', value: isLoading ? '…' : cached },
+                  { label: 'Refused or failed', value: isLoading ? '…' : failed },
+                ]} />
+              </ArrangeSection>
+            );
+          }
+          if (id === 'claims') {
+            return (
+              <ArrangeSection key={id} arrange={v2Arrange} id={id} title="Device claims">
+                <DeviceClaimsPanel v2 />
+              </ArrangeSection>
+            );
+          }
+          if (id === 'latest') {
+            return (
+              <ArrangeSection key={id} arrange={v2Arrange} id={id} title="Latest requests" meta={isLoading ? undefined : `${proxyLogs.length}`} actions={addonSelect}>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
+                  </div>
+                ) : proxyLogs.length === 0 ? (
+                  <div className="v2-box v2-box-pad text-center py-10">
+                    <ShieldCheckIcon className="w-10 h-10 mx-auto mb-3 text-muted opacity-50" />
+                    <p className="text-muted">{selectedAddon ? 'No proxy requests yet for this addon' : 'No proxy requests yet'}</p>
+                  </div>
+                ) : (
+                  <div className="v2-list">
+                    {proxyLogs.map((log, index) => {
+                      const bad = typeof log.statusCode === 'number' && log.statusCode >= 400;
+                      return (
+                        <StatusRow
+                          key={index}
+                          tone={bad ? 'bad' : log.cacheHit ? 'live' : 'ok'}
+                          words={bad ? 'Refused' : log.cacheHit ? 'From cache' : 'Passed on'}
+                          title={
+                            <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                              <code className="text-xs text-subtle font-mono shrink-0">{log.method}</code>
+                              {log.url ? (
+                                <a href={log.url} target="_blank" rel="noopener noreferrer" className="truncate hover:text-primary underline underline-offset-2" title={log.url}>{log.path}</a>
+                              ) : (
+                                <span className="truncate">{log.path}</span>
+                              )}
+                            </span>
+                          }
+                          line={[
+                            !selectedAddon && log.addonName ? log.addonName : null,
+                            new Date(log.timestamp).toLocaleString(),
+                            `${log.responseTimeMs}ms`,
+                            log.statusCode ? String(log.statusCode) : null,
+                            log.ip || null,
+                          ].filter(Boolean).join(' · ')}
+                          actions={log.upstreamUrl ? (
+                            <a href={log.upstreamUrl} target="_blank" rel="noopener noreferrer" title={log.upstreamUrl} className="v2-btn">Original</a>
+                          ) : undefined}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </ArrangeSection>
+            );
+          }
+          return null;
+        })}
+      </div>
+    );
+  }
+
   return (
     <PageSection delay={0.1}>
       {layoutMode === 'nebula' ? (
@@ -1328,12 +1544,10 @@ function NowPlayingHeader({ count }: { count: number }) {
   );
 }
 
-// Now Playing card body (poster, user, title, live duration) - identical in
-// both Current and Nebula, just extracted so this carefully-tuned
-// session-matching/duration logic (see the inline comments) only exists
-// once instead of being duplicated per layout branch, which would risk the
-// two copies drifting apart on the next bug fix.
-function NowPlayingItemBody({
+// The "Watching for ..." line under a Now Playing banner. This carefully-tuned
+// session-matching/duration logic (see the inline comments) only exists once,
+// shared by both layouts, so the two cannot drift apart on the next bug fix.
+function WatchingForLine({
   np,
   metricsData,
   nowTick,
@@ -1342,50 +1556,8 @@ function NowPlayingItemBody({
   metricsData: MetricsData;
   nowTick: number;
 }) {
-  const { rpdbEnabled } = usePersonalFeatures();
   return (
     <>
-      {/* Poster */}
-      {np.item.poster ? (
-        <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
-          <img
-            src={posterUrl(np.item, rpdbEnabled)}
-            srcSet={posterSrcSet(np.item, rpdbEnabled)}
-            sizes="40px"
-            alt={np.item.name}
-            className="w-full h-full object-cover"
-            decoding="async"
-          />
-        </div>
-      ) : (
-        <div className="w-10 h-14 rounded-lg bg-surface-hover flex items-center justify-center shrink-0">
-          {np.item.type === 'movie' ? (
-            <FilmIcon className="w-5 h-5 text-muted" />
-          ) : (
-            <TvIcon className="w-5 h-5 text-muted" />
-          )}
-        </div>
-      )}
-      <div className="flex-1 min-w-0">
-        <TVLink href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
-          <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
-          <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
-            {np.user.username}
-          </span>
-          <ProfileChip label={np.profileLabel} />
-        </TVLink>
-        <p className={`text-sm truncate ${np.item.titlePending ? 'text-subtle' : 'text-muted'}`}>
-          {np.item.name}
-          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
-            <span className="ml-1">
-              {np.item.season !== undefined && np.item.season > 0 ? `S${String(np.item.season).padStart(2, '0')}E` : 'E'}
-              {String(np.item.episode).padStart(2, '0')}
-            </span>
-          )}
-        </p>
-        {np.device && (np.device.name || np.device.client) && (
-          <p className="text-xs text-subtle truncate">on {[np.device.name, np.device.client].filter(Boolean).join(' · ')}</p>
-        )}
         {/* Live duration for now playing: now - session start.
             Only shown when we have a proper WatchSession (so it doesn't reset on each sync). */}
         {(() => {
@@ -1532,11 +1704,6 @@ function NowPlayingItemBody({
             </p>
           );
         })()}
-        <PlaybackFreshnessLine row={np} />
-        {/* While it plays: about where it is. Paused or stopped: the exact
-            checkpoint and "Resume here" (see NowPlayingPosition). */}
-        <NowPlayingPosition row={np} />
-      </div>
     </>
   );
 }
@@ -1602,6 +1769,8 @@ function InviteHistoryRow({ invite }: { invite: InviteHistoryItem }) {
 function ActivityPageContent() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const searchParams = useSearchParams();
   const userParam = searchParams.get('user');
@@ -1939,13 +2108,18 @@ function ActivityPageContent() {
     const sources = new Set<string>();
     const profiles = new Set<string>();
     const profileApps: Record<string, string> = {};
+    const profileSources: Record<string, string[]> = {};
     for (const a of activityData) {
       people.set(a.userId, a.userName);
-      sources.add(sourceOf(a.profileLabel, a.userProvider));
+      const source = sourceOf(a.profileLabel, a.userProvider);
+      sources.add(source);
       if (a.profileLabel && !SOURCE_LABELS[a.profileLabel]) {
         profiles.add(a.profileLabel);
         // A profile belongs to the app of the person whose viewing carries it.
         if (a.userProvider) profileApps[a.profileLabel] = a.userProvider;
+        // ...and is offered only under the apps its viewing came from.
+        const seen = profileSources[a.profileLabel] || (profileSources[a.profileLabel] = []);
+        if (!seen.includes(source)) seen.push(source);
       }
     }
     return {
@@ -1953,6 +2127,7 @@ function ActivityPageContent() {
       sources: SOURCE_ORDER.filter((s) => sources.has(s)),
       profiles: [...profiles].sort((a, b) => a.localeCompare(b)),
       profileApps,
+      profileSources,
     };
   }, [activityData]);
 
@@ -2108,6 +2283,314 @@ function ActivityPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabArrange.shown.join(','), viewMode]);
 
+  // Page design v2: each tab's own sections can be moved, folded and hidden
+  // too. They share the Arrange button with the tabs, and one Reset.
+  const hasNowPlayingRows = (metricsData?.nowPlaying?.length ?? 0) > 0;
+  const watchArrange = usePageArrangement('activity-watch', hasNowPlayingRows ? ['nowPlaying', 'numbers', 'feed'] : ['numbers', 'feed']);
+  const graveArrange = usePageArrangement('activity-dropped', ['unfinished', 'graveyard']);
+  const tasksArrange = usePageArrangement('activity-tasks', ['numbers', 'recent']);
+  const invitesArrange = usePageArrangement('activity-invites', ['waiting', 'recent']);
+  const proxyArrange = usePageArrangement('activity-proxy', ['numbers', 'claims', 'latest']);
+  const tabSections: Record<string, PageArrange> = { watch: watchArrange, dropped: graveArrange, tasks: tasksArrange, invites: invitesArrange, proxy: proxyArrange };
+  const everyArrange = [tabArrange, ...Object.values(tabSections)];
+  const follow = (a: PageArrange): PageArrange => ({ ...a, arranging: tabArrange.arranging, setArranging: tabArrange.setArranging });
+  const pageArrange: PageArrange = v2
+    ? { ...tabArrange, reset: () => everyArrange.forEach((a) => a.reset()), isDefault: everyArrange.every((a) => a.isDefault) }
+    : tabArrange;
+  const SECTION_LABELS: Record<string, string> = {
+    nowPlaying: 'Now Playing', numbers: 'Numbers', feed: 'Watched', unfinished: 'Unfinished', graveyard: 'The Graveyard',
+    recent: 'Recent', waiting: 'Waiting for you', claims: 'Device claims', latest: 'Latest requests',
+  };
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [showAllInvites, setShowAllInvites] = useState(false);
+  // Which app each person is in, for the Now Playing banners.
+  const providerByUser = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of metricsData?.recentActivity || []) if (a.user.providerType) m.set(a.user.id, a.user.providerType);
+    return m;
+  }, [metricsData]);
+  // Classic: the same banners as a person's Home, with the live-updated time
+  // and how long they have watched under each.
+  const classicNowPlaying = metricsData?.nowPlaying?.length ? (
+    <NowPlayingV2
+      rows={metricsData.nowPlaying}
+      providerByUser={providerByUser}
+      max={6}
+      moreHref="/activity"
+      detail={(np) => (
+        <>
+          <WatchingForLine np={np} metricsData={metricsData} nowTick={nowTick} />
+          <PlaybackFreshnessLine row={np} />
+        </>
+      )}
+    />
+  ) : null;
+  const answerRequest = async (r: InviteRequest, accept: boolean) => {
+    setAnswering(r.id);
+    try {
+      if (accept) await api.acceptInviteRequest(r.id); else await api.rejectInviteRequest(r.id);
+      toast.success(accept ? `Approved ${r.username || r.email}` : `Declined ${r.username || r.email}`);
+      await fetchData(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Couldn’t answer that request');
+    } finally {
+      setAnswering(null);
+    }
+  };
+
+  const feedExtras = (
+    <>
+      {(visibleCount < filteredActivities.length || (metricsData?.activityTruncated && !olderLoaded)) && (
+        <div ref={loadMoreRef} className="mt-6 text-center">
+          {isLoadingMore || loadingOlder ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted py-4">
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <span>{loadingOlder ? 'Loading your older history…' : 'Loading more...'}</span>
+            </div>
+          ) : (
+            <V2Button onClick={loadMore}>{visibleCount >= filteredActivities.length ? 'Load older history' : 'Load more activity'}</V2Button>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const v2Watched = (() => {
+    const arr = follow(watchArrange);
+    return (
+      <div className="flex flex-col">
+        {arr.shown.map((id) => {
+          if (id === 'nowPlaying' && metricsData?.nowPlaying?.length) {
+            return (
+              <ArrangeSection key={id} arrange={arr} id={id} title="Now Playing" meta={`${metricsData.nowPlaying.length} watching`}>
+                <NowPlayingV2 rows={metricsData.nowPlaying} providerByUser={providerByUser} max={12} />
+              </ArrangeSection>
+            );
+          }
+          if (id === 'numbers') {
+            return (
+              <ArrangeSection key={id} arrange={arr} id={id} title="Today">
+                <V2Numbers items={[
+                  { label: 'Watching now', value: isLoading ? '…' : currentlyWatchingCount },
+                  { label: 'Watched today', value: isLoading ? '…' : completedTodayCount },
+                  { label: 'Watch time today', value: isLoading ? '…' : formatHours(liveWatchTimeTodayHours) },
+                  { label: 'Active people', value: isLoading ? '…' : activeUsersCount },
+                ]} />
+              </ArrangeSection>
+            );
+          }
+          if (id === 'feed') {
+            return (
+              <ArrangeSection key={id} arrange={arr} id={id} title="Watched" meta={isLoading ? undefined : `${filteredActivities.length}`}>
+                <div className="flex items-center gap-3 flex-wrap mb-3">
+                  <SearchInput
+                    size="sm"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search users or content..."
+                    className="w-64"
+                  />
+                  {selectedGroup && (
+                    <Badge variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-2">
+                      <FolderIcon className="w-3.5 h-3.5" />
+                      <span>{groups.find((g) => g.id === selectedGroup)?.name || 'Group'}</span>
+                      <button onClick={() => setSelectedGroup(null)} className="p-0.5 rounded-md hover:bg-white/20 transition-colors" aria-label="Show every group">
+                        <XMarkIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </Badge>
+                  )}
+                </div>
+                <div className="mb-5">
+                  <ActivityFilterBar
+                    value={filters}
+                    onChange={setFilters}
+                    people={filterOptions.people}
+                    sources={filterOptions.sources}
+                    profiles={filterOptions.profiles}
+                    profileApps={filterOptions.profileApps}
+                    profileSources={filterOptions.profileSources}
+                  />
+                </div>
+                {groupedActivities.map((group) => (
+                  <div key={group.dateKey} className="mb-6">
+                    <div className="flex items-baseline gap-2 mb-2.5">
+                      <h3 className="text-[15px] font-semibold text-default">{group.label}</h3>
+                      <span className="text-sm text-muted">{group.activities.length} · {formatHours(group.totalDuration / 3600)}</span>
+                    </div>
+                    {watchActivityViewMode === 'grid' ? (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                        {group.gridActivities.map((activity) => (
+                          <ActivityCardGrid key={activity.id} activity={activity} onFilterByContent={handleFilterByContent} onOpenDetails={setDetailModalItem} onMenu={handleMenu} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="v2-list">
+                        {group.activities.map((activity) => (
+                          <ActivityRowV2 key={activity.id} activity={activity} onFilterByContent={handleFilterByContent} onOpenDetails={setDetailModalItem} onMenu={handleMenu} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {filteredActivities.length === 0 && (
+                  <div className="v2-box v2-box-pad text-center py-12">
+                    <ClockIcon className="w-9 h-9 mx-auto mb-3 text-subtle" />
+                    <h3 className="text-lg font-semibold text-default mb-1">No activity found</h3>
+                    <p className="text-muted mx-auto mb-4" style={{ maxWidth: '448px' }}>
+                      {searchQuery ? `Nothing matches “${searchQuery}”. Try a different search.` : 'Nothing matches your filters. Try changing them.'}
+                    </p>
+                    <V2Button onClick={() => { setSearchQuery(''); setFilters(EMPTY_FILTERS); setEpisodeFilter(null); }}>Clear filters</V2Button>
+                  </div>
+                )}
+                {feedExtras}
+              </ArrangeSection>
+            );
+          }
+          return null;
+        })}
+      </div>
+    );
+  })();
+
+  const v2Tasks = (() => {
+    const arr = follow(tasksArrange);
+    const wordsOf = (t: TaskHistoryItem) => (t.status === 'success' ? 'Worked' : t.status === 'partial' ? 'Partly' : 'Failed');
+    const toneOf = (t: TaskHistoryItem) => (t.status === 'success' ? 'live' as const : t.status === 'partial' ? 'warn' as const : 'bad' as const);
+    return (
+      <div className="flex flex-col">
+        {arr.shown.map((id) => id === 'numbers' ? (
+          <ArrangeSection key={id} arrange={arr} id={id} title="Tasks">
+            <V2Numbers items={[
+              { label: 'Worked', value: taskHistory.filter((t) => t.status === 'success').length },
+              { label: 'Partly', value: taskHistory.filter((t) => t.status === 'partial').length },
+              { label: 'Failed', value: taskHistory.filter((t) => t.status === 'failed').length },
+              { label: 'All tasks', value: taskHistory.length },
+            ]} />
+          </ArrangeSection>
+        ) : id === 'recent' ? (
+          <ArrangeSection key={id} arrange={arr} id={id} title="Recent" meta={taskHistory.length}>
+            {taskHistory.length === 0 ? (
+              <div className="v2-box v2-box-pad text-center py-10">
+                <ClockIcon className="w-9 h-9 mx-auto mb-3 text-subtle" />
+                <h3 className="text-lg font-semibold text-default mb-1">No task history yet</h3>
+                <p className="text-muted mx-auto" style={{ maxWidth: '448px' }}>Syncs, backups and imports will show here once they have run.</p>
+              </div>
+            ) : (
+              <div className="v2-list">
+                {taskHistory.map((t) => (
+                  <StatusRow
+                    key={t.id}
+                    tone={toneOf(t)}
+                    words={wordsOf(t)}
+                    title={getTaskName(t.type)}
+                    line={[
+                      formatTimestamp(t.timestamp),
+                      t.details.total !== undefined ? `${t.details.success}/${t.details.total} worked` : null,
+                      t.details.groupName ? `Group: ${t.details.groupName}` : null,
+                      t.details.filename || null,
+                      `took ${formatTaskDuration(t.duration)}`,
+                    ].filter(Boolean).join(' · ')}
+                  />
+                ))}
+              </div>
+            )}
+          </ArrangeSection>
+        ) : null)}
+      </div>
+    );
+  })();
+
+  const v2Invites = (() => {
+    const arr = follow(invitesArrange);
+    const waiting = invitations.flatMap((inv) => (inv.requests || []).filter((r) => r.status === 'pending').map((r) => ({ inv, r })));
+    const wordsOf = (a: InviteHistoryItem['action']) => (a === 'used' ? { tone: 'live' as const, words: 'Joined' } : a === 'created' ? { tone: 'ok' as const, words: 'Open' } : a === 'expired' ? { tone: 'bad' as const, words: 'Ended' } : { tone: 'off' as const, words: 'Removed' });
+    const history = showAllInvites ? inviteHistory : inviteHistory.slice(0, 30);
+    const titleOf = (i: InviteHistoryItem) => (
+      i.action === 'used' ? `${i.userName || 'Someone'} joined ${i.groupName}`
+        : i.action === 'created' ? `Invite ${i.inviteCode} created`
+          : i.action === 'expired' ? `${i.inviteCode} ran out of time`
+            : `Invite ${i.inviteCode} removed`
+    );
+    const state = isLoading ? (
+      <div className="v2-box v2-box-pad text-center py-10"><div className="w-7 h-7 mx-auto border-2 border-current border-t-transparent rounded-full animate-spin text-primary" /></div>
+    ) : error ? (
+      <div className="v2-box v2-box-pad text-center py-10">
+        <XMarkIcon className="w-8 h-8 mx-auto mb-2 text-error" />
+        <h3 className="text-lg font-semibold text-default mb-1">Error loading data</h3>
+        <p className="text-muted">{error.message}</p>
+      </div>
+    ) : null;
+    return (
+      <div className="flex flex-col">
+        {arr.shown.map((id) => {
+          if (id === 'waiting') {
+            if (!isLoading && !error && waiting.length === 0) return null;
+            return (
+              <ArrangeSection key={id} arrange={arr} id={id} title="Waiting for you" meta={waiting.length}>
+                {state || (
+                  <div className="v2-list">
+                    {waiting.map(({ inv, r }) => (
+                      <StatusRow
+                        key={r.id}
+                        tone="warn"
+                        words="Waiting"
+                        title={`${r.username || r.email} asked to join ${inv.groupName || 'your household'}`}
+                        line={`${formatTimestamp(new Date(r.createdAt))} · ${inv.inviteCode || inv.code || ''}`}
+                        actions={(
+                          <>
+                            <V2Button disabled={answering === r.id} onClick={() => answerRequest(r, false)}>Reject</V2Button>
+                            <V2Button primary disabled={answering === r.id} onClick={() => answerRequest(r, true)}>Approve</V2Button>
+                          </>
+                        )}
+                      />
+                    ))}
+                  </div>
+                )}
+              </ArrangeSection>
+            );
+          }
+          if (id === 'recent') {
+            return (
+              <ArrangeSection key={id} arrange={arr} id={id} title="Recent" meta={isLoading ? undefined : inviteHistory.length}>
+                {state || (inviteHistory.length === 0 ? (
+                  <div className="v2-box v2-box-pad text-center py-10">
+                    <EnvelopeIcon className="w-9 h-9 mx-auto mb-3 text-subtle" />
+                    <h3 className="text-lg font-semibold text-default mb-1">No invitation history</h3>
+                    <p className="text-muted mx-auto" style={{ maxWidth: '448px' }}>It appears here when invitations are created, used or run out.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="v2-list">
+                      {history.map((i) => {
+                        const w = wordsOf(i.action);
+                        return <StatusRow key={i.id} tone={w.tone} words={w.words} title={titleOf(i)} line={`${formatTimestamp(i.timestamp)} · ${i.groupName}${i.inviteCode ? ` · ${i.inviteCode}` : ''}`} />;
+                      })}
+                    </div>
+                    {inviteHistory.length > history.length && (
+                      <div className="mt-4 text-center"><V2Button onClick={() => setShowAllInvites(true)}>Show all {inviteHistory.length}</V2Button></div>
+                    )}
+                  </>
+                ))}
+              </ArrangeSection>
+            );
+          }
+          return null;
+        })}
+      </div>
+    );
+  })();
+
+  const v2Body = !v2 ? null : (
+    <>
+      {viewMode === 'watch' ? v2Watched
+        : viewMode === 'dropped' ? <DroppedShowsPanel v2Arrange={follow(graveArrange)} />
+        : viewMode === 'invites' ? v2Invites
+        : viewMode === 'proxy' ? <ProxyHistoryView v2Arrange={follow(proxyArrange)} />
+        : v2Tasks}
+      <HiddenTray arrange={follow(tabSections[viewMode] || watchArrange)} labelOf={(k) => SECTION_LABELS[k] || k} note="Hidden only here. Tap one to bring it back." />
+    </>
+  );
+
   const groupFilterSelect = (
     <select
       value={selectedGroup || ''}
@@ -2135,8 +2618,8 @@ function ActivityPageContent() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Activity"
-          subtitle="Track watch history and sync operations across your SlickSync instance"
-          actions={<div className="flex items-center gap-3"><ArrangeButton arrange={tabArrange} />{groupFilterSelect}</div>}
+          subtitle={v2 ? "Everything watched and every sync, newest first" : "Track watch history and sync operations across your SlickSync instance"}
+          actions={<div className="flex items-center gap-3"><ArrangeButton arrange={pageArrange} />{groupFilterSelect}</div>}
         />
       )}
 
@@ -2155,12 +2638,12 @@ function ActivityPageContent() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Activity"
-          subtitle="Track watch history and sync operations across your SlickSync instance"
-          actions={<div className="flex items-center gap-2"><ArrangeButton arrange={tabArrange} />{groupFilterSelect}</div>}
+          subtitle={v2 ? "Everything watched and every sync, newest first" : "Track watch history and sync operations across your SlickSync instance"}
+          actions={<div className="flex items-center gap-2"><ArrangeButton arrange={pageArrange} />{groupFilterSelect}</div>}
         />
       )}
         {/* Arranging: the tabs as a list to move and hide. */}
-        <ArrangeBar arrange={tabArrange} />
+        <ArrangeBar arrange={pageArrange} />
         {tabArrange.arranging && (
           <div className="v2-list mb-4">
             {tabArrange.shown.map((k) => (
@@ -2194,7 +2677,7 @@ function ActivityPageContent() {
           }}
         />
 
-        {viewMode === 'watch' ? (
+        {v2 ? v2Body : viewMode === 'watch' ? (
           <>
             {/* Activity Stats (from real metrics data) */}
             <PageSection delay={0.05} className="mb-6">
@@ -2220,35 +2703,12 @@ function ActivityPageContent() {
                   <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
                     <NebulaGlassStripe />
                     <NowPlayingHeader count={metricsData.nowPlaying.length} />
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {metricsData.nowPlaying.map((np) => (
-                        <motion.div
-                          key={`now-${np.user.id}-${np.item.id}`}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="flex items-center gap-3 p-3 rounded-xl transition-colors"
-                          style={{ background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }}
-                        >
-                          <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
-                        </motion.div>
-                      ))}
-                    </div>
+                    {classicNowPlaying}
                   </div>
                 ) : (
                 <Card padding="md" className="border-2 border-primary/30 bg-primary/5">
                   <NowPlayingHeader count={metricsData.nowPlaying.length} />
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {metricsData.nowPlaying.map((np) => (
-                      <motion.div
-                        key={`now-${np.user.id}-${np.item.id}`}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex items-center gap-3 p-3 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary/50 transition-colors"
-                      >
-                        <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
-                      </motion.div>
-                    ))}
-                  </div>
+                  {classicNowPlaying}
                 </Card>
                 )}
               </PageSection>
@@ -2290,6 +2750,7 @@ function ActivityPageContent() {
                   sources={filterOptions.sources}
                   profiles={filterOptions.profiles}
                   profileApps={filterOptions.profileApps}
+                  profileSources={filterOptions.profileSources}
                 />
               </div>
             </PageSection>

@@ -1,13 +1,8 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { 
-  ArrowTopRightOnSquareIcon, 
-  ClipboardIcon, 
-  CheckIcon, 
-  ArrowPathIcon,
-  CheckCircleIcon
-} from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { PubButton, PubCode, PubError, PubHeading, PubLink, PubOr, PubQr, PubWaiting } from '@/components/v2/PublicV2';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { stremioOAuth } from '@/lib/invite-api';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -211,221 +206,67 @@ export function StremioOAuthCard({
 
   return (
     <motion.div
-      className="rounded-2xl overflow-hidden"
-      style={{
-        backgroundColor: 'var(--color-surface)',
-        border: '1px solid var(--color-surface-border)',
-      }}
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
+      className="space-y-4 text-center"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Top accent */}
-      <div 
-        className="h-1"
-        style={{ backgroundColor: 'var(--color-success)' }}
-      />
+      <PubHeading title={title} line={description} />
 
-      <div className="p-8">
-        {/* Icon */}
-        <motion.div
-          className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center"
-          style={{ backgroundColor: 'var(--color-success-muted)' }}
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
-          <CheckCircleIcon 
-            className="w-8 h-8" 
-            style={{ color: 'var(--color-success)' }} 
-          />
-        </motion.div>
+      {oauthLink && !isExpired && !isCompleting && (
+        <PubQr data={oauthLink} alt="Scan with your phone to open Stremio" />
+      )}
 
-        {/* Title */}
-        <motion.h2 
-          className="text-2xl font-semibold mb-2 text-center"
-          style={{ color: 'var(--color-text)' }}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.15 }}
-        >
-          {title}
-        </motion.h2>
+      {/* Main button - Open Stremio */}
+      <PubButton
+        primary
+        onClick={openLink}
+        disabled={!oauthLink || disabled || isExpired || isCompleting}
+        icon={isCompleting || isGenerating
+          ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          : <ArrowTopRightOnSquareIcon className="w-5 h-5" />}
+      >
+        {isCompleting ? 'Creating Account...' : isGenerating ? 'Generating Link...' : 'Open Stremio'}
+      </PubButton>
 
-        {/* Description */}
-        <motion.p 
-          className="text-sm text-center mb-6"
-          style={{ color: 'var(--color-text-muted)' }}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-        >
-          {description}
-        </motion.p>
+      <PubOr />
 
-        {/* OAuth Actions */}
-        <motion.div
-          className="space-y-4"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.25 }}
-        >
-          {/* Main button - Open Stremio */}
-          <button
-            onClick={openLink}
-            disabled={!oauthLink || disabled || isExpired || isCompleting}
-            className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-            style={{
-              backgroundColor: 'var(--color-primary)',
-              color: 'var(--color-bg)',
-              opacity: (!oauthLink || disabled || isExpired || isCompleting) ? 0.5 : 1,
-            }}
+      {/* Manual code entry */}
+      <div className="space-y-2.5">
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Copy the code and paste it at{' '}
+          <a
+            href="https://link.stremio.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:no-underline"
+            style={{ color: 'var(--color-primary)' }}
           >
-            {isCompleting ? (
-              <>
-                <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                <span>Creating Account...</span>
-              </>
-            ) : isGenerating ? (
-              <>
-                <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                <span>Generating Link...</span>
-              </>
-            ) : (
-              <>
-                <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                <span>Open Stremio</span>
-              </>
-            )}
-          </button>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div 
-              className="flex-1 h-px" 
-              style={{ backgroundColor: 'var(--color-surface-border)' }} 
-            />
-            <span 
-              className="text-xs uppercase tracking-wider"
-              style={{ color: 'var(--color-text-subtle)' }}
-            >
-              or
-            </span>
-            <div 
-              className="flex-1 h-px" 
-              style={{ backgroundColor: 'var(--color-surface-border)' }} 
-            />
-          </div>
-
-          {/* Manual code entry */}
-          <div className="text-center space-y-3">
-            <p 
-              className="text-sm"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              Copy the code and paste it at{' '}
-              <a
-                href="https://link.stremio.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:no-underline"
-                style={{ color: 'var(--color-primary)' }}
-              >
-                link.stremio.com
-              </a>
-            </p>
-
-            {/* Code display */}
-            <button
-              onClick={copyCode}
-              disabled={!oauthCode}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
-              style={{
-                backgroundColor: 'var(--color-bg-subtle)',
-                border: '1px solid var(--color-surface-border)',
-              }}
-            >
-              <span 
-                className="font-mono text-lg tracking-widest"
-                style={{ color: 'var(--color-text)' }}
-              >
-                {oauthCode || '----'}
-              </span>
-              {copied ? (
-                <CheckIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} />
-              ) : (
-                <ClipboardIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-              )}
-            </button>
-          </div>
-
-          {/* Timer and refresh */}
-          <div className="flex items-center justify-center gap-4 pt-2">
-            {timeLeft && (
-              <span 
-                className="text-sm font-mono"
-                style={{ color: getTimeColor() }}
-              >
-                {timeLeft}
-              </span>
-            )}
-            
-            {!hasAdminLink && (
-              <button
-                onClick={generateLink}
-                disabled={isGenerating || disabled}
-                className="text-sm flex items-center gap-1 hover:underline transition-all"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                <ArrowPathIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
-            )}
-          </div>
-
-          {/* Error message */}
-          {error && (
-            <motion.p
-              className="text-sm text-center"
-              style={{ color: 'var(--color-error)' }}
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              {error}
-            </motion.p>
-          )}
-
-          {/* Polling indicator */}
-          {isPolling && !isExpired && !error && (
-            <div className="flex items-center justify-center gap-2">
-              <div className="flex gap-1">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: 'var(--color-success)' }}
-                    animate={{
-                      scale: [1, 1.3, 1],
-                      opacity: [0.4, 1, 0.4],
-                    }}
-                    transition={{
-                      duration: 1,
-                      repeat: Infinity,
-                      delay: i * 0.2,
-                    }}
-                  />
-                ))}
-              </div>
-              <span 
-                className="text-xs"
-                style={{ color: 'var(--color-text-subtle)' }}
-              >
-                Waiting for authorization...
-              </span>
-            </div>
-          )}
-        </motion.div>
+            link.stremio.com
+          </a>
+        </p>
+        <PubCode code={oauthCode} copied={copied} onCopy={copyCode} />
       </div>
+
+      {/* Timer and refresh */}
+      <div className="flex items-center justify-center gap-4">
+        {timeLeft && (
+          <span className="text-sm font-mono" style={{ color: getTimeColor() }}>
+            {timeLeft}
+          </span>
+        )}
+        {!hasAdminLink && (
+          <PubLink onClick={generateLink} disabled={isGenerating || disabled} icon={<ArrowPathIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />}>
+            Refresh
+          </PubLink>
+        )}
+      </div>
+
+      {error && <PubError>{error}</PubError>}
+
+      {isPolling && !isExpired && !error && (
+        <PubWaiting tone="var(--color-success)">Waiting for you to approve it…</PubWaiting>
+      )}
     </motion.div>
   );
 }

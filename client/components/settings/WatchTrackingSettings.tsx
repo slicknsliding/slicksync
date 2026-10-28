@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, type WatchTrackingSettings as Settings } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { V2SetRow, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
 const FINISHED_CHOICES = [75, 80, 85, 90, 95, 98];
 const UNFINISHED_CHOICES = [14, 30, 45, 60, 90, 180];
@@ -12,7 +13,7 @@ const UNFINISHED_CHOICES = [14, 30, 45, 60, 90, 180];
  * it is offered on the Unfinished shelf. Account-wide; the history poller
  * picks a change up within a minute.
  */
-export function WatchTrackingSettings() {
+export function WatchTrackingSettings({ rows = false }: { rows?: boolean } = {}) {
   const [value, setValue] = useState<Settings | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,32 @@ export function WatchTrackingSettings() {
   // A value set some other way still shows as itself.
   const finished = FINISHED_CHOICES.includes(value.finishedPercent) ? FINISHED_CHOICES : [...FINISHED_CHOICES, value.finishedPercent].sort((a, b) => a - b);
   const unfinished = UNFINISHED_CHOICES.includes(value.unfinishedAfterDays) ? UNFINISHED_CHOICES : [...UNFINISHED_CHOICES, value.unfinishedAfterDays].sort((a, b) => a - b);
+
+  // The v2 page design: the same two choices as short rows in a box.
+  if (rows) {
+    return (
+      <>
+        <V2SetRow
+          title="Counts as finished at"
+          line="How far into a movie or episode it counts as watched rather than stopped part-way. Lower it if your shows have long end credits."
+          control={(
+            <select aria-label="Counts as finished at" value={value.finishedPercent} onChange={(e) => save({ finishedPercent: Number(e.target.value) })} className={V2_SELECT_CLASS}>
+              {finished.map((p) => <option key={p} value={p}>{p}% watched{p === value.defaults.finishedPercent ? ' (default)' : ''}</option>)}
+            </select>
+          )}
+        />
+        <V2SetRow
+          title="Unfinished shelf after"
+          line="How long a started show can go untouched before Activity → Graveyard offers it on the Unfinished shelf."
+          control={(
+            <select aria-label="Unfinished shelf after" value={value.unfinishedAfterDays} onChange={(e) => save({ unfinishedAfterDays: Number(e.target.value) })} className={V2_SELECT_CLASS}>
+              {unfinished.map((d) => <option key={d} value={d}>{d} days untouched{d === value.defaults.unfinishedAfterDays ? ' (default)' : ''}</option>)}
+            </select>
+          )}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">

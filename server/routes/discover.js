@@ -980,7 +980,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
     if (!id) return null
     const hit = tmdbPersonCache.get(id)
     if (hit && Date.now() - hit.at < TMDB_PERSON_TTL) return hit.data
-    const rsp = await fetchOut(`https://api.themoviedb.org/3/person/${id}?api_key=${encodeURIComponent(key)}&append_to_response=combined_credits`)
+    const rsp = await fetchOut(`https://api.themoviedb.org/3/person/${id}?api_key=${encodeURIComponent(key)}&append_to_response=combined_credits,external_ids`)
     if (!rsp.ok) return null
     const data = await rsp.json()
     if (tmdbPersonCache.size > 500) tmdbPersonCache.delete(tmdbPersonCache.keys().next().value)
@@ -1023,7 +1023,19 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
     name: person.name || null,
     profile: person.profile_path ? `${TMDB_IMG}${person.profile_path}` : null,
     ...require('../utils/personFacts').personFacts(person),
+    imdbId: /^nm\d+$/.test(person.external_ids?.imdb_id || '') ? person.external_ids.imdb_id : null,
   })
+
+  // The card with Wikipedia's answers filling what TMDb left out (a birthday,
+  // a biography, a city). Time-boxed and cached in utils/wikipediaFacts.js;
+  // on any trouble it is the card TMDb gave.
+  async function personCardWithWikipedia(person) {
+    const card = personCard(person)
+    const { facts, factsFrom, factsFilled } = await require('../utils/wikipediaFacts')
+      .enrichFacts({ tmdbId: person.id, imdbId: card.imdbId, facts: card })
+      .catch(() => ({ facts: card, factsFrom: null, factsFilled: [] }))
+    return { ...facts, factsFrom, ...(factsFrom ? { factsFilled } : {}) }
+  }
 
   // GET /api/discover/person/:id - a TMDb person and all their film/TV
   // credits. tmdbId/mediaType are returned so the page can resolve an IMDb id
@@ -1271,8 +1283,17 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
         if (!base) return res.status(503).json({ error: 'TMDb key not configured' })
         const found = await require('../utils/lumiere').searchPeople(base, wantTv ? 'series' : 'movie', query)
         if (!found) return res.json({ person: null, results: [] })
+        // The same Wikipedia fill, by the person's IMDb id when LumiereDB gave one.
+        const imdbId = /^nm\d+$/.test(found.person.id || '') ? found.person.id : null
+        const wiki = imdbId
+          ? await require('../utils/wikipediaFacts').enrichFacts({ imdbId, facts: {} }).catch(() => null)
+          : null
         return res.json({
-          person: { id: null, name: found.person.name, profile: null },
+          person: {
+            id: null, name: found.person.name, profile: null,
+            ...(imdbId ? { imdbId } : {}),
+            ...(wiki?.factsFrom ? { ...wiki.facts, factsFrom: wiki.factsFrom, factsFilled: wiki.factsFilled } : {}),
+          },
           results: found.items.map((i, n) => ({
             tmdbId: null,
             imdbId: i.id,
@@ -1298,7 +1319,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
         person = await fetchTmdbPerson(key, top.id)
         if (!person) return res.status(502).json({ error: 'TMDb request failed' })
       }
-      res.json({ person: personCard(person), results: creditsOf(person, wantTv ? 'tv' : 'movie') })
+      res.json({ person: await personCardWithWikipedia(person), results: creditsOf(person, wantTv ? 'tv' : 'movie') })
     } catch (error) {
       console.error('Error searching person:', error)
       res.status(500).json({ error: 'Failed to search person' })

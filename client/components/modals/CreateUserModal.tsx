@@ -7,6 +7,9 @@ import { Button, SlickSyncLogo, PasswordToggleButton } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { AddPersonHead, AppTiles, MethodTile, SignInQuestion, type AddPersonApp } from '@/components/v2/AddPersonV2';
 import JellyfinSignIn, { type JellyfinCredentials, type JellyfinServerInfo, type JellyfinSignInApi } from '@/components/jellyfin/JellyfinSignIn';
 import {
   UsersIcon,
@@ -14,6 +17,9 @@ import {
   ClockIcon,
   CheckIcon,
   ClipboardIcon,
+  LinkIcon,
+  UserIcon,
+  KeyIcon,
 } from '@heroicons/react/24/outline';
 import { copyToClipboard } from '@/lib/clipboard';
 
@@ -42,6 +48,14 @@ export function CreateUserModal({
   // A Nuvio person signs in to Nuvio again - never offered Stremio's options.
   const isNuvioReconnect = isReconnect && providerType === 'nuvio';
   const isTV = useIsTV();
+  // v2 (Themes → Page design): the app as four tiles, then the sign-in ways as
+  // whole tiles. Adding a person only; signing in again keeps its own look.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV && !isReconnect;
+  const isNarrow = useIsMobile(640);
+  // AIOStreams and AIOMetadata sign in through the same server flow as Jellyfin;
+  // the tile only says which one was picked.
+  const [aioPicked, setAioPicked] = useState(false);
   const [step, setStep] = useState<'tabs' | 'oauth' | 'success' | 'nuvio-oauth'>('tabs');
   const [provider, setProvider] = useState<'stremio' | 'nuvio' | 'jellyfin'>('stremio');
   // Jellyfin: the name the person gets here (their server name if left
@@ -101,6 +115,7 @@ export function CreateUserModal({
       setTimeout(() => {
         setStep('tabs');
         setProvider('stremio');
+        setAioPicked(false);
         setAuthMethod('oauth');
         setUsername('');
         setEmail('');
@@ -521,8 +536,9 @@ export function CreateUserModal({
             }}
           />
 
-          <div className="fixed inset-0 flex items-center justify-center p-4">
+          <div className={v2 ? 'fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4' : 'fixed inset-0 flex items-center justify-center p-4'}>
             <motion.div
+              className={v2 ? 'w-full flex justify-center' : undefined}
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -532,22 +548,22 @@ export function CreateUserModal({
               className="w-full overflow-hidden flex flex-col max-h-[85vh]"
               style={{
                 background: 'var(--color-surface)',
-                borderRadius: '24px',
+                borderRadius: v2 ? (isNarrow ? '24px 24px 0 0' : '22px') : '24px',
                 border: '1px solid var(--color-surface-border)',
                 boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)',
-                maxWidth: '512px'
+                maxWidth: v2 ? '600px' : '512px'
               }}
             >
               {/* Decorative header gradient */}
-              <div
+              {!v2 && <div
                 className="h-1.5 w-full shrink-0"
                 style={{
                   background: 'linear-gradient(90deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 60%, var(--color-secondary)) 50%, var(--color-secondary) 100%)'
                 }}
-              />
+              />}
 
               {/* Content */}
-              <div className="p-8 overflow-y-auto">
+              <div className={v2 ? 'p-5 sm:p-6 overflow-y-auto' : 'p-8 overflow-y-auto'}>
                 <AnimatePresence mode="wait">
                   {/* Step: Select Method - 3 Tabs */}
                   {step === 'tabs' && (
@@ -558,7 +574,10 @@ export function CreateUserModal({
                       exit={{ opacity: 0, x: 20 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <div className="text-center mb-6">
+                      {v2 && (
+                        <AddPersonHead step2={provider === 'stremio' ? authMethod !== 'oauth' : provider === 'nuvio' ? nuvioAuthMethod === 'credentials' : !!jellyfinServer} />
+                      )}
+                      {!v2 && <div className="text-center mb-6">
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
@@ -603,13 +622,23 @@ export function CreateUserModal({
                             Or copy a link for {userName} to sign in themselves
                           </button>
                         )}
-                      </div>
+                      </div>}
 
                       {/* The selected tab's colour is a class, never an inline style:
                           a page-recolouring browser extension (Dark Reader and the
                           like) freezes inline backgrounds it has already rewritten,
                           which left every tab clicked lit up at once in Firefox. */}
-                      {!isReconnect && (
+                      {v2 && (
+                        <AppTiles
+                          value={provider === 'jellyfin' && aioPicked ? 'aiostreams' : provider}
+                          onPick={(a: AddPersonApp) => {
+                            setAioPicked(a === 'aiostreams');
+                            setProvider(a === 'aiostreams' ? 'jellyfin' : a);
+                          }}
+                        />
+                      )}
+                      {v2 && <SignInQuestion app={provider === 'jellyfin' && aioPicked ? 'aiostreams' : provider} />}
+                      {!isReconnect && !v2 && (
                         <div className="flex gap-2 mb-5 p-1 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
                           <button
                             type="button"
@@ -637,7 +666,7 @@ export function CreateUserModal({
                           </button>
                         </div>
                       )}
-                      {!isReconnect && <p className="text-xs text-center -mt-3 mb-4" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>}
+                      {!isReconnect && !v2 && <p className="text-xs text-center -mt-3 mb-4" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>}
 
                       {(provider === 'jellyfin' || isJellyfinReconnect) && (
                         <div className="space-y-4">
@@ -712,7 +741,36 @@ export function CreateUserModal({
                       {provider === 'stremio' && !isJellyfinReconnect && !isNuvioReconnect && (
                       <>
                       {/* 3 Tab Options */}
-                      <div className="space-y-3">
+                      {v2 && (
+                        <div>
+                          <MethodTile
+                            icon={<LinkIcon className="w-[18px] h-[18px]" />}
+                            title="Approve in Stremio"
+                            line="Link their account securely. No password shared."
+                            easiest
+                            onClick={() => {
+                              setAuthMethod('oauth');
+                              setStep('oauth');
+                              handleStartOAuth();
+                            }}
+                          />
+                          <MethodTile
+                            icon={<UserIcon className="w-[18px] h-[18px]" />}
+                            title="Email and password"
+                            line="Type their Stremio sign-in here"
+                            selected={authMethod === 'credentials'}
+                            onClick={() => setAuthMethod('credentials')}
+                          />
+                          <MethodTile
+                            icon={<KeyIcon className="w-[18px] h-[18px]" />}
+                            title="Auth key"
+                            line="Paste it from Stremio’s settings"
+                            selected={authMethod === 'authKey'}
+                            onClick={() => setAuthMethod('authKey')}
+                          />
+                        </div>
+                      )}
+                      {!v2 && <div className="space-y-3">
                         {/* Credentials Option (Email/Password) */}
                         <motion.button
                           type="button"
@@ -812,7 +870,7 @@ export function CreateUserModal({
                             </div>
                           </div>
                         </motion.button>
-                      </div>
+                      </div>}
 
                       {/* Show form based on selected auth method (except OAuth which goes to separate step) */}
                       {authMethod !== 'oauth' && (
@@ -951,7 +1009,28 @@ export function CreateUserModal({
 
                       {(provider === 'nuvio' || isNuvioReconnect) && (
                       <>
-                        <div className="space-y-3">
+                        {v2 && !isNuvioReconnect && (
+                          <div>
+                            <MethodTile
+                              icon={<LinkIcon className="w-[18px] h-[18px]" />}
+                              title="Approve in Nuvio"
+                              line="Approve on your device. No password shared."
+                              easiest
+                              onClick={() => {
+                                setNuvioAuthMethod('oauth');
+                                handleStartNuvioOAuth();
+                              }}
+                            />
+                            <MethodTile
+                              icon={<UserIcon className="w-[18px] h-[18px]" />}
+                              title="Email and password"
+                              line="Type their Nuvio sign-in here"
+                              selected={nuvioAuthMethod === 'credentials'}
+                              onClick={() => setNuvioAuthMethod('credentials')}
+                            />
+                          </div>
+                        )}
+                        {!(v2 && !isNuvioReconnect) && <div className="space-y-3">
                           {/* Nuvio Credentials Option */}
                           <button
                             type="button"
@@ -989,7 +1068,7 @@ export function CreateUserModal({
                               Approve on your device — no password shared
                             </p>
                           </button>
-                        </div>
+                        </div>}
 
                         {nuvioAuthMethod === 'credentials' && (
                           <div className="mt-6 p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>

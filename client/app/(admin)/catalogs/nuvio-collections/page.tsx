@@ -16,6 +16,9 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { NuvioCollectionsV2 } from '@/components/v2/NuvioCollectionsV2';
 import { toast } from '@/components/ui/Toast';
 import { encodeNuvioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
@@ -520,6 +523,10 @@ function CollectionSection({
 export default function NuvioCollectionsPage() {
   const { layoutMode } = useLayoutMode();
   const router = useRouter();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
   // Shared app-wide grid/list preference (Settings -> Themes), same hook
   // Activity/Addons/Users/etc. already use - defaults to 'grid' when unset.
   // Deliberately no page-level toggle for it here - it follows the global
@@ -1263,20 +1270,94 @@ export default function NuvioCollectionsPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Nuvio Collections' }]} className="text-xl font-semibold" />}
-          subtitle="Organize a Nuvio account's own home-screen collections"
-          actions={detailActions}
+          subtitle={v2 ? '' : "Organize a Nuvio account's own home-screen collections"}
+          actions={v2 ? backButton : detailActions}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && (
-          <NebulaPageHeading title="Nuvio Collections" subtitle="Organize a Nuvio account's own home-screen collections" leading={backButton} actions={selectedProfileIndex !== null ? saveAction : undefined} />
+          v2
+            ? <NebulaPageHeading title="Catalogs" leading={backButton} />
+            : <NebulaPageHeading title="Nuvio Collections" subtitle="Organize a Nuvio account's own home-screen collections" leading={backButton} actions={selectedProfileIndex !== null ? saveAction : undefined} />
         )}
 
         {guardBanner}
 
-        <PageSection>
+        {v2 && (
+          <>
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportFile(file);
+                e.target.value = '';
+              }}
+            />
+            <NuvioCollectionsV2
+              usersLoading={usersLoading}
+              nuvioUsers={nuvioUsers}
+              selectedUser={selectedUser}
+              selectedUserId={selectedUserId}
+              onSelectUser={handleSelectUser}
+              profiles={profiles}
+              profilesLoading={profilesLoading}
+              selectedProfileIndex={selectedProfileIndex}
+              onSelectProfile={handleSelectProfile}
+              collections={collections}
+              collectionsLoading={collectionsLoading}
+              isDirty={isDirty}
+              saving={saving}
+              onSave={handleSave}
+              onAddCollection={addCollection}
+              hasCollections={collections.length > 0}
+              otherProfiles={otherProfiles}
+              homeRowsArmed={homeRowsArmed}
+              homeRowsBusy={homeRowsBusy}
+              onTemplates={() => setTemplatesOpen(true)}
+              onImport={() => importFileInputRef.current?.click()}
+              onExport={exportCollectionsJson}
+              onPasteCode={() => setShowPasteCode(true)}
+              onCreateCode={openShareCode}
+              onWhere={() => setImportExportInfoOpen(true)}
+              onEditRows={() => setHomeRowsEditorOpen(true)}
+              onCopyRows={(idx) => {
+                const arming = homeRowsArmed !== idx;
+                copyHomeRows(idx);
+                if (arming) toast.info('Choose it again to overwrite', { line: 'Open ⋯ and pick the same profile within 5 seconds.' });
+              }}
+              onTips={() => setTipsInfoOpen(true)}
+              previewByFolder={previewByFolder}
+              previewLoadingIds={previewLoadingIds}
+              brokenFolderIds={brokenFolderIds}
+              describeSource={describeSource}
+              onRename={(id, title) => updateCollection(id, { title })}
+              onReorder={reorderCollection}
+              onDeleteCollection={(id) => setDeleting({ kind: 'collection', collectionId: id })}
+              onCopyCollection={(c) => setCopyTarget(c)}
+              onTogglePin={(c) => updateCollection(c.id, { pinToTop: !c.pinToTop })}
+              onPreview={(c) => setPreviewCollection(c)}
+              onAddFolder={addFolder}
+              onOpenFolder={(collectionId, folderId) => { setFolderDetail({ collectionId, folderId }); setFolderDetailTab('sources'); }}
+              onDeleteFolder={(collectionId, folderId) => setDeleting({ kind: 'folder', collectionId, folderId })}
+              onFolderDragEnd={handleFolderDragEnd}
+              editor={homeRowsEditorOpen && selectedUserId && selectedProfileIndex !== null ? (
+                <HomeRowsEditor
+                  userId={selectedUserId}
+                  profileId={selectedProfileIndex}
+                  profileName={profiles.find((p) => p.profile_index === selectedProfileIndex)?.name || `Profile ${selectedProfileIndex}`}
+                  onDone={() => setHomeRowsEditorOpen(false)}
+                />
+              ) : null}
+            />
+          </>
+        )}
+
+        {!v2 && <PageSection>
           {/* Grid of Nuvio-connected users, same card-grid pattern as
               Users/Groups, instead of a dropdown - picking an account you
               manage shouldn't feel different here than anywhere else in
@@ -1680,7 +1761,7 @@ export default function NuvioCollectionsPage() {
               </>
             )
           )}
-        </PageSection>
+        </PageSection>}
       </div>
       </div>
 
