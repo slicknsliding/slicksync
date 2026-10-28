@@ -20,6 +20,7 @@ import {
   LinkIcon,
   UserIcon,
   KeyIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { copyToClipboard } from '@/lib/clipboard';
 
@@ -545,7 +546,7 @@ export function CreateUserModal({
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
             <DialogPanel
-              className="w-full overflow-hidden flex flex-col max-h-[85vh]"
+              className="relative w-full overflow-hidden flex flex-col max-h-[85vh]"
               style={{
                 background: 'var(--color-surface)',
                 borderRadius: v2 ? (isNarrow ? '24px 24px 0 0' : '22px') : '24px',
@@ -554,6 +555,11 @@ export function CreateUserModal({
                 maxWidth: v2 ? '600px' : '512px'
               }}
             >
+              {v2 && (
+                <button type="button" onClick={onClose} aria-label="Close" className="absolute top-3 right-3 z-10 w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-default hover:bg-surface-hover transition-colors">
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              )}
               {/* Decorative header gradient */}
               {!v2 && <div
                 className="h-1.5 w-full shrink-0"

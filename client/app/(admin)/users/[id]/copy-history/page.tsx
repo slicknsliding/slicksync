@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { WatchSyncView } from '@/components/user/WatchSyncView';
-import { CopyHistoryHeadV2 } from '@/components/v2/PersonV2';
+import { copyHistoryHeadV2 } from '@/components/v2/PersonV2';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { api, type User } from '@/lib/api';
@@ -24,5 +24,5 @@ export default function PersonWatchSyncPage() {
     api.getUser(userId).then((u) => { if (!cancelled) setPerson(u); }).catch(() => {});
     return () => { cancelled = true; };
   }, [v2, userId]);
-  return <WatchSyncView userId={userId} home="person" forSlot={v2 ? <CopyHistoryHeadV2 user={person} /> : undefined} />;
+  return <WatchSyncView userId={userId} home="person" head={v2 ? copyHistoryHeadV2(person) : undefined} />;
 }

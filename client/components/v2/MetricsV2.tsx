@@ -393,9 +393,11 @@ export function MetricsAdminV2({ arrange, isLoading, data, joinsChart, joinsTota
                         <UserAvatar userId={u.id} name={u.username} email={u.email} size="md" />
                         <div className="flex-1 min-w-0">
                           <b className="text-default truncate block">{u.username}</b>
-                          <div className="text-muted text-[12.5px] truncate">{u.lastActivity ? `last watched ${new Date(u.lastActivity).toLocaleDateString()}` : u.email}</div>
+                          <div className="text-muted text-[12.5px] sm:truncate">{u.lastActivity ? `last watched ${new Date(u.lastActivity).toLocaleDateString()}` : u.email}</div>
+                          {/* On a phone the status sits under the name, so the date isn't cut off. */}
+                          <div className="sm:hidden mt-1"><V2Status tone={st.tone}>{st.words}</V2Status></div>
                         </div>
-                        <V2Status tone={st.tone}>{st.words}</V2Status>
+                        <span className="max-sm:hidden"><V2Status tone={st.tone}>{st.words}</V2Status></span>
                         <V2Button onClick={() => router.push(`/users/${u.id}`)}>Open</V2Button>
                       </div>
                     );

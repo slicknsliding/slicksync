@@ -248,7 +248,7 @@ export function ArrangeSection({
   const folded = arrange.isFolded(id);
   return (
     <section className={arrange.arranging ? 'arrange-section arrange-section-on' : 'arrange-section'} aria-label={label}>
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
         <FoldButton arrange={arrange} id={id} label={label} />
         <div className="min-w-0 flex items-baseline gap-2.5 flex-wrap">
           <h2 className="text-lg font-semibold truncate">{title}</h2>
@@ -256,7 +256,8 @@ export function ArrangeSection({
           {!meta && folded && <span className="text-muted text-[13px]">folded</span>}
         </div>
         <span className="flex-1" />
-        {!arrange.arranging && actions}
+        {/* On a phone the section's own controls take a line under its title, so neither gets squeezed. */}
+        {!arrange.arranging && actions && <div className="flex items-center gap-2 max-sm:order-last max-sm:basis-full">{actions}</div>}
         {arrange.arranging
           ? <ArrangeControls arrange={arrange} id={id} label={label} />
           : <SectionMenu arrange={arrange} id={id} label={label} noun={noun} />}

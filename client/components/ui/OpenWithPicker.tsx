@@ -85,7 +85,7 @@ export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSav
           {a.id === currentId && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
         </button>
       ))}
-      {targets.servers.length > 0 && (
+      {(targets.servers?.length ?? 0) > 0 && (
         <button type="button" className={`${row} ${currentId === 'shortcut' ? 'bg-surface-hover' : ''}`} onClick={startShortcut}>
           <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: SHORTCUT_APP.color }}>{SHORTCUT_APP.letter}</span>
           <span className="flex-1 min-w-0">

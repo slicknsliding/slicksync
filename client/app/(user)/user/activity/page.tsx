@@ -264,7 +264,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
             <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-            <YAxis stroke="#64748b" fontSize={12} />
+            <YAxis stroke="#64748b" fontSize={12} allowDecimals={false} />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               labelStyle={TOOLTIP_LABEL_STYLE}

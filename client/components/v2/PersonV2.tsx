@@ -83,11 +83,10 @@ export function TitleRows({ rows, empty }: {
 }
 
 /** The header of the Copy watch history page: whose history, and that nothing is removed. */
-export function CopyHistoryHeadV2({ user }: { user: User | null }) {
+export function copyHistoryHeadV2(user: User | null) {
   const name = user?.username || user?.name || 'their';
-  return (
-    <V2DetailHead
-      lead={user ? (
+  return {
+    lead: user ? (
         <UserAvatar
           userId={user.id}
           name={user.username || user.name || 'User'}
@@ -99,10 +98,9 @@ export function CopyHistoryHeadV2({ user }: { user: User | null }) {
           className="w-16 h-16 rounded-2xl"
           avatarClassName="rounded-2xl"
         />
-      ) : <span className="w-16 h-16 rounded-2xl" style={{ background: 'var(--color-surface-hover)' }}><ShareIcon className="w-6 h-6" /></span>}
-      title={user ? `Copy ${name}’s watch history` : 'Copy watch history'}
-      status={<span className="text-muted text-[14px]">From one sign-in to another</span>}
-      facts="nothing is removed from where it comes from"
-    />
-  );
+    ) : <span className="w-16 h-16 rounded-2xl" style={{ background: 'var(--color-surface-hover)' }}><ShareIcon className="w-6 h-6" /></span>,
+    title: user ? `Copy ${name}’s watch history` : 'Copy watch history',
+    status: <span className="text-muted text-[14px]">From one sign-in to another</span>,
+    facts: 'nothing is removed from where it comes from',
+  };
 }

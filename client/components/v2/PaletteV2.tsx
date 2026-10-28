@@ -123,7 +123,7 @@ export function PaletteV2Panel({
             value={query}
             onChange={(e) => onQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Jump to a page, a person or an addon, or ask how…"
+            placeholder="Search pages, people, addons…"
             aria-label="Search"
             className="flex-1 min-w-0 bg-transparent outline-none text-[15px]"
             style={{ color: 'var(--color-text)' }}

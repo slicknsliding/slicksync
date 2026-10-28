@@ -40,6 +40,12 @@ import {
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
 // the Catalogs index card), so a catalog's solid-color cover looks identical
 // on both surfaces.
+// A catalog as the page uses it: lists it reads are always there, even if a
+// reply leaves one out, so one odd reply can't take the whole page down.
+function withDefaults(l: CustomList): CustomList {
+  return { ...l, items: l.items || [], keptRatings: l.keptRatings || [] };
+}
+
 function coverColorStyle(colorIndex: number): React.CSSProperties {
   return { background: avatarColorFill(colorIndex) };
 }
@@ -237,7 +243,7 @@ export default function ListDetailPage() {
   useLastKnown<CustomList[]>('/lists', (cached) => {
     const found = cached.find((l) => l.id === listId);
     if (!found) return;
-    setList(found);
+    setList(withDefaults(found));
     setIsLoading(false);
   });
   const [detail, setDetail] = useState<CustomListItem | null>(null);
@@ -324,7 +330,7 @@ export default function ListDetailPage() {
     api.getLists()
       .then((all) => {
         const found = all.find((l) => l.id === listId) || null;
-        setList(found);
+        setList(found ? withDefaults(found) : null);
         setNotFound(!found);
       })
       .catch(() => setNotFound(true))
@@ -403,7 +409,7 @@ export default function ListDetailPage() {
     if (!name) return;
     try {
       const updated = await api.updateList(list.id, { name });
-      setList(updated);
+      setList(withDefaults(updated));
       setRenaming(false);
       toast.success('Renamed');
     } catch { toast.error('Failed to rename'); }
@@ -424,7 +430,7 @@ export default function ListDetailPage() {
     if ('avatarUrl' in data) patch.coverImageUrl = data.avatarUrl ?? null;
     if ('colorIndex' in data) patch.coverColorIndex = data.colorIndex ?? null;
     const updated = await api.updateList(list.id, patch);
-    setList(updated);
+    setList(withDefaults(updated));
   };
 
   const handleExportToMdblist = async () => {
@@ -490,7 +496,7 @@ export default function ListDetailPage() {
     setApplyingRefresh(true);
     try {
       const updated = await api.refreshList(list.id, true);
-      setList(updated);
+      setList(withDefaults(updated));
       setRefreshDiff(null);
       toast.success(`Refreshed "${list.name}" from source`);
     } catch (e: any) {
@@ -507,7 +513,7 @@ export default function ListDetailPage() {
     setSavingAutoRefresh(true);
     try {
       const updated = await api.updateList(list.id, { autoRefresh: next });
-      setList(updated);
+      setList(withDefaults(updated));
       const freq = updated.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
       if (next) toast.success('Auto-refresh on', { line: `This catalog refreshes from its source ${freq}.` });
       else toast.success('Auto-refresh turned off');
@@ -523,7 +529,7 @@ export default function ListDetailPage() {
     setSavingAutoRefresh(true);
     try {
       const updated = await api.updateList(list.id, { autoRefreshFrequency: frequency });
-      setList(updated);
+      setList(withDefaults(updated));
       toast.success(`Auto-refresh set to ${frequency}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update auto-refresh schedule');
@@ -539,7 +545,7 @@ export default function ListDetailPage() {
     setSavingShared(true);
     try {
       const updated = await api.updateList(list.id, { shared: next });
-      setList(updated);
+      setList(withDefaults(updated));
       toast.success(next ? 'This catalog is now visible (read-only) to other accounts on this instance' : 'No longer shared');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update sharing');
@@ -696,7 +702,7 @@ export default function ListDetailPage() {
     setApplying(true);
     try {
       const { removedCount, ...updated } = await api.applyContentRating(list.id, draftRatings);
-      setList(updated);
+      setList(withDefaults(updated));
       setShowPolicyModal(false);
       setPreviewResult(null);
       if (draftRatings.length === 0) toast.success('Content rating policy cleared');
@@ -719,7 +725,7 @@ export default function ListDetailPage() {
     setRestoring(true);
     try {
       const updated = await api.restoreContentRatingRemoval(list.id);
-      setList(updated);
+      setList(withDefaults(updated));
       toast.success('Restored the last content-rating removal');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to restore');
@@ -736,7 +742,7 @@ export default function ListDetailPage() {
     const current = listRef.current;
     if (!current) return;
     const updated = { ...current, items: current.items.filter((i) => i.id !== item.id) };
-    setList(updated);
+    setList(withDefaults(updated));
     try { await api.removeFromList(current.id, item.id); }
     catch { toast.error('Failed to remove'); load(); }
   }, [load]);
@@ -839,7 +845,7 @@ export default function ListDetailPage() {
   };
 
   const title = isLoading ? 'Loading…' : notFound ? 'Catalog not found' : (list?.name || 'Catalog');
-  const subtitle = isLoading ? '' : notFound ? '' : `${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}`;
+  const subtitle = isLoading ? '' : notFound ? '' : `${list?.items?.length || 0} title${list?.items?.length !== 1 ? 's' : ''}`;
 
   // Explicit navigation to /catalogs (not router.back()) - back should always
   // land on the Catalogs index in one hop, regardless of how this page was
@@ -867,13 +873,13 @@ export default function ListDetailPage() {
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2 flex-wrap justify-end">
       <Button
-        variant={list.keptRatings.length > 0 ? 'primary' : 'secondary'}
+        variant={(list.keptRatings?.length ?? 0) > 0 ? 'primary' : 'secondary'}
         size="sm"
         leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
         onClick={openPolicyModal}
-        title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+        title={(list.keptRatings?.length ?? 0) > 0 ? `Keeping only: ${(list.keptRatings || []).join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
       >
-        {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
+        {(list.keptRatings?.length ?? 0) > 0 ? `Content Rating (${(list.keptRatings?.length ?? 0)})` : 'Content Rating'}
       </Button>
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
@@ -1317,7 +1323,7 @@ export default function ListDetailPage() {
         onClose={() => setShowExportConfirm(false)}
         onConfirm={handleExportToMdblist}
         title="Export to MDBList"
-        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward. It's a one-time copy either way — later changes to this Catalog won't reach the exported list, and vice versa.`}
+        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items?.length || 0} title${list?.items?.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward. It's a one-time copy either way — later changes to this Catalog won't reach the exported list, and vice versa.`}
         confirmText={exporting ? 'Exporting...' : 'Export'}
         isLoading={exporting}
       />
@@ -1443,7 +1449,7 @@ export default function ListDetailPage() {
                   ))}
                 </select>
                 <p className="text-xs text-subtle mt-1.5">
-                  Adds this catalog&apos;s {list?.items.length || 0} title{list?.items.length !== 1 ? 's' : ''} to that user&apos;s SIMKL Plan to Watch. SIMKL doesn&apos;t expose named lists via API yet, so this is the closest equivalent — it&apos;s additive, nothing already on their SIMKL account is removed.
+                  Adds this catalog&apos;s {list?.items?.length || 0} title{list?.items?.length !== 1 ? 's' : ''} to that user&apos;s SIMKL Plan to Watch. SIMKL doesn&apos;t expose named lists via API yet, so this is the closest equivalent — it&apos;s additive, nothing already on their SIMKL account is removed.
                 </p>
               </div>
               <div className="flex justify-end gap-2">

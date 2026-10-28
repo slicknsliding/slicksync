@@ -170,10 +170,10 @@ export function SyncPreviewV2Body({ person, loading, error, ready, added, remove
       )}
 
       <div className="flex flex-row gap-2 mt-5 sm:justify-end">
-        <button type="button" className="v2-btn justify-center flex-1 sm:flex-none" style={{ padding: '10px 16px' }} onClick={onClose} disabled={confirming}>Cancel</button>
+        <button type="button" className="v2-btn v2-fill justify-center" style={{ padding: '10px 16px' }} onClick={onClose} disabled={confirming}>Cancel</button>
         <button
           type="button"
-          className={`${nothingToDo ? 'v2-btn' : 'v2-btn v2-btn-main'} justify-center flex-[2] sm:flex-none`}
+          className={`${nothingToDo ? 'v2-btn' : 'v2-btn v2-btn-main'} v2-fill-2 justify-center`}
           style={{ padding: '10px 18px' }}
           onClick={onConfirm}
           disabled={loading || confirming}

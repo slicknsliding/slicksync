@@ -435,7 +435,8 @@ export default function ListsPage() {
               <div className="space-y-4">
                 {hero && (
                   <Card padding="none" className="overflow-hidden" onContextMenu={(e) => openContextMenuFor(hero, e)}>
-                    <button type="button" onClick={() => router.push(`/catalogs/${hero.id}`)} className="w-full text-left block relative group">
+                    {/* A div, not a button: the card holds its own buttons (pin, cover, rename, delete). */}
+                    <div role="link" tabIndex={0} onClick={() => router.push(`/catalogs/${hero.id}`)} onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/catalogs/${hero.id}`); }} className="w-full text-left block relative group cursor-pointer">
                       <div className="relative h-48 md:h-72 bg-black">
                         {hero.coverImageUrl ? (
                           <>
@@ -474,7 +475,7 @@ export default function ListsPage() {
                           <p className="text-sm text-white/70">{hero.items.length} title{hero.items.length !== 1 ? 's' : ''}</p>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   </Card>
                 )}
 

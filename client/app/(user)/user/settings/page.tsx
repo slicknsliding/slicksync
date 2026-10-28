@@ -939,7 +939,7 @@ export default function UserSettingsPage() {
                   }
                 }}
                 placeholder="https://discord.com/api/webhooks/..."
-                className="flex-1 px-3 py-2 text-sm rounded-lg"
+                className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg"
                 style={{
                   background: 'var(--color-surface-elevated)',
                   border: '1px solid var(--color-surface-border)',
@@ -949,7 +949,7 @@ export default function UserSettingsPage() {
               <button
                 onClick={handleTestWebhook}
                 disabled={isTestingWebhook || !discordWebhookUrl.trim()}
-                className="px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
+                className="shrink-0 px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
                 style={{
                   background: 'var(--color-surface-elevated)',
                   border: '1px solid var(--color-surface-border)',
@@ -1009,7 +1009,7 @@ export default function UserSettingsPage() {
             </label>
             <div className="flex gap-2">
               <div 
-                className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg"
+                className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-lg"
                 style={{
                   background: 'var(--color-surface-elevated)',
                   border: '1px solid var(--color-surface-border)',
@@ -1046,7 +1046,7 @@ export default function UserSettingsPage() {
               <button
                 onClick={handleGenerateApiKey}
                 disabled={isGeneratingKey}
-                className="px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
+                className="shrink-0 px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
                 style={{
                   background: 'var(--color-surface-elevated)',
                   border: '1px solid var(--color-surface-border)',

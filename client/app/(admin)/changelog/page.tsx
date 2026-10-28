@@ -400,9 +400,9 @@ export default function ChangelogPage() {
                     }`}
                   >
                     {/* Release Header */}
-                    <button
+                    <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleVersion(release.version); } }}
                       onClick={() => toggleVersion(release.version)}
-                      className="w-full px-6 py-4 flex items-center justify-between hover:bg-surface-hover transition-colors"
+                      className="w-full px-6 py-4 flex items-center justify-between hover:bg-surface-hover transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-4">
                         <TagIcon className="w-5 h-5 text-default shrink-0" />
@@ -475,7 +475,7 @@ export default function ChangelogPage() {
                       ) : (
                         <ChevronDownIcon className="w-5 h-5 text-muted" />
                       )}
-                    </button>
+                    </div>
 
                     {/* Release Content */}
                     <AnimatePresence>

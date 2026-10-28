@@ -1568,8 +1568,11 @@ function CreateInvitationModal({
             }}
           />
 
-          <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
+          {/* Top-aligned and scrollable: a centred panel taller than a phone
+              would start above the screen with no way to reach its top. */}
+          <div className="fixed inset-0 flex items-start justify-center p-4 overflow-y-auto">
             <motion.div
+              className="my-auto w-full flex justify-center"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}

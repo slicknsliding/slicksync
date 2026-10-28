@@ -350,7 +350,7 @@ export function NuvioCollectionsV2(p: NuvioV2Props) {
 
   const head = (
     <V2DetailHead
-      lead={<span className="block w-[58px] h-[58px] rounded-2xl" style={{ background: 'linear-gradient(135deg,#6366f1,#a855f7)' }} />}
+      lead={<span className="w-[58px] h-[58px] rounded-2xl flex items-center justify-center text-white" style={{ background: 'linear-gradient(135deg,#6366f1,#a855f7)' }}><RectangleStackIcon className="w-7 h-7" /></span>}
       title="Nuvio Collections"
       status={status}
       facts={facts}

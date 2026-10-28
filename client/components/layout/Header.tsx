@@ -50,7 +50,9 @@ export function Header({
       transition={{ duration: 0.3 }}
       className="sticky top-0 z-30"
       style={{
-        background: 'color-mix(in srgb, var(--color-bg) 80%, transparent)',
+        // Nearly solid: on a phone the header wraps to two rows, and at 80% the
+        // page's own tabs and buttons showed through it while scrolling.
+        background: 'color-mix(in srgb, var(--color-bg) 94%, transparent)',
         backdropFilter: 'blur(12px)',
         borderBottom: '1px solid transparent',
         borderImage: 'linear-gradient(90deg, var(--color-primary-muted), transparent 60%) 1',

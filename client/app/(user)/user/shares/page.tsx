@@ -694,7 +694,7 @@ export default function UserSharesPage() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3 mb-4 p-3 rounded-xl"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 p-3 rounded-xl"
           style={{ background: 'var(--color-primary-muted)' }}
         >
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>

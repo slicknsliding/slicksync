@@ -45,6 +45,30 @@ export type NebulaNavSection = {
  */
 export type NebulaBarLook = { rows: 1 | 2; logo: 'large' | 'small' | 'hidden'; align: 'center' | 'left' };
 
+/**
+ * The floating account picture steps aside while the page scrolls down, so it
+ * never sits on a card being read, and comes back on the way up, at the top,
+ * or a moment after scrolling stops.
+ */
+function useStepAsideOnScroll() {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    let idle: ReturnType<typeof setTimeout> | null = null;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > last + 4 && y > 80) setAway(true);
+      else if (y < last - 4 || y <= 80) setAway(false);
+      last = y;
+      if (idle) clearTimeout(idle);
+      idle = setTimeout(() => setAway(false), 900);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); if (idle) clearTimeout(idle); };
+  }, []);
+  return away;
+}
+
 export function NebulaBar({
   sections,
   more = [],
@@ -65,6 +89,7 @@ export function NebulaBar({
   const pathname = usePathname();
   const router = useRouter();
   const isTV = useIsTV();
+  const floatAway = useStepAsideOnScroll();
   const reduceMotion = useReducedMotion();
   const navId = useId();
   const barRef = useRef<HTMLDivElement>(null);
@@ -258,7 +283,7 @@ export function NebulaBar({
           this is for - reverted. dropdownPosition="up" (the default) is
           correct since this sits at the BOTTOM of the screen. */}
       {placement === 'float' && (
-      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2">
+      <div className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2 transition-[opacity,transform] duration-200 ${floatAway ? 'opacity-0 translate-y-3 pointer-events-none' : ''}`}>
         {/* TorBox referral used to float here as its own pill above the
             panel switcher - needed its own size/position pass on every
             layout and viewport, and still read inconsistently across

@@ -1853,6 +1853,8 @@ body {
 .v2-btn:hover:not(:disabled) { background: var(--color-surface-hover); }
 .v2-btn:disabled { opacity: 0.6; cursor: default; }
 .v2-btn-main { background: var(--color-primary); border-color: transparent; color: #fff; }
+/* On a phone, buttons that share a row stretch to fill it (.v2-btn's own flex: none wins over utilities). */
+@media (max-width: 639px) { .v2-btn.v2-fill { flex: 1 1 0; } .v2-btn.v2-fill-2 { flex: 2 1 0; } }
 .v2-btn-main:hover:not(:disabled) { background: var(--color-primary); filter: brightness(1.08); }
 /* Arranged sections stack with room between them. */
 .arrange-section + .arrange-section { margin-top: 26px; }
@@ -1902,3 +1904,34 @@ button.v2-tool:hover { border-color: color-mix(in srgb, var(--color-primary) 45%
 @media (min-width: 1700px) { .v2-tiles-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 html[data-density="compact"] .v2-numbers, html[data-density="compact"] .v2-box-pad { padding: 10px 14px; }
 html[data-density="compact"] .v2-tool { padding: 10px 12px; }
+
+/* Safari and iPhone paint every <select> as a native white box whatever its
+   colours, so the chosen value can't be read on a dark theme. Drawn by hand
+   instead, with its own arrow (!important so a select's inline `background`
+   shorthand doesn't wipe the arrow). Selects that draw their own chevron say
+   so with .appearance-none and are left alone. */
+select:not(.appearance-none) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%239ca3af'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z' clip-rule='evenodd'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.6rem center !important;
+  background-size: 16px !important;
+  padding-right: 2.1rem !important;
+}
+
+/* On a touch screen the small section controls (fold, move, hide, pin, ⋯)
+   get a finger-sized tap area around them without changing how they look. */
+@media (pointer: coarse) {
+  .arrange-icon, .arrange-fold { position: relative; }
+  .arrange-icon::after, .arrange-fold::after { content: ''; position: absolute; inset: -7px; }
+}
+
+/* Phones and tablets: room at the foot of every page so the floating account
+   picture (bottom left) never sits on the last card, line or button. */
+@media (max-width: 1023px) { body { padding-bottom: 76px; } }
+
+/* iPhone zooms the page in on any text field under 16px; phones get 16px. */
+@media (max-width: 639px) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select { font-size: 16px !important; }
+}

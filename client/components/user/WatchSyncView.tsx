@@ -422,7 +422,13 @@ function Group({ color, title, count, sub, action, folded, onUnfold, children }:
 // AIOSync for one person. Reached two ways: from their own page
 // (home 'person', back goes to them) and from Tasks (home 'tasks', with the
 // For switcher passed in as forSlot).
-export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: string; home?: 'person' | 'tasks'; forSlot?: React.ReactNode }) {
+export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
+  userId: string;
+  home?: 'person' | 'tasks';
+  forSlot?: React.ReactNode;
+  /** v2: this page's own header (a person's copy page), drawn as the one header with Copy. */
+  head?: { lead: React.ReactNode; title: React.ReactNode; status?: React.ReactNode; facts?: React.ReactNode };
+}) {
   const router = useRouter();
   const search = useSearchParams();
 
@@ -629,9 +635,10 @@ export function WatchSyncView({ userId, home = 'person', forSlot }: { userId: st
           )}
           {v2 && (
             <V2DetailHead
-              lead={<span className="v2-tool-icon" style={{ width: 58, height: 58, borderRadius: 16 }}><ArrowsRightLeftIcon className="w-7 h-7" /></span>}
-              title="AIOSync"
-              facts="Copy watched titles and resume points between sign-ins. Nothing is removed."
+              lead={head?.lead ?? <span className="v2-tool-icon" style={{ width: 58, height: 58, borderRadius: 16 }}><ArrowsRightLeftIcon className="w-7 h-7" /></span>}
+              title={head?.title ?? 'AIOSync'}
+              status={head?.status}
+              facts={head?.facts ?? 'Copy watched titles and resume points between sign-ins. Nothing is removed.'}
               actions={(
                 <div ref={copyRef} className="relative">
                   <button type="button" disabled={!toCopy.length || copying} onClick={() => setConfirmCopy((o) => !o)} aria-expanded={confirmCopy} className="v2-btn v2-btn-main">

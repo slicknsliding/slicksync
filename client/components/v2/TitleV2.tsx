@@ -117,8 +117,10 @@ export function TitleActions({
     <div className="flex w-full sm:w-auto">
       <a
         href={hrefs[app]}
-        className="v2-btn v2-btn-main flex-1 sm:flex-none justify-center rounded-r-none"
-        style={{ padding: '9px 14px', gap: 8, fontSize: 14 }}
+        className="v2-btn v2-btn-main justify-center"
+        // Inline, because .v2-btn's own flex and corners win over utilities:
+        // on a phone the button fills the row and joins its arrow.
+        style={{ padding: '9px 14px', gap: 8, fontSize: 14, flex: isNarrow ? '1 1 auto' : 'none', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
       >
         <PlayIcon className="w-4 h-4 shrink-0" />
         {label} in {APP_NAME[app]}
@@ -133,8 +135,8 @@ export function TitleActions({
           const r = arrowRef.current?.getBoundingClientRect();
           setPos({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80 });
         }}
-        className="v2-btn v2-btn-main rounded-l-none"
-        style={{ padding: '9px 10px', borderLeft: '1px solid rgba(255,255,255,.35)' }}
+        className="v2-btn v2-btn-main"
+        style={{ padding: '9px 12px', borderLeft: '1px solid rgba(255,255,255,.35)', borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
       >
         <ChevronDownIcon className="w-4 h-4" />
       </button>

@@ -151,7 +151,7 @@ const GroupWatchTimeChart = memo(function GroupWatchTimeChart({
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ bottom: 40 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
+            <XAxis dataKey="date" stroke="#64748b" fontSize={12} interval="preserveStartEnd" minTickGap={28} />
             <YAxis
               width={60}
               stroke="#64748b"
@@ -291,7 +291,7 @@ const GroupContentBreakdownChart = memo(function GroupContentBreakdownChart({
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={groupedData} barGap={2} barCategoryGap="20%" margin={{ bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
+            <XAxis dataKey="date" stroke="#64748b" fontSize={12} interval="preserveStartEnd" minTickGap={28} />
             <YAxis width={60} stroke="#64748b" fontSize={12} />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}

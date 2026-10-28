@@ -354,7 +354,7 @@ export function IntegrationsV2(p: IntegrationsProps) {
   const working = tiles.filter((x) => x.word === 'Working' || x.word === 'Set').length;
   const bad = tiles.filter((x) => x.tone === 'bad' || x.tone === 'warn').length;
   const notSet = tiles.filter((x) => x.word === 'Not set').length;
-  const summary = [working && `${working} working`, bad && `${bad} not`, notSet && `${notSet} not set`].filter(Boolean).join(' · ');
+  const summary = [working && `${working} working`, bad && `${bad} not working`, notSet && `${notSet} not set`].filter(Boolean).join(' · ');
 
   const hasPool = (['tmdbApiKeyPool', 'omdbApiKeyPool', 'mdblistApiKeyPool', 'rpdbApiKeyPool'] as const).some((f) => (sync[f] || []).length > 0);
   // A switch that saves at once, and puts itself back if the save fails.

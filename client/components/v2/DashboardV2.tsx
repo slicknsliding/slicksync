@@ -36,7 +36,7 @@ function Who({ np }: { np: NowPlayingRows[number] }) {
  * Who is watching right now, as the Now Playing banner from a person’s Home:
  * the first one large, everyone else in smaller banners beside and under it.
  */
-export function NowPlayingV2({ rows, providerByUser, max = 6, moreHref, detail }: {
+export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref, detail }: {
   rows: NowPlayingRows;
   providerByUser: Map<string, string>;
   /** How many banners before pointing at the rest. */
@@ -45,6 +45,10 @@ export function NowPlayingV2({ rows, providerByUser, max = 6, moreHref, detail }
   /** A small line under each banner (live-updated time, how long they have watched). */
   detail?: (np: NowPlayingRows[number]) => ReactNode;
 }) {
+  // A stream whose title isn't known yet is dropped while the same person
+  // has a known one playing - it is usually the same viewing, still resolving.
+  const known = new Set(allRows.filter((r) => !r.item.titlePending).map((r) => r.user.id));
+  const rows = allRows.filter((r) => !r.item.titlePending || !known.has(r.user.id));
   if (rows.length === 0) {
     return <div className="v2-box v2-box-pad text-sm text-muted text-center py-6">No one is watching right now.</div>;
   }

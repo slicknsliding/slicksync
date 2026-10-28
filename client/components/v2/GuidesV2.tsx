@@ -53,7 +53,7 @@ export function GuidesV2({ query, onQuery, results, grouped, byId, arrange }: {
           type="text"
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search help - try “history missing”, “2fa” or “auto remove”"
+          placeholder="Search help, like “history missing”"
           aria-label="Search guides"
           className="flex-1 bg-transparent outline-none text-[15px] min-w-0 text-default"
         />
@@ -63,7 +63,8 @@ export function GuidesV2({ query, onQuery, results, grouped, byId, arrange }: {
           </button>
         )}
       </div>
-      <p className="text-muted text-xs mt-2 mb-1">
+      {/* A keyboard shortcut means nothing on a touch screen. */}
+      <p className="text-muted text-xs mt-2 mb-1 [@media(pointer:coarse)]:hidden">
         Tip: press <kbd className="px-1.5 py-0.5 rounded font-mono text-[10px]" style={{ background: 'var(--color-subtle)' }}>Ctrl</kbd>
         {' + '}
         <kbd className="px-1.5 py-0.5 rounded font-mono text-[10px]" style={{ background: 'var(--color-subtle)' }}>K</kbd>

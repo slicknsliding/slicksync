@@ -4,7 +4,7 @@
 // Home: the show's artwork, how far in they are, and - once it's paused or
 // stopped - Resume in their app. Nothing here while nothing plays.
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { PlayIcon } from '@heroicons/react/24/solid';
 import { playbackFreshness } from '@/lib/playbackFreshness';
 import { useSharedNow } from '@/lib/useSharedNow';
@@ -14,6 +14,7 @@ import { estimatedPosition, formatClock } from '@/components/ui/NowPlayingPositi
 import { providerTypeLabel } from '@/lib/providers';
 import type { NowPlayingItem } from '@/lib/user-api';
 import { useNowPlayingWho } from '@/lib/arrange';
+import { MediaDetailModal } from '@/components/ui/MediaDetailModal';
 
 // Only the two apps' own addresses may open from here.
 const safeAppUrl = (u: string | null | undefined) => (u && /^(stremio|nuvio):/i.test(u) ? u : null);
@@ -59,16 +60,26 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
   const where = [app, profileLabel, row.device?.name || row.device?.client].filter(Boolean).join(' · ');
   // Who and where: on a line under the picture (the default) or on it.
   const under = useNowPlayingWho().where === 'under';
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const baseId = (row.item.id || '').split(':')[0];
+  const canOpen = !!baseId && !row.item.titlePending;
+  const mediaType: 'movie' | 'series' = row.item.type === 'movie' ? 'movie' : 'series';
   const whoLine = (
-    <p className={`flex items-center gap-2 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
+    <div className={`flex items-center gap-2 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
       {who}
       <span className={`w-2 h-2 rounded-full shrink-0 ${playing ? 'animate-pulse' : ''}`} style={{ background: playing ? '#22c55e' : '#facc15', boxShadow: playing ? '0 0 0 4px rgba(34,197,94,.2)' : undefined }} />
       <span className="min-w-0 truncate">{playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
-    </p>
+    </div>
   );
 
   const banner = (
-    <section aria-label="Now Playing" className={`relative rounded-[20px] overflow-hidden ${flush || under ? '' : 'mb-8 '}${compact ? 'h-[176px]' : 'h-[230px] sm:h-[300px] min-[2000px]:h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
+    <section
+      aria-label="Now Playing"
+      role={canOpen ? 'button' : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onClick={canOpen ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) setDetailsOpen(true); } : undefined}
+      onKeyDown={canOpen ? (e) => { if (e.key === 'Enter') setDetailsOpen(true); } : undefined}
+      className={`relative rounded-[20px] overflow-hidden ${canOpen ? 'cursor-pointer ' : ''}${flush || under ? '' : 'mb-8 '}${compact ? 'h-[176px]' : 'h-[230px] sm:h-[300px] min-[2000px]:h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
       {art && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center' }} />
@@ -77,7 +88,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
       <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.96) 0%, rgba(10,12,20,.85) 45%, rgba(10,12,20,.15) 100%)' }} />
       <div className={`relative h-full flex flex-col justify-end max-w-full ${compact ? 'p-3 gap-0.5 sm:max-w-[80%]' : 'gap-2 p-5 sm:p-8 sm:max-w-[60%]'}`}>
         {!under && whoLine}
-        <h2 className={`font-bold leading-tight text-white truncate ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
+        <h2 className={`font-bold leading-tight text-white line-clamp-2 ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
         {episode && <p className="text-sm" style={{ color: '#d1d5db' }}>{episode}</p>}
         {progress != null && (
           <div className="h-1.5 rounded-full mt-1.5" style={{ background: 'rgba(255,255,255,.18)' }}>
@@ -100,11 +111,23 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
       </div>
     </section>
   );
-  if (!under) return banner;
+  const details = detailsOpen && (
+    <MediaDetailModal
+      isOpen
+      onClose={() => setDetailsOpen(false)}
+      itemId={baseId}
+      itemType={mediaType}
+      videoId={row.item.season && row.item.episode ? `${baseId}:${row.item.season}:${row.item.episode}` : null}
+      fallbackTitle={row.item.name}
+      fallbackPoster={row.item.poster}
+    />
+  );
+  if (!under) return <>{banner}{details}</>;
   return (
     <div className={`min-w-0 ${flush ? '' : 'mb-8'}`}>
       {banner}
       {whoLine}
+      {details}
     </div>
   );
 }

@@ -1056,7 +1056,7 @@ export function MediaDetailModal({
   // One picture: the one at the top, reaching down past the title and
   // fading into a plain panel - no second copy behind the whole panel.
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying} sheet={v2}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying} sheet>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (

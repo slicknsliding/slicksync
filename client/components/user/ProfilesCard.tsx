@@ -240,7 +240,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
   };
 
   // Nothing to choose between on a login with a single profile.
-  if (!view || view.profiles.length < 2) return null;
+  if (!view || (view.profiles?.length ?? 0) < 2) return null;
 
   const mainPersonId = persons[0]?.id;
   const sel = view.profiles.find((p) => p.index === selected) || null;
