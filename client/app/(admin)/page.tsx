@@ -25,7 +25,7 @@ import { ArrangeBar, ArrangeButton, ArrangeGrid, ArrangePanel, ArrangeSection, H
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { NowPlayingV2, NeedsYouTiles, PersonRow, type NeedsYouItem } from '@/components/v2/DashboardV2';
 import { V2Button, V2Status } from '@/components/v2/V2Bits';
-import { V2MoreMenu, V2Numbers, v2HiddenNumbers, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2Numbers, v2HiddenNumbers } from '@/components/v2/V2Detail';
 import { judgeEntry } from '@/components/v2/VaultV2';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import {
@@ -1008,13 +1008,6 @@ export default function DashboardPage() {
       })),
     ];
 
-    const moreItems: V2MenuItem[] = [
-      { label: 'Manage users', icon: <UsersIcon className="w-4 h-4" />, onClick: () => router.push('/users') },
-      { label: 'Manage groups', icon: <UserGroupIcon className="w-4 h-4" />, onClick: () => router.push('/groups') },
-      { label: 'Addons', icon: <PuzzlePieceIcon className="w-4 h-4" />, onClick: () => router.push('/addons') },
-      { label: `Invitations${stats.pendingInvites ? ` (${stats.pendingInvites} waiting)` : ''}`, icon: <EnvelopeIcon className="w-4 h-4" />, onClick: () => router.push('/invitations') },
-      { label: 'Open Activity', icon: <ClockIcon className="w-4 h-4" />, onClick: () => router.push('/activity') },
-    ];
     const syncButton = (
       <Button
         variant="primary"
@@ -1030,7 +1023,6 @@ export default function DashboardPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <ArrangeButton arrange={dashArrange} />
         {syncButton}
-        <V2MoreMenu items={moreItems} />
       </div>
     );
 

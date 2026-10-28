@@ -1394,7 +1394,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'Position (centred or left) applies with one row: the logo sits on the left and the pages beside it, and the bar stays put while you scroll.',
       'The More menu switch: on, the pages you hide wait in a More menu at the end of the bar; off, they leave the menu completely and still open from search (Ctrl K).',
-      'On a phone the menu keeps its stacked shape, but your order and More still apply. A TV always uses the standard menu.',
+      'A phone follows the same choice: one row or two, each swiping sideways, in your order with More at the end. A TV always uses the standard menu.',
     ],
     related: ['arrange-pages', 'nebula-layout'],
     href: '/settings',
