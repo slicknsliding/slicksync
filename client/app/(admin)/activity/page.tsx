@@ -17,6 +17,11 @@ import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { toast } from '@/components/ui/Toast';
 import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, SOURCE_ORDER, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
+
+// Apps whose sign-in is a household of profiles.
+const HOUSEHOLD_SOURCES = new Set(['aiostreams', 'aiometadata']);
+const MAIN_PREFIX = 'main:';
+const mainProfileKey = (userId: string) => `${MAIN_PREFIX}${userId}`;
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -2109,23 +2114,31 @@ function ActivityPageContent() {
     const profiles = new Set<string>();
     const profileApps: Record<string, string> = {};
     const profileSources: Record<string, string[]> = {};
+    const mainNames: Record<string, string> = {};
     for (const a of activityData) {
       people.set(a.userId, a.userName);
       const source = sourceOf(a.profileLabel, a.userProvider);
       sources.add(source);
-      if (a.profileLabel && !SOURCE_LABELS[a.profileLabel]) {
-        profiles.add(a.profileLabel);
+      // An AIOStreams or AIOMetadata household's main profile records no
+      // profile name; it is offered as "<person> (main)" beside the others.
+      const label = a.profileLabel && !SOURCE_LABELS[a.profileLabel]
+        ? a.profileLabel
+        : (HOUSEHOLD_SOURCES.has(a.userProvider || '') ? mainProfileKey(a.userId) : null);
+      if (label) {
+        profiles.add(label);
+        if (label.startsWith(MAIN_PREFIX)) mainNames[label] = `${a.userName} (main)`;
         // A profile belongs to the app of the person whose viewing carries it.
-        if (a.userProvider) profileApps[a.profileLabel] = a.userProvider;
+        if (a.userProvider) profileApps[label] = a.userProvider;
         // ...and is offered only under the apps its viewing came from.
-        const seen = profileSources[a.profileLabel] || (profileSources[a.profileLabel] = []);
+        const seen = profileSources[label] || (profileSources[label] = []);
         if (!seen.includes(source)) seen.push(source);
       }
     }
     return {
       people: [...people.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
       sources: SOURCE_ORDER.filter((s) => sources.has(s)),
-      profiles: [...profiles].sort((a, b) => a.localeCompare(b)),
+      profiles: [...profiles].sort((a, b) => (mainNames[a] || a).localeCompare(mainNames[b] || b)),
+      profileNames: mainNames,
       profileApps,
       profileSources,
     };
@@ -2150,7 +2163,10 @@ function ActivityPageContent() {
     // Who, where, which profile, what kind, finished or not.
     if (filters.person && activity.userId !== filters.person) return false;
     if (filters.source && sourceOf(activity.profileLabel, activity.userProvider) !== filters.source) return false;
-    if (filters.profile && activity.profileLabel !== filters.profile) return false;
+    if (filters.profile) {
+      const main = filters.profile.startsWith(MAIN_PREFIX);
+      if (main ? (activity.userId !== filters.profile.slice(MAIN_PREFIX.length) || (activity.profileLabel && !SOURCE_LABELS[activity.profileLabel])) : activity.profileLabel !== filters.profile) return false;
+    }
     if (filters.kind && activity.contentType !== filters.kind) return false;
 
     // 2. Group Filter
@@ -2409,6 +2425,7 @@ function ActivityPageContent() {
                     profiles={filterOptions.profiles}
                     profileApps={filterOptions.profileApps}
                     profileSources={filterOptions.profileSources}
+                    profileNames={filterOptions.profileNames}
                   />
                 </div>
                 {groupedActivities.map((group) => (
@@ -2751,6 +2768,7 @@ function ActivityPageContent() {
                   profiles={filterOptions.profiles}
                   profileApps={filterOptions.profileApps}
                   profileSources={filterOptions.profileSources}
+                  profileNames={filterOptions.profileNames}
                 />
               </div>
             </PageSection>
