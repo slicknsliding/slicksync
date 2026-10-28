@@ -23,6 +23,7 @@ import { rectSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToParentElement } from '@dnd-kit/modifiers';
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { NuvioCollection, NuvioCollectionFolder, NuvioCatalogSource, NuvioProfile, User } from '@/lib/api';
+import { useNameFolds } from '@/lib/arrange';
 import { V2Button, V2Status } from './V2Bits';
 import { V2DetailHead, V2MoreMenu, V2Tiles, type V2MenuItem } from './V2Detail';
 
@@ -240,6 +241,7 @@ function FolderCard({ folder, p, onOpen, onDelete }: {
 function CollectionBox({ collection, cIndex, p }: { collection: NuvioCollection; cIndex: number; p: NuvioV2Props }) {
   const sensors = useSortableSensors();
   const [folded, setFolded] = useState(false);
+  const nameTap = useNameFolds().on;
   const folders = useMemo(() => collection.folders || [], [collection.folders]);
   const attention = folders.filter((f) => p.brokenFolderIds.has(f.id) || (f.catalogSources || []).length === 0).length;
   const pinned = !!collection.pinToTop;
@@ -263,7 +265,10 @@ function CollectionBox({ collection, cIndex, p }: { collection: NuvioCollection;
 
   return (
     <section className="arrange-section" aria-label={collection.title || 'Collection'}>
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div
+        className={`flex items-center gap-2.5 min-w-0${nameTap ? ' cursor-pointer' : ''}`}
+        onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; setFolded((v) => !v); } : undefined}
+      >
         <button
           type="button"
           className="arrange-icon"

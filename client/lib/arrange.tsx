@@ -509,18 +509,32 @@ export function useNowPlayingWho() {
   return { where, setWhere };
 }
 
-/** The fold arrows beside section names (Themes -> Layout): shown (the default) or hidden. */
+/** The fold arrows beside section names (Themes -> Layout): hidden (the default) or shown. */
 export function useFoldArrows() {
   const { arrangement, update } = useArrangement();
-  const shown: 'show' | 'hide' = arrangement.foldArrows === 'hide' ? 'hide' : 'show';
+  const shown: 'show' | 'hide' = arrangement.foldArrows === 'show' ? 'show' : 'hide';
   const setShown = useCallback((v: 'show' | 'hide') => {
     update((prev) => {
-      const out: Arrangement = { ...prev, foldArrows: 'hide' };
-      if (v === 'show') delete out.foldArrows;
+      const out: Arrangement = { ...prev, foldArrows: 'show' };
+      if (v === 'hide') delete out.foldArrows;
       return out;
     });
   }, [update]);
   return { shown, setShown };
+}
+
+/** Tapping a section's name folds it (Themes -> Layout): off (the default) or on. */
+export function useNameFolds() {
+  const { arrangement, update } = useArrangement();
+  const on = arrangement.nameFolds === 'on';
+  const setOn = useCallback((v: boolean) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, nameFolds: 'on' };
+      if (!v) delete out.nameFolds;
+      return out;
+    });
+  }, [update]);
+  return { on, setOn };
 }
 
 /** Now Playing: the progress bar and times on the picture (the default) or under the card. */

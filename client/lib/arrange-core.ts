@@ -47,8 +47,10 @@ export type Arrangement = {
   cwTime?: 'under';
   /** Now Playing: the bar and times under the card ('under'); on the picture otherwise. */
   nowPlayingProgress?: 'under';
-  /** The fold arrow beside each section's name: hidden ('hide') or shown (the default). */
-  foldArrows?: 'hide';
+  /** The fold arrow beside each section's name: shown ('show'), or hidden (the default; 'hide' from before it was). */
+  foldArrows?: 'show' | 'hide';
+  /** Tapping a section's name folds and unfolds it ('on'); off by default. */
+  nameFolds?: 'on';
   /** Where SlickSync opens: a page's address, e.g. '/activity'. */
   startPage?: string;
   /** Grid or list, per page. */

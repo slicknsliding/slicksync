@@ -16,7 +16,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useDefaultViewMode } from '@/lib/viewMode';
-import { usePageDesign } from '@/lib/arrange';
+import { useNameFolds, usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { NuvioCollectionsV2 } from '@/components/v2/NuvioCollectionsV2';
 import { toast } from '@/components/ui/Toast';
@@ -525,6 +525,8 @@ export default function NuvioCollectionsPage() {
   const router = useRouter();
   // v2 page design (Themes → Layout → Page design); Classic stays as it is.
   const { design } = usePageDesign();
+  // Themes -> Tap a name to fold: the whole row opens and closes a collection or folder.
+  const nameTap = useNameFolds().on;
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
   // Shared app-wide grid/list preference (Settings -> Themes), same hook
@@ -1647,7 +1649,10 @@ export default function NuvioCollectionsPage() {
                   <div className="space-y-3">
                     {collections.map((collection, cIndex) => (
                       <Card key={collection.id} padding="md">
-                        <div className="flex items-center gap-2">
+                        <div
+                          className={`flex items-center gap-2${nameTap ? ' cursor-pointer' : ''}`}
+                          onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; toggleExpanded(collection.id); } : undefined}
+                        >
                           <button type="button" onClick={() => toggleExpanded(collection.id)} className="p-1 text-subtle hover:text-default">
                             {expanded[collection.id] ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
                           </button>
@@ -1683,7 +1688,10 @@ export default function NuvioCollectionsPage() {
                           <div className="mt-3 pl-6 space-y-2 border-l border-default">
                             {(collection.folders || []).map((folder, fIndex) => (
                               <div key={folder.id} className="rounded-lg border border-default p-2.5 bg-subtle">
-                                <div className="flex items-center gap-2">
+                                <div
+                                  className={`flex items-center gap-2${nameTap ? ' cursor-pointer' : ''}`}
+                                  onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; toggleExpanded(folder.id); } : undefined}
+                                >
                                   <button type="button" onClick={() => toggleExpanded(folder.id)} className="p-1 text-subtle hover:text-default">
                                     {expanded[folder.id] ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
                                   </button>

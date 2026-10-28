@@ -9,7 +9,7 @@ import { useState, type ReactNode } from 'react';
 import { ArrowPathIcon, BeakerIcon, ClipboardDocumentIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { ToggleSwitch } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
-import { useCwTime, useFoldArrows, useNowPlayingProgress, useNowPlayingWho, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { useCwTime, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageDesign, type PageArrange } from '@/lib/arrange';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { MeHead, MeRow, MeRows, MeSeg } from './MeBits';
 import { V2Button } from './V2Bits';
@@ -52,6 +52,7 @@ export function MeSettingsV2(p: SettingsV2Props) {
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const { shown: arrows, setShown: setArrows } = useFoldArrows();
+  const { on: nameTap, setOn: setNameTap } = useNameFolds();
   const [themesOpen, setThemesOpen] = useState(false);
 
   const section = (key: string): ReactNode => {
@@ -86,8 +87,11 @@ export function MeSettingsV2(p: SettingsV2Props) {
               <MeRow title="Now Playing progress" line="How far in and when it ends: on the picture, or under it">
                 <MeSeg value={npProgress} onChange={(w) => setNpProgress(w === 'under' ? 'under' : 'on')} options={[{ key: 'on', label: 'On the picture' }, { key: 'under', label: 'Under' }]} />
               </MeRow>
-              <MeRow title="Fold arrows" line="The arrow beside each section’s name. Hidden, tap a name to fold or unfold it">
+              <MeRow title="Fold arrows" line="The arrow beside each section’s name. Hidden by default; they always show while arranging">
                 <MeSeg value={arrows} onChange={(v) => setArrows(v === 'hide' ? 'hide' : 'show')} options={[{ key: 'show', label: 'Show' }, { key: 'hide', label: 'Hide' }]} />
+              </MeRow>
+              <MeRow title="Tap a name to fold" line="Tapping a section’s name, its count or “folded” folds and unfolds it">
+                <MeSeg value={nameTap ? 'on' : 'off'} onChange={(v) => setNameTap(v === 'on')} options={[{ key: 'on', label: 'On' }, { key: 'off', label: 'Off' }]} />
               </MeRow>
               <MeRow title="Continue Watching" line="Time left: on the picture, or under it with the episode name">
                 <MeSeg value={cwWhere} onChange={(w) => setCwWhere(w === 'under' ? 'under' : 'on')} options={[{ key: 'on', label: 'On the picture' }, { key: 'under', label: 'Under' }]} />

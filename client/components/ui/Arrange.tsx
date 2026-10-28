@@ -13,7 +13,7 @@ import {
   AdjustmentsHorizontalIcon, ArrowUturnLeftIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon,
   EyeIcon, EyeSlashIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
-import { SortableItem, useFoldArrows, useGrip, type PageArrange, type SortableState } from '@/lib/arrange';
+import { SortableItem, useFoldArrows, useGrip, useNameFolds, type PageArrange, type SortableState } from '@/lib/arrange';
 import type { SectionSize } from '@/lib/arrange-core';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 
@@ -405,7 +405,8 @@ export function ArrangeSection({
 }) {
   const label = labelProp || (typeof title === 'string' ? title : id);
   const folded = arrange.isFolded(id);
-  const nameFolds = useFoldArrows().shown === 'hide' && !arrange.arranging;
+  // Themes -> Tap a name to fold: the whole name row (title, count, "folded") folds and unfolds; not while arranging.
+  const nameFolds = useNameFolds().on && !arrange.arranging;
   const foldByName = nameFolds ? {
     role: 'button',
     tabIndex: 0,
@@ -464,6 +465,7 @@ export function ArrangePanel({
   emptyNote?: ReactNode;
 }) {
   const folded = arrange.isFolded(id);
+  const nameTap = useNameFolds().on;
   const ctx = { arrange, id, label };
   return (
     <SortableItem scope={arrange.sort} itemKey={id}>
@@ -487,7 +489,18 @@ export function ArrangePanel({
         {folded ? (
           <div className="arrange-folded">
             <FoldButton arrange={arrange} id={id} label={label} />
-            <b className="text-base font-semibold font-display flex-1 min-w-0 truncate">
+            <b
+              className="text-base font-semibold font-display flex-1 min-w-0 truncate"
+              {...(arrange.arranging || !nameTap ? {} : {
+                role: 'button',
+                tabIndex: 0,
+                'aria-expanded': false,
+                title: 'Unfold',
+                style: { cursor: 'pointer' },
+                onClick: () => arrange.fold(id, false),
+                onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); arrange.fold(id, false); } },
+              })}
+            >
               {label} <span className="text-muted font-normal text-[13px]">· folded</span>
             </b>
             {arrange.arranging && <ArrangeControls arrange={arrange} id={id} label={label} />}
