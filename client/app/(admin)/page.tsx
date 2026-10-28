@@ -430,6 +430,19 @@ export default function DashboardPage() {
   const [metricsAt, setMetricsAt] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
+  // Coming up names the people partway through each show, from Continue Watching.
+  const upcomingWatchers = useMemo(() => {
+    const out: Record<string, string> = {};
+    const byShow = new Map<string, string[]>();
+    for (const c of continueWatching) {
+      const first = c.username.split(' ')[0];
+      const names = byShow.get(c.showId) || [];
+      if (!names.includes(first)) names.push(first);
+      byShow.set(c.showId, names);
+    }
+    byShow.forEach((names, showId) => { out[showId] = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', '); });
+    return out;
+  }, [continueWatching]);
   const [detailModalItem, setDetailModalItem] = useState<ContinueWatchingItem | null>(null);
   // Which Continue Watching card's context menu is open, keyed the same way
   // as each card - shared across all cards so opening one always closes any
@@ -894,18 +907,6 @@ export default function DashboardPage() {
       const m = Math.max(0, Math.round(minutes));
       return m < 60 ? `${m} min` : (m % 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${Math.floor(m / 60)} h`);
     };
-    // Coming up names the people partway through each show, from Continue Watching.
-    const upcomingWatchers: Record<string, string> = {};
-    {
-      const byShow = new Map<string, string[]>();
-      for (const c of continueWatching) {
-        const first = c.username.split(' ')[0];
-        const names = byShow.get(c.showId) || [];
-        if (!names.includes(first)) names.push(first);
-        byShow.set(c.showId, names);
-      }
-      byShow.forEach((names, showId) => { upcomingWatchers[showId] = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', '); });
-    }
     const nowDate = new Date(nowTick);
     const dayStart =new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
     const watchedToday = (metricsData?.recentActivity || []).filter((a) => a.watchedAtTimestamp >= dayStart).length;
@@ -1396,13 +1397,14 @@ export default function DashboardPage() {
                           onPointerMove={handleRowPointerMove}
                           onPointerUp={handleRowPointerUp}
                           onPointerLeave={handleRowPointerUp}
-                          className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
+                          className={isTV ? 'flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated' : 'grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]'}
                         >
                           {continueWatching.map((item, index) => {
                             const card = (
                               <ContinueWatchingCard
                                 item={item}
-                                priority={index < 6}
+                                wide={!isTV}
+                                priority={index < 7}
                                 wasDraggedRef={wasDraggedRef}
                                 onRemove={handleDismissContinueWatching}
                                 onOpenDetails={setDetailModalItem}
@@ -1422,7 +1424,7 @@ export default function DashboardPage() {
                       </div>
                     ))}
                     {dashPanel('upcoming', 'Coming up', 'lg:col-span-2', (
-                      <UpcomingEpisodesPanel className="" />
+                      <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} />
                     ))}
                     {dashPanel('recent', 'Recent Activity', '', (
                       <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
@@ -1736,13 +1738,14 @@ export default function DashboardPage() {
                         onPointerMove={handleRowPointerMove}
                         onPointerUp={handleRowPointerUp}
                         onPointerLeave={handleRowPointerUp}
-                        className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
+                        className={isTV ? 'flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated' : 'grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]'}
                       >
                         {continueWatching.map((item, index) => (
                           <ContinueWatchingCard
                             key={`${item.userId}-${item.showId}`}
                             item={item}
-                            priority={index < 6}
+                            wide={!isTV}
+                            priority={index < 7}
                             wasDraggedRef={wasDraggedRef}
                             onRemove={handleDismissContinueWatching}
                             onOpenDetails={setDetailModalItem}
@@ -1755,7 +1758,7 @@ export default function DashboardPage() {
                   </PageSection>
                 ))}
                 {dashPanel('upcoming', 'Coming up', 'lg:col-span-6', (
-                  <UpcomingEpisodesPanel className="" />
+                  <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} />
                 ))}
                 {dashPanel('syncActivity', 'Sync Activity', 'lg:col-span-4', (
                   <PageSection delay={0.2}>

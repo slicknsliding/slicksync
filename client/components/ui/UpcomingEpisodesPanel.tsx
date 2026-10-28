@@ -267,13 +267,16 @@ function Shell({ v2, children }: { v2: boolean; children: React.ReactNode }) {
 
 // `className` is the outer spacing; the Dashboard's arranged grid spaces its
 // panels itself and passes ''.
-export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6', v2 = false, watchers }: {
+export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6', v2 = false, tiles: tilesProp = false, watchers }: {
   className?: string;
   /** Page design v2: tiles under the section’s own heading (the page draws the card and title). */
   v2?: boolean;
-  /** v2: show id to the first names of the people partway through it. */
+  /** The episodes as tiles (poster, episode, when and who) while keeping the Classic card and heading. */
+  tiles?: boolean;
+  /** Tiles: show id to the first names of the people partway through it. */
   watchers?: Record<string, string>;
 } = {}) {
+  const tiles = v2 || tilesProp;
   const [items, setItems] = useState<UpcomingEpisode[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<UpcomingEpisode | null>(null);
@@ -453,7 +456,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
               </div>
               {/* Two columns from md up so a healthy watchlist doesn't turn
                   into a long vertical rail; one column on a phone. */}
-              <div className={v2 ? 'v2-tiles v2-tiles-4' : 'grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5'}>
+              <div className={tiles ? 'v2-tiles v2-tiles-4' : 'grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5'}>
                 {shownItems.map((item) => (
                   <UpcomingRow
                     key={`${item.showId}-${item.season}-${item.episode}`}
@@ -461,7 +464,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
                     onOpen={setDetail}
                     onDismiss={handleDismiss}
                     onMute={handleMute}
-                    v2={v2}
+                    v2={tiles}
                     who={watchers?.[item.showId]}
                   />
                 ))}
