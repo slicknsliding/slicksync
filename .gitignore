@@ -134,3 +134,7 @@ client/test*
 client/scripts
 client/next-env.d.ts
 client/.build-stamp
+
+# Notes Next.js writes for coding assistants on every `next dev`
+client/AGENTS.md
+client/CLAUDE.md
