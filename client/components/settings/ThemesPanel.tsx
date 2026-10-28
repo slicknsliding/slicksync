@@ -22,7 +22,7 @@ import { toast } from '@/components/ui/Toast';
 import { ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { useMenuArrangement, usePageDesign, type PageArrange } from '@/lib/arrange';
 import { arrangeMenu } from '@/lib/adminMenu';
-import { V2SetRow, V2Seg } from '@/components/v2/SettingsV2';
+import { V2SetRow, V2Seg, V2Switch } from '@/components/v2/SettingsV2';
 import { V2Button } from '@/components/v2/V2Bits';
 import {
   PaintBrushIcon,
@@ -535,6 +535,20 @@ function MenuFold({ v2, children }: { v2: boolean; children: ReactNode }) {
   );
 }
 
+// v2: the More menu switch on its own row, so it's found without opening the arranger.
+function MoreMenuRow({ v2 }: { v2: boolean }) {
+  const { menu, setMenu } = useMenuArrangement();
+  if (!v2) return null;
+  const on = menu.more !== false;
+  return (
+    <V2SetRow
+      title="More menu"
+      line="Pages you hide go into a More menu at the end of the bar. Turn it off to hide them completely; they still open from search."
+      control={<V2Switch on={on} label="More menu" onChange={(v) => setMenu((m) => ({ ...m, more: v ? undefined : false }))} />}
+    />
+  );
+}
+
 // A theme as a swatch: its colours, its name under it, a ring when it's the one in use.
 function ThemeSwatch({ name, bg, surface, primary, secondary, selected, onSelect, onDelete }: {
   name: string; bg: string; surface: string; primary: string; secondary: string;
@@ -768,6 +782,8 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
             <MenuFold v2={v2}>
               <MenuArranger topNavi={layoutMode === 'nebula'} />
             </MenuFold>
+
+            <MoreMenuRow v2={v2} />
 
             <PersonalTouches v2={v2} />
 
