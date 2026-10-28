@@ -133,6 +133,14 @@ const RecentAddonItem = memo(function RecentAddonItem({
   );
 });
 
+// The chip on a v2 card's picture: how long is left when resuming, else Up next.
+function timeLeftChip(item: ContinueWatchingItem): string {
+  if (!item.resume) return 'Up next';
+  const m = item.remainingMinutes;
+  if (m != null) return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''} left` : `${m} min left`;
+  return item.progressPercent != null ? `${item.progressPercent}% watched` : 'Resume';
+}
+
 // Continue Watching card - right-click to remove, and guards its own click
 // against firing right after a drag-to-scroll gesture on the parent row
 // (checked via a shared ref rather than local state, since the drag
@@ -156,8 +164,11 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   isMenuOpen,
   onMenuOpenChange,
   priority = false,
+  wide = false,
 }: {
   item: ContinueWatchingItem;
+  /** Page design v2: a wide 16:9 picture with a time chip, then the title and who. */
+  wide?: boolean;
   /** The first cards in the row: fetched at once rather than when seen. */
   priority?: boolean;
   wasDraggedRef: React.RefObject<boolean>;
@@ -181,7 +192,12 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // shared "which card owns the open menu" value fixes that by construction.
   // Episode still, then the show's artwork, then its poster - the next one
   // when a picture fails to load, so the card never sits empty.
-  const { url: artwork, onError: onArtworkError } = useArtworkFallback([item.nextEpisode?.thumbnail, item.background, item.poster]);
+  // The wide v2 card leads with the landscape backdrop, as the Now Playing
+  // banner does, and falls back to the still, then the poster.
+  const imdbId = /^tt\d+/.exec(item.showId || '')?.[0] || null;
+  const { url: artwork, onError: onArtworkError } = useArtworkFallback(wide
+    ? [item.background, imdbId ? `https://images.metahub.space/background/medium/${imdbId}/img` : null, item.nextEpisode?.thumbnail, item.poster]
+    : [item.nextEpisode?.thumbnail, item.background, item.poster]);
   const { position, handleContextMenu, setExternalClose } = useContextMenu();
   // Registers the REAL close (onClose below) for cross-section/cross-page
   // closing - onMenuOpenChange is the lifted state that actually drives
@@ -232,7 +248,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
       onTouchEnd={clearPress}
       onTouchCancel={clearPress}
       onTouchMove={handleTouchMove}
-      className="shrink-0 relative"
+      className={wide ? 'min-w-0 relative' : 'shrink-0 relative'}
     >
       <div
         onClick={() => {
@@ -244,9 +260,9 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         }}
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
-        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card"
+        className={wide ? 'group relative block w-full select-none cursor-pointer tap-card' : 'group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card'}
       >
-        <div className="relative aspect-video">
+        <div className={wide ? 'relative aspect-video rounded-xl overflow-hidden bg-slate-800' : 'relative aspect-video'}>
           {/* Image priority for this landscape (16:9) frame: episode still
               first (already 16:9), then the show/movie's landscape backdrop,
               and only then the portrait poster as a last resort - a portrait
@@ -256,7 +272,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             <img
               // Through the server's image cache at the card's size, like
               // every poster grid - not the full-size original each launch.
-              src={cachedImageUrl(artwork) || ''}
+              src={cachedImageUrl(artwork, wide ? 500 : 342) || ''}
               onError={onArtworkError}
               alt={item.showName}
               draggable={false}
@@ -303,10 +319,15 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               set. Over a dark track, so it stays clearly visible against any
               poster art. Sits in its own thin strip below the thumbnail
               rather than overlaid on it, so nothing covers it. */}
+          {wide && (
+            <span className="absolute left-2 top-2 z-[1] px-2 py-[3px] rounded-full text-[11px] font-semibold text-white pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)' }}>
+              {timeLeftChip(item)}
+            </span>
+          )}
           {item.resume && item.progressPercent != null && (
-            <div className="absolute bottom-0 left-0 right-0 h-1.5 pointer-events-none" style={{ background: 'rgba(0,0,0,0.55)' }}>
+            <div className={`absolute bottom-0 left-0 right-0 pointer-events-none ${wide ? 'h-[5px]' : 'h-1.5'}`} style={{ background: 'rgba(0,0,0,0.55)' }}>
               <div
-                className="h-full rounded-r-full"
+                className={wide ? 'h-full' : 'h-full rounded-r-full'}
                 style={{
                   width: `${Math.min(100, Math.max(3, item.progressPercent))}%`,
                   background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))',
@@ -316,6 +337,15 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             </div>
           )}
         </div>
+        {wide ? (
+          <div className="pt-1.5 min-w-0">
+            <p className="text-[13.5px] font-semibold text-default truncate">{item.showName}</p>
+            <p className="text-xs text-muted truncate">
+              {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
+              {item.contentType === 'series' && item.nextEpisode ? ` · S${item.nextEpisode.season} E${item.nextEpisode.episode}` : ''}
+            </p>
+          </div>
+        ) : (
         <div className="p-2">
           <p className="text-xs font-medium text-default truncate">{item.showName}</p>
           <p className="text-[11px] text-muted truncate">
@@ -332,6 +362,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Now redundant with the card's own default click (which opens this
@@ -863,8 +894,20 @@ export default function DashboardPage() {
       const m = Math.max(0, Math.round(minutes));
       return m < 60 ? `${m} min` : (m % 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${Math.floor(m / 60)} h`);
     };
+    // Coming up names the people partway through each show, from Continue Watching.
+    const upcomingWatchers: Record<string, string> = {};
+    {
+      const byShow = new Map<string, string[]>();
+      for (const c of continueWatching) {
+        const first = c.username.split(' ')[0];
+        const names = byShow.get(c.showId) || [];
+        if (!names.includes(first)) names.push(first);
+        byShow.set(c.showId, names);
+      }
+      byShow.forEach((names, showId) => { upcomingWatchers[showId] = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', '); });
+    }
     const nowDate = new Date(nowTick);
-    const dayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+    const dayStart =new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
     const watchedToday = (metricsData?.recentActivity || []).filter((a) => a.watchedAtTimestamp >= dayStart).length;
     const todayEntry = metricsData?.watchTime?.byDay?.find((d) => d.date === metricsData.today);
     let todaySeconds = (todayEntry?.hours || 0) * 3600;
@@ -994,13 +1037,14 @@ export default function DashboardPage() {
                   onPointerMove={handleRowPointerMove}
                   onPointerUp={handleRowPointerUp}
                   onPointerLeave={handleRowPointerUp}
-                  className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
+                  className="grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]"
                 >
                   {continueWatching.map((item, index) => (
                     <ContinueWatchingCard
                       key={`${item.userId}-${item.showId}`}
                       item={item}
-                      priority={index < 6}
+                      wide
+                      priority={index < 7}
                       wasDraggedRef={wasDraggedRef}
                       onRemove={handleDismissContinueWatching}
                       onOpenDetails={setDetailModalItem}
@@ -1015,9 +1059,9 @@ export default function DashboardPage() {
         case 'upcoming':
           return (
             <div key={id} className={full}>
-              <ArrangePanel arrange={dashArrange} id={id} label="Coming up">
-                <UpcomingEpisodesPanel className="" />
-              </ArrangePanel>
+              <ArrangeSection arrange={dashArrange} id={id} title="Coming up">
+                <UpcomingEpisodesPanel className="" v2 watchers={upcomingWatchers} />
+              </ArrangeSection>
             </div>
           );
         case 'recent':

@@ -100,6 +100,17 @@ function tileParts(ts: number) {
   };
 }
 
+// v2 tiles: "Tonight, 9 PM" / "Tomorrow, 9 PM" / "Thursday, 9 PM". The time is
+// left off when the air date has none (midnight).
+function airWhen(iso: string): string {
+  const air = new Date(iso);
+  const day = airLabel(iso).text;
+  const hasTime = air.getHours() !== 0 || air.getMinutes() !== 0;
+  const word = day === 'Today' && hasTime && air.getHours() >= 17 ? 'Tonight' : day;
+  if (!hasTime) return word;
+  return `${word}, ${air.toLocaleTimeString(undefined, { hour: 'numeric', minute: air.getMinutes() ? '2-digit' : undefined })}`;
+}
+
 // A single row. Extracted so each has its own context-menu hook, otherwise the
 // menu's shared position would jump to whichever row was right-clicked last.
 const UpcomingRow = memo(function UpcomingRow({
@@ -107,11 +118,17 @@ const UpcomingRow = memo(function UpcomingRow({
   onOpen,
   onDismiss,
   onMute,
+  v2 = false,
+  who,
 }: {
   item: UpcomingEpisode;
   onOpen: (item: UpcomingEpisode) => void;
   onDismiss: (item: UpcomingEpisode) => void;
   onMute: (item: UpcomingEpisode) => void;
+  /** Page design v2: a tile with a small poster, the title and episode, and when and who. */
+  v2?: boolean;
+  /** v2: who is partway through this show. */
+  who?: string;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const label = airLabel(item.airDate);
@@ -147,7 +164,38 @@ const UpcomingRow = memo(function UpcomingRow({
     if (dx > 10 || dy > 10) clearPress();
   };
 
-  const rowButton = (
+  const rowButton = v2 ? (
+    <button
+      type="button"
+      onClick={() => {
+        if (isOpen) return;
+        onOpen(item);
+      }}
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={clearPress}
+      onTouchCancel={clearPress}
+      onTouchMove={handleTouchMove}
+      title={item.title ? `${item.showName || 'Unknown show'} · ${item.title}` : undefined}
+      className="v2-tool text-left tap-card"
+      style={{ alignItems: 'center' }}
+    >
+      <div className="w-[34px] h-[50px] rounded-md overflow-hidden bg-surface-hover flex-shrink-0 flex items-center justify-center">
+        {item.poster ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <TvIcon className="w-4 h-4 text-subtle" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[14.5px] font-semibold text-default truncate">
+          {item.showName || 'Unknown show'} S{item.season} E{item.episode}
+        </p>
+        <p className="text-[12.5px] text-muted truncate">{airWhen(item.airDate)}{who ? ` · ${who}` : ''}</p>
+      </div>
+    </button>
+  ) : (
     <button
       type="button"
       onClick={() => {
@@ -212,9 +260,20 @@ const UpcomingRow = memo(function UpcomingRow({
   );
 });
 
+// Classic keeps the panel in its card; v2 sits straight in the page's own section.
+function Shell({ v2, children }: { v2: boolean; children: React.ReactNode }) {
+  return v2 ? <>{children}</> : <Card padding="lg">{children}</Card>;
+}
+
 // `className` is the outer spacing; the Dashboard's arranged grid spaces its
 // panels itself and passes ''.
-export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6' }: { className?: string } = {}) {
+export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6', v2 = false, watchers }: {
+  className?: string;
+  /** Page design v2: tiles under the section’s own heading (the page draws the card and title). */
+  v2?: boolean;
+  /** v2: show id to the first names of the people partway through it. */
+  watchers?: Record<string, string>;
+} = {}) {
   const [items, setItems] = useState<UpcomingEpisode[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<UpcomingEpisode | null>(null);
@@ -318,7 +377,20 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
   return (
     <>
     <section aria-label="Upcoming episodes" className={className || undefined}>
-      <Card padding="lg">
+      <Shell v2={v2}>
+        {v2 ? (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {groups.length > 0 && (
+              <>
+                <span className="text-xs text-muted hidden sm:inline">Right-click or long-press an episode to hide it</span>
+                <span className="text-xs text-muted sm:hidden">Long-press an episode to hide it</span>
+              </>
+            )}
+            <div className="ml-auto">
+              {mutedButton}
+            </div>
+          </div>
+        ) : (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {/* The fold chevron and ⋯ menu when the Dashboard is arranging it. */}
           <PanelControls side="start" />
@@ -335,6 +407,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
             <PanelControls side="end" />
           </div>
         </div>
+        )}
 
         {groups.length === 0 ? (
           <p className="text-sm text-muted py-1">Nothing is scheduled for the shows you watch right now.</p>
@@ -380,7 +453,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
               </div>
               {/* Two columns from md up so a healthy watchlist doesn't turn
                   into a long vertical rail; one column on a phone. */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
+              <div className={v2 ? 'v2-tiles v2-tiles-4' : 'grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5'}>
                 {shownItems.map((item) => (
                   <UpcomingRow
                     key={`${item.showId}-${item.season}-${item.episode}`}
@@ -388,6 +461,8 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
                     onOpen={setDetail}
                     onDismiss={handleDismiss}
                     onMute={handleMute}
+                    v2={v2}
+                    who={watchers?.[item.showId]}
                   />
                 ))}
               </div>
@@ -408,7 +483,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
             )}
           </>
         )}
-      </Card>
+      </Shell>
     </section>
 
       {detail && (

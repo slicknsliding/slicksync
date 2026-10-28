@@ -5425,6 +5425,8 @@ export interface ContinueWatchingItem {
   nextEpisode: { season: number; episode: number; title: string | null; thumbnail: string | null } | null;
   resume?: boolean;
   progressPercent?: number | null;
+  /** Minutes left when resuming (from the saved position and length). */
+  remainingMinutes?: number | null;
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;
