@@ -509,6 +509,20 @@ export function useNowPlayingWho() {
   return { where, setWhere };
 }
 
+/** The fold arrows beside section names (Themes -> Layout): shown (the default) or hidden. */
+export function useFoldArrows() {
+  const { arrangement, update } = useArrangement();
+  const shown: 'show' | 'hide' = arrangement.foldArrows === 'hide' ? 'hide' : 'show';
+  const setShown = useCallback((v: 'show' | 'hide') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, foldArrows: 'hide' };
+      if (v === 'show') delete out.foldArrows;
+      return out;
+    });
+  }, [update]);
+  return { shown, setShown };
+}
+
 /** Now Playing: the progress bar and times on the picture (the default) or under the card. */
 export function useNowPlayingProgress() {
   const { arrangement, update } = useArrangement();

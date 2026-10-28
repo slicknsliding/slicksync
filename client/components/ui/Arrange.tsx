@@ -13,7 +13,7 @@ import {
   AdjustmentsHorizontalIcon, ArrowUturnLeftIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon,
   EyeIcon, EyeSlashIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
-import { SortableItem, useGrip, type PageArrange, type SortableState } from '@/lib/arrange';
+import { SortableItem, useFoldArrows, useGrip, type PageArrange, type SortableState } from '@/lib/arrange';
 import type { SectionSize } from '@/lib/arrange-core';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 
@@ -329,6 +329,9 @@ export function ArrangeControls({ arrange, id, label, hideLabel = 'Hide', pin }:
 /** The chevron that folds a section. */
 export function FoldButton({ arrange, id, label }: { arrange: PageArrange; id: string; label: string }) {
   const folded = arrange.isFolded(id);
+  // Themes -> Fold arrows: Hide. The arrow comes back while arranging; the name folds meanwhile.
+  const hidden = useFoldArrows().shown === 'hide' && !arrange.arranging;
+  if (hidden) return null;
   return (
     <button
       type="button"
@@ -402,6 +405,16 @@ export function ArrangeSection({
 }) {
   const label = labelProp || (typeof title === 'string' ? title : id);
   const folded = arrange.isFolded(id);
+  const nameFolds = useFoldArrows().shown === 'hide' && !arrange.arranging;
+  const foldByName = nameFolds ? {
+    role: 'button',
+    tabIndex: 0,
+    'aria-expanded': !folded,
+    title: folded ? 'Unfold' : 'Fold',
+    style: { cursor: 'pointer' },
+    onClick: () => arrange.fold(id, !folded),
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); arrange.fold(id, !folded); } },
+  } : {};
   return (
     <SortableItem scope={arrange.sort} itemKey={id}>
       {(d) => (
@@ -413,7 +426,7 @@ export function ArrangeSection({
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
         <FoldButton arrange={arrange} id={id} label={label} />
-        <div className="min-w-0 flex items-baseline gap-2.5 flex-wrap">
+        <div className="min-w-0 flex items-baseline gap-2.5 flex-wrap" {...foldByName}>
           <h2 className="text-lg font-semibold truncate">{title}</h2>
           {meta && <span className="text-muted text-[13px]">{meta}{folded ? ' · folded' : ''}</span>}
           {!meta && folded && <span className="text-muted text-[13px]">folded</span>}

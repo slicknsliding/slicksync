@@ -1373,7 +1373,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Changed your mind? Undo steps back one change at a time, and Cancel puts the page back exactly as it was before you pressed Arrange. Reset goes all the way back to SlickSync’s own layout.',
     ],
     details: [
-      'Outside Arrange, the chevron beside a section’s name folds it; moving and hiding happen in Arrange.',
+      'Outside Arrange, the chevron beside a section’s name folds it; moving and hiding happen in Arrange. Prefer a cleaner look? Settings → Themes → Fold arrows: Hide removes the arrows, and tapping a section’s name folds or unfolds it instead.',
       'Hiding only tidies the page. People keep syncing, addons keep working, and invites stay open.',
       'Something with nothing in it right now (Now Playing with nobody watching) stays listed while you arrange, as a dashed box, so you can still move or hide it.',
       'On the Dashboard the numbers sit in their own "At a glance" section, and while arranging each number has its own eye. On Discover you can reorder or hide the Titles, People, For you and Watchlist tabs and each row; on Tasks each tile can be pinned first, moved or hidden.',

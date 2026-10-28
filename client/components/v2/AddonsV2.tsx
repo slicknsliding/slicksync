@@ -183,7 +183,10 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
       <span
         className="v2-chip gap-1.5"
         data-tag={a.tag}
-        style={{ color: c, borderColor: `color-mix(in srgb, ${c} 45%, transparent)`, background: `color-mix(in srgb, ${c} 14%, transparent)` }}
+        // The same tint as the tag's pill above the grid (hex + alpha), so the two always match.
+        style={/^#[0-9a-f]{6}$/i.test(c)
+          ? { color: c, borderColor: 'transparent', background: `${c}26` }
+          : { color: c, borderColor: 'transparent', background: 'var(--color-surface-hover)' }}
       >
         <span style={{ width: 8, height: 8, borderRadius: 99, background: c, display: 'inline-block' }} />
         {a.tag}

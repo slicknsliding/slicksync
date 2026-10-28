@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCwTime, useDensity, useKeepFilters, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCwTime, useDensity, useFoldArrows, useKeepFilters, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -19,6 +19,7 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
   const { where, setWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
+  const { shown: arrows, setShown: setArrows } = useFoldArrows();
   // The v2 Settings draws these as rows.
   if (v2) {
     return (
@@ -37,6 +38,11 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           title="Now Playing progress"
           line="How far in and when it ends: on the picture, or under it"
           control={<V2Seg<'on' | 'under'> label="Now Playing progress" value={npProgress} options={[{ id: 'on' as const, label: 'On the picture' }, { id: 'under' as const, label: 'Under' }]} onChange={setNpProgress} />}
+        />
+        <V2SetRow
+          title="Fold arrows"
+          line="The arrow beside each section’s name. Hidden, tap a name to fold or unfold it"
+          control={<V2Seg<'show' | 'hide'> label="Fold arrows" value={arrows} options={[{ id: 'show' as const, label: 'Show' }, { id: 'hide' as const, label: 'Hide' }]} onChange={setArrows} />}
         />
         <V2SetRow
           title="Continue Watching"
@@ -97,6 +103,19 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           {(['on', 'under'] as const).map((w) => (
             <button key={w} type="button" role="radio" aria-checked={npProgress === w} className={npProgress === w ? 'on' : ''} onClick={() => setNpProgress(w)}>
               {w === 'under' ? 'Under' : 'On the picture'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Fold arrows</p>
+          <p className="text-xs text-muted">The arrow beside each section’s name. Hidden, tap a name to fold or unfold it</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Fold arrows">
+          {(['show', 'hide'] as const).map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={arrows === v} className={arrows === v ? 'on' : ''} onClick={() => setArrows(v)}>
+              {v === 'show' ? 'Show' : 'Hide'}
             </button>
           ))}
         </div>
