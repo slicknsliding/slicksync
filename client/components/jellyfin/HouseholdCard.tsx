@@ -12,7 +12,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   ChevronDownIcon, UserPlusIcon, EyeSlashIcon, EyeIcon, KeyIcon,
-  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon, PlusIcon, LockClosedIcon, LinkIcon,
+  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon, PlusIcon, LockClosedIcon, LinkIcon, Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 import { api, type HouseholdPersonal, type HouseholdProfile, type LimitsSummary } from '@/lib/api';
 import { LimitsButton } from '@/components/user/LimitsButton';
@@ -172,7 +172,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
     if (selected === id) { closeMenu(); return; }
     const circle = (tile.querySelector('[data-household-circle]') as HTMLElement | null)?.getBoundingClientRect() || tile.getBoundingClientRect();
     setSelected(id);
-    setPlacement(placeUnder(circle, 200));
+    setPlacement(placeUnder(circle, profiles?.find((p) => p.id === id)?.ownRows ? 270 : 200));
   };
 
   const perform = async (action: () => Promise<{ profiles: HouseholdProfile[] }>, message: string, peopleChange = false) => {
@@ -188,6 +188,22 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
     } finally {
       setBusy(false);
       setPending(null);
+    }
+  };
+
+  // "Their own rows": the menu stays open so the switch is seen to move. If AIOStreams
+  // can't take it now the choice is kept and SlickSync tries again on its own.
+  const changeOwnRows = async (p: HouseholdProfile, on: boolean) => {
+    setBusy(true);
+    try {
+      const next = await api.setHouseholdOwnRows(p.id, on);
+      setProfiles(next.profiles);
+      if (next.error) toast.error(next.error);
+      else toast.success(on ? `${p.name} now gets their own rows` : `${p.name} sees the shared rows again`);
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : 'Could not change that');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -572,6 +588,28 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               <ArrowTopRightOnSquareIcon className="w-4 h-4 text-muted" /> Open {sel.person.username}
             </Link>
           )}
+          {sel.ownRows && (() => {
+            const { available, on, reason } = sel.ownRows;
+            // A switch that is on can always be turned off, even when it can't be turned on right now.
+            const locked = !available && !on;
+            const note = available ? 'Recommendations and their own lists from AIOMetadata, in Jellyfin apps.'
+              : reason === 'needs-name' ? null
+              : reason === 'protected' ? 'This AIOStreams only takes this change on its own page.'
+              : reason === 'several' ? 'There’s more than one AIOMetadata in this AIOStreams.'
+              : 'Recommendations and their own lists from AIOMetadata, in Jellyfin apps.';
+            return (
+              <div className="mt-1 pt-2 px-3 pb-2 border-t border-default flex items-start gap-3">
+                <Squares2X2Icon className="w-4 h-4 text-muted mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm ${locked ? 'text-muted' : 'text-default'}`}>Their own rows</p>
+                  <p className="text-xs text-muted mt-0.5">
+                    {note ?? <>AIOMetadata doesn’t know “{sel.name}” yet. Add {sel.name} under <strong>Also known as (AIOStreams)</strong> in AIOMetadata, then turn this on.</>}
+                  </p>
+                </div>
+                <ToggleSwitch size="sm" checked={on} onChange={() => changeOwnRows(sel, !on)} title="Their own rows" disabled={busy || locked} className="shrink-0 mt-0.5" />
+              </div>
+            );
+          })()}
         </motion.div>,
         document.body,
       )}

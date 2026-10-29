@@ -154,6 +154,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
   // that gets passed around and logged.
   const reqPassword = new WeakMap();
 
+  // The household as the person page shows it, "Their own rows" included.
+  const describeFor = (ownerId) => household.describeHousehold(prisma, ownerId, { decrypt });
+
   async function loadProfile(req, res) {
     const profile = await prisma.jellyfinProfile.findFirst({ where: { id: String(req.params.profileId), accountId: getAccountId(req) } });
     if (!profile) { res.status(404).json({ error: 'Profile not found' }); return null; }
@@ -683,7 +686,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         main = await household.describeMain(decrypt, owner).catch(() => null);
       }
       await household.repairEchoedHouseholds(prisma, accountId).catch((e) => console.warn('[Jellyfin] household tidy failed:', e?.message));
-      const profiles = person.providerType === 'jellyfin' ? await household.describeHousehold(prisma, person.id) : [];
+      const profiles = person.providerType === 'jellyfin' ? await describeFor(person.id) : [];
       const membership = await prisma.jellyfinProfile.findFirst({ where: { ownUserId: person.id, accountId }, orderBy: { createdAt: 'asc' } });
       // Someone separated out of a household belongs to it; they do not run another.
       const separatedMember = !!membership && await household.isSeparatedMember(prisma, person.id);
@@ -720,7 +723,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         : await require('../utils/aioHousehold').addPersona(prisma, decrypt, encrypt, owner, {
           name: req.body?.name, pin: req.body?.pin ?? null, history: req.body?.history, separate: req.body?.separate === true,
         });
-      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, owner.id) });
+      res.json({ success: true, ...result, profiles: await describeFor(owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not add the household user');
     }
@@ -734,7 +737,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const result = found.owner.jellyfinServerKind === 'aiometadata'
         ? await require('../utils/aiometadataHousehold').setUserPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null)
         : await require('../utils/aioHousehold').setPersonaPin(prisma, decrypt, encrypt, found.owner, found.profile, req.body?.pin ?? null);
-      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, found.owner.id) });
+      res.json({ success: true, ...result, profiles: await describeFor(found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not change the PIN');
     }
@@ -748,9 +751,35 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       if (!found) return;
       if (found.owner.jellyfinServerKind !== 'aiostreams') return res.status(400).json({ error: 'Only AIOStreams household users can be kept separate' });
       const personal = await require('../utils/aioHousehold').setPersonaSeparation(prisma, decrypt, found.owner, found.profile, String(req.body?.mode || ''));
-      res.json({ success: true, personal, profiles: await household.describeHousehold(prisma, found.owner.id) });
+      res.json({ success: true, personal, profiles: await describeFor(found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not change that sign-in address');
+    }
+  });
+
+  // "Their own rows": a household user gets AIOMetadata's Recommendations and
+  // their own lists in Jellyfin apps (utils/aioProfileVariants.js). The choice
+  // is kept first; if AIOStreams can't take the change now, the 30-minute
+  // check tries again.
+  router.put('/household/:profileId/own-rows', async (req, res) => {
+    try {
+      const found = await loadProfile(req, res);
+      if (!found) return;
+      if (found.owner.jellyfinServerKind !== 'aiostreams') return res.status(400).json({ error: 'Only AIOStreams household users can have rows of their own' });
+      const on = req.body?.enabled === true;
+      const rows = require('../utils/aioProfileVariants');
+      await rows.saveOwnRowsChoice(prisma, found.profile.accountId, found.profile.id, on);
+      let error = null;
+      try {
+        await rows.setOwnRowsVariant(prisma, decrypt, found.owner, found.profile, on);
+      } catch (e) {
+        error = e?.message || 'AIOStreams refused the change';
+        // Switched off but still in AIOStreams: the 30-minute check takes it away once it can.
+        if (!on) await rows.saveOwnRowsChoice(prisma, found.profile.accountId, found.profile.id, 'remove').catch(() => {});
+      }
+      res.json({ success: !error, profiles: await describeFor(found.owner.id), ...(error ? { error } : {}) });
+    } catch (error) {
+      sendError(res, error, 'Could not change their rows');
     }
   });
 
@@ -758,8 +787,16 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     try {
       const found = await loadProfile(req, res);
       if (!found) return;
-      await household.setTracked(prisma, found.profile, req.body?.tracked !== false);
-      res.json({ success: true, profiles: await household.describeHousehold(prisma, found.owner.id) });
+      const tracked = req.body?.tracked !== false;
+      await household.setTracked(prisma, found.profile, tracked);
+      // Someone who isn't tracked has no rows of their own in AIOStreams; tracked again, the choice comes back.
+      if (found.owner.jellyfinServerKind === 'aiostreams') {
+        const rows = require('../utils/aioProfileVariants');
+        rows.ownRowsChoices(prisma, found.profile.accountId)
+          .then((choices) => choices[found.profile.id] === true && rows.syncOwnRows(prisma, decrypt, found.owner, { ...found.profile, skip: !tracked }))
+          .catch((e) => console.warn('[Jellyfin] own rows after tracking change:', e?.message));
+      }
+      res.json({ success: true, profiles: await describeFor(found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not change that profile');
     }
@@ -770,7 +807,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const found = await loadProfile(req, res);
       if (!found) return;
       await household.signInProfile(prisma, encrypt, { ...found, password: String(req.body?.password ?? ''), pin: req.body?.pin ? String(req.body.pin) : null });
-      res.json({ success: true, profiles: await household.describeHousehold(prisma, found.owner.id) });
+      res.json({ success: true, profiles: await describeFor(found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not sign that profile in');
     }
@@ -781,7 +818,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const found = await loadProfile(req, res);
       if (!found) return;
       const result = await household.separateProfile(prisma, found);
-      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, found.owner.id) });
+      res.json({ success: true, ...result, profiles: await describeFor(found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not separate that profile');
     }
@@ -792,7 +829,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const found = await loadProfile(req, res);
       if (!found) return;
       const result = await household.mergeProfileBack(prisma, found);
-      res.json({ success: true, ...result, profiles: await household.describeHousehold(prisma, found.owner.id) });
+      res.json({ success: true, ...result, profiles: await describeFor(found.owner.id) });
     } catch (error) {
       sendError(res, error, 'Could not merge that profile back');
     }

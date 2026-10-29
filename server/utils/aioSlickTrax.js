@@ -370,4 +370,5 @@ async function checkSlickTrax(prisma, decrypt, { alert } = {}) {
 module.exports = {
   installSlickTrax, findProblems, settle, checkSlickTrax, readLibraries, explainRefusal, manifestUrlFor,
   notePush, collectionsFirstFor, setCollectionsFirst, putCollectionsFirst, moveFirst, COLLECTIONS_NAME,
+  readSync, patchMap,
 }

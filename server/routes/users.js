@@ -3394,6 +3394,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Remove user from all groups first (update userIds arrays)
       await require('../utils/helpers/database').removeUserFromAllGroups(prisma, id, getAccountId(req))
+      // Their household's own rows come off their AIOStreams while it can still be reached.
+      await require('../utils/aioProfileVariants').forgetOwnRows(prisma, decrypt, id)
 
       // Delete related records first to avoid FK constraint errors
       await prisma.$transaction([

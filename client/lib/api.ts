@@ -2777,6 +2777,15 @@ class ApiClient {
     });
   }
 
+  // Give an AIOStreams household user their own AIOMetadata rows, or the shared ones again
+  // (server/utils/aioProfileVariants.js). The choice is kept even when `error` comes back.
+  async setHouseholdOwnRows(profileId: string, enabled: boolean) {
+    return this.fetch<{ profiles: HouseholdProfile[]; error?: string }>(`/jellyfin/household/${encodeURIComponent(profileId)}/own-rows`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
   async trackHouseholdProfile(profileId: string, tracked: boolean) {
     return this.fetch<{ profiles: HouseholdProfile[] }>(`/jellyfin/household/${encodeURIComponent(profileId)}/track`, {
       method: 'POST',
@@ -4189,6 +4198,8 @@ export interface HouseholdProfile {
   avatarUrl?: string | null;
   /** Whose limits its Limits pill opens: its own person's id, or its own as a merged household user. */
   limitId?: string;
+  /** "Their own rows" (AIOMetadata), only present when it can apply to this person. */
+  ownRows?: { available: boolean; on: boolean; reason?: 'needs-name' | 'protected' | 'several' };
 }
 
 /** An AIOStreams household user kept separate: their own sign-in address. */
