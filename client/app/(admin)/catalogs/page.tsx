@@ -331,6 +331,8 @@ export default function ListsPage() {
     ...catalogArrangeOwn,
     isDefault: catalogArrangeOwn.isDefault && collectionArrange.isDefault,
     reset: () => { catalogArrangeOwn.reset(); collectionArrange.reset(); },
+    // Cancel puts everything back (both arrangements share one Undo history) and ends arranging for both.
+    cancel: () => { catalogArrangeOwn.cancel(); collectionArrange.setArranging(false); },
     setArranging: (v: React.SetStateAction<boolean>) => {
       const on = typeof v === 'function' ? v(catalogArrangeOwn.arranging) : v;
       catalogArrangeOwn.setArranging(on);
