@@ -321,14 +321,31 @@ async function trackedProfiles(prisma, decrypt, userId) {
   return out
 }
 
-/** The household as the person page shows it. */
-async function describeHousehold(prisma, userId) {
+/**
+ * The household as the person page shows it. With `decrypt`, each household
+ * user of an AIOStreams also carries `ownRows` when "Their own rows" can apply
+ * to them (utils/aioProfileVariants.js).
+ */
+async function describeHousehold(prisma, userId, { decrypt } = {}) {
   const rows = await withoutEchoes(prisma, await prisma.jellyfinProfile.findMany({ where: { ownerUserId: userId }, orderBy: { name: 'asc' } }))
   const people = await prisma.user.findMany({
     where: { id: { in: rows.map((r) => r.ownUserId).filter(Boolean) } },
     select: { id: true, username: true },
   })
   const byId = new Map(people.map((p) => [p.id, p]))
+  let ownRows = {}
+  if (decrypt && rows.length) {
+    const owner = await prisma.user.findFirst({
+      where: { id: userId },
+      select: { id: true, username: true, accountId: true, providerType: true, jellyfinServerKind: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true },
+    })
+    // Never holds the card up: what isn't known within 2.5 s shows next time
+    // (the checks carry on and are remembered).
+    ownRows = await Promise.race([
+      require('./aioProfileVariants').describeOwnRows(prisma, decrypt, owner, rows),
+      new Promise((resolve) => setTimeout(() => resolve({}), 2500).unref?.()),
+    ])
+  }
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -338,6 +355,7 @@ async function describeHousehold(prisma, userId) {
     // Whose limits its Limits pill opens: its own person's, or its own as a
     // household user merged into this one (screenSubjects.js).
     limitId: r.ownUserId && byId.has(r.ownUserId) ? r.ownUserId : require('./screenSubjects').householdSubject(r.id),
+    ...(ownRows[r.id] ? { ownRows: ownRows[r.id] } : {}),
   }))
 }
 
