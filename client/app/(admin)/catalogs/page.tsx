@@ -19,6 +19,7 @@ import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { useIsPhoneWidth } from '@/lib/pageHeader';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { SortableItem, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangeGrip, HiddenTray } from '@/components/ui/Arrange';
 import { CatalogsV2 } from '@/components/v2/CatalogsV2';
@@ -310,11 +311,15 @@ export default function ListsPage() {
 
   // v2: posters first, one card per catalog; Arrange moves and hides them
   // on this page (lib/arrange.tsx). Pinned catalogs start at the front.
-  const { design } = usePageDesign();
-  const v2 = design === 'v2';
-  // On a TV the page starts the remote's focus tracking first, like every other page.
+  // On a TV the page starts the remote's focus tracking first, and gets the
+  // Classic page like every other page (v2's drag and menus need a pointer).
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  // Something the remote can land on and press; elsewhere it is drawn as it is.
+  const onTV = (node: React.ReactNode, onEnter: () => void, key?: string) =>
+    isTV ? <TVFocusable key={key} onEnterPress={onEnter}>{node}</TVFocusable> : node;
   const { viewMode, setViewMode } = useDefaultViewMode();
   const catalogKeys = useMemo(() => [...lists.filter((l) => l.pinned), ...lists.filter((l) => !l.pinned)].map((l) => l.id), [lists]);
   const catalogArrangeOwn = usePageArrangement('catalogs', catalogKeys);
@@ -476,8 +481,8 @@ export default function ListsPage() {
   const showRight = rightKeys.length > 0 || collectionArrange.arranging;
   const collectionsButtons = v2 ? (showLeft ? pillRow('left', leftKeys) : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
-      {nuvioCollectionsButton}
-      {aiostreamsCollectionsButton}
+      {onTV(nuvioCollectionsButton, () => router.push('/catalogs/nuvio-collections'))}
+      {onTV(aiostreamsCollectionsButton, () => router.push('/catalogs/aiostreams-collections'))}
     </div>
   );
   const rightPills = v2 && showRight ? pillRow('right', rightKeys) : undefined;
@@ -508,15 +513,24 @@ export default function ListsPage() {
               </h3>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
-              <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
-                Import
-              </Button>
-              <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setShowDescribe(true)}>
-                Describe a catalog
-              </Button>
-              <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
-                New catalog
-              </Button>
+              {onTV(
+                <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
+                  Import
+                </Button>,
+                () => setShowImport(true),
+              )}
+              {onTV(
+                <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setShowDescribe(true)}>
+                  Describe a catalog
+                </Button>,
+                () => setShowDescribe(true),
+              )}
+              {onTV(
+                <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
+                  New catalog
+                </Button>,
+                () => setShowCreate(true),
+              )}
               {v2 && <ArrangeButton arrange={catalogArrange} />}
             </div>
           </div>
@@ -609,7 +623,7 @@ export default function ListsPage() {
 
             return (
               <div className="space-y-4">
-                {hero && (
+                {hero && onTV(
                   <Card padding="none" className="overflow-hidden" onContextMenu={(e) => openContextMenuFor(hero, e)}>
                     {/* A div, not a button: the card holds its own buttons (pin, cover, rename, delete). */}
                     <div role="link" tabIndex={0} onClick={() => router.push(`/catalogs/${hero.id}`)} onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/catalogs/${hero.id}`); }} className="w-full text-left block relative group cursor-pointer">
@@ -652,12 +666,13 @@ export default function ListsPage() {
                         </div>
                       </div>
                     </div>
-                  </Card>
+                  </Card>,
+                  () => router.push(`/catalogs/${hero.id}`),
                 )}
 
                 {rest.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {rest.map((list) => (
+                    {rest.map((list) => onTV(
                       <Card key={list.id} padding="md" onContextMenu={(e) => openContextMenuFor(list, e)}>
                         <button
                           type="button"
@@ -712,7 +727,9 @@ export default function ListsPage() {
                         <div className="flex items-center gap-1 mt-2">
                           {actionRow(list, 'sm')}
                         </div>
-                      </Card>
+                      </Card>,
+                      () => router.push(`/catalogs/${list.id}`),
+                      list.id,
                     ))}
                   </div>
                 )}
