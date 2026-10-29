@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type Ref } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type Ref } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -17,6 +17,8 @@ import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { useIsPhoneWidth } from '@/lib/pageHeader';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { SortableItem, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangeGrip, HiddenTray } from '@/components/ui/Arrange';
 import { CatalogsV2 } from '@/components/v2/CatalogsV2';
@@ -310,6 +312,9 @@ export default function ListsPage() {
   // on this page (lib/arrange.tsx). Pinned catalogs start at the front.
   const { design } = usePageDesign();
   const v2 = design === 'v2';
+  // On a TV the page starts the remote's focus tracking first, like every other page.
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const { viewMode, setViewMode } = useDefaultViewMode();
   const catalogKeys = useMemo(() => [...lists.filter((l) => l.pinned), ...lists.filter((l) => !l.pinned)].map((l) => l.id), [lists]);
   const catalogArrangeOwn = usePageArrangement('catalogs', catalogKeys);
@@ -444,7 +449,7 @@ export default function ListsPage() {
           <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex items-center gap-2 min-w-0 max-w-full ${d.className}`}>
             <span className="relative inline-flex min-w-0 max-w-full">
               {pill.node}
-              {collectionArrange.arranging && (
+              {collectionArrange.arranging && !isTV && (
                 <PillSizer size={pillSize ?? PILL_MAX} label={pill.label} onLive={setPillLive} onDone={setPillSize} />
               )}
             </span>
@@ -478,7 +483,7 @@ export default function ListsPage() {
   const rightPills = v2 && showRight ? pillRow('right', rightKeys) : undefined;
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs' }]} className="text-xl font-semibold" />}
@@ -914,7 +919,7 @@ export default function ListsPage() {
           onSave={handleCoverSave}
         />
       )}
-    </>
+    </Wrapper>
   );
 }
 
