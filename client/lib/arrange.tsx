@@ -386,6 +386,13 @@ export function usePageArrangement(pageId: string, keys: string[], opts: {
       if (side === 'left') delete sides[key]; else sides[key] = side;
       return { ...p, sides };
     }),
+    /** A named placement choice (`fallback` unless set); setting the fallback clears it. */
+    placeOf: <T extends string>(key: string, fallback: T): T => (page?.places?.[key] as T | undefined) ?? fallback,
+    setPlace: (key: string, value: string, fallback: string) => setPage((p) => {
+      const places = { ...(p?.places || {}) };
+      if (value === fallback) delete places[key]; else places[key] = value;
+      return { ...p, places };
+    }),
     /** The stretched size of a row or grid of cards (StretchHandle sets it). */
     cardSizing: (key: string): CardSizing => cardSizingOf(page, key),
     setCardSizing: (key: string, next: CardSizing) => setPage((p) => {
