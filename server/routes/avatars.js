@@ -39,7 +39,23 @@ function removeAvatarFile(url) {
   }
 }
 
-module.exports = ({ imageUpload }) => {
+// What a file really is, from its first bytes: the type the browser declares
+// is whatever the sender says.
+const MIME_BY_FORMAT = { jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+
+// Uploads per account per hour, so one account cannot fill the disk.
+const UPLOADS_PER_HOUR = 60;
+const uploadsByAccount = new Map(); // accountId -> timestamps in the last hour
+function uploadAllowed(accountId) {
+  const now = Date.now();
+  const recent = (uploadsByAccount.get(accountId) || []).filter((t) => now - t < 60 * 60 * 1000);
+  if (recent.length >= UPLOADS_PER_HOUR) { uploadsByAccount.set(accountId, recent); return false; }
+  recent.push(now);
+  uploadsByAccount.set(accountId, recent);
+  return true;
+}
+
+module.exports = ({ imageUpload, prisma }) => {
   const router = express.Router();
 
   // POST /api/avatars/upload - accepts a single image file (field name "avatar"),
@@ -50,8 +66,11 @@ module.exports = ({ imageUpload }) => {
       if (!req.file) {
         return res.status(400).json({ error: 'No image file provided (expected field name "avatar")' });
       }
+      const mimetype = MIME_BY_FORMAT[require('../utils/imageEncoder').sniffFormat(req.file.buffer)];
+      if (!mimetype) return res.status(400).json({ error: 'That isn’t a JPEG, PNG, GIF or WEBP picture' });
+      if (!uploadAllowed(req.appAccountId || 'default')) return res.status(429).json({ error: 'That’s a lot of pictures - try again in a while' });
 
-      res.status(201).json({ url: saveAvatarFile(req.file.buffer, req.file.mimetype) });
+      res.status(201).json({ url: saveAvatarFile(req.file.buffer, mimetype) });
     } catch (error) {
       console.error('Error uploading avatar:', error);
       res.status(500).json({ error: 'Failed to upload image' });
@@ -66,6 +85,14 @@ module.exports = ({ imageUpload }) => {
       // Guard against path traversal — only allow the exact filename pattern we generate
       if (!/^[a-f0-9-]+\.(jpg|png|gif|webp)$/i.test(filename)) {
         return res.status(400).json({ error: 'Invalid filename' });
+      }
+      // A picture another account still shows is not this account's to remove.
+      if (prisma) {
+        const address = `/uploads/avatars/${filename}`;
+        const others = { avatarUrl: address, NOT: { accountId: req.appAccountId || 'default' } };
+        const inUse = (await prisma.user.count({ where: others })) + (await prisma.group.count({ where: others }))
+          + (await prisma.appAccount.count({ where: { avatarUrl: address, NOT: { id: req.appAccountId || 'default' } } }));
+        if (inUse) return res.status(403).json({ error: 'That picture is not yours to remove' });
       }
       const filepath = path.join(AVATAR_DIR, filename);
       if (fs.existsSync(filepath)) fs.unlinkSync(filepath);

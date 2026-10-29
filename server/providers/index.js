@@ -100,8 +100,9 @@ function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
           // completely unaffected.
           resolveServerConfig: prisma
             ? () => {
-                const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null)
-                  || user.accountId
+                // The person's own account's backend, never the caller's.
+                const accountId = user.accountId
+                  || (typeof getAccountId === 'function' ? getAccountId(req) : null)
                   || 'default'
                 return resolveServerConfigForAccount(prisma, accountId)
               }

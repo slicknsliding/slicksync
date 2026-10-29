@@ -3,6 +3,7 @@ const { logProxyRequest } = require('../utils/proxyLogger');
 const streamProxyFactory = require('./streamProxy');
 const { isSafeContentType, applyProxiedBodyHeaders } = streamProxyFactory;
 const { safeFetch, instancePolicy } = require('../utils/safeUrl');
+const { readBounded } = require('../utils/boundedBody');
 
 // In-memory cache for proxied responses (60s TTL).
 //
@@ -18,6 +19,10 @@ const CACHE_MAX_ENTRIES = 500;
 const CACHE_MAX_BYTES = 64 * 1024 * 1024;
 const CACHE_MAX_ENTRY_BYTES = 2 * 1024 * 1024;
 const CACHE_SWEEP_MS = 60 * 1000;
+// An addon's reply is read up to this size and for this long at most: the
+// process is shared, so one endless or huge reply must not hold it.
+const UPSTREAM_MAX_BYTES = 25 * 1024 * 1024;
+const UPSTREAM_TIMEOUT_MS = 30 * 1000;
 let _cacheBytes = 0;
 
 function sizeOf(data) {
@@ -384,7 +389,8 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
           headers: {
             'User-Agent': 'SlickSync-Proxy/1.0',
             'Accept': req.get('Accept') || '*/*'
-          }
+          },
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         }, instancePolicy());
       } catch (e) {
         console.error('Error fetching from upstream:', e);
@@ -414,7 +420,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       // goes out as an attachment below and is never cached.
       if (isSafeContentType(contentType) && (contentType.includes('json') || contentType.includes('text'))) {
         cacheable = true;
-        const text = await upstreamResponse.text();
+        const text = (await readBounded(upstreamResponse, { maxBytes: UPSTREAM_MAX_BYTES, timeoutMs: UPSTREAM_TIMEOUT_MS })).toString('utf8');
         let processedData = rewriteUrls(text, originalBaseUrl, proxyBaseUrl, uuid);
         
         // If this is a stream response, encrypt stream URLs to hide them from clients
@@ -433,7 +439,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
         responseData = processedData;
       } else {
         // For binary content, pass through as-is
-        responseData = Buffer.from(await upstreamResponse.arrayBuffer());
+        responseData = await readBounded(upstreamResponse, { maxBytes: UPSTREAM_MAX_BYTES, timeoutMs: UPSTREAM_TIMEOUT_MS });
       }
 
       // Cache the response (only for GET requests)
@@ -447,6 +453,9 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
     } catch (error) {
       console.error('Error proxying request:', error);
       errorMessage = error?.message || 'Internal server error';
+      if (error?.code === 'BODY_TOO_LARGE' || error?.code === 'BODY_TIMEOUT' || error?.name === 'TimeoutError') {
+        return res.status(502).json({ error: 'Upstream reply was too large or too slow' });
+      }
       res.status(500).json({ error: 'Internal server error' });
     }
   });

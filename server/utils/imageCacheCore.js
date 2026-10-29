@@ -31,6 +31,7 @@ const path = require('path')
 const crypto = require('crypto')
 const net = require('net')
 const dns = require('dns').promises
+const { readBounded } = require('./boundedBody')
 const { getEncoder, sniffFormat, sourceDimensions } = require('./imageEncoder')
 const pool = require('./imageEncodePool')
 
@@ -230,7 +231,9 @@ async function readSource(src, localFile, followRedirects = true) {
   const upstream = await fetchOriginWithRetry(src, { followRedirects })
   const type = (upstream.headers.get('content-type') || '').toLowerCase()
   if (type.includes('gif') || type.includes('svg')) throw new Error('passthrough type')
-  const buf = Buffer.from(await upstream.arrayBuffer())
+  // The fetch's own timer stops once headers arrive; the body gets its own cap and deadline.
+  const buf = await readBounded(upstream, { maxBytes: MAX_SOURCE_BYTES, timeoutMs: FETCH_TIMEOUT_MS })
+    .catch((e) => { throw e?.code === 'BODY_TOO_LARGE' ? new Error('bad size') : e })
   recentSources.set(src, { at: Date.now(), buf })
   while (recentSources.size > RECENT_SOURCE_MAX) recentSources.delete(recentSources.keys().next().value)
   return buf

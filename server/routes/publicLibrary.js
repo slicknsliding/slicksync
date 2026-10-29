@@ -300,14 +300,14 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   // from the sign-in replaces the stored one (the server retires the old
   // token for the same device when it issues a new one).
   //
-  // Which server counts as "the same" depends on who is asking (serverMatch):
-  // on an instance serving strangers only the address the person was added
-  // with does (under either scheme), because the server id and user id in a
-  // sign-in are whatever the server at a typed-in address chooses to say. So
-  // someone whose server moves to a new address is reconnected by their admin
-  // before signing in here.
+  // Which server counts as "the same" is provenServerMatch's to say: the
+  // address the person was added with, and on a household's install another
+  // address only once the server stored for them accepts this sign-in's
+  // token - the server id and user id in a sign-in are whatever the server at
+  // a typed-in address chooses to say. So someone whose server moves to a new
+  // address is reconnected by their admin before signing in here.
   async function getPublicUserJellyfin(probe, login) {
-    const { serverMatch } = require('../utils/jellyfinConnect');
+    const { provenServerMatch } = require('../utils/jellyfinConnect');
     const { restrictsPrivateAddresses, addressToKeep } = require('../providers/jellyfinAuth');
     const personSelect = { id: true, username: true, email: true, accountId: true, isActive: true, colorIndex: true, createdAt: true, expiresAt: true };
     // The same server user can be a person in more than one household (a
@@ -333,8 +333,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
       return { why: firstRefusal };
     };
+    const match = await provenServerMatch(prisma, probe, login);
     const candidates = await prisma.user.findMany({
-      where: { providerType: 'jellyfin', jellyfinUserId: login.userId, ...serverMatch(probe, login) },
+      where: { providerType: 'jellyfin', jellyfinUserId: login.userId, ...match },
       select: personSelect,
       orderBy: { createdAt: 'asc' }
     });
@@ -342,7 +343,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     // A household profile (utils/jellyfinProfiles.js) signs in as the person
     // it belongs to, the way a Nuvio profile does.
     if (!candidates.length) {
-      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', ...serverMatch(probe, login) }, select: { id: true } });
+      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', ...match }, select: { id: true } });
       const profiles = owners.length
         ? await prisma.jellyfinProfile.findMany({ where: { ownerUserId: { in: owners.map((o) => o.id) }, jellyfinUserId: login.userId, skip: false }, orderBy: { createdAt: 'asc' } })
         : [];
@@ -2410,6 +2411,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         where: { id: userId },
         data: { apiKey: encrypted }
       });
+      require('../utils/apiKeyIndex').markKeysChanged();
 
       // Return the key
       res.json({ apiKey: key });
@@ -3251,7 +3253,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const { syncUserAddons } = require('./users');
       
       // Perform sync
-      const result = await syncUserAddons(prisma, userId, [], false, req, decrypt, getAccountId, true);
+      const result = await syncUserAddons(prisma, userId, [], false, req, decrypt, () => user.accountId, true);
       
       if (result.success) {
         res.json({ 

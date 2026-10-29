@@ -4879,9 +4879,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         }
       } catch { }
 
-      // Get all enabled users
+      // Get all enabled users of this account
       const users = await prisma.user.findMany({
-        where: { isActive: true }
+        where: scopedWhere(req, { isActive: true })
       })
 
       if (users.length === 0) {
@@ -8790,10 +8790,13 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
     if (!req.appAccountId) {
       req.appAccountId = getAccountIdParam(req)
     }
+    // Only ever a person of the caller's own account (a shared instance holds many).
+    const boundAccountId = (typeof getAccountIdParam === 'function' ? getAccountIdParam(req) : null) || req.appAccountId
+    if (!boundAccountId) return { success: false, error: 'User not found' }
 
     // Load user to get name for logging
     const userForLog = await prismaClient.user.findFirst({
-      where: { id: userId },
+      where: { id: userId, accountId: boundAccountId },
       select: { username: true }
     })
     const userName = userForLog?.username || userId
@@ -8801,7 +8804,7 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
 
     // Load user
     const user = await prismaClient.user.findFirst({
-      where: { id: userId },
+      where: { id: userId, accountId: boundAccountId },
       select: {
         id: true,
         stremioAuthKey: true,

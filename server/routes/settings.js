@@ -1689,6 +1689,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const accountKey = require('crypto').createHash('sha256').update(Buffer.concat([Buffer.from(req.appAccountId || ''), serverKey])).digest()
       const encrypted = aesGcmEncrypt(accountKey, key)
       await prisma.appAccount.update({ where: { id: req.appAccountId }, data: { apiKeyHash: encrypted } })
+      require('../utils/apiKeyIndex').markKeysChanged()
       // Return the full key ONCE
       return res.json({ apiKey: key })
     } catch (e) {

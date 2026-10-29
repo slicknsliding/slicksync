@@ -768,8 +768,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       if (!originalAccountId && INSTANCE_TYPE === 'public' && parseCookies) {
         try {
           const cookies = parseCookies(req)
-          const accessCookie = cookies[cookieName('sfm_at')] || cookies['sfm_at']
-          const refreshCookie = cookies[cookieName('sfm_rt')] || cookies['sfm_rt']
+          const accessCookie = cookies[cookieName('sfm_at')]
+          const refreshCookie = cookies[cookieName('sfm_rt')]
           const token = accessCookie || refreshCookie
           if (token) {
             // Either kind of session token: the refresh cookie stands in once
@@ -1100,8 +1100,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       if (!originalAccountId && parseCookies) {
         try {
           const cookies = parseCookies(req)
-          const accessCookie = cookies[cookieName('sfm_at')] || cookies['sfm_at']
-          const refreshCookie = cookies[cookieName('sfm_rt')] || cookies['sfm_rt']
+          const accessCookie = cookies[cookieName('sfm_at')]
+          const refreshCookie = cookies[cookieName('sfm_rt')]
           const token = accessCookie || refreshCookie
           if (token) {
             const decoded = verifyAccountToken(token, ['access', 'refresh'])
@@ -1325,7 +1325,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       if (!currentAccountId && parseCookies) {
         try {
           const cookies = parseCookies(req)
-          const token = cookies[cookieName('sfm_at')] || cookies['sfm_at'] || cookies[cookieName('sfm_rt')] || cookies['sfm_rt']
+          const token = cookies[cookieName('sfm_at')] || cookies[cookieName('sfm_rt')]
           if (token) {
             const decoded = verifyAccountToken(token, ['access', 'refresh'])
             if (decoded?.accId && await prisma.appAccount.findUnique({ where: { id: decoded.accId } })) currentAccountId = decoded.accId

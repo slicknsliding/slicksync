@@ -1,4 +1,3 @@
-const https = require('https')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
 const { fetchOmdbRatings } = require('./omdb')
@@ -32,22 +31,14 @@ async function postDiscord(webhookUrl, content, options = {}) {
       payload.avatar_url = options.avatar_url
     }
     
-    const body = JSON.stringify(payload)
-    const httpOptions = {
+    // safeFetch checks the address at the moment it connects (see postDiscordFile).
+    const { safeFetch, instancePolicy } = require('./safeUrl')
+    const res = await safeFetch(url.href, {
       method: 'POST',
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    }
-    await new Promise((resolve, reject) => {
-      const req = https.request(httpOptions, (res) => {
-        res.on('data', () => {})
-        res.on('end', resolve)
-      })
-      req.on('error', reject)
-      req.write(body)
-      req.end()
-    })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }, { ...instancePolicy(), maxRedirects: 0 })
+    try { await res.body?.cancel() } catch {}
   } catch {}
 }
 
@@ -729,8 +720,16 @@ async function postDiscordFile(webhookUrl, buffer, filename, content) {
     const form = new FormData()
     if (content) form.append('payload_json', JSON.stringify({ content }))
     form.append('files[0]', new Blob([buffer], { type: 'image/png' }), filename)
-    await mayContact(webhookUrl)
-    const res = await fetch(webhookUrl, { method: 'POST', body: form, redirect: 'error' })
+    // Encoded here and sent through safeFetch, which checks the address at
+    // the moment it connects: a check before a plain fetch can be dodged by a
+    // name that resolves somewhere else the second time.
+    const encoded = new Response(form)
+    const { safeFetch, instancePolicy } = require('./safeUrl')
+    const res = await safeFetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': encoded.headers.get('content-type') },
+      body: Buffer.from(await encoded.arrayBuffer()),
+    }, { ...instancePolicy(), maxRedirects: 0 })
     return res.ok
   } catch {
     return false
