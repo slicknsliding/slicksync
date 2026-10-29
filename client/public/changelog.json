@@ -15,6 +15,7 @@
       "Settings → Themes: Fold arrows Show or Hide (hidden by default), and a separate Tap a name to fold switch (off by default).",
       "Needs you on the Dashboard can be dismissed, snoozed for a week or turned off for a whole kind; Settings → Notifications lists what is hidden with Show again.",
       "Catalogs: drag the Nuvio and Jellyfin Collections pills to either side of the title (above or below it on a phone), line each row up left, centre or right, and size each pill on its own.",
+      "Classic gets Arrange too: Catalogs, the Vault, Invitations, Tasks, Guides and a person's page can be arranged in Classic as well as v2 - move, fold and hide their sections, and move, size and hide the Collections pills on Catalogs. Each design keeps its own arrangement.",
       "Now Playing shows how far in, how long is left and when it ends, plus the episode's name. When an app hasn't said where playback is, it estimates from when the title started, with a dashed bar and a short note; the app's own position always wins. Put the progress on the picture or under it in Settings → Themes.",
       "A person's Home, redesigned: a Now Playing banner with Resume in their app, Continue Watching with time left, Upcoming on a strip of dates, their numbers in one row, and Recently watched beside their top five. People can arrange their own Home, and their pages follow the Original layout too.",
       "Dashboard: Continue Watching as wide picture cards with time left or Up next, and Coming up as tiles with the poster, when it airs and who is watching, in Classic and v2.",
@@ -22,6 +23,10 @@
       "Activity: with AIOStreams or AIOMetadata picked, Profile lists each household's main profile beside its other profiles."
     ],
     "bugFixes": [
+      "Security: on a shared instance, Sync and Sync All only reach people in your own account, and a person's sync always uses their own account's Nuvio settings.",
+      "Security: a household install only accepts a sign-in from another address for your Jellyfin server once your saved server accepts it; a server elsewhere claiming to be yours no longer signs anyone in or changes their saved address.",
+      "Security: replies through the addon proxy and the image cache are capped in size and time, and links anyone holding them can open get a per-address limit.",
+      "Security: Discord webhooks are checked at the moment SlickSync connects; a wrong API key is turned away without extra work for every account; uploaded pictures are checked to be real pictures and limited per account, and a picture another account uses cannot be removed; in production only SlickSync's own secure sign-in cookie names are accepted.",
       "On a phone, names, titles and status lines wrap instead of being cut off with \"…\"; tight rows move their buttons under the text, and banners grow to fit a long title.",
       "Phones: a card's ⋯ menu opens over the page (upward near the bottom), tall windows start at the top and scroll, iPhone text fields no longer zoom the page, and dropdowns follow the theme instead of showing a blank white box.",
       "A title's details rise from the bottom on a phone and open from the Now Playing picture.",
