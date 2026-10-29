@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrangeProvider, StartPageRedirect } from "@/lib/arrange";
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { trackGuideNavigation } from "@/lib/guideReturn";
@@ -193,11 +194,14 @@ export default function AdminClientLayout({
     <AdminAuthGate>
       <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
         <TVBackButton />
-        {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
-            hint/shortcut makes no sense there. */}
-        {!isTV && <CommandPalette />}
         <LiveEventsBridge />
         {!isTV && onboardingScopeReady && <OnboardingWizard />}
+        <ArrangeProvider>
+        {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
+            hint/shortcut makes no sense there. Inside the arrangement so the
+            palette follows Page design (v2). */}
+        {!isTV && <CommandPalette />}
+        {!isTV && <StartPageRedirect />}
         <VaultDragProvider>
           <LayoutDndWrapper>
             <div className="relative min-h-screen">
@@ -229,6 +233,7 @@ export default function AdminClientLayout({
             </div>
           </LayoutDndWrapper>
         </VaultDragProvider>
+        </ArrangeProvider>
       </MobileMenuContext.Provider>
     </AdminAuthGate>
   );

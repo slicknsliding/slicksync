@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
@@ -26,6 +26,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
+import { useMenuArrangement } from '@/lib/arrange';
+import { arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -170,6 +172,21 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       .catch(() => { });
   }, []);
 
+  // The account's own menu order (Themes → Layout → Arrange the menu), the
+  // same list the top bar uses: its pages in that order, then the ones it
+  // hid under More. Without one, the sidebar's own two groups.
+  const { menu } = useMenuArrangement();
+  const sections = useMemo(() => {
+    if (!menuIsArranged(menu)) return navigationSections;
+    const { shown, more } = arrangeMenu(menu);
+    const toItem = (i: (typeof shown)[number]) => ({ name: i.label, href: i.href, icon: i.icon });
+    return [
+      { id: 'pages', label: 'Pages', items: shown.map(toItem) },
+      ...(more.length ? [{ id: 'more', label: 'More', items: more.map(toItem) }] : []),
+      navigationSections[2],
+    ];
+  }, [menu]);
+
   const isItemActive = (href: string) => {
     if (href === '/') {
       return pathname === '/';
@@ -184,6 +201,31 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     window.location.href = '/login?mode=admin';
   };
 
+  return (
+    <SidebarFrame
+      sections={sections}
+      homeHref="/"
+      isOpen={isOpen}
+      onClose={onClose}
+      isItemActive={isItemActive}
+      account={<PanelSwitcher mode="admin" userInfo={accountInfo} onLogout={handleLogout} />}
+    />
+  );
+}
+
+/**
+ * The sidebar itself, for the admin pages (Sidebar) and a person's own pages
+ * (PersonSidebar): logo, the sections of links, the version, and the account
+ * button at the foot.
+ */
+export function SidebarFrame({ sections, homeHref, isOpen = false, onClose, isItemActive, account }: {
+  sections: { id: string; label: string; items: { name: string; href: string; icon: React.ComponentType<{ className?: string }> }[] }[];
+  homeHref: string;
+  isOpen?: boolean;
+  onClose?: () => void;
+  isItemActive: (href: string) => boolean;
+  account: React.ReactNode;
+}) {
   const handleNavigate = () => {
     if (onClose) {
       onClose();
@@ -240,7 +282,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           className="p-5 hidden md:block"
           style={{ borderBottom: '1px solid var(--color-surface-border)' }}
         >
-          <Link href="/" className="flex items-center gap-3">
+          <Link href={homeHref} className="flex items-center gap-3">
             <motion.div
               whileHover={{ scale: 1.08, rotate: 3 }}
               transition={{ duration: 0.2 }}
@@ -280,7 +322,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             dragging moved the page instead once the list had little/no
             room left to scroll in that direction. */}
         <nav className="flex-1 p-3 space-y-5 overflow-y-auto overscroll-contain custom-scrollbar">
-          {navigationSections.map((section, sectionIndex) => (
+          {sections.map((section, sectionIndex) => (
             <NavSection key={section.id} label={section.label} delay={sectionIndex * 0.1}>
               {section.items.map((item) => {
                 const itemIndex = globalIndex++;
@@ -322,11 +364,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
           <div className="w-full min-w-0">
-            <PanelSwitcher
-              mode="admin"
-              userInfo={accountInfo}
-              onLogout={handleLogout}
-            />
+            {account}
           </div>
         </div>
       </motion.aside>

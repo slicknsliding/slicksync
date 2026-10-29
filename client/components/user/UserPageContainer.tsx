@@ -14,9 +14,9 @@ interface UserPageContainerProps {
  * and background under the shared top bar (PersonTopbar), with the content
  * as wide as the bar so the two line up.
  */
-export function UserPageContainer({ children, className }: UserPageContainerProps) {
+export function UserPageContainer({ children, className, sidebar = false }: UserPageContainerProps & { sidebar?: boolean }) {
   return (
-    <PageContainer noSidebarOffset className={className}>
+    <PageContainer noSidebarOffset={!sidebar} className={className}>
       <div className="mx-auto" style={{ maxWidth: 'min(120rem, 92vw)' }}>
         {children}
       </div>

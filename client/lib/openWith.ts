@@ -76,14 +76,14 @@ export function linksFor(app: OpenWithAppId, t: OpenTargets, type: 'movie' | 'se
   const names = (s: OpenTargetServer) => s.people.map((p) => p.name).join(', ');
   if (app === 'shortcut') {
     const sc = rememberedShortcut();
-    if (sc && t.servers.length) out.push({ label: sc.app || 'Your app', detail: `Runs your Shortcut “${sc.shortcut}”`, url: `shortcuts://run-shortcut?name=${encodeURIComponent(sc.shortcut)}` });
+    if (sc && t.servers?.length) out.push({ label: sc.app || 'Your app', detail: `Runs your Shortcut “${sc.shortcut}”`, url: `shortcuts://run-shortcut?name=${encodeURIComponent(sc.shortcut)}` });
     return out;
   }
   if (app === 'infuse') {
-    if (t.tmdbId && t.servers.length) out.push({ label: 'Infuse', detail: 'Opens it in your Infuse library', url: `infuse://${type === 'movie' ? 'movie' : 'series'}/${t.tmdbId}` });
+    if (t.tmdbId && t.servers?.length) out.push({ label: 'Infuse', detail: 'Opens it in your Infuse library', url: `infuse://${type === 'movie' ? 'movie' : 'series'}/${t.tmdbId}` });
     return out;
   }
-  for (const s of t.servers) {
+  for (const s of t.servers || []) {
     if (!s.itemId) continue;
     const id = s.itemId;
     if (app === 'aiostreams') {

@@ -1,28 +1,23 @@
 const express = require('express')
 const { publicMessage } = require('../utils/publicError');
 const { parsePresentedKey } = require('../utils/apiKey')
-// Constant-time comparison, the same way routes/federation.js checks its own
-// token. A plain === returns as soon as two characters differ, so how long
-// the answer takes depends on how much of the key was right. Not a practical
-// attack across a network, but the codebase already does this properly one
-// file over and there is no reason for the key that unlocks an account to be
-// the exception.
-function keysMatch(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ab.length !== bb.length) return false
-  return crypto.timingSafeEqual(ab, bb)
-}
-
 const crypto = require('crypto')
+const { createKeyIndex } = require('../utils/apiKeyIndex')
 const { getServerKey, aesGcmDecrypt } = require('../utils/encryption')
 const { sendSyncNotification } = require('../utils/notify')
 
 module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUsers }) => {
   const router = express.Router()
 
-  // API key auth middleware - iterate accounts to find matching key
+  const select = { id: true, apiKeyHash: true, disabled: true }
+  const keys = createKeyIndex({
+    loadAll: () => prisma.appAccount.findMany({ where: { apiKeyHash: { not: null } }, select }),
+    loadOne: (id) => prisma.appAccount.findUnique({ where: { id }, select }),
+    // Derive account-specific key and decrypt
+    decryptRow: (acct) => aesGcmDecrypt(crypto.createHash('sha256').update(Buffer.concat([Buffer.from(acct.id || ''), getServerKey()])).digest(), acct.apiKeyHash),
+  })
+
+  // API key auth middleware - finds the account the key belongs to
   router.use(async (req, res, next) => {
     // If request already has appAccountId (e.g. from global JWT auth), allow it to pass through
     if (req.appAccountId) return next()
@@ -31,25 +26,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
       const presented = parsePresentedKey(req.headers['authorization'] || '')
       if (!presented) return res.status(401).json({ message: 'Missing or invalid API key' })
       
-      // Find account by decrypting stored keys and comparing
-      const accounts = await prisma.appAccount.findMany({ where: { apiKeyHash: { not: null } }, select: { id: true, apiKeyHash: true, disabled: true } })
-      const serverKey = getServerKey()
-      for (const acct of accounts) {
-        try {
-          // Derive account-specific key and decrypt
-          const accountKey = crypto.createHash('sha256').update(Buffer.concat([Buffer.from(acct.id || ''), serverKey])).digest()
-          const decrypted = aesGcmDecrypt(accountKey, acct.apiKeyHash)
-          if (keysMatch(decrypted, presented)) {
-            // The operator's Disable switch has to reach the key as well as
-            // the session: this route is open to the global login check.
-            if (acct.disabled) return res.status(401).json({ message: 'This account has been disabled' })
-            req.appAccountId = acct.id
-            return next()
-          }
-        } catch {
-          // Decryption failed for this account, try next
-          continue
-        }
+      const acct = await keys.lookup(presented)
+      if (acct) {
+        // The operator's Disable switch has to reach the key as well as
+        // the session: this route is open to the global login check.
+        if (acct.disabled) return res.status(401).json({ message: 'This account has been disabled' })
+        req.appAccountId = acct.id
+        return next()
       }
       return res.status(401).json({ message: 'Invalid API key' })
     } catch (e) {

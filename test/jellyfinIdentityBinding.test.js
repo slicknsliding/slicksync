@@ -3,10 +3,11 @@
 // address says. These pin what SlickSync does with that on an instance serving
 // strangers (a stored sign-in is only ever reached through the address it was
 // stored under, so a server someone runs elsewhere cannot touch anyone's), that
-// a household's own install, where one server has several names, still matches
-// by the server's id, and that a sign-in is handed to everyone holding that
-// server user whatever the route does next - the server has already retired
-// the token they held.
+// a household's own install, where one server has several names, still finds
+// the same server by another name - but only once the server stored for them
+// accepts the new sign-in's token, never on the id a server claims - and that a
+// sign-in is handed to everyone holding that server user whatever the route
+// does next - the server has already retired the token they held.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
@@ -89,6 +90,11 @@ function fakeServers(t, servers, ownBases = []) {
     if (url.pathname === '/Users/Public') return json([])
     if (url.pathname === '/QuickConnect/Enabled') return json(false)
     if (url.pathname === '/System/Info') return json({})
+    // Who a token belongs to: only the server that issued it knows it.
+    if (url.pathname === '/Users/Me') {
+      const token = /Token="([^"]+)"/.exec(init.headers?.Authorization || '')?.[1]
+      return token && token === (server.token || 'fresh-token') ? json({ Id: SERVER_USER, Name: 'Vic' }) : json({}, 401)
+    }
     if (url.pathname === '/Users/AuthenticateByName') {
       const device = /DeviceId="([^"]+)"/.exec(init.headers?.Authorization || '')?.[1]
       signIns.push({ origin: url.origin, device })
@@ -165,10 +171,13 @@ const bothTake = (token) => ({
 })
 const bothKeep = () => bothTake('old-token')
 
-test('serverMatch: a household install matches by the server id or the address; strangers only by the address, under either scheme', (t) => {
+test('serverMatch: the address (and proven other names) on a household install; strangers only by the address, under either scheme', (t) => {
   instanceType(t, 'private')
   assert.deepEqual(connect.serverMatch(probeOf('https://jelly.example.com', 'server-1'), loginOf('server-1')), {
-    OR: [{ jellyfinServerId: 'server-1' }, { jellyfinServerUrl: 'https://jelly.example.com' }],
+    OR: [{ jellyfinServerUrl: 'https://jelly.example.com' }],
+  }, 'the id a server reports is never matched on its own')
+  assert.deepEqual(connect.serverMatch(probeOf('http://192.168.1.20:8096', 'server-1'), loginOf('server-1'), ['https://jelly.example.com']), {
+    OR: [{ jellyfinServerUrl: 'http://192.168.1.20:8096' }, { jellyfinServerUrl: 'https://jelly.example.com' }],
   })
   instanceType(t, 'public')
   const spellings = { OR: [{ jellyfinServerUrl: 'https://jelly.example.com' }, { jellyfinServerUrl: 'http://jelly.example.com' }] }
@@ -279,9 +288,11 @@ test('rememberSignIn: the other scheme for the same address finds the same rows 
   assert.deepEqual(storedTokens(other), bothKeep())
 })
 
-test('rememberSignIn: on a household install the server\'s id still finds the same server by another name', async (t) => {
+test('rememberSignIn: on a household install the same server by another name is found once the stored server accepts the new token', async (t) => {
   instanceType(t, 'private')
   quietRecoveryNotice(t)
+  // The stored address and the LAN name are one server: a token from either works on both.
+  fakeServers(t, { 'https://jelly.example.com': { id: 'server-1' }, 'http://192.168.1.20:8096': { id: 'server-1' } })
   const db = twoHouseholds()
   await connect.rememberSignIn(db, encrypt, probeOf('http://192.168.1.20:8096', 'server-1'), loginOf('server-1'))
   assert.deepEqual(storedTokens(db), bothTake('fresh-token'))
@@ -291,7 +302,17 @@ test('rememberSignIn: on a household install the server\'s id still finds the sa
   assert.deepEqual(storedTokens(other), bothKeep())
 })
 
-test('findJellyfinUser: the same address (either scheme) on an instance serving strangers; the server id as well on a household install', async (t) => {
+test('rememberSignIn: on a household install a server at another address claiming the same ids changes nothing', async (t) => {
+  instanceType(t, 'private')
+  // The stored server does not know the token the other one handed out.
+  fakeServers(t, { 'https://jelly.example.com': { id: 'server-1', token: 'real-token' } })
+  const db = twoHouseholds()
+  await connect.rememberSignIn(db, encrypt, probeOf('https://evil.example.com', 'server-1'), { ...loginOf('server-1'), token: 'attackers-token' })
+  assert.deepEqual(storedTokens(db), bothKeep())
+})
+
+test('findJellyfinUser: the same address (either scheme) on an instance serving strangers; a proven other name as well on a household install', async (t) => {
+  fakeServers(t, { 'https://jelly.example.com': { id: 'server-1' } })
   const db = twoHouseholds()
   instanceType(t, 'public')
   assert.equal((await connect.findJellyfinUser(db, 'acc1', loginOf('server-1'), probeOf('https://jelly.example.com', 'server-1')))?.id, 'vic1')
@@ -411,12 +432,32 @@ test('portal sign-in, instance serving strangers: the other scheme finds the sam
   assert.deepEqual(storedTokens(db), bothTake('plain-http-token'), 'the other port\'s token went nowhere')
 })
 
-test('portal sign-in, household install: the server\'s id finds the person at another address', async (t) => {
+test('portal sign-in, household install: a server claiming the household server\'s id signs nobody in and changes nothing', async (t) => {
   instanceType(t, 'private')
   const db = twoHouseholds()
   dropRows(db.user, (u) => u.accountId !== 'acc1') // one household, as a private install is
   const portal = await servePortal(t, db)
-  fakeServers(t, { 'http://192.168.1.20:8096': { id: 'server-1', token: 'lan-token' } }, [portal.base])
+  fakeServers(t, {
+    'https://jelly.example.com': { id: 'server-1', token: 'real-token' },
+    // Says it is server-1 and signs anyone in as the member.
+    'https://evil.example.com': { id: 'server-1', token: 'attackers-token' },
+  }, [portal.base])
+  const before = JSON.stringify(db)
+
+  const refused = await portal.signIn('https://evil.example.com')
+  assert.equal(refused.status, 403)
+  assert.equal(refused.body.error, 'USER_NOT_FOUND')
+  assert.equal(refused.body.sessionToken, undefined)
+  assert.equal(JSON.stringify(db), before, 'no address or token was rewritten')
+})
+
+test('portal sign-in, household install: the same server at another address finds the person', async (t) => {
+  instanceType(t, 'private')
+  const db = twoHouseholds()
+  dropRows(db.user, (u) => u.accountId !== 'acc1') // one household, as a private install is
+  const portal = await servePortal(t, db)
+  // One server by two names: the token it gives on the LAN name works at the stored address too.
+  fakeServers(t, { 'http://192.168.1.20:8096': { id: 'server-1', token: 'lan-token' }, 'https://jelly.example.com': { id: 'server-1', token: 'lan-token' } }, [portal.base])
 
   const ok = await portal.signIn('http://192.168.1.20:8096')
   assert.equal(ok.status, 200)

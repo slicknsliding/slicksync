@@ -1,8 +1,14 @@
 'use client';
 
+import { useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 import { Card } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
+import { ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { V2Button } from '@/components/v2/V2Bits';
+import { V2Rows, V2SetRow } from '@/components/v2/SettingsV2';
+import type { PageArrange } from '@/lib/arrange';
 
 const link = 'text-primary hover:underline';
 
@@ -13,6 +19,106 @@ const PEOPLE = [
   { name: '0xConstant1', href: 'https://github.com/0xConstant1', what: <>created LumiereDB.</> },
   { name: 'cedya77', href: 'https://github.com/cedya77/aiometadata', what: <>created AIOMetadata, whose LumiereDB guide this follows.</> },
 ];
+
+const link2 = 'text-primary hover:underline';
+
+function Credits() {
+  return (
+    <ul className="space-y-1.5 text-sm text-muted">
+      {PEOPLE.map((p) => (
+        <li key={p.name}>
+          <a className={`${link2} font-medium`} href={p.href} target="_blank" rel="noreferrer">{p.name}</a> - {p.what}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DataSources({ lumiere }: { lumiere: boolean }) {
+  return (
+    <ul className="space-y-1.5 text-sm text-muted">
+      {lumiere && (
+        <li>
+          Titles from LumiereDB come from IMDb&apos;s public datasets, under IMDb&apos;s terms for personal,
+          non-commercial use - which ask for this exact line: &ldquo;Information courtesy of IMDb
+          (<a className={link2} href="https://www.imdb.com" target="_blank" rel="noreferrer">https://www.imdb.com</a>). Used with permission.&rdquo;
+        </li>
+      )}
+      <li>This product uses the TMDB API but is not endorsed or certified by TMDB.</li>
+      <li>Titles and posters also come from Cinemeta and, with your own keys, OMDb, MDBList and RPDB.</li>
+    </ul>
+  );
+}
+
+function PrivacyText({ shared }: { shared: boolean }) {
+  return (
+    <div className="space-y-2 text-sm text-muted">
+      <p>
+        Everything SlickSync keeps - accounts, watch history, keys - is stored in this instance&apos;s own database,
+        on the server it runs on. Nothing is sent back to the SlickSync project or its developer. It only talks to
+        the services you connect (Stremio, Nuvio, Jellyfin, TMDB and the rest) and to GitHub, to check for new versions.
+      </p>
+      {shared && (
+        <div className="rounded-xl border border-default p-3 space-y-2">
+          <p className="text-default font-medium">This is a shared instance, run by someone else</p>
+          <p>They run the server, so they can reach what&apos;s stored on it - not only what SlickSync shows them:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>
+              Their admin page lists every account: its id and name, when it was made and last signed in to, and how
+              many people, groups, addons and records it has. From there they can switch an account off, delete it,
+              or send every account a notice.
+            </li>
+            <li>
+              The database holds what you add here: your sign-ins to Stremio, Nuvio and the rest, addons, watch
+              history, catalogs, settings and keys. Sign-ins and keys are encrypted, but with this server&apos;s own
+              key, so whoever runs the server could read them.
+            </li>
+            <li>The server&apos;s logs note what SlickSync is doing, such as failed syncs - some lines name a person or a title. Email addresses are left out of them.</li>
+          </ul>
+          <p>Nothing else is collected, and nothing goes to the SlickSync project. Use a shared instance run by someone you trust.</p>
+          <p>
+            To cut off access at any time, delete your account here (Settings → Security → Delete Account). Then sign
+            SlickSync out from your Stremio, Nuvio or Jellyfin account, or change that account&apos;s password, so its
+            old sign-in stops working.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const ABOUT_KEYS = ['about'];
+
+/** Settings -> About in the v2 page design: version, your data, credits, data sources and privacy as short rows. */
+export function AboutV2({ arrange, lumiere, shared }: { arrange: PageArrange; lumiere: boolean; shared: boolean }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const version = (process.env.NEXT_PUBLIC_APP_VERSION as string) || 'dev';
+  const toggle = (id: string, show: string) => (
+    <V2Button onClick={() => setOpen(open === id ? null : id)}>{open === id ? 'Hide' : show}</V2Button>
+  );
+  const below = (id: string, body: ReactNode) => (open === id ? body : undefined);
+  const about = (
+    <ArrangeSection key="about" arrange={arrange} id="about" title="SlickSync" meta={`v${version}`} noun="section">
+      <V2Rows>
+        <V2SetRow title="Version" line={`v${version}`} control={<Link href="/changelog" className="v2-btn">What’s new</Link>} />
+        <V2SetRow title="Your data" line="Everything stays in this server’s own database. Backups and its size are on Tasks." control={<Link href="/tasks" className="v2-btn">Open Tasks</Link>} />
+        <V2SetRow title="Credits" line="The open-source projects SlickSync is built on" control={toggle('credits', 'Show')} below={below('credits', <Credits />)} />
+        <V2SetRow title="Data sources" line="Where titles, posters and ratings come from" control={toggle('data', 'Show')} below={below('data', <DataSources lumiere={lumiere} />)} />
+        <V2SetRow title="Privacy" line="What leaves this server, and why" control={toggle('privacy', 'Read')} below={below('privacy', <PrivacyText shared={shared} />)} />
+      </V2Rows>
+      <div className="mt-4 text-xs text-subtle space-y-1">
+        <p>© 2025-present slicknsliding. SlickSync is free software under the MIT licence, built on Syncio © 2025 neur0.</p>
+        <p>SlickSync isn&apos;t affiliated with or endorsed by Stremio, Nuvio, Jellyfin, IMDb or TMDB.</p>
+      </div>
+    </ArrangeSection>
+  );
+  return (
+    <>
+      {arrange.shown.map((k) => (k === 'about' ? about : null))}
+      <HiddenTray arrange={arrange} labelOf={() => 'SlickSync'} />
+    </>
+  );
+}
 
 /** Settings -> About: who SlickSync is built on, and where its data comes from. */
 export function AboutPanel({ lumiere, shared }: { lumiere: boolean; shared: boolean }) {

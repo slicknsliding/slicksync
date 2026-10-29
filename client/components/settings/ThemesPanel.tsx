@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, memo } from 'react';
+import { PersonalTouches } from '@/components/settings/PersonalTouches';
+import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
+import { MenuArranger } from '@/components/settings/MenuArranger';
+import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -16,6 +19,12 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { toast } from '@/components/ui/Toast';
+import { ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { useMenuArrangement, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { arrangeMenu } from '@/lib/adminMenu';
+import { PAGE_HEADER_MODES, usePageHeader, type PageHeaderMode } from '@/lib/pageHeader';
+import { V2SetRow, V2Seg, V2Switch } from '@/components/v2/SettingsV2';
+import { V2Button } from '@/components/v2/V2Bits';
 import {
   PaintBrushIcon,
   SwatchIcon,
@@ -459,11 +468,169 @@ const AccountButtonCard = memo(function AccountButtonCard({
   );
 });
 
+export const THEME_KEYS = ['colours', 'layout', 'build'];
+
+// One block of the Themes tab. Classic draws it as the card it always was; the
+// v2 page design draws it as an arrangeable section (so the account can move,
+// fold and hide it), in the order the account chose.
+function ThemeBlock({ v2, arrange, id, title, meta, icon, tone, blurb, badge, delay, rows, children }: {
+  v2: boolean;
+  arrange?: PageArrange;
+  id: string;
+  title: string;
+  meta?: string;
+  icon: ReactNode;
+  tone: string;
+  blurb: string;
+  badge?: ReactNode;
+  delay?: number;
+  /** v2: the content is short rows, so the box carries dividers instead of padding. */
+  rows?: boolean;
+  children: ReactNode;
+}) {
+  if (v2 && arrange) {
+    const at = arrange.shown.indexOf(id);
+    if (at < 0) return null;
+    return (
+      <div style={{ order: at }} className="mb-[26px]">
+        <ArrangeSection arrange={arrange} id={id} title={title} meta={meta} noun="section">
+          <div className={rows ? 'v2-box px-[18px] py-0.5 divide-y' : 'v2-box v2-box-pad'} style={{ borderColor: 'var(--color-surface-border)' }}>
+            {children}
+          </div>
+        </ArrangeSection>
+      </div>
+    );
+  }
+  return (
+    <PageSection delay={delay} className="mb-6">
+      <Card padding="lg">
+        <div className="flex items-center gap-3 mb-5">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${tone}`}>
+            {icon}
+          </div>
+          <div className={badge ? 'flex-1' : undefined}>
+            <h3 className="text-base font-semibold font-display text-default">{title}</h3>
+            <p className="text-xs text-muted">{blurb}</p>
+          </div>
+          {badge}
+        </div>
+        {children}
+      </Card>
+    </PageSection>
+  );
+}
+
+// Your menu, in the v2 design: a row that opens the menu arranger when wanted.
+function MenuFold({ v2, children }: { v2: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const { menu } = useMenuArrangement();
+  if (!v2) return <>{children}</>;
+  const { shown, more } = arrangeMenu(menu);
+  return (
+    <V2SetRow
+      title="Your menu"
+      line={`${shown.length} page${shown.length === 1 ? '' : 's'}${more.length ? `, ${more.length} in More` : ''}. Put them in order, choose what sits in More, and set how the bar is laid out.`}
+      control={<V2Button onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Arrange'}</V2Button>}
+      below={open ? children : undefined}
+    />
+  );
+}
+
+// v2: the More menu switch on its own row, so it's found without opening the arranger.
+function MoreMenuRow({ v2 }: { v2: boolean }) {
+  const { menu, setMenu } = useMenuArrangement();
+  if (!v2) return null;
+  const on = menu.more !== false;
+  return (
+    <V2SetRow
+      title="More menu"
+      line="Pages you hide go into a More menu at the end of the bar. Turn it off to hide them completely; they still open from search."
+      control={<V2Switch on={on} label="More menu" onChange={(v) => setMenu((m) => ({ ...m, more: v ? undefined : false }))} />}
+    />
+  );
+}
+
+// The title row at the top of each page: one slim row, the big centred title, or
+// just the buttons. Phones open on Compact and wide screens on Full until a
+// choice is saved; it applies to every page in either layout.
+const PAGE_HEADER_LINE = 'The title and buttons at the top of each page. Compact is one slim row; Full is the big centred title; Minimal drops the title and keeps just the buttons.';
+function PageHeaderRow({ v2 }: { v2: boolean }) {
+  const { mode, setMode } = usePageHeader();
+  if (v2) {
+    return (
+      <V2SetRow
+        title="Page header"
+        line={PAGE_HEADER_LINE}
+        control={<V2Seg<PageHeaderMode> label="Page header" value={mode} options={PAGE_HEADER_MODES} onChange={setMode} />}
+      />
+    );
+  }
+  return (
+    <div className="mt-5 rounded-xl p-4" style={{ border: '1px solid var(--color-surface-border)' }}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Page header</p>
+          <p className="text-xs text-muted">{PAGE_HEADER_LINE}</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Page header">
+          {PAGE_HEADER_MODES.map((o) => (
+            <button key={o.id} type="button" role="radio" aria-checked={mode === o.id} className={mode === o.id ? 'on' : ''} onClick={() => setMode(o.id)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A theme as a swatch: its colours, its name under it, a ring when it's the one in use.
+function ThemeSwatch({ name, bg, surface, primary, secondary, selected, onSelect, onDelete }: {
+  name: string; bg: string; surface: string; primary: string; secondary: string;
+  selected: boolean; onSelect: () => void; onDelete?: () => void;
+}) {
+  return (
+    <div className="relative w-[84px]">
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        aria-label={`${name} theme${selected ? ', in use' : ''}`}
+        title={name}
+        className="block w-full text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span
+          className="block h-11 rounded-xl overflow-hidden relative"
+          style={{ background: bg, outline: selected ? '2px solid var(--color-primary)' : '1px solid var(--color-surface-border)', outlineOffset: selected ? 2 : 0 }}
+        >
+          <span className="absolute left-0 top-0 bottom-0 w-3" style={{ background: surface }} />
+          <span className="absolute left-5 right-2 top-2 h-2 rounded-full" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+          <span className="absolute left-5 w-4 h-3 bottom-2 rounded" style={{ background: surface }} />
+          <span className="absolute left-11 w-3 h-3 bottom-2 rounded" style={{ background: primary, opacity: 0.55 }} />
+        </span>
+        <span className="block text-[12px] font-medium mt-2 truncate text-default">{name}</span>
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Delete ${name}`}
+          title={`Delete ${name}`}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center bg-surface-hover hover:bg-red-500/70 hover:text-white text-muted transition-colors"
+          style={{ border: '1px solid var(--color-surface-border)' }}
+        >
+          <TrashIcon className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 // The whole Themes UI, extracted from what used to be its own page so it can
 // live inside Settings as a section (user's call - it is a preference, and it
 // was the only preference living outside Settings). `embedded` drops the page
 // chrome - header, heading and page padding - since Settings supplies those.
-export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
+export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean; arrange?: PageArrange }) {
   const {
     themeId, setTheme,
     isCustom, activeCustomTheme, savedCustomThemes,
@@ -471,7 +638,10 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
     previewCustom, cancelPreview,
   } = useTheme();
   const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
-  const { viewMode, setViewMode } = useDefaultViewMode();
+  const { viewMode, setViewMode } = useDefaultViewMode({ global: true });
+  // The v2 page design draws Settings → Themes as arrangeable sections.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && embedded && !!arrange;
   // Confirmation modal for deleting a saved custom theme.
   const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
 
@@ -524,9 +694,9 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
     const code = encodeThemeShareCode(buildDraft(), builderName.trim() || activeCustomTheme?.name || 'My theme');
     try {
       await copyToClipboard(code);
-      toast.success('Theme code copied - paste it anywhere to share');
+      toast.success('Theme code copied', { line: 'Paste it anywhere to share.' });
     } catch {
-      toast.error('Failed to copy - your browser may be blocking clipboard access');
+      toast.error('Couldn’t copy the code', { line: 'Your browser may be blocking clipboard access.' });
     }
   };
 
@@ -580,25 +750,31 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
       )}
 
       <div className={embedded ? '' : (layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8')}>
-      <div className={embedded ? '' : (layoutMode === 'nebula' ? 'mx-auto' : 'max-w-4xl')} style={!embedded && layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
+      <div className={v2 ? 'flex flex-col' : embedded ? '' : (layoutMode === 'nebula' ? 'mx-auto' : 'max-w-4xl')} style={!embedded && layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {!embedded && layoutMode === 'nebula' && (
         <NebulaPageHeading title="Themes" subtitle="Pick a built-in theme, or build your own" />
       )}
 
         {/* Layout - structure, independent of Theme's color choice. Scoped
             to Dashboard + Activity today; other pages are unaffected. */}
-        <PageSection className="mb-6">
-          <Card padding="lg">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
-                <Squares2X2Icon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold font-display text-default">Layout</h3>
-                <p className="text-xs text-muted">Choose how Dashboard and Activity are arranged</p>
-              </div>
-            </div>
+        <ThemeBlock v2={v2} arrange={arrange} id="layout" title="Layout" meta={layoutModeMeta[layoutMode].name} rows icon={<Squares2X2Icon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="Choose how Dashboard and Activity are arranged">
 
+            {v2 ? (
+              <>
+                <V2SetRow
+                  title="Layout"
+                  line="Top Navi across the top, or the Original sidebar. Applies to Dashboard and Activity."
+                  control={<V2Seg label="Layout" value={layoutMode} options={layoutModeIds.map((id) => ({ id, label: layoutModeMeta[id].name }))} onChange={setLayoutMode} />}
+                />
+                {layoutMode === 'nebula' && (
+                  <V2SetRow
+                    title="Account button"
+                    line="Where your picture and account menu live in Top Navi. Original keeps it at the foot of the sidebar."
+                    control={<V2Seg label="Account button" value={accountButton} options={[...accountButtonIds].reverse().map((id) => ({ id, label: accountButtonMeta[id].name }))} onChange={setAccountButton} />}
+                  />
+                )}
+              </>
+            ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {layoutModeIds.map((id) => (
                 <LayoutModeCard
@@ -609,10 +785,11 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 />
               ))}
             </div>
+            )}
 
             {/* Account button - Top Navi only. Original always keeps it at the
                 foot of the sidebar, so there is nothing to choose there. */}
-            {layoutMode === 'nebula' && (
+            {!v2 && layoutMode === 'nebula' && (
               <>
                 <div className="mt-5 mb-2 flex flex-wrap items-baseline gap-x-2">
                   <h4 className="text-sm font-semibold text-default">Account button</h4>
@@ -635,13 +812,25 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
               </>
             )}
 
+            <PageDesignChoice v2={v2} />
+
+            <PageHeaderRow v2={v2} />
+
+            <MenuFold v2={v2}>
+              <MenuArranger topNavi={layoutMode === 'nebula'} />
+            </MenuFold>
+
+            <MoreMenuRow v2={v2} />
+
+            <PersonalTouches v2={v2} />
+
             {/* Moved here from Settings -> Other Settings - a display
                 arrangement choice belongs alongside Layout, not off on its
                 own page. */}
             <div className="flex items-center justify-between p-4 rounded-lg bg-subtle mt-3">
               <div>
-                <p className="font-medium text-sm text-default">Default View Mode</p>
-                <p className="text-xs text-muted">Choose how lists are displayed by default</p>
+                <p className="font-medium text-sm text-default">Grid or list</p>
+                <p className="text-xs text-muted">How every page shows its things. Pages no longer have their own switch.</p>
               </div>
               <div className="hidden md:block">
                 <ViewModeToggle
@@ -654,22 +843,47 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 Grid view only on mobile
               </span>
             </div>
-          </Card>
-        </PageSection>
+        </ThemeBlock>
 
         {/* Theme Selection */}
-        <PageSection delay={0.05} className="mb-6">
-          <Card padding="lg">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
-                <PaintBrushIcon className="w-5 h-5 text-primary" />
+        <ThemeBlock v2={v2} arrange={arrange} id="colours" title="Colours" meta={(themeMeta as Record<string, { name: string }>)[themeId]?.name ?? activeCustomTheme?.name} delay={0.05} icon={<PaintBrushIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="Choose your preferred color scheme">
+            {v2 ? (
+              <div className="flex flex-wrap gap-x-3.5 gap-y-4 items-start">
+                {themeIds.map((id) => (
+                  <ThemeSwatch
+                    key={id}
+                    name={themeMeta[id].name}
+                    bg={themeMeta[id].colors.bg}
+                    surface={themeMeta[id].colors.surface}
+                    primary={themeMeta[id].colors.primary}
+                    secondary={themeMeta[id].colors.secondary}
+                    selected={themeId === id}
+                    onSelect={() => setTheme(id)}
+                  />
+                ))}
+                {savedCustomThemes.map((t) => (
+                  <ThemeSwatch
+                    key={t.id}
+                    name={t.name}
+                    bg={themeMeta[t.base].colors.bg}
+                    surface={themeMeta[t.base].colors.surface}
+                    primary={t.primary}
+                    secondary={t.secondary}
+                    selected={themeId === t.id}
+                    onSelect={() => setTheme(t.id)}
+                    onDelete={() => setPendingDelete(t)}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={() => arrange?.fold('build', false)}
+                  className="v2-chip self-start"
+                  style={{ borderStyle: 'dashed', padding: '12px 14px', fontSize: 13 }}
+                >
+                  + Build your own
+                </button>
               </div>
-              <div>
-                <h3 className="text-base font-semibold font-display text-default">Theme</h3>
-                <p className="text-xs text-muted">Choose your preferred color scheme</p>
-              </div>
-            </div>
-
+            ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {themeIds.map((id) => (
                 <ThemeCard
@@ -692,24 +906,12 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
                 />
               ))}
             </div>
-          </Card>
-        </PageSection>
+            )}
+        </ThemeBlock>
 
         {/* Custom Theme builder - pick your own accent colors on top of any
             base theme's structure, live-preview, and save. */}
-        <PageSection delay={0.1} className="mb-6">
-          <Card padding="lg">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-secondary-muted">
-                <SwatchIcon className="w-5 h-5 text-secondary" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold font-display text-default">Build your own theme</h3>
-                <p className="text-xs text-muted">Pick a base for the background &amp; text, then your own accent colors. Preview updates live.</p>
-              </div>
-              {isCustom && <Badge variant="success" size="sm">Active</Badge>}
-            </div>
-
+        <ThemeBlock v2={v2} arrange={arrange} id="build" title="Build your own theme" meta={isCustom ? 'in use' : undefined} delay={0.1} icon={<SwatchIcon className="w-5 h-5 text-secondary" />} tone="bg-secondary-muted" blurb="Pick a base for the background &amp; text, then your own accent colors. Preview updates live." badge={isCustom ? <Badge variant="success" size="sm">Active</Badge> : undefined}>
             <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
             <div className="space-y-5 lg:sticky lg:top-6">
               {/* Live mockup — a small "app screenshot" rendered with the
@@ -1190,8 +1392,12 @@ export function ThemesPanel({ embedded = false }: { embedded?: boolean }) {
               </section>
             </div>
             </div>
-          </Card>
-        </PageSection>
+        </ThemeBlock>
+        {v2 && arrange && (
+          <div style={{ order: 99 }}>
+            <HiddenTray arrange={arrange} labelOf={(k) => ({ colours: 'Colours', layout: 'Layout', build: 'Build your own theme' } as Record<string, string>)[k] ?? k} />
+          </div>
+        )}
       </div>
       </div>
 

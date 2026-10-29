@@ -682,8 +682,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         await household.refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs: 10 * 1000 }).catch((e) => console.warn('[Jellyfin] household check failed:', e?.message));
         main = await household.describeMain(decrypt, owner).catch(() => null);
       }
+      await household.repairEchoedHouseholds(prisma, accountId).catch((e) => console.warn('[Jellyfin] household tidy failed:', e?.message));
       const profiles = person.providerType === 'jellyfin' ? await household.describeHousehold(prisma, person.id) : [];
-      const membership = await prisma.jellyfinProfile.findFirst({ where: { ownUserId: person.id, accountId } });
+      const membership = await prisma.jellyfinProfile.findFirst({ where: { ownUserId: person.id, accountId }, orderBy: { createdAt: 'asc' } });
+      // Someone separated out of a household belongs to it; they do not run another.
+      const separatedMember = !!membership && await household.isSeparatedMember(prisma, person.id);
       let partOf = null;
       if (membership) {
         const owner = await prisma.user.findFirst({ where: { id: membership.ownerUserId, accountId }, select: { id: true, username: true } });
@@ -693,7 +696,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       // Household users can be added, and PINs changed, here (utils/aioHousehold.js,
       // utils/aiometadataHousehold.js) - PINs on AIOMetadata only once it has them.
       const aiom = require('../utils/aiometadataHousehold');
-      const canManage = require('../utils/aioHousehold').canManage(full) || aiom.canManage(full);
+      const canManage = !separatedMember && (require('../utils/aioHousehold').canManage(full) || aiom.canManage(full));
       const canPin = canManage && (full.jellyfinServerKind !== 'aiometadata' || await aiom.hasPins(full));
       // Who is kept separate, with their own sign-in address (AIOStreams only).
       const personal = full.jellyfinServerKind === 'aiostreams' && profiles.length

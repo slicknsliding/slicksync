@@ -312,7 +312,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
 
   const copyAddress = async (url: string) => {
     if (await copyToClipboard(url)) toast.success('Address copied');
-    else toast.error('Could not copy - select the address and copy it by hand');
+    else toast.error('Couldn’t copy the address', { line: 'Select it and copy it by hand.' });
   };
 
   if (!profiles || (profiles.length === 0 && !canManage)) return null;

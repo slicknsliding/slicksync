@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type Ref } from 'react';
+import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -14,11 +15,20 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
+import { useVaultDrag } from '@/components/providers/VaultDragContext';
+import { useIsPhoneWidth } from '@/lib/pageHeader';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { SortableItem, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeGrip, HiddenTray } from '@/components/ui/Arrange';
+import { CatalogsV2 } from '@/components/v2/CatalogsV2';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { avatarColorFill } from '@/components/ui/Avatar';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
-  ShieldExclamationIcon,
+  ShieldExclamationIcon, EyeIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/solid';
 import { JellyfinLogo } from '@/components/jellyfin/JellyfinLogo';
@@ -34,6 +44,102 @@ function coverColorStyle(colorIndex: number): React.CSSProperties {
 // a popup - browsing a list's contents is a destination, not a transient
 // action). Titles are ADDED to a list from the "Add to list" control on a
 // title's detail modal elsewhere.
+
+// Catalogs' Collections pills: the logo's size sets the whole pill (the default
+// is the full size), and each side of the title is a drop area while arranging.
+const PILL_MIN = 26;
+const PILL_MAX = 44;
+// A drop spot's id: which row (PC: left / right of the title; phone: above / below it) and where in it.
+const SPOT = 'catalog-spot:';
+
+function useDragRegistry() {
+  try {
+    return useVaultDrag();
+  } catch {
+    return null;
+  }
+}
+
+type PillAlign = 'left' | 'center' | 'right';
+type PillRowId = 'left' | 'right' | 'above' | 'below';
+const JUSTIFY: Record<PillAlign, string> = { left: 'justify-start', center: 'justify-center', right: 'justify-end' };
+const SPOT_ALIGNS: PillAlign[] = ['left', 'center', 'right'];
+const SPOT_LABEL: Record<PillAlign, string> = { left: 'Left', center: 'Center', right: 'Right' };
+
+/** One place a dragged pill can land; it lights up while the pill is over it. */
+function PillSpot({ row, align }: { row: PillRowId; align: PillAlign }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${SPOT}${row}:${align}` });
+  return <div ref={setNodeRef} className={`collection-spot${isOver ? ' collection-spot-on' : ''}`}>{SPOT_LABEL[align]}</div>;
+}
+
+/**
+ * A row of Collections pills. While a pill is being dragged it shows three
+ * spots to drop on (Left, Center, Right); otherwise just the pills, lined up
+ * the way the last drop said. An empty row only shows while dragging.
+ */
+function PillRow({ row, align, dragging, wide, empty, children }: {
+  row: PillRowId;
+  align: PillAlign;
+  dragging: boolean;
+  /** A row of its own (left of the title, or a phone): it spans the width, so alignment shows. */
+  wide: boolean;
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  if (empty && !dragging) return null;
+  // Beside the bell (right of the title on a wide screen) the row only spans more than its pills when it isn't pushed right.
+  const width = wide ? 'w-full' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
+  return (
+    <div data-ph-keep className={`collection-pills flex flex-col gap-2 ${width}`}>
+      {!empty && <div className={`flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
+      {dragging && <div className="grid grid-cols-3 gap-2 w-full">{SPOT_ALIGNS.map((a) => <PillSpot key={a} row={row} align={a} />)}</div>}
+    </div>
+  );
+}
+
+/** The ↔ button beside a pill's grip and eye: drag it sideways (or press the arrows) to make that pill bigger or smaller. */
+function PillResize({ size, label, onLive, onDone }: { size: number; label: string; onLive: (n: number | null) => void; onDone: (n: number) => void }) {
+  const fit = (n: number) => Math.max(PILL_MIN, Math.min(PILL_MAX, Math.round(n)));
+  return (
+    <button
+      type="button"
+      className="arrange-icon"
+      style={{ cursor: 'ew-resize', touchAction: 'none' }}
+      aria-label={`Size of ${label}: drag sideways, or press the left and right arrows`}
+      title="Drag sideways to resize"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        btn.setPointerCapture(e.pointerId);
+        const x0 = e.clientX;
+        let now = size;
+        const move = (ev: PointerEvent) => { now = fit(size + (ev.clientX - x0) / 5); onLive(now); };
+        const up = () => {
+          btn.removeEventListener('pointermove', move);
+          btn.removeEventListener('pointerup', up);
+          btn.removeEventListener('pointercancel', up);
+          onLive(null);
+          if (now !== size) onDone(now);
+        };
+        btn.addEventListener('pointermove', move);
+        btn.addEventListener('pointerup', up);
+        btn.addEventListener('pointercancel', up);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        e.stopPropagation();
+        onDone(fit(size + (e.key === 'ArrowRight' ? 2 : -2)));
+      }}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+        <path d="M7 8l-4 4 4 4M17 8l4 4-4 4M3 12h18" />
+      </svg>
+    </button>
+  );
+}
 
 export default function ListsPage() {
   const { layoutMode } = useLayoutMode();
@@ -133,7 +239,7 @@ export default function ListsPage() {
         setImportUrl('');
         setImportName('');
         setShowImport(false);
-        toast.success(`Imported "${created.name}" (${result.added} title${result.added !== 1 ? 's' : ''})`);
+        toast.success(`Imported ${created.name}`, { line: `${result.added} title${result.added !== 1 ? 's' : ''} added.` });
         router.push(`/catalogs/${created.id}`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Failed to import that code');
@@ -148,11 +254,11 @@ export default function ListsPage() {
       setImportUrl('');
       setImportName('');
       setShowImport(false);
-      toast.success(
-        list.truncated
-          ? `Imported ${list.items.length} of ${list.totalAvailable} titles (capped at ${list.items.length})`
-          : `Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`
-      );
+      if (list.truncated) {
+        toast.warning(`Imported ${list.name}`, { line: `Only the first ${list.items.length} of ${list.totalAvailable} titles fit.` });
+      } else {
+        toast.success(`Imported ${list.name}`, { line: `${list.items.length} title${list.items.length !== 1 ? 's' : ''} added.` });
+      }
       router.push(`/catalogs/${list.id}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to import catalog');
@@ -169,7 +275,7 @@ export default function ListsPage() {
       setImportName('');
       setSelectedSimklUserId('');
       setShowImport(false);
-      toast.success(`Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`);
+      toast.success(`Imported ${list.name}`, { line: `${list.items.length} title${list.items.length !== 1 ? 's' : ''} added.` });
       router.push(`/catalogs/${list.id}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to import from SIMKL');
@@ -224,7 +330,38 @@ export default function ListsPage() {
     setLists((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
   };
 
-  const heading = { title: 'Catalogs', subtitle: 'Your custom collections of movies and shows.' };
+  // v2: posters first, one card per catalog; Arrange moves and hides them
+  // on this page (lib/arrange.tsx). Pinned catalogs start at the front.
+  // On a TV the page starts the remote's focus tracking first, and gets the
+  // Classic page like every other page (v2's drag and menus need a pointer).
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  // Something the remote can land on and press; elsewhere it is drawn as it is.
+  const onTV = (node: React.ReactNode, onEnter: () => void, key?: string) =>
+    isTV ? <TVFocusable key={key} onEnterPress={onEnter}>{node}</TVFocusable> : node;
+  const { viewMode, setViewMode } = useDefaultViewMode();
+  const catalogKeys = useMemo(() => [...lists.filter((l) => l.pinned), ...lists.filter((l) => !l.pinned)].map((l) => l.id), [lists]);
+  const catalogArrangeOwn = usePageArrangement('catalogs', catalogKeys);
+  // The two collection pills are arranged too: moved and hidden one by one,
+  // by their own keys, while the page is being arranged.
+  const collectionKeys = useMemo(() => ['nuvio', 'jellyfin'], []);
+  const collectionArrange = usePageArrangement('catalogs-collections', collectionKeys, { layout: 'grid' });
+  const catalogArrange = {
+    ...catalogArrangeOwn,
+    isDefault: catalogArrangeOwn.isDefault && collectionArrange.isDefault,
+    reset: () => { catalogArrangeOwn.reset(); collectionArrange.reset(); },
+    // Cancel puts everything back (both arrangements share one Undo history) and ends arranging for both.
+    cancel: () => { catalogArrangeOwn.cancel(); collectionArrange.setArranging(false); },
+    setArranging: (v: React.SetStateAction<boolean>) => {
+      const on = typeof v === 'function' ? v(catalogArrangeOwn.arranging) : v;
+      catalogArrangeOwn.setArranging(on);
+      collectionArrange.setArranging(on);
+    },
+  };
+
+  const heading = { title: 'Catalogs', subtitle: v2 && loaded ? `${lists.length} catalog${lists.length === 1 ? '' : 's'} of your own` : 'Your custom collections of movies and shows.' };
 
   // Nuvio Collections entry point - deliberately not a card in the page
   // body (was too easy to miss as a full-width button there, then too
@@ -238,7 +375,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
+      className="collection-pill flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
         // A logo lockup (icon chip + wordmark), same shape as the app's own
         // Sidebar branding, sized up and given real breathing room per
@@ -255,14 +392,14 @@ export default function ListsPage() {
       <span
         className="flex items-center justify-center rounded-2xl shrink-0"
         style={{
-          width: 44,
-          height: 44,
+          width: 'var(--ps, 44px)',
+          height: 'var(--ps, 44px)',
           background: 'linear-gradient(135deg, #2E9FE0 0%, #6C5CE7 55%, #C24FE0 100%)',
         }}
       >
         <PlayIcon className="w-5 h-5 text-white ml-0.5" />
       </span>
-      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(147, 197, 253)' }}>
+      <span className="collection-pill-word font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(147, 197, 253)' }}>
         Nuvio Collections
       </span>
     </button>
@@ -276,7 +413,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/aiostreams-collections')}
-      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
+      className="collection-pill flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
         background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(190, 110, 215, 0.95), rgba(0, 180, 235, 0.95)) border-box',
         border: '1.5px solid transparent',
@@ -285,11 +422,11 @@ export default function ListsPage() {
     >
       <span
         className="flex items-center justify-center rounded-2xl shrink-0"
-        style={{ width: 44, height: 44, background: '#000B25', border: '1px solid rgba(120, 130, 220, 0.35)' }}
+        style={{ width: 'var(--ps, 44px)', height: 'var(--ps, 44px)', background: '#000B25', border: '1px solid rgba(120, 130, 220, 0.35)' }}
       >
         <JellyfinLogo />
       </span>
-      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate">
+      <span className="collection-pill-word font-display font-bold text-lg sm:text-xl tracking-tight truncate">
         {/* A plain colour, not gradient-clipped text: page-recolouring
             extensions darken the gradient "background" behind the letters. */}
         <span style={{ color: 'rgb(220, 226, 255)' }}>Jellyfin Collections</span>
@@ -300,15 +437,117 @@ export default function ListsPage() {
   // The pills share one width so they read as a set: side by side when the
   // header's left column has room, wrapping and left-aligned when it doesn't
   // (half-width windows, phones), shrinking on the narrowest phones.
-  const collectionsButtons = (
+  const collectionPills: Record<string, { label: string; node: React.ReactNode }> = {
+    nuvio: { label: 'Nuvio Collections', node: nuvioCollectionsButton },
+    jellyfin: { label: 'Jellyfin Collections', node: aiostreamsCollectionsButton },
+  };
+  // Each pill sits in a row (wide screens: left or right of the title; a phone:
+  // above or below it), at its own size; each row lines up as its last drop said.
+  const phone = useIsPhoneWidth();
+  const sharedSize = collectionArrange.cardSizing('pills').w ?? null; // one size for both, from before
+  const [pillLive, setPillLive] = useState<{ key: string; size: number } | null>(null);
+  const sizeOf = (key: string) => (pillLive?.key === key ? pillLive.size : collectionArrange.cardSizing(`pill-${key}`).w ?? sharedSize);
+  const setPillSize = (key: string, n: number) => collectionArrange.setCardSizing(`pill-${key}`, { w: n >= PILL_MAX ? undefined : n });
+  const sideDefaultRow = (key: string): PillRowId => {
+    const side = collectionArrange.sideOf(key);
+    return collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, side === 'left' ? 'above' : 'below');
+  };
+  const rowOf = (key: string): PillRowId => (phone
+    ? collectionArrange.placeOf<PillRowId>(`phone-row-${key}`, sideDefaultRow(key))
+    : collectionArrange.sideOf(key));
+  const alignDefault = (row: PillRowId): PillAlign => (row === 'right' || row === 'below' ? 'right' : 'left');
+  const alignOf = (row: PillRowId) => collectionArrange.placeOf<PillAlign>(`${phone ? 'phone-' : ''}align-${row}`, alignDefault(row));
+  // While a pill is being dragged, every row shows where it can land.
+  const [pillDragging, setPillDragging] = useState(false);
+  const pillPrefix = collectionArrange.sort.prefix;
+  useDndMonitor({
+    onDragStart: (e) => { if (String(e.active.id).startsWith(pillPrefix)) setPillDragging(true); },
+    onDragEnd: () => setPillDragging(false),
+    onDragCancel: () => setPillDragging(false),
+  });
+  // Dropping on a spot puts the pill in that row and lines the row up that way;
+  // dropping on another pill puts it in that pill's row.
+  const dragRegistry = useDragRegistry();
+  const pillState = useRef({ arrange: collectionArrange, phone, rowOf });
+  useEffect(() => { pillState.current = { arrange: collectionArrange, phone, rowOf }; });
+  useEffect(() => {
+    if (!dragRegistry) return;
+    return dragRegistry.registerDragEndHandler((e) => {
+      const active = String(e.active.id);
+      const over = e.over ? String(e.over.id) : '';
+      if (!active.startsWith(pillPrefix) || !over) return;
+      const key = active.slice(pillPrefix.length);
+      const { arrange: arr, phone: onPhone, rowOf: rowNow } = pillState.current;
+      let row: PillRowId | null = null;
+      if (over.startsWith(SPOT)) {
+        const [r, a] = over.slice(SPOT.length).split(':') as [PillRowId, PillAlign];
+        row = r;
+        arr.setPlace(`${onPhone ? 'phone-' : ''}align-${r}`, a, r === 'right' || r === 'below' ? 'right' : 'left');
+      } else if (over.startsWith(pillPrefix)) {
+        row = rowNow(over.slice(pillPrefix.length));
+      }
+      if (!row || row === rowNow(key)) return;
+      if (onPhone) arr.setPlace(`phone-row-${key}`, row, '');
+      else arr.setSide(key, row as 'left' | 'right');
+    });
+  }, [dragRegistry, pillPrefix]);
+  const pillItem = (key: string) => {
+    const pill = collectionPills[key];
+    if (!pill) return null;
+    const size = sizeOf(key);
+    return (
+      <SortableItem key={key} scope={collectionArrange.sort} itemKey={key}>
+        {(d) => (
+          <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex flex-col items-center gap-1.5 min-w-0 max-w-full ${d.className}`}>
+            <span
+              className="collection-pill-size relative inline-flex min-w-0 max-w-full"
+              {...(size != null ? { 'data-ps': '' } : {})}
+              style={size != null ? ({ '--ps': `${size}px` } as CSSProperties) : undefined}
+            >
+              {pill.node}
+            </span>
+            {collectionArrange.arranging && (
+              <span className="flex items-center gap-1.5 shrink-0">
+                <ArrangeGrip drag={d} label={pill.label} />
+                <button type="button" className="arrange-icon" aria-label={`Hide ${pill.label}`} title="Hide on this page"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); collectionArrange.hide(key); }}>
+                  <EyeIcon className="w-4 h-4" />
+                </button>
+                {!isTV && (
+                  <PillResize size={size ?? PILL_MAX} label={pill.label}
+                    onLive={(n) => setPillLive(n == null ? null : { key, size: n })}
+                    onDone={(n) => setPillSize(key, n)} />
+                )}
+              </span>
+            )}
+          </div>
+        )}
+      </SortableItem>
+    );
+  };
+  const rowsOf = (rows: PillRowId[]) => rows.map((row) => (
+    <PillRow
+      key={row}
+      row={row}
+      align={alignOf(row)}
+      dragging={pillDragging && collectionArrange.arranging}
+      wide={phone || row === 'left'}
+      empty={!collectionArrange.shown.some((k) => rowOf(k) === row)}
+    >
+      {collectionArrange.shown.filter((k) => rowOf(k) === row).map(pillItem)}
+    </PillRow>
+  ));
+  const anyIn = (row: PillRowId) => collectionArrange.shown.some((k) => rowOf(k) === row) || (pillDragging && collectionArrange.arranging);
+  const collectionsButtons = !isTV ? (anyIn(phone ? 'above' : 'left') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
-      {nuvioCollectionsButton}
-      {aiostreamsCollectionsButton}
+      {onTV(nuvioCollectionsButton, () => router.push('/catalogs/nuvio-collections'))}
+      {onTV(aiostreamsCollectionsButton, () => router.push('/catalogs/aiostreams-collections'))}
     </div>
   );
+  const rightPills = !isTV && anyIn(phone ? 'below' : 'right') ? rowsOf([phone ? 'below' : 'right'])[0] : undefined;
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs' }]} className="text-xl font-semibold" />}
@@ -319,7 +558,8 @@ export default function ListsPage() {
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} />}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} trailing={phone ? undefined : rightPills} />}
+        {layoutMode === 'nebula' && phone && rightPills && <div className="-mt-2 mb-5">{rightPills}</div>}
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>
@@ -332,17 +572,28 @@ export default function ListsPage() {
               </h3>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
-              <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
-                Import
-              </Button>
-              <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setShowDescribe(true)}>
-                Describe a catalog
-              </Button>
-              <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
-                New catalog
-              </Button>
+              {onTV(
+                <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
+                  Import
+                </Button>,
+                () => setShowImport(true),
+              )}
+              {onTV(
+                <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setShowDescribe(true)}>
+                  Describe a catalog
+                </Button>,
+                () => setShowDescribe(true),
+              )}
+              {onTV(
+                <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
+                  New catalog
+                </Button>,
+                () => setShowCreate(true),
+              )}
+              {!isTV && <ArrangeButton arrange={catalogArrange} />}
             </div>
           </div>
+          {!isTV && <ArrangeBar arrange={catalogArrange} />}
 
           {loaded && lists.length === 0 && (
             <Card padding="lg" className="text-center">
@@ -352,7 +603,31 @@ export default function ListsPage() {
             </Card>
           )}
 
-          {lists.length > 0 && (() => {
+          {v2 && lists.length > 0 && (
+            <>
+              <CatalogsV2
+                lists={lists}
+                arrange={catalogArrangeOwn}
+                view={viewMode === 'list' ? 'list' : 'grid'}
+                coverStyle={coverColorStyle}
+                onTogglePin={handleTogglePin}
+                onRename={(l) => { setRenaming(l); setRenameValue(l.name); }}
+                onCover={setCoverPicker}
+                onDelete={setDeleting}
+              />
+            </>
+          )}
+          {v2 && (
+            <HiddenTray arrange={catalogArrangeOwn} labelOf={(id) => lists.find((l) => l.id === id)?.name ?? 'A catalog'}
+              extra={collectionArrange.hidden.map((key) => ({ id: `c:${key}`, label: collectionPills[key]?.label ?? 'A collection', show: () => collectionArrange.show(key) }))}
+              note="Hidden only here: the catalog keeps working everywhere it's used. Tap one to bring it back." />
+          )}
+
+          {/* Classic arranges only the Collections pills; its catalog list stays as it is. */}
+          {!v2 && !isTV && (
+            <HiddenTray arrange={collectionArrange} labelOf={(key) => collectionPills[key]?.label ?? 'A collection'} />
+          )}
+          {!v2 && lists.length > 0 && (() => {
             // At most one hero - the pinned catalog with the most recent
             // activity if more than one happens to be pinned (see the
             // pinned field's own schema comment).
@@ -411,9 +686,10 @@ export default function ListsPage() {
 
             return (
               <div className="space-y-4">
-                {hero && (
+                {hero && onTV(
                   <Card padding="none" className="overflow-hidden" onContextMenu={(e) => openContextMenuFor(hero, e)}>
-                    <button type="button" onClick={() => router.push(`/catalogs/${hero.id}`)} className="w-full text-left block relative group">
+                    {/* A div, not a button: the card holds its own buttons (pin, cover, rename, delete). */}
+                    <div role="link" tabIndex={0} onClick={() => router.push(`/catalogs/${hero.id}`)} onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/catalogs/${hero.id}`); }} className="w-full text-left block relative group cursor-pointer">
                       <div className="relative h-48 md:h-72 bg-black">
                         {hero.coverImageUrl ? (
                           <>
@@ -452,13 +728,14 @@ export default function ListsPage() {
                           <p className="text-sm text-white/70">{hero.items.length} title{hero.items.length !== 1 ? 's' : ''}</p>
                         </div>
                       </div>
-                    </button>
-                  </Card>
+                    </div>
+                  </Card>,
+                  () => router.push(`/catalogs/${hero.id}`),
                 )}
 
                 {rest.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {rest.map((list) => (
+                    {rest.map((list) => onTV(
                       <Card key={list.id} padding="md" onContextMenu={(e) => openContextMenuFor(list, e)}>
                         <button
                           type="button"
@@ -513,7 +790,9 @@ export default function ListsPage() {
                         <div className="flex items-center gap-1 mt-2">
                           {actionRow(list, 'sm')}
                         </div>
-                      </Card>
+                      </Card>,
+                      () => router.push(`/catalogs/${list.id}`),
+                      list.id,
                     ))}
                   </div>
                 )}
@@ -720,7 +999,7 @@ export default function ListsPage() {
           onSave={handleCoverSave}
         />
       )}
-    </>
+    </Wrapper>
   );
 }
 

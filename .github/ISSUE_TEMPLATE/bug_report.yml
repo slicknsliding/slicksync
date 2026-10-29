@@ -1,0 +1,94 @@
+name: 🐛 Bug report
+description: Something in SlickSync isn't working the way it should
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The more precise the report, the faster it gets fixed.
+        Please remove passwords, API keys, tokens and private addresses from anything you paste.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem in a sentence or two.
+      placeholder: "After syncing, the Continue Watching row disappears from the profile's home screen."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Users
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SlickSync version
+      description: Shown in System Health, or run `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'`.
+      placeholder: "v1.102.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed?
+      options:
+        - Docker, private image
+        - Docker, public image
+        - Beta image
+        - Built from source
+        - slicksync.vip (hosted)
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Which provider is involved?
+      multiple: true
+      options:
+        - Nuvio
+        - Stremio
+        - Jellyfin
+        - AIOStreams
+        - AIOMetadata
+        - None / not sure
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      description: Phone, computer or installed app, and the browser if it has one.
+      placeholder: "iPhone, Safari, installed to Home Screen"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Output of `docker compose logs --tail 200`, or the browser console. Remove anything private."
+      render: shell
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images in here if they help.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and didn't find this one.
+          required: true
+        - label: I removed passwords, keys and private addresses from this report.
+          required: true

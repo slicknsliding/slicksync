@@ -35,6 +35,12 @@ function findNextEpisode(allEpisodes, lastSeason, lastEpisode) {
   return allEpisodes[lastIndex + 1]
 }
 
+/** An episode whose air date is still ahead. No date at all counts as aired - better offered than lost. */
+function hasAired(episode, now = Date.now()) {
+  const at = Date.parse(episode?.released || '')
+  return !Number.isFinite(at) || at <= now
+}
+
 // Minimum position (2 min in) and completion ceiling (92%) for a session to
 // count as "partway through" - below the floor is a barely-started click
 // that would be noise to resume, above the ceiling is close enough to done
@@ -272,6 +278,9 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
     } else {
       const next = findNextEpisode(metadata.allEpisodes, watchedSeason, watchedEpisode)
       if (!next) continue
+      // Caught up: the next episode isn't out yet, so there is nothing to
+      // play. The card comes back the day it airs (Coming up shows it until then).
+      if (!hasAired(next)) continue
       target = {
         season: next.season,
         episode: next.episode,
@@ -652,4 +661,4 @@ async function wipeBuriedShow(prisma, accountId, userId, showId) {
   return { episodesDeleted: episodes.count, moviesDeleted: movies.count }
 }
 
-module.exports = { getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }
+module.exports = { hasAired, getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }

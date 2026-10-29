@@ -16,6 +16,9 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { useNameFolds, usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { NuvioCollectionsV2 } from '@/components/v2/NuvioCollectionsV2';
 import { toast } from '@/components/ui/Toast';
 import { encodeNuvioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
@@ -520,6 +523,12 @@ function CollectionSection({
 export default function NuvioCollectionsPage() {
   const { layoutMode } = useLayoutMode();
   const router = useRouter();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  // Themes -> Tap a name to fold: the whole row opens and closes a collection or folder.
+  const nameTap = useNameFolds().on;
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
   // Shared app-wide grid/list preference (Settings -> Themes), same hook
   // Activity/Addons/Users/etc. already use - defaults to 'grid' when unset.
   // Deliberately no page-level toggle for it here - it follows the global
@@ -808,6 +817,13 @@ export default function NuvioCollectionsPage() {
     }
   };
 
+  // A pop-up button outlives the render that made it, so it must call the
+  // newest save handler (one that sees the collections just staged), not the
+  // one captured when the pop-up appeared.
+  const saveRef = useRef(handleSave);
+  useEffect(() => { saveRef.current = handleSave; });
+  const saveFromToast = () => { void saveRef.current(); };
+
   // --- Mutation helpers - always spread the existing object first so any
   // field this editor doesn't know about (pinToTop, viewMode, ...) survives
   // untouched. ---
@@ -847,7 +863,10 @@ export default function NuvioCollectionsPage() {
       const valid = list.filter((c) => c && typeof c === 'object' && typeof c.title === 'string' && Array.isArray(c.folders));
       if (valid.length === 0) throw new Error('No valid collections found in that file');
       setCollections((prev) => [...prev, ...valid.map(deepCopyCollection)]);
-      toast.success(`Imported ${valid.length} collection${valid.length !== 1 ? 's' : ''} - review, then Save changes`);
+      toast.info(`Imported ${valid.length} collection${valid.length !== 1 ? 's' : ''}`, {
+        line: 'Save to send them to Nuvio.',
+        actions: [{ label: 'Save changes', onClick: saveFromToast }],
+      });
     } catch (e: any) {
       toast.error(e.message || 'That file isn\'t valid Collections JSON');
     }
@@ -866,7 +885,9 @@ export default function NuvioCollectionsPage() {
     }
     setCollections((prev) => [...prev, { id: newId(), title: GENRE_TEMPLATE.title, folders }]);
     setTemplatesOpen(false);
-    toast.success(`Added "${GENRE_TEMPLATE.title}" (${folders.length} of ${GENRE_TEMPLATE.genres.length} folders matched)`);
+    const matched = `${folders.length} of ${GENRE_TEMPLATE.genres.length} folders matched your addons.`;
+    if (folders.length < GENRE_TEMPLATE.genres.length) toast.warning(`Added ${GENRE_TEMPLATE.title}`, { line: matched });
+    else toast.success(`Added ${GENRE_TEMPLATE.title}`, { line: matched });
   };
 
   const updateCollection = (id: string, patch: Partial<NuvioCollection>) => {
@@ -978,7 +999,7 @@ export default function NuvioCollectionsPage() {
       const traxInstalled = addons.some((a) => a.manifest?.id === traxId);
       if (!traxInstalled) {
         if (traxEnabled === false) await api.setTraxAddon(selectedUserId, true);
-        toast.success('Installing the SlickTrax Addon on the account (one sync)...');
+        toast.info('Adding the SlickTrax addon', { line: 'This takes one sync.' });
         await api.syncUser(selectedUserId);
         setTraxEnabled(true);
         try {
@@ -996,7 +1017,10 @@ export default function NuvioCollectionsPage() {
         });
       }
       setPickerTarget(null);
-      toast.success(`Linked "${list.name}" - press Save changes to push it. From then on the folder follows the catalog automatically`);
+      toast.info(`Linked ${list.name}`, {
+        line: 'Save to send it to Nuvio; after that it keeps itself up to date.',
+        actions: [{ label: 'Save changes', onClick: saveFromToast }],
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not link that catalog');
     } finally {
@@ -1094,9 +1118,11 @@ export default function NuvioCollectionsPage() {
     try {
       const r = await api.restoreCollectionsSnapshot(alarm.userId, alarm.profileId, alarm.kind);
       const n = alarm.kind === 'layout' ? (r.restoredItems ?? 0) : (r.restoredCount ?? 0);
-      toast.success(alarm.kind === 'layout'
-        ? `Restored the home-row layout (${n} row${n === 1 ? '' : 's'}) from the last good snapshot`
-        : `Restored ${n} collection${n === 1 ? '' : 's'} from the last good snapshot`);
+      toast.success(alarm.kind === 'layout' ? 'Home-row layout restored' : 'Collections restored', {
+        line: alarm.kind === 'layout'
+          ? `${n} row${n === 1 ? '' : 's'} back from the last good snapshot.`
+          : `${n} collection${n === 1 ? '' : 's'} back from the last good snapshot.`,
+      });
       loadGuardAlarms();
       // If the restored profile is on screen, reload it so the grid shows
       // the recovered collections rather than the overwritten state.
@@ -1112,7 +1138,7 @@ export default function NuvioCollectionsPage() {
     setGuardBusy(`${alarm.kind}:${alarm.userId}:${alarm.profileId}`);
     try {
       await api.acceptCollectionsState(alarm.userId, alarm.profileId, alarm.kind);
-      toast.success('Current state accepted as the new baseline');
+      toast.success('Current state accepted', { line: 'It’s now the baseline.' });
       loadGuardAlarms();
     } catch (e: any) {
       toast.error(e.message || 'Accept failed');
@@ -1211,7 +1237,7 @@ export default function NuvioCollectionsPage() {
     try {
       const r = await api.copyHomeLayout(selectedUserId, selectedProfileIndex!, targetProfileIndex);
       const targetName = profiles.find((p) => p.profile_index === targetProfileIndex)?.name || `Profile ${targetProfileIndex}`;
-      toast.success(`Home-row layout copied to ${targetName} (${r.copiedItems} row${r.copiedItems === 1 ? '' : 's'})`);
+      toast.success(`Home-row layout copied to ${targetName}`, { line: `${r.copiedItems} row${r.copiedItems === 1 ? '' : 's'} copied.` });
       setHomeRowsMenuOpen(false);
     } catch (e: any) {
       toast.error(e.message || 'Failed to copy the home-row layout');
@@ -1246,20 +1272,94 @@ export default function NuvioCollectionsPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Nuvio Collections' }]} className="text-xl font-semibold" />}
-          subtitle="Organize a Nuvio account's own home-screen collections"
-          actions={detailActions}
+          subtitle={v2 ? '' : "Organize a Nuvio account's own home-screen collections"}
+          actions={v2 ? backButton : detailActions}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && (
-          <NebulaPageHeading title="Nuvio Collections" subtitle="Organize a Nuvio account's own home-screen collections" leading={backButton} actions={selectedProfileIndex !== null ? saveAction : undefined} />
+          v2
+            ? <NebulaPageHeading title="Catalogs" leading={backButton} />
+            : <NebulaPageHeading title="Nuvio Collections" subtitle="Organize a Nuvio account's own home-screen collections" leading={backButton} actions={selectedProfileIndex !== null ? saveAction : undefined} />
         )}
 
         {guardBanner}
 
-        <PageSection>
+        {v2 && (
+          <>
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportFile(file);
+                e.target.value = '';
+              }}
+            />
+            <NuvioCollectionsV2
+              usersLoading={usersLoading}
+              nuvioUsers={nuvioUsers}
+              selectedUser={selectedUser}
+              selectedUserId={selectedUserId}
+              onSelectUser={handleSelectUser}
+              profiles={profiles}
+              profilesLoading={profilesLoading}
+              selectedProfileIndex={selectedProfileIndex}
+              onSelectProfile={handleSelectProfile}
+              collections={collections}
+              collectionsLoading={collectionsLoading}
+              isDirty={isDirty}
+              saving={saving}
+              onSave={handleSave}
+              onAddCollection={addCollection}
+              hasCollections={collections.length > 0}
+              otherProfiles={otherProfiles}
+              homeRowsArmed={homeRowsArmed}
+              homeRowsBusy={homeRowsBusy}
+              onTemplates={() => setTemplatesOpen(true)}
+              onImport={() => importFileInputRef.current?.click()}
+              onExport={exportCollectionsJson}
+              onPasteCode={() => setShowPasteCode(true)}
+              onCreateCode={openShareCode}
+              onWhere={() => setImportExportInfoOpen(true)}
+              onEditRows={() => setHomeRowsEditorOpen(true)}
+              onCopyRows={(idx) => {
+                const arming = homeRowsArmed !== idx;
+                copyHomeRows(idx);
+                if (arming) toast.info('Choose it again to overwrite', { line: 'Open ⋯ and pick the same profile within 5 seconds.' });
+              }}
+              onTips={() => setTipsInfoOpen(true)}
+              previewByFolder={previewByFolder}
+              previewLoadingIds={previewLoadingIds}
+              brokenFolderIds={brokenFolderIds}
+              describeSource={describeSource}
+              onRename={(id, title) => updateCollection(id, { title })}
+              onReorder={reorderCollection}
+              onDeleteCollection={(id) => setDeleting({ kind: 'collection', collectionId: id })}
+              onCopyCollection={(c) => setCopyTarget(c)}
+              onTogglePin={(c) => updateCollection(c.id, { pinToTop: !c.pinToTop })}
+              onPreview={(c) => setPreviewCollection(c)}
+              onAddFolder={addFolder}
+              onOpenFolder={(collectionId, folderId) => { setFolderDetail({ collectionId, folderId }); setFolderDetailTab('sources'); }}
+              onDeleteFolder={(collectionId, folderId) => setDeleting({ kind: 'folder', collectionId, folderId })}
+              onFolderDragEnd={handleFolderDragEnd}
+              editor={homeRowsEditorOpen && selectedUserId && selectedProfileIndex !== null ? (
+                <HomeRowsEditor
+                  userId={selectedUserId}
+                  profileId={selectedProfileIndex}
+                  profileName={profiles.find((p) => p.profile_index === selectedProfileIndex)?.name || `Profile ${selectedProfileIndex}`}
+                  onDone={() => setHomeRowsEditorOpen(false)}
+                />
+              ) : null}
+            />
+          </>
+        )}
+
+        {!v2 && <PageSection>
           {/* Grid of Nuvio-connected users, same card-grid pattern as
               Users/Groups, instead of a dropdown - picking an account you
               manage shouldn't feel different here than anywhere else in
@@ -1549,7 +1649,10 @@ export default function NuvioCollectionsPage() {
                   <div className="space-y-3">
                     {collections.map((collection, cIndex) => (
                       <Card key={collection.id} padding="md">
-                        <div className="flex items-center gap-2">
+                        <div
+                          className={`flex items-center gap-2${nameTap ? ' cursor-pointer' : ''}`}
+                          onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; toggleExpanded(collection.id); } : undefined}
+                        >
                           <button type="button" onClick={() => toggleExpanded(collection.id)} className="p-1 text-subtle hover:text-default">
                             {expanded[collection.id] ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
                           </button>
@@ -1585,7 +1688,10 @@ export default function NuvioCollectionsPage() {
                           <div className="mt-3 pl-6 space-y-2 border-l border-default">
                             {(collection.folders || []).map((folder, fIndex) => (
                               <div key={folder.id} className="rounded-lg border border-default p-2.5 bg-subtle">
-                                <div className="flex items-center gap-2">
+                                <div
+                                  className={`flex items-center gap-2${nameTap ? ' cursor-pointer' : ''}`}
+                                  onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; toggleExpanded(folder.id); } : undefined}
+                                >
                                   <button type="button" onClick={() => toggleExpanded(folder.id)} className="p-1 text-subtle hover:text-default">
                                     {expanded[folder.id] ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
                                   </button>
@@ -1663,7 +1769,7 @@ export default function NuvioCollectionsPage() {
               </>
             )
           )}
-        </PageSection>
+        </PageSection>}
       </div>
       </div>
 
@@ -1831,7 +1937,10 @@ export default function NuvioCollectionsPage() {
           }
           const staged = (decoded.payload.collections as unknown as NuvioCollection[]).map(deepCopyCollection);
           setCollections((prev) => [...prev, ...staged]);
-          toast.success(`Added ${staged.length} collection${staged.length !== 1 ? 's' : ''} - review, then Save changes`);
+          toast.info(`Added ${staged.length} collection${staged.length !== 1 ? 's' : ''}`, {
+            line: 'Save to send them to Nuvio.',
+            actions: [{ label: 'Save changes', onClick: saveFromToast }],
+          });
         }}
       />
 

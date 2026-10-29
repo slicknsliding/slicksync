@@ -1,6 +1,6 @@
 'use client';
 
-import { toast } from 'react-hot-toast';
+import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 
 // "Deleted X — Undo" toast.
@@ -23,36 +23,61 @@ export function showDeletedWithUndo(
     return;
   }
 
-  toast.custom(
-    (t) => (
-      <div
-        className="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg"
-        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
-      >
-        <span className="text-sm" style={{ color: 'var(--color-text)' }}>
-          Deleted <strong>{label}</strong>
-        </span>
-        <button
-          type="button"
-          className="text-sm font-medium underline"
-          style={{ color: 'var(--color-primary)' }}
-          onClick={async () => {
-            toast.dismiss(t.id);
-            try {
-              await api.restoreFromTrash(trashId);
-              toast.success(`Restored ${label}`);
-              onRestored?.();
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : `Could not restore ${label}`);
-            }
-          }}
-        >
-          Undo
-        </button>
-      </div>
-    ),
+  toast.success(`Deleted ${label}`, {
+    line: 'It’s in the Trash for 30 days.',
+    actions: [{
+      label: 'Undo',
+      onClick: async () => {
+        try {
+          await api.restoreFromTrash(trashId);
+          toast.success(`Restored ${label}`);
+          onRestored?.();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : `Could not restore ${label}`);
+        }
+      },
+    }],
     // Longer than a normal toast: an undo you did not have time to read is
     // not an undo. It stays recoverable from Trash for 30 days regardless.
-    { duration: 8000 },
-  );
+    duration: 8000,
+  });
+}
+
+// A deleted person. The delete route archives them to the Trash but doesn't
+// hand back the Trash item's id, so it is looked up here: the newest person
+// in the Trash with this name. No match (or the Trash can't be read) falls
+// back to the plain success toast, which has no Undo to offer.
+export async function showPersonDeletedWithUndo(name: string, onRestored?: () => void) {
+  let trashId: string | null = null;
+  try {
+    const items = await api.getTrash();
+    // Newest first. The label is their username (or email); when it reads
+    // differently from the name on screen, the person deleted in the last
+    // half minute is the one just removed.
+    const people = items.filter((i) => i.kind === 'user');
+    const hit = people.find((i) => i.label === name)
+      ?? people.find((i) => Date.now() - new Date(i.deletedAt).getTime() < 30000);
+    trashId = hit?.id ?? null;
+  } catch { /* the Trash couldn't be read: no Undo to offer */ }
+  if (!trashId) {
+    toast.success(`${name} deleted successfully`);
+    return;
+  }
+  const id = trashId;
+  toast.success(`${name} is in the Trash`, {
+    line: 'Back for 30 days from Tasks → Trash',
+    actions: [{
+      label: 'Undo',
+      onClick: async () => {
+        try {
+          await api.restoreFromTrash(id);
+          toast.success(`${name} is back`);
+          onRestored?.();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : `Could not bring ${name} back`);
+        }
+      },
+    }],
+    duration: 8000,
+  });
 }

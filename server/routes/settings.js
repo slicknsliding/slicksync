@@ -1495,6 +1495,52 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // How this account has arranged SlickSync: page order, hidden and folded
+  // sections, its own menu bar, density, start page and so on. Loose JSON
+  // like themePref (the client owns the shape and always falls back to the
+  // default), stored on AppAccount.sync.arrange so it follows the account to
+  // every device. Capped so a runaway client can't bloat the row.
+  const ARRANGE_MAX_BYTES = 64 * 1024
+  router.get('/arrange', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      const arrange = (syncCfg && typeof syncCfg === 'object' && syncCfg.arrange && typeof syncCfg.arrange === 'object') ? syncCfg.arrange : null
+      return res.json({ arrange })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to read your arrangement' })
+    }
+  })
+
+  router.put('/arrange', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const { arrange } = req.body || {}
+      if (arrange !== null && (typeof arrange !== 'object' || Array.isArray(arrange))) {
+        return res.status(400).json({ message: 'arrange must be an object or null' })
+      }
+      if (arrange && Buffer.byteLength(JSON.stringify(arrange)) > ARRANGE_MAX_BYTES) {
+        return res.status(413).json({ message: 'That arrangement is too large to save' })
+      }
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      if (!syncCfg || typeof syncCfg !== 'object') syncCfg = {}
+      const nextCfg = { ...syncCfg, arrange: arrange || undefined }
+      try { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } }) }
+      catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } }) }
+      return res.json({ arrange: arrange || null })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to save your arrangement' })
+    }
+  })
+
   // POST /account-sync/discover-nuvio - point at a self-hosted Nuvio backend
   // and let it configure itself from /.well-known/nuvio, rather than making
   // the operator copy an anon key out of `./nuvio credentials` by hand.
@@ -1643,6 +1689,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const accountKey = require('crypto').createHash('sha256').update(Buffer.concat([Buffer.from(req.appAccountId || ''), serverKey])).digest()
       const encrypted = aesGcmEncrypt(accountKey, key)
       await prisma.appAccount.update({ where: { id: req.appAccountId }, data: { apiKeyHash: encrypted } })
+      require('../utils/apiKeyIndex').markKeysChanged()
       // Return the full key ONCE
       return res.json({ apiKey: key })
     } catch (e) {

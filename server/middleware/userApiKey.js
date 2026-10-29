@@ -6,8 +6,21 @@
 const { parsePresentedKey } = require('../utils/apiKey')
 const { getServerKey, aesGcmDecrypt } = require('../utils/encryption')
 const crypto = require('crypto')
+const { createKeyIndex } = require('../utils/apiKeyIndex')
 
 function createUserApiKeyMiddleware(prisma) {
+  const select = { id: true, apiKey: true, accountId: true }
+  const keys = createKeyIndex({
+    loadAll: () => prisma.user.findMany({ where: { apiKey: { not: null } }, select }),
+    loadOne: (id) => prisma.user.findUnique({ where: { id }, select }),
+    decryptRow: (user) => {
+      // Derive user-specific key and decrypt
+      const userKey = crypto.createHash('sha256')
+        .update(Buffer.concat([Buffer.from(user.id || ''), getServerKey()]))
+        .digest()
+      return aesGcmDecrypt(userKey, user.apiKey)
+    },
+  })
   return async (req, res, next) => {
     try {
       // Only check if no account session exists (user API key, not account API key)
@@ -21,29 +34,11 @@ function createUserApiKeyMiddleware(prisma) {
         return next() // No API key, continue with normal auth
       }
 
-      // Find user by decrypting stored keys and comparing
-      const users = await prisma.user.findMany({
-        where: { apiKey: { not: null } },
-        select: { id: true, apiKey: true, accountId: true }
-      })
-
-      const serverKey = getServerKey()
-      for (const user of users) {
-        try {
-          // Derive user-specific key and decrypt
-          const userKey = crypto.createHash('sha256')
-            .update(Buffer.concat([Buffer.from(user.id || ''), serverKey]))
-            .digest()
-          const decrypted = aesGcmDecrypt(userKey, user.apiKey)
-          if (decrypted === presented) {
-            req.appUserId = user.id
-            req.appAccountId = user.accountId || 'default'
-            return next()
-          }
-        } catch {
-          // Decryption failed for this user, try next
-          continue
-        }
+      const user = await keys.lookup(presented)
+      if (user) {
+        req.appUserId = user.id
+        req.appAccountId = user.accountId || 'default'
+        return next()
       }
 
       // API key not found, but don't fail - might be account API key or session auth

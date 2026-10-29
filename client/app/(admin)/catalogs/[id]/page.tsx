@@ -17,6 +17,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { CatalogV2Head, CatalogV2Toolbar } from '@/components/v2/CatalogV2';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry, SmartCatalogRule } from '@/lib/api';
@@ -37,6 +40,12 @@ import {
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
 // the Catalogs index card), so a catalog's solid-color cover looks identical
 // on both surfaces.
+// A catalog as the page uses it: lists it reads are always there, even if a
+// reply leaves one out, so one odd reply can't take the whole page down.
+function withDefaults(l: CustomList): CustomList {
+  return { ...l, items: l.items || [], keptRatings: l.keptRatings || [] };
+}
+
 function coverColorStyle(colorIndex: number): React.CSSProperties {
   return { background: avatarColorFill(colorIndex) };
 }
@@ -208,6 +217,11 @@ type SortKey = typeof SORT_OPTIONS[number]['key'];
 // IS a quick preview, unlike the list itself.
 export default function ListDetailPage() {
   const { layoutMode } = useLayoutMode();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const [searchQuery, setSearchQuery] = useState('');
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -229,7 +243,7 @@ export default function ListDetailPage() {
   useLastKnown<CustomList[]>('/lists', (cached) => {
     const found = cached.find((l) => l.id === listId);
     if (!found) return;
-    setList(found);
+    setList(withDefaults(found));
     setIsLoading(false);
   });
   const [detail, setDetail] = useState<CustomListItem | null>(null);
@@ -298,7 +312,7 @@ export default function ListDetailPage() {
   const { watchedStatus, toggleWatched } = useWatchedStatusBatch((list?.items || []).map((i) => i.id), enableWatchedIndicators);
 
   const ratingsById = useRatingsBatch((list?.items || []).map((i) => i.id));
-  const sortedItems = !list ? [] : sortBy === 'default' ? list.items : [...list.items].sort((a, b) => {
+  const sortedAll = !list ? [] : sortBy === 'default' ? list.items : [...list.items].sort((a, b) => {
     if (sortBy === 'title') return a.name.localeCompare(b.name);
     if (sortBy === 'year-desc') return (Number(b.year) || 0) - (Number(a.year) || 0);
     if (sortBy === 'year-asc') return (Number(a.year) || 0) - (Number(b.year) || 0);
@@ -306,12 +320,17 @@ export default function ListDetailPage() {
     return ratingOf(b) - ratingOf(a);
   });
 
+  // v2's "Find a title": filters by name only; empty query (always, in
+  // Classic) leaves the list untouched.
+  const searchTerm = v2 ? searchQuery.trim().toLowerCase() : '';
+  const sortedItems = searchTerm ? sortedAll.filter((i) => i.name.toLowerCase().includes(searchTerm)) : sortedAll;
+
   const load = useCallback(() => {
     setIsLoading(true);
     api.getLists()
       .then((all) => {
         const found = all.find((l) => l.id === listId) || null;
-        setList(found);
+        setList(found ? withDefaults(found) : null);
         setNotFound(!found);
       })
       .catch(() => setNotFound(true))
@@ -368,12 +387,12 @@ export default function ListDetailPage() {
     try {
       await api.setSmartRule(list.id, clear ? null : (smartDraft as SmartCatalogRule));
       if (clear) {
-        toast.success('Rule cleared - this is an ordinary catalog again, and keeps the titles it has');
+        toast.success('Rule cleared', { line: 'It’s an ordinary catalog again and keeps its titles.' });
       } else {
         // Evaluate straight away: a rule you cannot see the result of is
         // just a promise. Failure here leaves the catalog untouched.
         const r = await api.refreshSmartCatalog(list.id);
-        toast.success(`Rule saved - ${r.count} title${r.count === 1 ? '' : 's'} match right now`);
+        toast.success('Rule saved', { line: `${r.count} title${r.count === 1 ? '' : 's'} match right now.` });
       }
       setSmartOpen(false);
       await load();
@@ -390,7 +409,7 @@ export default function ListDetailPage() {
     if (!name) return;
     try {
       const updated = await api.updateList(list.id, { name });
-      setList(updated);
+      setList(withDefaults(updated));
       setRenaming(false);
       toast.success('Renamed');
     } catch { toast.error('Failed to rename'); }
@@ -411,7 +430,7 @@ export default function ListDetailPage() {
     if ('avatarUrl' in data) patch.coverImageUrl = data.avatarUrl ?? null;
     if ('colorIndex' in data) patch.coverColorIndex = data.colorIndex ?? null;
     const updated = await api.updateList(list.id, patch);
-    setList(updated);
+    setList(withDefaults(updated));
   };
 
   const handleExportToMdblist = async () => {
@@ -448,7 +467,7 @@ export default function ListDetailPage() {
       const result = await api.exportListToSimkl(list.id, exportSimklUserId);
       setShowExportSimkl(false);
       setExportSimklResult(result);
-      toast.success(`Added ${result.added} title${result.added !== 1 ? 's' : ''} to ${result.username}'s SIMKL Plan to Watch`);
+      toast.success(`Added ${result.added} title${result.added !== 1 ? 's' : ''} to SIMKL`, { line: `They’re in ${result.username}’s Plan to Watch.` });
     } catch (e: any) {
       toast.error(e?.message || 'Failed to export to SIMKL');
     } finally {
@@ -477,7 +496,7 @@ export default function ListDetailPage() {
     setApplyingRefresh(true);
     try {
       const updated = await api.refreshList(list.id, true);
-      setList(updated);
+      setList(withDefaults(updated));
       setRefreshDiff(null);
       toast.success(`Refreshed "${list.name}" from source`);
     } catch (e: any) {
@@ -494,9 +513,10 @@ export default function ListDetailPage() {
     setSavingAutoRefresh(true);
     try {
       const updated = await api.updateList(list.id, { autoRefresh: next });
-      setList(updated);
+      setList(withDefaults(updated));
       const freq = updated.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
-      toast.success(next ? `This catalog will now refresh from its source ${freq}` : 'Auto-refresh turned off');
+      if (next) toast.success('Auto-refresh on', { line: `This catalog refreshes from its source ${freq}.` });
+      else toast.success('Auto-refresh turned off');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update auto-refresh');
     } finally {
@@ -509,7 +529,7 @@ export default function ListDetailPage() {
     setSavingAutoRefresh(true);
     try {
       const updated = await api.updateList(list.id, { autoRefreshFrequency: frequency });
-      setList(updated);
+      setList(withDefaults(updated));
       toast.success(`Auto-refresh set to ${frequency}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update auto-refresh schedule');
@@ -525,7 +545,7 @@ export default function ListDetailPage() {
     setSavingShared(true);
     try {
       const updated = await api.updateList(list.id, { shared: next });
-      setList(updated);
+      setList(withDefaults(updated));
       toast.success(next ? 'This catalog is now visible (read-only) to other accounts on this instance' : 'No longer shared');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update sharing');
@@ -584,7 +604,7 @@ export default function ListDetailPage() {
     try {
       const created = await api.publishCatalog(list.id);
       setShareLink(toShareUrl(created.path));
-      toast.success('New link issued - the previous one stopped working');
+      toast.success('New link issued', { line: 'The previous one stopped working.' });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to issue a new link');
     } finally {
@@ -601,7 +621,7 @@ export default function ListDetailPage() {
       setShareLink(null);
       setConfirmRevoke(false);
       setShowShareLink(false);
-      toast.success('Unpublished - no new pulls. Anyone already subscribed keeps what they have.');
+      toast.success('Unpublished', { line: 'No new pulls. Anyone already subscribed keeps what they have.' });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to unpublish');
     } finally {
@@ -617,7 +637,7 @@ export default function ListDetailPage() {
     } catch {
       // Clipboard is blocked on insecure origins and in some embedded
       // browsers - the field is selectable, so say so rather than failing mute.
-      toast.error('Could not copy automatically - select the link and copy it');
+      toast.error('Couldn’t copy the link', { line: 'Select it and copy it by hand.' });
     }
   };
 
@@ -682,16 +702,16 @@ export default function ListDetailPage() {
     setApplying(true);
     try {
       const { removedCount, ...updated } = await api.applyContentRating(list.id, draftRatings);
-      setList(updated);
+      setList(withDefaults(updated));
       setShowPolicyModal(false);
       setPreviewResult(null);
-      toast.success(
-        draftRatings.length === 0
-          ? 'Content rating policy cleared'
-          : removedCount > 0
-            ? `Removed ${removedCount} title${removedCount !== 1 ? 's' : ''} - use "Restore last removal" to undo`
-            : 'Policy saved - nothing to remove'
-      );
+      if (draftRatings.length === 0) toast.success('Content rating policy cleared');
+      else if (removedCount > 0) {
+        toast.success(`Removed ${removedCount} title${removedCount !== 1 ? 's' : ''}`, {
+          line: 'They didn’t fit the content rating policy.',
+          actions: [{ label: 'Undo', onClick: () => { void handleRestoreRemoval(); } }],
+        });
+      } else toast.success('Policy saved', { line: 'Nothing needed removing.' });
     } catch (e: any) {
       toast.error(e?.message || 'Failed to apply content rating');
     } finally {
@@ -705,7 +725,7 @@ export default function ListDetailPage() {
     setRestoring(true);
     try {
       const updated = await api.restoreContentRatingRemoval(list.id);
-      setList(updated);
+      setList(withDefaults(updated));
       toast.success('Restored the last content-rating removal');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to restore');
@@ -722,7 +742,7 @@ export default function ListDetailPage() {
     const current = listRef.current;
     if (!current) return;
     const updated = { ...current, items: current.items.filter((i) => i.id !== item.id) };
-    setList(updated);
+    setList(withDefaults(updated));
     try { await api.removeFromList(current.id, item.id); }
     catch { toast.error('Failed to remove'); load(); }
   }, [load]);
@@ -763,7 +783,7 @@ export default function ListDetailPage() {
   // itemsJson order, which reads as broken the next time sort resets to
   // "List order". Also off during select mode so a drag gesture can't
   // fight with tap-to-select.
-  const canReorder = sortBy === 'default' && !selectMode && sortedItems.length > 1 && !!list?.isOwner;
+  const canReorder = sortBy === 'default' && !selectMode && !searchTerm && sortedItems.length > 1 && !!list?.isOwner;
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!list || !canReorder) return;
@@ -825,7 +845,7 @@ export default function ListDetailPage() {
   };
 
   const title = isLoading ? 'Loading…' : notFound ? 'Catalog not found' : (list?.name || 'Catalog');
-  const subtitle = isLoading ? '' : notFound ? '' : `${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}`;
+  const subtitle = isLoading ? '' : notFound ? '' : `${list?.items?.length || 0} title${list?.items?.length !== 1 ? 's' : ''}`;
 
   // Explicit navigation to /catalogs (not router.back()) - back should always
   // land on the Catalogs index in one hop, regardless of how this page was
@@ -853,13 +873,13 @@ export default function ListDetailPage() {
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2 flex-wrap justify-end">
       <Button
-        variant={list.keptRatings.length > 0 ? 'primary' : 'secondary'}
+        variant={(list.keptRatings?.length ?? 0) > 0 ? 'primary' : 'secondary'}
         size="sm"
         leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
         onClick={openPolicyModal}
-        title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+        title={(list.keptRatings?.length ?? 0) > 0 ? `Keeping only: ${(list.keptRatings || []).join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
       >
-        {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
+        {(list.keptRatings?.length ?? 0) > 0 ? `Content Rating (${(list.keptRatings?.length ?? 0)})` : 'Content Rating'}
       </Button>
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
@@ -1013,6 +1033,10 @@ export default function ListDetailPage() {
     </div>
   ) : backButton;
 
+  // v2 identity block (cover, name, pills, facts, buttons) once the catalog
+  // has loaded; loading / not-found keep the plain heading.
+  const v2Head = v2 && !!list && !isLoading && !notFound;
+
   return (
     <>
       {layoutMode !== 'nebula' && (
@@ -1023,15 +1047,39 @@ export default function ListDetailPage() {
               className="text-xl font-semibold"
             />
           }
-          subtitle={subtitle}
-          actions={detailActions}
+          subtitle={v2Head ? '' : subtitle}
+          actions={v2Head ? backButton : detailActions}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && (
-          <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
+          v2Head
+            ? <NebulaPageHeading title="Catalogs" leading={backButton} />
+            : <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
+        )}
+
+        {v2Head && list && (
+          <CatalogV2Head
+            list={list}
+            coverStyle={coverColorStyle}
+            handlers={{
+              onSuggest: handleOpenSuggest,
+              onRename: () => { setRenameValue(list.name); setRenaming(true); },
+              onCoverArt: () => setShowCoverPicker(true),
+              onContentRating: openPolicyModal,
+              onSmartRule: () => setSmartOpen(true),
+              onRefresh: handleOpenRefresh,
+              onRestoreRemoval: handleRestoreRemoval,
+              onToggleShared: handleToggleShared,
+              onDelete: () => setDeleting(true),
+              onShareCode: () => setShowShareCode(true),
+              onPublish: openShareLink,
+              onExportMdblist: () => setShowExportConfirm(true),
+              onExportSimkl: handleOpenExportSimkl,
+            }}
+          />
         )}
 
         {/* Cover banner - only rendered once a custom cover is actually set;
@@ -1051,7 +1099,7 @@ export default function ListDetailPage() {
             as Modal), while a second copy sits on top at its natural size
             (max-h/max-w-full only, no forced stretch) - crisp because it's
             never upscaled past its own resolution, however small. */}
-        {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
+        {!v2Head && list && (list.coverImageUrl || list.coverColorIndex !== null) && (
           <div className="relative mb-6 h-40 md:h-56 rounded-xl overflow-hidden bg-black">
             {list.coverImageUrl ? (
               <>
@@ -1074,7 +1122,7 @@ export default function ListDetailPage() {
           </div>
         )}
 
-        {list && !list.isOwner && (
+        {!v2Head && list && !list.isOwner && (
           <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-subtle border border-default">
             <ShareIcon className="w-4 h-4 text-muted shrink-0" />
             <p className="text-xs text-muted">
@@ -1104,7 +1152,36 @@ export default function ListDetailPage() {
             </Card>
           ) : list ? (
             <>
-              {list.items.length > 1 && (
+              {v2Head && (
+                <CatalogV2Toolbar
+                  isOwner={list.isOwner}
+                  query={searchQuery}
+                  onQuery={setSearchQuery}
+                  sortControl={(
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted">Sort:</span>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as SortKey)}
+                        aria-label="Sort list"
+                        className="px-2.5 py-1.5 rounded-lg text-[13px] font-medium bg-surface text-default border border-default cursor-pointer"
+                      >
+                        {SORT_OPTIONS.map((opt) => (
+                          <option key={opt.key} value={opt.key}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  selectMode={selectMode}
+                  onEnterSelect={() => setSelectMode(true)}
+                  onExitSelect={exitSelectMode}
+                  totalCount={sortedItems.length}
+                  selectedCount={selectedIds.size}
+                  onSelectAll={() => setSelectedIds(new Set(sortedItems.map((i) => i.id)))}
+                  onDeselectAll={() => setSelectedIds(new Set())}
+                />
+              )}
+              {!v2Head && list.items.length > 1 && (
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     {selectMode && list.isOwner ? (
@@ -1150,6 +1227,9 @@ export default function ListDetailPage() {
                   </div>
                 </div>
               )}
+              {v2Head && searchTerm && sortedItems.length === 0 && (
+                <p className="text-sm text-muted py-6">No title here matches &quot;{searchQuery.trim()}&quot;.</p>
+              )}
               {!selectMode && sortBy !== 'default' && (
                 <p className="text-xs text-subtle mb-3">Switch to List order to drag-reorder titles.</p>
               )}
@@ -1162,7 +1242,9 @@ export default function ListDetailPage() {
                   off-screen until the drag ends. */}
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToParentElement]}>
                 <SortableContext items={sortedItems.map((i) => i.id)} strategy={rectSortingStrategy}>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  <div className={v2Head
+                    ? 'grid grid-cols-3 min-[640px]:grid-cols-4 min-[768px]:grid-cols-6 min-[1700px]:grid-cols-8 min-[2300px]:grid-cols-10 min-[3000px]:grid-cols-12 gap-3'
+                    : 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3'}>
                     {sortedItems.map((item) => (
                       <CatalogGridCard
                         key={item.id}
@@ -1241,7 +1323,7 @@ export default function ListDetailPage() {
         onClose={() => setShowExportConfirm(false)}
         onConfirm={handleExportToMdblist}
         title="Export to MDBList"
-        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward. It's a one-time copy either way — later changes to this Catalog won't reach the exported list, and vice versa.`}
+        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items?.length || 0} title${list?.items?.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward. It's a one-time copy either way — later changes to this Catalog won't reach the exported list, and vice versa.`}
         confirmText={exporting ? 'Exporting...' : 'Export'}
         isLoading={exporting}
       />
@@ -1367,7 +1449,7 @@ export default function ListDetailPage() {
                   ))}
                 </select>
                 <p className="text-xs text-subtle mt-1.5">
-                  Adds this catalog&apos;s {list?.items.length || 0} title{list?.items.length !== 1 ? 's' : ''} to that user&apos;s SIMKL Plan to Watch. SIMKL doesn&apos;t expose named lists via API yet, so this is the closest equivalent — it&apos;s additive, nothing already on their SIMKL account is removed.
+                  Adds this catalog&apos;s {list?.items?.length || 0} title{list?.items?.length !== 1 ? 's' : ''} to that user&apos;s SIMKL Plan to Watch. SIMKL doesn&apos;t expose named lists via API yet, so this is the closest equivalent — it&apos;s additive, nothing already on their SIMKL account is removed.
                 </p>
               </div>
               <div className="flex justify-end gap-2">

@@ -3204,6 +3204,17 @@ class ApiClient {
     });
   }
 
+  /** How this account has arranged SlickSync (see lib/arrange.tsx). */
+  async getArrangement() {
+    return this.fetch<{ arrange: import('./arrange-core').Arrangement | null }>('/settings/arrange', { quiet401: true });
+  }
+  async saveArrangement(arrange: import('./arrange-core').Arrangement | null) {
+    return this.fetch<{ arrange: import('./arrange-core').Arrangement | null }>('/settings/arrange', {
+      method: 'PUT',
+      body: JSON.stringify({ arrange }),
+    });
+  }
+
   // Personal watchlist — SlickSync's own bookmark list.
   /** Saves a manual watchlist ranking - array order is the order, first is "up next". */
   async setWatchlistOrder(itemIds: string[]) {
@@ -5117,6 +5128,12 @@ export interface DiscoverPerson {
   deathday?: string | null;
   placeOfBirth?: string | null;
   bio?: string | null;
+  /** Their IMDb name id (nm0000000), when TMDb or LumiereDB knows it. */
+  imdbId?: string | null;
+  /** 'wikipedia' when Wikipedia filled something TMDb had no answer for. */
+  factsFrom?: 'wikipedia' | null;
+  /** What Wikipedia filled: 'bio', 'birthday', 'birthplace'. */
+  factsFilled?: string[];
 }
 
 export type DiscoverKind = 'movie' | 'series' | 'both';
@@ -5408,6 +5425,8 @@ export interface ContinueWatchingItem {
   nextEpisode: { season: number; episode: number; title: string | null; thumbnail: string | null } | null;
   resume?: boolean;
   progressPercent?: number | null;
+  /** Minutes left when resuming (from the saved position and length). */
+  remainingMinutes?: number | null;
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;
@@ -5552,7 +5571,7 @@ export interface MetricsData {
   };
   nowPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
-    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean };
+    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean; episodeTitle?: string };
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)
@@ -5563,6 +5582,10 @@ export interface MetricsData {
     // checkpointed yet.
     lastPosition?: number | null;
     totalDuration?: number | null;
+    // Worked out from when it started and the title's runtime, because the app
+    // hasn't said (server/utils/nowPlayingEstimate.js): the card says so.
+    positionEstimated?: boolean;
+    durationEstimated?: boolean;
     // Pre-built episode-aware deep links (server/utils/appLinks.js, same
     // builder Continue Watching uses) - absent when we don't have a real
     // item id to link to (e.g. an unmatched proxy-only entry).

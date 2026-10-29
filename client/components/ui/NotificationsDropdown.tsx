@@ -11,6 +11,8 @@ import { toast } from '@/components/ui/Toast';
 import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
 import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageDesign } from '@/lib/arrange';
+import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 
 interface NotificationItem {
   id: string;
@@ -100,6 +102,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const coarse = useCoarsePointer();
   const isTV = useIsTV();
   const swipeToDismiss = coarse && !isTV;
+  // v2 (Themes → Page design): Today and Earlier, an icon per kind, links in
+  // the foot; a bottom sheet on a phone. TV keeps Classic.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
 
   // IDs individually dismissed via the per-row X button (or a swipe) - kept separate
   // from lastChecked (which hides everything at once) so dismissing one
@@ -639,7 +645,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
           <>
             {/* Backdrop */}
             <div
-              className="fixed inset-0 z-40"
+              className={v2 ? 'fixed inset-0 z-[55] max-sm:bg-black/50' : 'fixed inset-0 z-40'}
               onClick={() => setIsOpen(false)}
             />
             
@@ -649,8 +655,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-2 z-50 w-80"
-              style={{ maxWidth: 'calc(100vw - 2rem)' }}
+              className={v2 ? 'fixed inset-x-0 bottom-0 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-2 z-[60] sm:w-[440px]' : 'absolute right-0 top-full mt-2 z-50 w-80'}
+              style={v2 ? { maxWidth: '100vw' } : { maxWidth: 'calc(100vw - 2rem)' }}
             >
               {/* Small caret pointing up at the bell that opened this, so
                   the panel reads unambiguously as "a popup from that
@@ -666,10 +672,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   overlap entirely. Rendered before the panel div (not
                   after) so the panel's own background naturally covers its
                   bottom half, same trick as any CSS speech-bubble tail. */}
-              <div
+              {!v2 && <div
                 className="popup-caret absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t"
                 style={{ background: 'var(--color-surface)' }}
-              />
+              />}
               {/* Plain div, not <Card> - Card's Nebula mode auto-applies a
                   55%-opacity translucent background meant for content
                   sitting on the page's own background. That reads fine
@@ -680,6 +686,27 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   content. Solid, high-opacity background regardless of
                   layout mode - a floating overlay always needs strong
                   contrast, that's not a Nebula-vs-Current distinction. */}
+              {v2 ? (
+                <NotificationsPanelV2
+                  items={notifications}
+                  icon={(t) => getNotificationIcon(t as NotificationItem['type'])}
+                  when={formatNotificationTime}
+                  canOpen={(n) => !!getNotificationUrl(n as NotificationItem)}
+                  swipe={swipeToDismiss}
+                  onOpen={(n) => handleNotificationClick(n as NotificationItem)}
+                  onDismiss={dismissOne}
+                  onAccept={handleAcceptRequest}
+                  onReject={handleRejectRequest}
+                  onMarkAll={handleMarkAllRead}
+                  onClear={handleClearAll}
+                  onSettings={() => {
+                    setIsOpen(false);
+                    router.push('/settings?highlight=Activity%20notifications');
+                    window.dispatchEvent(new CustomEvent('slicksync:settings-highlight', { detail: 'Activity notifications' }));
+                  }}
+                  onActivity={() => { setIsOpen(false); router.push('/activity'); }}
+                />
+              ) : (
               <div
                 className="popup-panel max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
               >
@@ -831,6 +858,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   )}
                 </div>
               </div>
+              )}
             </motion.div>
           </>
         )}

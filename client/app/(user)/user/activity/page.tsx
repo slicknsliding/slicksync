@@ -30,6 +30,10 @@ import {
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { providerTypeLabel } from '@/lib/providers';
 import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { MeActivityV2 } from '@/components/v2/MeActivityV2';
+import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
 
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
@@ -260,7 +264,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
             <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-            <YAxis stroke="#64748b" fontSize={12} />
+            <YAxis stroke="#64748b" fontSize={12} allowDecimals={false} />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               labelStyle={TOOLTIP_LABEL_STYLE}
@@ -349,18 +353,20 @@ const ActivityCard = memo(function ActivityCard({
         </button>
       )}
 
-      {/* User avatar */}
-      <Avatar
-        name={userInfo?.username || 'You'}
-        email={userInfo?.email}
-        useGravatar={userInfo?.useGravatar}
-        colorIndex={userInfo?.colorIndex || 0}
-        size="sm"
-      />
+      {/* User avatar (a phone shows the person under the title instead) */}
+      <div className="max-sm:hidden">
+        <Avatar
+          name={userInfo?.username || 'You'}
+          email={userInfo?.email}
+          useGravatar={userInfo?.useGravatar}
+          colorIndex={userInfo?.colorIndex || 0}
+          size="sm"
+        />
+      </div>
 
       {/* Activity details */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm max-sm:hidden" style={{ color: 'var(--color-text-muted)' }}>
           <span className="font-medium" style={{ color: 'var(--color-text)' }}>
             {userInfo?.username || 'You'}
           </span>{' '}
@@ -368,16 +374,16 @@ const ActivityCard = memo(function ActivityCard({
         </p>
 
         {/* Content info */}
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-start sm:items-center gap-2 mt-1 max-sm:mt-0">
           {session.itemType === 'movie' ? (
-            <FilmIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
+            <FilmIcon className="w-4 h-4 shrink-0 max-sm:mt-0.5" style={{ color: 'var(--color-primary)' }} />
           ) : (
-            <TvIcon className="w-4 h-4" style={{ color: '#10b981' }} />
+            <TvIcon className="w-4 h-4 shrink-0 max-sm:mt-0.5" style={{ color: '#10b981' }} />
           )}
           <button
             type="button"
             onClick={() => onFilterByContent?.(session.itemName)}
-            className="font-medium text-left transition-colors hover:opacity-80"
+            className="font-medium text-left transition-colors hover:opacity-80 max-sm:line-clamp-2 max-sm:text-sm min-w-0"
             style={{ color: 'var(--color-text)' }}
           >
             {session.itemName}
@@ -390,8 +396,21 @@ const ActivityCard = memo(function ActivityCard({
           </button>
         </div>
 
+        {/* A phone: the person and when, on their own line under the title */}
+        <div className="sm:hidden mt-1.5 flex items-center gap-2 text-xs min-w-0" style={{ color: 'var(--color-text-muted)' }}>
+          <Avatar
+            name={userInfo?.username || 'You'}
+            email={userInfo?.email}
+            useGravatar={userInfo?.useGravatar}
+            colorIndex={userInfo?.colorIndex || 0}
+            size="xs"
+          />
+          <span className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{userInfo?.username || 'You'}</span>
+          <span style={{ color: 'var(--color-text-subtle)' }}>· {formatTimestamp(timestamp)}</span>
+        </div>
+
         {/* Session meta: duration & start/end time */}
-        <div className="mt-3 flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="mt-3 max-sm:mt-1.5 flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
           <ClockIcon className="w-3 h-3" />
           {!session.isSynthetic && session.durationSeconds !== undefined && (
             <span>
@@ -410,7 +429,7 @@ const ActivityCard = memo(function ActivityCard({
       </div>
 
       {/* Timestamp */}
-      <div className="text-right">
+      <div className="text-right max-sm:hidden">
         <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>{formatTimestamp(timestamp)}</p>
       </div>
     </motion.div>
@@ -482,7 +501,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           onClick={() => onFilterByContent?.(session.itemName)}
           className="block w-full"
         >
-          <h4 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>
+          <h4 className="font-semibold text-sm leading-tight line-clamp-3 break-words" style={{ color: 'var(--color-text-muted)' }}>
             {session.itemName}
           </h4>
         </button>
@@ -651,6 +670,65 @@ export default function UserActivityPage() {
     setSearchQuery(name);
   }, []);
 
+  // v2 (Themes -> Page design): one design for their own pages too.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
+  const v2Arrange = usePageArrangement('activity', nowPlaying.length > 0
+    ? ['nowPlaying', 'numbers', 'charts', 'feed']
+    : ['numbers', 'charts', 'feed']);
+
+  if (v2) {
+    return (
+      <div className="p-4 sm:p-8">
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
+          </div>
+        )}
+        {error && (
+          <div className="p-4 rounded-xl text-center mb-6" style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}>{error}</div>
+        )}
+        {!loading && !error && (
+          <MeActivityV2
+            arrange={v2Arrange}
+            shown={v2Arrange.shown}
+            nowPlaying={nowPlaying}
+            provider={provider}
+            profileLabel={activityData?.profileLabel}
+            numbers={stats ? [
+              { label: 'Watched in total', value: formatHours(liveTotalWatchTimeHours) },
+              { label: 'Movies', value: String(stats.moviesCount || 0) },
+              { label: 'Shows', value: String(stats.seriesCount || 0) },
+              { label: 'Today', value: formatHours((stats.watchTimeTodaySeconds || 0) / 3600), sub: `${stats.watchedTodayCount || 0} ${(stats.watchedTodayCount || 0) === 1 ? 'title' : 'titles'}` },
+            ] : null}
+            charts={(
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <WatchTimeChart data={chartData} />
+                <ContentBreakdownChart data={chartData} />
+              </div>
+            )}
+            groups={groupedSessions}
+            empty={(
+              <div className="text-center py-12 rounded-xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+                <ClockIcon className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />
+                <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--color-text)' }}>{searchQuery ? 'No matching activity' : 'No activity yet'}</h3>
+                <p style={{ color: 'var(--color-text-muted)' }}>
+                  {searchQuery ? `No activity matches “${searchQuery}”. Try a different search.` : `Start watching on ${providerLabel} and it will show up here.`}
+                </p>
+              </div>
+            )}
+            search={searchQuery}
+            onSearch={setSearchQuery}
+            view={viewMode}
+            onView={setViewMode}
+            onFilterByContent={handleFilterByContent}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-8">
       <UserPageHeader
@@ -740,62 +818,22 @@ export default function UserActivityPage() {
                     <span>Live</span>
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="flex flex-col gap-3">
                   {nowPlaying.map((np, idx) => (
-                    <motion.div
-                      key={`now-${idx}`}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary/50 transition-colors"
-                    >
-                      {/* Poster */}
-                      {np.item.poster ? (
-                        <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
-                          <img src={np.item.poster} alt={np.item.name} className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <div className="w-10 h-14 rounded-lg bg-surface-hover flex items-center justify-center shrink-0">
-                          {np.item.type === 'movie' ? (
-                            <FilmIcon className="w-5 h-5 text-muted" />
-                          ) : (
-                            <TvIcon className="w-5 h-5 text-muted" />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${np.item.titlePending ? 'text-muted' : 'text-default'}`}>
-                          {np.item.name}
-                        </p>
-                        <div className="text-xs text-muted truncate">
-                          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 ? (
-                            <span>
-                              {np.item.season !== undefined && np.item.season > 0 ? `S${String(np.item.season).padStart(2, '0')}E` : 'E'}
-                              {String(np.item.episode).padStart(2, '0')}
-                            </span>
-                          ) : (
-                            <span className="capitalize">{np.item.type}</span>
-                          )}
-                        </div>
-                        {/* Live duration calculation */}
+                    <div key={`now-${idx}`} className="min-w-0">
+                      <NowPlayingBanner row={np} provider={provider} profileLabel={activityData?.profileLabel} flush />
+                      {/* How long they have watched, and how fresh the report is. */}
+                      <div className="px-2 pt-1.5">
                         {(() => {
-                          if (np.startTime) {
-                            const startMs = new Date(np.startTime).getTime();
-                            if (!isNaN(startMs)) {
-                              const elapsedSeconds = Math.max(0, Math.floor((nowTick - startMs) / 1000));
-                              if (elapsedSeconds > 0) {
-                                return (
-                                  <p className="text-xs text-subtle mt-0.5">
-                                    Watching for {formatDuration(elapsedSeconds)}
-                                  </p>
-                                                              );
-                                                            }
-                                                          }
-                                                        }
-                                                        return null;
-                                                      })()}
+                          const startMs = np.startTime ? new Date(np.startTime).getTime() : NaN;
+                          const elapsedSeconds = Number.isNaN(startMs) ? 0 : Math.max(0, Math.floor((nowTick - startMs) / 1000));
+                          return elapsedSeconds > 0 ? <p className="text-xs text-subtle">Watching for {formatDuration(elapsedSeconds)}</p> : null;
+                        })()}
                         <PlaybackFreshnessLine row={np} />
-                                                    </div>
-                                                  </motion.div>
-                                                ))}
-                                              </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
                                             </Card>            </motion.div>
           )}
 

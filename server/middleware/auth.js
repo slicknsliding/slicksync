@@ -126,8 +126,10 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
     const checkAccount = !!prisma && (!allowlisted || pathNeedsLiveAccount(req.path));
 
     const cookies = parseCookies(req);
-    const accessCookie = cookies[cookieName('sfm_at')] || cookies['sfm_at'];
-    const refreshCookie = cookies[cookieName('sfm_rt')] || cookies['sfm_rt'];
+    // Only the name SlickSync sets: in production that is the __Host- one, which
+    // a sibling subdomain cannot plant; the bare name could be.
+    const accessCookie = cookies[cookieName('sfm_at')];
+    const refreshCookie = cookies[cookieName('sfm_rt')];
     const bearer = extractBearerToken(req);
     const token = bearer || accessCookie;
 
@@ -167,7 +169,7 @@ module.exports.createCsrfGuard = function createCsrfGuard({ INSTANCE_TYPE, PRIVA
     if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
     if (pathIsAllowlisted(req.path)) return next();
     const cookies = parseCookies(req);
-    const csrfCookie = cookies[cookieName('sfm_csrf')] || cookies['sfm_csrf'];
+    const csrfCookie = cookies[cookieName('sfm_csrf')];
     const header = req.headers['x-csrf-token'];
     if (!csrfCookie || !header || String(header) !== String(csrfCookie)) {
       return res.status(403).json({ message: 'Invalid CSRF token' });

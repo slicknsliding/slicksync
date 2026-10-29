@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { memo, useEffect, useState, useMemo, useCallback, useRef, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -16,9 +17,16 @@ import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
 import { NowPlayingSection } from '@/components/admin/NowPlayingSection';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
-import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
+import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem, Invitation, InviteRequest, User, VaultEntry } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { NEEDS_KIND_NAMES, NEEDS_WEEK, useCwTime, useNeedsDismiss, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeGrid, ArrangePanel, ArrangeSection, HiddenTray, PanelControls, StretchHandle } from '@/components/ui/Arrange';
+import { CreateUserModal } from '@/components/modals/CreateUserModal';
+import { NowPlayingV2, NeedsYouTiles, PersonRow, type NeedsYouItem } from '@/components/v2/DashboardV2';
+import { V2Button, V2Status } from '@/components/v2/V2Bits';
+import { V2Numbers, v2HiddenNumbers } from '@/components/v2/V2Detail';
+import { judgeEntry } from '@/components/v2/VaultV2';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import {
   UsersIcon,
@@ -92,8 +100,8 @@ const RecentAddonItem = memo(function RecentAddonItem({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <p className="font-semibold text-sm text-default truncate group-hover:text-primary transition-colors">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+            <p className="font-semibold text-sm text-default break-words group-hover:text-primary transition-colors">
               {addon.name}
             </p>
             {addon.version && <VersionBadge version={addon.version} size="sm" />}
@@ -125,6 +133,14 @@ const RecentAddonItem = memo(function RecentAddonItem({
   );
 });
 
+// The chip on a v2 card's picture: how long is left when resuming, else Up next.
+function timeLeftChip(item: ContinueWatchingItem): string {
+  if (!item.resume) return 'Up next';
+  const m = item.remainingMinutes;
+  if (m != null) return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''} left` : `${m} min left`;
+  return item.progressPercent != null ? `${item.progressPercent}% watched` : 'Resume';
+}
+
 // Continue Watching card - right-click to remove, and guards its own click
 // against firing right after a drag-to-scroll gesture on the parent row
 // (checked via a shared ref rather than local state, since the drag
@@ -148,8 +164,11 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   isMenuOpen,
   onMenuOpenChange,
   priority = false,
+  wide = false,
 }: {
   item: ContinueWatchingItem;
+  /** Page design v2: a wide 16:9 picture with a time chip, then the title and who. */
+  wide?: boolean;
   /** The first cards in the row: fetched at once rather than when seen. */
   priority?: boolean;
   wasDraggedRef: React.RefObject<boolean>;
@@ -164,6 +183,8 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // both call sites (Continue Watching appears twice on this page).
   onMenuOpenChange: (open: boolean, key: string) => void;
 }) {
+  // Settings → Themes: time left / Up next under the card, with the episode name.
+  const under = useCwTime().where === 'under';
   // position/preventDefault still come from the hook, but which card's menu
   // is actually rendered open is driven by isMenuOpen (lifted to the parent)
   // rather than this hook's own isOpen - each card had its own independent
@@ -173,7 +194,12 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // shared "which card owns the open menu" value fixes that by construction.
   // Episode still, then the show's artwork, then its poster - the next one
   // when a picture fails to load, so the card never sits empty.
-  const { url: artwork, onError: onArtworkError } = useArtworkFallback([item.nextEpisode?.thumbnail, item.background, item.poster]);
+  // The wide v2 card leads with the landscape backdrop, as the Now Playing
+  // banner does, and falls back to the still, then the poster.
+  const imdbId = /^tt\d+/.exec(item.showId || '')?.[0] || null;
+  const { url: artwork, onError: onArtworkError } = useArtworkFallback(wide
+    ? [item.background, imdbId ? `https://images.metahub.space/background/medium/${imdbId}/img` : null, item.nextEpisode?.thumbnail, item.poster]
+    : [item.nextEpisode?.thumbnail, item.background, item.poster]);
   const { position, handleContextMenu, setExternalClose } = useContextMenu();
   // Registers the REAL close (onClose below) for cross-section/cross-page
   // closing - onMenuOpenChange is the lifted state that actually drives
@@ -224,7 +250,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
       onTouchEnd={clearPress}
       onTouchCancel={clearPress}
       onTouchMove={handleTouchMove}
-      className="shrink-0 relative"
+      className={wide ? 'min-w-0 relative' : 'shrink-0 relative'}
     >
       <div
         onClick={() => {
@@ -236,9 +262,9 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         }}
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
-        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card"
+        className={wide ? 'group relative block w-full select-none cursor-pointer tap-card' : 'group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card'}
       >
-        <div className="relative aspect-video">
+        <div className={wide ? 'relative aspect-video rounded-xl overflow-hidden bg-slate-800' : 'relative aspect-video'}>
           {/* Image priority for this landscape (16:9) frame: episode still
               first (already 16:9), then the show/movie's landscape backdrop,
               and only then the portrait poster as a last resort - a portrait
@@ -248,7 +274,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             <img
               // Through the server's image cache at the card's size, like
               // every poster grid - not the full-size original each launch.
-              src={cachedImageUrl(artwork) || ''}
+              src={cachedImageUrl(artwork, wide ? 500 : 342) || ''}
               onError={onArtworkError}
               alt={item.showName}
               draggable={false}
@@ -295,10 +321,15 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               set. Over a dark track, so it stays clearly visible against any
               poster art. Sits in its own thin strip below the thumbnail
               rather than overlaid on it, so nothing covers it. */}
+          {wide && !under && (
+            <span className="absolute left-2 top-2 z-[1] px-2 py-[3px] rounded-full text-[11px] font-semibold text-white pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)' }}>
+              {timeLeftChip(item)}
+            </span>
+          )}
           {item.resume && item.progressPercent != null && (
-            <div className="absolute bottom-0 left-0 right-0 h-1.5 pointer-events-none" style={{ background: 'rgba(0,0,0,0.55)' }}>
+            <div className={`absolute bottom-0 left-0 right-0 pointer-events-none ${wide ? 'h-[5px]' : 'h-1.5'}`} style={{ background: 'rgba(0,0,0,0.55)' }}>
               <div
-                className="h-full rounded-r-full"
+                className={wide ? 'h-full' : 'h-full rounded-r-full'}
                 style={{
                   width: `${Math.min(100, Math.max(3, item.progressPercent))}%`,
                   background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))',
@@ -308,15 +339,41 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             </div>
           )}
         </div>
+        {wide ? (
+          <div className="pt-1.5 min-w-0">
+            <p className="text-[13.5px] font-semibold text-default break-words">{item.showName}</p>
+            {under ? (
+              <>
+                <p className="text-xs text-muted break-words">
+                  {item.contentType === 'series' && item.nextEpisode
+                    ? `S${item.nextEpisode.season} E${item.nextEpisode.episode}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
+                    : 'Movie'}
+                </p>
+                <p className="text-xs text-muted break-words">
+                  {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
+                  {' · '}
+                  {item.resume
+                    ? <b className="font-semibold text-default">{timeLeftChip(item)}</b>
+                    : <span className="font-semibold" style={{ color: 'var(--color-primary)' }}>Up next</span>}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted break-words">
+                {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
+                {item.contentType === 'series' && item.nextEpisode ? ` · S${item.nextEpisode.season} E${item.nextEpisode.episode}` : ''}
+              </p>
+            )}
+          </div>
+        ) : (
         <div className="p-2">
-          <p className="text-xs font-medium text-default truncate">{item.showName}</p>
-          <p className="text-[11px] text-muted truncate">
+          <p className="text-xs font-medium text-default break-words">{item.showName}</p>
+          <p className="text-[11px] text-muted break-words">
             {item.nextEpisode
               ? `${item.resume ? 'Resume ' : ''}S${String(item.nextEpisode.season).padStart(2, '0')}E${String(item.nextEpisode.episode).padStart(2, '0')}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
               : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
           </p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <p className="text-[10px] text-subtle truncate">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 mt-0.5">
+            <p className="text-[10px] text-subtle break-words">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
             {item.providerType && (
               <Badge variant={providerBadgeVariant(item)} size="sm" className="shrink-0">
                 {providerTypeLabel(item.providerType)}
@@ -324,6 +381,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Now redundant with the card's own default click (which opens this
@@ -354,7 +412,6 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           onClick={() => {
             onMenuOpenChange(false, `${item.userId}-${item.showId}`);
             onRemove(item);
-            toast.success(`Removed "${item.showName}" - it rests in the Graveyard now (Activity -> Graveyard). Digging it up there brings it back here.`);
           }}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
         >
@@ -366,9 +423,20 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   );
 });
 
+// The names the Arrange tray uses for hidden panels.
+const DASH_LABELS: Record<string, string> = {
+  stats: 'Numbers', nowPlaying: 'Now Playing', continue: 'Continue Watching', upcoming: 'Coming up',
+  syncActivity: 'Sync Activity', recent: 'Recent Activity', topViewers: 'Top Viewers', recentAddons: 'Recent Addons',
+  quickActions: 'Quick Actions',
+  needsYou: 'Needs you',
+};
+
 export default function DashboardPage() {
+  const router = useRouter();
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
   const [recentAddonsData, setRecentAddons] = useState<Addon[]>([]);
@@ -381,6 +449,19 @@ export default function DashboardPage() {
   const [metricsAt, setMetricsAt] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
+  // Coming up names the people partway through each show, from Continue Watching.
+  const upcomingWatchers = useMemo(() => {
+    const out: Record<string, string> = {};
+    const byShow = new Map<string, string[]>();
+    for (const c of continueWatching) {
+      const first = c.username.split(' ')[0];
+      const names = byShow.get(c.showId) || [];
+      if (!names.includes(first)) names.push(first);
+      byShow.set(c.showId, names);
+    }
+    byShow.forEach((names, showId) => { out[showId] = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', '); });
+    return out;
+  }, [continueWatching]);
   const [detailModalItem, setDetailModalItem] = useState<ContinueWatchingItem | null>(null);
   // Which Continue Watching card's context menu is open, keyed the same way
   // as each card - shared across all cards so opening one always closes any
@@ -415,7 +496,23 @@ export default function DashboardPage() {
   const handleDismissContinueWatching = useCallback((item: ContinueWatchingItem) => {
     setContinueWatching((prev) => prev.filter((i) => !(i.userId === item.userId && i.showId === item.showId)));
     api.dismissContinueWatching(item.userId, item.showId).catch(() => {});
-  }, []);
+    toast.success(`Removed ${item.showName} from Continue Watching`, {
+      line: 'It’s in the Graveyard.',
+      poster: item.poster,
+      duration: 8000,
+      actions: [
+        {
+          label: 'Undo',
+          onClick: () => {
+            api.unburyShow(item.userId, item.showId)
+              .then(() => setContinueWatching((prev) => (prev.some((i) => i.userId === item.userId && i.showId === item.showId) ? prev : [item, ...prev])))
+              .catch(() => toast.error(`Couldn’t bring ${item.showName} back`, { actions: [{ label: 'Open Graveyard', onClick: () => router.push('/activity?view=graveyard') }] }));
+          },
+        },
+        { label: 'Open Graveyard', onClick: () => router.push('/activity?view=graveyard') },
+      ],
+    });
+  }, [router]);
 
   // Grab-and-drag horizontal scrolling for the Continue Watching row - mouse
   // only. Touch/pen are deliberately left alone: overflow-x-auto already
@@ -760,6 +857,449 @@ export default function DashboardPage() {
     });
   }, [recentAddonsData]);
 
+  // Which panels this Dashboard has right now, in their default order. Now
+  // Playing and Continue Watching only exist while there is something in
+  // them; the chart and Quick Actions only in the Original layout.
+  const hasNowPlaying = !!(metricsData?.nowPlaying && metricsData.nowPlaying.length > 0);
+  const hasContinue = continueWatching.length > 0;
+  const isOriginal = layoutMode !== 'nebula';
+
+  // v2: what needs the admin (a sign-in that stopped, someone asking to join,
+  // a service ending), read separately from the page's main load.
+  const [needUsers, setNeedUsers] = useState<User[]>([]);
+  // Which app each person is in, for the Now Playing banners.
+  const nowPlayingProviders = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of needUsers) if (u.providerType) m.set(u.id, u.providerType);
+    for (const a of metricsData?.recentActivity || []) if (a.user.providerType && !m.has(a.user.id)) m.set(a.user.id, a.user.providerType);
+    return m;
+  }, [needUsers, metricsData]);
+  const [needInvites, setNeedInvites] = useState<Invitation[]>([]);
+  const [needVault, setNeedVault] = useState<VaultEntry[]>([]);
+  const [fixing, setFixing] = useState<{ id: string; name: string; provider: string } | null>(null);
+  const [answering, setAnswering] = useState<string | null>(null);
+  const loadNeeds = useCallback(async () => {
+    const [u, i, v] = await Promise.allSettled([api.getUsers(), api.getInvitations(), api.getVaultEntries()]);
+    if (u.status === 'fulfilled') setNeedUsers(Array.isArray(u.value) ? u.value : []);
+    if (i.status === 'fulfilled') setNeedInvites(Array.isArray(i.value) ? i.value : []);
+    if (v.status === 'fulfilled') setNeedVault(Array.isArray(v.value?.entries) ? v.value.entries : []);
+  }, []);
+  useEffect(() => {
+    if (!v2) return;
+    loadNeeds();
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadNeeds(); }, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [v2, loadNeeds]);
+  // Tiles the admin put away (one at a time, or a whole kind) stay out of the list.
+  const needsAway = useNeedsDismiss();
+  const connErr = (u: User) => (u as { providerConnectionError?: string | null }).providerConnectionError || '';
+  const allFailing = useMemo(() => needUsers.filter((u) => !!connErr(u)), [needUsers]);
+  const allRequests = useMemo(() => needInvites.flatMap((inv) => (inv.requests || []).filter((r) => r.status === 'pending').map((r) => ({ inv, r }))), [needInvites]);
+  const allVault = useMemo(() => {
+    const at = Date.now();
+    return needVault.filter((e) => e.isActive !== false && judgeEntry(e, at).need !== null).map((e) => ({ e, j: judgeEntry(e, at) }));
+  }, [needVault]);
+  const { isPutAway } = needsAway;
+  const failingUsers = useMemo(() => allFailing.filter((u) => !isPutAway(`fix-${u.id}`, 'signin', connErr(u))), [allFailing, isPutAway]);
+  const pendingRequests = useMemo(() => allRequests.filter(({ r }) => !isPutAway(`ask-${r.id}`, 'request', 'pending')), [allRequests, isPutAway]);
+  const vaultNeeds = useMemo(() => allVault.filter(({ e, j }) => !isPutAway(`vault-${e.id}`, 'vault', String(j.need))), [allVault, isPutAway]);
+  const needsCount = failingUsers.length + pendingRequests.length + vaultNeeds.length;
+  const hasNeeds = needsCount > 0;
+
+  // Now Playing, Continue Watching and Needs you are always keys: while there
+  // is nothing in them they only show in Arrange mode (as a dashed placeholder),
+  // so they can still be moved, folded and hidden.
+  const dashKeys = useMemo(() => v2 ? [
+    'needsYou', 'nowPlaying', 'stats', 'continue',
+    'upcoming',
+    'recent', 'topViewers', 'recentAddons',
+  ] : [
+    'stats', 'nowPlaying', 'continue',
+    'upcoming',
+    ...(isOriginal ? ['syncActivity'] : []),
+    'recent', 'topViewers', 'recentAddons',
+    ...(isOriginal ? ['quickActions'] : []),
+  ], [v2, isOriginal]);
+  const dashEmpty = useMemo(() => [
+    ...(v2 && !hasNeeds ? ['needsYou'] : []),
+    ...(!hasNowPlaying ? ['nowPlaying'] : []),
+    ...(!hasContinue ? ['continue'] : []),
+  ], [v2, hasNeeds, hasNowPlaying, hasContinue]);
+  const dashArrange = usePageArrangement('dashboard', dashKeys, {
+    empty: dashEmpty,
+    layout: 'grid',
+    widths: v2,
+    defaultWidth: { recent: 'half', topViewers: 'half' },
+  });
+
+  // v2: the same data and handlers, grouped the way the approved mockup
+  // shows them (Page design v2, Themes). Needs you first, then Now Playing as
+  // the big banner from a person's Home, the numbers in one strip, and the
+  // rest as sections that move, fold and hide.
+  if (v2) {
+    const hm = (minutes: number) => {
+      const m = Math.max(0, Math.round(minutes));
+      return m < 60 ? `${m} min` : (m % 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${Math.floor(m / 60)} h`);
+    };
+    const nowDate = new Date(nowTick);
+    const dayStart =new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+    const watchedToday = (metricsData?.recentActivity || []).filter((a) => a.watchedAtTimestamp >= dayStart).length;
+    const todayEntry = metricsData?.watchTime?.byDay?.find((d) => d.date === metricsData.today);
+    let todaySeconds = (todayEntry?.hours || 0) * 3600;
+    for (const np of metricsData?.nowPlaying || []) {
+      const startMs = np.watchedAtTimestamp || new Date(np.watchedAt).getTime();
+      if (startMs) todaySeconds += Math.max(0, (nowTick - Math.max(startMs, dayStart)) / 1000);
+    }
+    const providerByUser = new Map<string, string>();
+    for (const u of needUsers) if (u.providerType) providerByUser.set(u.id, u.providerType);
+    for (const a of metricsData?.recentActivity || []) if (a.user.providerType && !providerByUser.has(a.user.id)) providerByUser.set(a.user.id, a.user.providerType);
+
+    const summary = [
+      `${stats.totalUsers} ${stats.totalUsers === 1 ? 'person' : 'people'}`,
+      activeUsers > 0 ? `${activeUsers} watching` : null,
+      needsCount > 0 ? `${needsCount} ${needsCount === 1 ? 'thing needs' : 'things need'} you` : null,
+    ].filter(Boolean).join(' · ');
+
+    const answerRequest = async (r: InviteRequest, accept: boolean) => {
+      setAnswering(r.id);
+      try {
+        if (accept) await api.acceptInviteRequest(r.id); else await api.rejectInviteRequest(r.id);
+        toast.success(accept ? `Approved ${r.username || r.email}` : `Declined ${r.username || r.email}`);
+        await loadNeeds();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Couldn’t answer that request');
+      } finally {
+        setAnswering(null);
+      }
+    };
+    const needsItems: NeedsYouItem[] = [
+      ...failingUsers.map((u) => ({
+        key: `fix-${u.id}`,
+        kind: 'signin',
+        sig: connErr(u),
+        person: { id: u.id, name: u.username, email: u.email, colorIndex: u.colorIndex, avatarUrl: u.avatarUrl, useGravatar: u.useGravatar },
+        title: u.username,
+        line: 'Sign-in stopped working',
+        actions: <V2Button primary onClick={() => setFixing({ id: u.id, name: u.username, provider: u.providerType || 'stremio' })}>Fix sign-in</V2Button>,
+      })),
+      ...pendingRequests.map(({ inv, r }) => ({
+        key: `ask-${r.id}`,
+        kind: 'request',
+        sig: 'pending',
+        person: { name: r.username || r.email, email: r.email },
+        title: r.username || r.email,
+        line: `Wants to join ${inv.groupName || 'your household'}`,
+        actions: (
+          <>
+            <V2Button disabled={answering === r.id} onClick={() => answerRequest(r, false)}>Decline</V2Button>
+            <V2Button primary disabled={answering === r.id} onClick={() => answerRequest(r, true)}>Approve</V2Button>
+          </>
+        ),
+      })),
+      ...vaultNeeds.map(({ e, j }) => ({
+        key: `vault-${e.id}`,
+        kind: 'vault',
+        sig: String(j.need),
+        person: null,
+        icon: <PuzzlePieceIcon className="w-5 h-5" />,
+        title: e.name,
+        line: j.line,
+        actions: <V2Button primary={j.need === 'fix'} onClick={() => router.push('/vault')}>{j.need === 'fix' ? 'Fix' : 'Renew'}</V2Button>,
+      })),
+    ];
+
+    const syncButton = (
+      <Button
+        variant="primary"
+        size={isOriginal ? 'md' : 'sm'}
+        leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
+        onClick={handleSyncAll}
+        isLoading={isSyncing}
+      >
+        Sync all
+      </Button>
+    );
+    const v2Actions = (
+      <div className="flex items-center gap-2 flex-wrap">
+        <ArrangeButton arrange={dashArrange} />
+        {syncButton}
+      </div>
+    );
+
+    const putAway = (it: NeedsYouItem, how: 'dismiss' | 'snooze' | 'kind') => {
+      if (how === 'kind') needsAway.mute(it.kind, true);
+      else needsAway.dismiss(it.key, it.sig, how === 'snooze' ? NEEDS_WEEK : undefined, it.title);
+    };
+    // What the admin put away, so it can be brought back while arranging.
+    const KIND_NAMES = NEEDS_KIND_NAMES;
+    const needsTray: { id: string; label: string; show: () => void }[] = [
+      ...[...needsAway.muted].map((k) => ({ id: `needs-kind-${k}`, label: `Needs you: ${KIND_NAMES[k] || k}`, show: () => needsAway.mute(k, false) })),
+      ...[
+        ...allFailing.map((u) => ({ key: `fix-${u.id}`, kind: 'signin', name: u.username })),
+        ...allRequests.map(({ r }) => ({ key: `ask-${r.id}`, kind: 'request', name: r.username || r.email })),
+        ...allVault.map(({ e }) => ({ key: `vault-${e.id}`, kind: 'vault', name: e.name })),
+      ]
+        .filter((t) => !needsAway.muted.has(t.kind) && needsAway.dismissed[t.key] && !needsItems.some((n) => n.key === t.key))
+        .map((t) => ({ id: `needs-${t.key}`, label: `Needs you: ${t.name}`, show: () => needsAway.restore(t.key) })),
+    ];
+    const statItems = [
+      { label: 'Watching now', value: isLoading ? '…' : activeUsers },
+      { label: 'Watched today', value: isLoading ? '…' : `${watchedToday} ${watchedToday === 1 ? 'title' : 'titles'}` },
+      { label: 'Watch time today', value: isLoading ? '…' : hm(todaySeconds / 60) },
+      { label: 'Active this week', value: isLoading ? '…' : `${metricsData?.summary?.activeUsers ?? 0} of ${stats.totalUsers}` },
+    ];
+
+    const linkAll = (href: string, label: string) => <Link href={href} className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>{label}</Link>;
+    const span = (id: string) => dashArrange.spanClass(id);
+    const panel = (id: string): React.ReactNode => {
+      switch (id) {
+        case 'needsYou':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection
+                arrange={dashArrange} id={id} title="Needs you" cards
+                meta={dashArrange.isEmpty(id) ? 'nothing right now' : needsItems.length}
+                emptyNote={dashArrange.isEmpty(id) ? 'Needs you · shows when something needs you' : undefined}
+              >
+                <NeedsYouTiles items={needsItems} onPutAway={putAway} stretch={{ arrange: dashArrange, id }} />
+              </ArrangeSection>
+            </div>
+          );
+        case 'nowPlaying':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection
+                arrange={dashArrange} id={id} title="Now Playing"
+                meta={dashArrange.isEmpty(id) ? 'nobody watching' : `${metricsData?.nowPlaying?.length ?? 0} watching`}
+                emptyNote={dashArrange.isEmpty(id) ? 'Now Playing · shows when someone is watching' : undefined}
+              >
+                <NowPlayingV2 rows={metricsData?.nowPlaying ?? []} providerByUser={providerByUser} moreHref="/activity" />
+              </ArrangeSection>
+            </div>
+          );
+        case 'stats':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection arrange={dashArrange} id={id} title="At a glance">
+                <V2Numbers arrange={dashArrange} scope="stats" items={statItems} />
+              </ArrangeSection>
+            </div>
+          );
+        case 'continue':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection
+                arrange={dashArrange} id={id} title="Continue Watching" cards
+                meta={dashArrange.isEmpty(id) ? 'empty right now' : 'everyone'}
+                emptyNote={dashArrange.isEmpty(id) ? 'Continue Watching · shows when someone has something to resume' : undefined}
+              >
+                <div
+                  {...dashArrange.cardAttrs(id)}
+                  ref={scrollRowRef}
+                  onPointerDown={handleRowPointerDown}
+                  onPointerMove={handleRowPointerMove}
+                  onPointerUp={handleRowPointerUp}
+                  onPointerLeave={handleRowPointerUp}
+                  className="arrange-cardrow grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]"
+                >
+                  {continueWatching.map((item, index) => (
+                    <ContinueWatchingCard
+                      key={`${item.userId}-${item.showId}`}
+                      item={item}
+                      wide
+                      priority={index < 7}
+                      wasDraggedRef={wasDraggedRef}
+                      onRemove={handleDismissContinueWatching}
+                      onOpenDetails={setDetailModalItem}
+                      isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                      onMenuOpenChange={handleMenuOpenChange}
+                    />
+                  ))}
+                  <StretchHandle arrange={dashArrange} id={id} kind="row" label="Continue Watching" />
+                </div>
+              </ArrangeSection>
+            </div>
+          );
+        case 'upcoming':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Coming up">
+                <UpcomingEpisodesPanel className="" v2 watchers={upcomingWatchers} />
+              </ArrangeSection>
+            </div>
+          );
+        case 'recent':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Recent activity" actions={linkAll('/activity', 'View all →')}>
+                <div className="v2-list">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : recentActivityItems.length > 0 ? (
+                    recentActivityItems.map((np, index) => (
+                      <PersonRow
+                        key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
+                        href={`/users/${np.user.id}`}
+                        avatar={<UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />}
+                        when={np.isLive ? 'now' : new Date(np.watchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        extra={np.isLive ? <V2Status tone="live">Live</V2Status> : undefined}
+                      >
+                        <b>{np.user.username.split(' ')[0]}</b>{' '}
+                        <span className="text-muted">
+                          {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+                            <> {np.item.season !== undefined && np.item.season > 0
+                              ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
+                              : `E${String(np.item.episode).padStart(2, '0')}`}</>
+                          )}
+                        </span>
+                      </PersonRow>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+                  )}
+                </div>
+              </ArrangeSection>
+            </div>
+          );
+        case 'topViewers':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Top viewers this week" actions={linkAll('/users', 'See all →')}>
+                <div className="v2-list">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : topUsers.length > 0 ? (
+                    topUsers.map((user) => (
+                      <PersonRow
+                        key={user.id || user.name}
+                        href={`/users/${user.id}`}
+                        avatar={<UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="sm" />}
+                        when={`${hm(user.watchTime)}${user.streak > 0 ? ` · ${user.streak}-day streak` : ''}`}
+                      >
+                        <b>{user.name}</b>
+                      </PersonRow>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No user data</div>
+                  )}
+                </div>
+              </ArrangeSection>
+            </div>
+          );
+        case 'recentAddons':
+          return (
+            <div key={id} className={span(id)}>
+              <ArrangeSection arrange={dashArrange} id={id} title="Recent addons" actions={linkAll('/addons', 'View all →')}>
+                {isLoading ? (
+                  <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                ) : recentAddons.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {recentAddons.map((addon) => (
+                      <RecentAddonItem
+                        key={addon.id}
+                        addon={addon}
+                        isReloading={reloadingAddons.has(addon.id)}
+                        onReload={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (reloadingAddons.has(addon.id)) return;
+                          setReloadingAddons((prev) => new Set(prev).add(addon.id));
+                          try {
+                            await api.reloadAddon(addon.id);
+                            toast.success(`Reloaded ${addon.name}`);
+                          } catch (err) {
+                            toast.error((err as Error).message || 'Reload failed');
+                          } finally {
+                            setReloadingAddons((prev) => {
+                              const next = new Set(prev);
+                              next.delete(addon.id);
+                              return next;
+                            });
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-sm text-muted">No recent addons</div>
+                )}
+              </ArrangeSection>
+            </div>
+          );
+        default:
+          return null;
+      }
+    };
+
+    const body = (
+      <>
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
+            <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Failed to load dashboard data</p>
+              <p className="opacity-90">{error.message}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => refreshData()} className="ml-auto">
+              Retry
+            </Button>
+          </div>
+        )}
+        <SetupChecklist />
+        <ArrangeBar arrange={dashArrange} />
+        <ArrangeGrid>
+          {dashArrange.shown.map((id) => panel(id))}
+        </ArrangeGrid>
+        <HiddenTray arrange={dashArrange} labelOf={(id) => (id === 'stats' ? 'At a glance' : DASH_LABELS[id] || id)} extra={[...v2HiddenNumbers(dashArrange, statItems, 'stats'), ...needsTray]} />
+      </>
+    );
+
+    return (
+      <>
+        {isOriginal ? (
+          <>
+            <Header title="Dashboard" subtitle={summary} actions={v2Actions} />
+            <div className="p-6 lg:p-8">{body}</div>
+          </>
+        ) : (
+          <div className="px-4 md:px-6 pb-8 pt-6">
+            <div className="mx-auto" style={{ maxWidth: 'min(120rem, 92vw)' }}>
+              <NebulaPageHeading title="Dashboard" subtitle={summary} actions={v2Actions} />
+              {body}
+            </div>
+          </div>
+        )}
+
+        {detailModalItem && (
+          <MediaDetailModal
+            isOpen={!!detailModalItem}
+            onClose={() => setDetailModalItem(null)}
+            itemId={detailModalItem.showId}
+            itemType={detailModalItem.contentType}
+            videoId={detailModalItem.nextEpisode ? `${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}` : null}
+            fallbackTitle={detailModalItem.showName}
+            fallbackPoster={detailModalItem.poster}
+          />
+        )}
+        {fixing && (
+          <CreateUserModal
+            isOpen
+            onClose={() => setFixing(null)}
+            mode="reconnect"
+            userId={fixing.id}
+            userName={fixing.name}
+            providerType={fixing.provider}
+            onReconnectSuccess={() => {
+              setFixing(null);
+              loadNeeds();
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
   // Nebula layout - same data/handlers as above (refreshData, continueWatching,
   // recentActivityItems, etc.), just a different arrangement: top nav instead
   // of the sidebar (swapped in by AdminClientLayout based on layoutMode),
@@ -793,7 +1333,7 @@ export default function DashboardPage() {
                     Sync All
                   </Button>
                 );
-                return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : syncBtn;
+                return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : <div className="flex items-center gap-2"><ArrangeButton arrange={dashArrange} />{syncBtn}</div>;
               })()}
             />
 
@@ -821,289 +1361,307 @@ export default function DashboardPage() {
                 Original layout's). Not on TV, where it can't be opened. */}
             {!isTV && <SetupChecklist />}
 
-            {/* Ring stat + mini stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-              <div className={`${NEBULA_GLASS_CLASS} p-5 flex items-center gap-5`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <svg width="72" height="72" viewBox="0 0 64 64" className="shrink-0 -rotate-90">
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="var(--color-surface-border)" strokeWidth="6" />
-                  <circle
-                    cx="32" cy="32" r="28" fill="none"
-                    stroke="url(#nebulaRingGradient)" strokeWidth="6" strokeLinecap="round"
-                    strokeDasharray={ringCircumference}
-                    strokeDashoffset={ringCircumference * (1 - ringRatio)}
-                  />
-                  <defs>
-                    <linearGradient id="nebulaRingGradient" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="var(--color-primary)" />
-                      <stop offset="100%" stopColor="var(--color-secondary)" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div>
-                  <p className="text-sm text-muted mb-1">Active Now</p>
-                  <p className="text-3xl font-bold text-default">
-                    {isLoading ? '...' : activeUsers}
-                    <span className="text-base text-muted font-normal"> / {isLoading ? '...' : stats.totalUsers} users</span>
-                  </p>
-                </div>
-              </div>
-              <TVLink href="/groups" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle} focusWrapperClassName="block">
-                <NebulaGlassStripe />
-                <div>
-                  <p className="text-sm text-muted mb-1">Groups</p>
-                  <p className="text-3xl font-bold text-default">{isLoading ? '...' : stats.totalGroups}</p>
-                </div>
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}
-                >
-                  <UserGroupIcon className="w-6 h-6" />
-                </div>
-              </TVLink>
-              <TVLink href="/addons" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle} focusWrapperClassName="block">
-                <NebulaGlassStripe />
-                <div>
-                  <p className="text-sm text-muted mb-1">Addons</p>
-                  <p className="text-3xl font-bold text-default">{isLoading ? '...' : stats.totalAddons}</p>
-                </div>
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'var(--color-secondary-muted)', color: 'var(--color-secondary)' }}
-                >
-                  <PuzzlePieceIcon className="w-6 h-6" />
-                </div>
-              </TVLink>
-            </div>
-
-            {/* Now Playing - identical to Current mode's placement, just above Continue Watching */}
-            {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
-              <div className={`${NEBULA_GLASS_CLASS} p-5 mb-5`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold font-display text-default">Now Playing</h3>
-                  <div className="flex items-center gap-1.5 text-xs text-muted">
-                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    <span>Live</span>
-                  </div>
-                </div>
-                <NowPlayingSection items={metricsData.nowPlaying} now={nowTick} fetchedAt={metricsAt} />
-              </div>
-            )}
-
-            {/* Continue Watching - identical cards/drag logic to Current mode */}
-            {continueWatching.length > 0 && (
-              <div className={`${NEBULA_GLASS_CLASS} p-5 mb-5`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <h3 className="text-base font-semibold font-display text-default mb-4">Continue Watching</h3>
-                <div
-                  ref={scrollRowRef}
-                  onPointerDown={handleRowPointerDown}
-                  onPointerMove={handleRowPointerMove}
-                  onPointerUp={handleRowPointerUp}
-                  onPointerLeave={handleRowPointerUp}
-                  className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
-                >
-                  {continueWatching.map((item, index) => {
-                    const card = (
-                      <ContinueWatchingCard
-                        item={item}
-                        priority={index < 6}
-                        wasDraggedRef={wasDraggedRef}
-                        onRemove={handleDismissContinueWatching}
-                        onOpenDetails={setDetailModalItem}
-                        isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                        onMenuOpenChange={handleMenuOpenChange}
-                      />
-                    );
-                    return isTV ? (
-                      <TVFocusable key={`${item.userId}-${item.showId}`} onEnterPress={() => setDetailModalItem(item)}>
-                        {card}
-                      </TVFocusable>
-                    ) : (
-                      <Fragment key={`${item.userId}-${item.showId}`}>{card}</Fragment>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Coming up - upcoming episodes for shows being watched */}
-            <UpcomingEpisodesPanel />
-
-            {/* Recent Activity (left, spans both rows) + Top Viewers / Recent
-                Addons stacked on the right - desktop only (lg:). Recent
-                Addons used to be its own full-width panel below this grid,
-                which on a wide screen meant one addon-row per line with a
-                lot of empty horizontal space next to it; folding it into
-                the right column under Top Viewers instead gives it the
-                same half-width sizing those panels already use. Below lg,
-                grid-cols-1 and the row-span both collapse to a normal
-                single-column stack - unchanged from before, since that
-                was already fine on mobile. */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
-              <div className={`${NEBULA_GLASS_CLASS} p-5 lg:row-span-2`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold font-display text-default">Recent Activity</h3>
-                  <TVLink href="/activity" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
-                    View All →
-                  </TVLink>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {isLoading ? (
-                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                  ) : recentActivityItems.length > 0 ? (
-                    recentActivityItems.map((np, index) => (
-                      <div
-                        key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
-                        className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4"
-                      >
-                        <span
-                          className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
-                          style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
-                        />
-                        <TVLink
-                        href={`/users/${np.user.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={`Open ${np.user.username}'s profile`}
-                        className="shrink-0 rounded-full transition-transform hover:scale-105"
-                      >
-                        <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
-                      </TVLink>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm truncate text-muted">
-                            <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
-                              {np.user.username.split(' ')[0]}
-                            </span>{' '}
-                            {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
-                            {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
-                              <span className="text-subtle ml-1">
-                                {np.item.season !== undefined && np.item.season > 0
-                                  ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
-                                  : `E${String(np.item.episode).padStart(2, '0')}`}
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-xs text-subtle">
-                            {new Date(np.watchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                          </p>
+            {/* The Dashboard's panels in this account's arrangement (Arrange
+                button above; lib/arrange.tsx). Full-width panels span both
+                columns; the half-width ones pair up beside each other. */}
+            <ArrangeBar arrange={dashArrange} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start" style={{ gridAutoFlow: 'dense' }}>
+              {dashArrange.shown.map((id) => {
+                const dashPanel = (pid: string, label: string, span: string, node: React.ReactNode) => (pid === id ? (
+                  <ArrangePanel key={pid} arrange={dashArrange} id={pid} label={label} className={span} ownHeading={pid !== 'stats' && pid !== 'quickActions'} emptyNote={dashArrange.isEmpty(pid) ? (pid === 'nowPlaying' ? 'Now Playing · nobody is watching' : 'Continue Watching · empty right now') : undefined}>{node}</ArrangePanel>
+                ) : null);
+                return (
+                  <Fragment key={id}>
+                    {dashPanel('stats', 'Numbers', 'lg:col-span-2', (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className={`${NEBULA_GLASS_CLASS} p-5 flex items-center gap-5`} style={nebulaGlassStyle}>
+                          <NebulaGlassStripe />
+                          <svg width="72" height="72" viewBox="0 0 64 64" className="shrink-0 -rotate-90">
+                            <circle cx="32" cy="32" r="28" fill="none" stroke="var(--color-surface-border)" strokeWidth="6" />
+                            <circle
+                              cx="32" cy="32" r="28" fill="none"
+                              stroke="url(#nebulaRingGradient)" strokeWidth="6" strokeLinecap="round"
+                              strokeDasharray={ringCircumference}
+                              strokeDashoffset={ringCircumference * (1 - ringRatio)}
+                            />
+                            <defs>
+                              <linearGradient id="nebulaRingGradient" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor="var(--color-primary)" />
+                                <stop offset="100%" stopColor="var(--color-secondary)" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                          <div>
+                            <p className="text-sm text-muted mb-1">Active Now</p>
+                            <p className="text-3xl font-bold text-default">
+                              {isLoading ? '...' : activeUsers}
+                              <span className="text-base text-muted font-normal"> / {isLoading ? '...' : stats.totalUsers} users</span>
+                            </p>
+                          </div>
                         </div>
-                        {np.isLive && (
-                          <span className="text-[10px] font-semibold uppercase tracking-wider animate-pulse" style={{ color: 'var(--color-secondary)' }}>
-                            Live
-                          </span>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-sm text-muted">No recent activity</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Top Viewers - same topUsers data Current mode's own panel
-                  uses, restyled to match Nebula's glass treatment. */}
-              <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold font-display text-default">Top Viewers</h3>
-                  <TVLink href="/users" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
-                    See All →
-                  </TVLink>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {isLoading ? (
-                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                  ) : topUsers.length > 0 ? (
-                    topUsers.map((user, index) => (
-                      <TVLink key={user.id || user.name} href={`/users/${user.id}`} className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4" focusWrapperClassName="block">
-                        <span
-                          className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
-                          style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
-                        />
-                        <div className="relative shrink-0">
-                          <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="sm" />
+                        <TVLink href="/groups" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle} focusWrapperClassName="block">
+                          <NebulaGlassStripe />
+                          <div>
+                            <p className="text-sm text-muted mb-1">Groups</p>
+                            <p className="text-3xl font-bold text-default">{isLoading ? '...' : stats.totalGroups}</p>
+                          </div>
                           <div
-                            className={`absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : 'rank-3'}`}
+                            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                            style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}
                           >
-                            {index + 1}
+                            <UserGroupIcon className="w-6 h-6" />
                           </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate text-default">{user.name}</p>
-                          <div className="flex items-center gap-3 text-xs text-muted">
-                            <span className="flex items-center gap-1">
-                              <ClockIcon className="w-3.5 h-3.5" />
-                              {Math.floor(user.watchTime / 60)}h {user.watchTime % 60}m
-                            </span>
-                            {user.streak > 0 && (
-                              <span className="flex items-center gap-1">
-                                <FireIcon className="w-3.5 h-3.5 text-warning" />
-                                {user.streak}d
-                              </span>
-                            )}
+                        </TVLink>
+                        <TVLink href="/addons" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle} focusWrapperClassName="block">
+                          <NebulaGlassStripe />
+                          <div>
+                            <p className="text-sm text-muted mb-1">Addons</p>
+                            <p className="text-3xl font-bold text-default">{isLoading ? '...' : stats.totalAddons}</p>
                           </div>
+                          <div
+                            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                            style={{ background: 'var(--color-secondary-muted)', color: 'var(--color-secondary)' }}
+                          >
+                            <PuzzlePieceIcon className="w-6 h-6" />
+                          </div>
+                        </TVLink>
+                      </div>
+                    ))}
+                    {dashPanel('nowPlaying', 'Now Playing', 'lg:col-span-2', (
+                      <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                        <NebulaGlassStripe />
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <PanelControls side="start" />
+                            <h3 className="text-base font-semibold font-display text-default">Now Playing</h3>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-muted">
+                            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                            <span>Live</span>
+                          </div>
+                      <PanelControls side="end" />
                         </div>
-                      </TVLink>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-sm text-muted">No user data</div>
-                  )}
-                </div>
-              </div>
+                        <NowPlayingSection items={metricsData?.nowPlaying ?? []} now={nowTick} providerByUser={nowPlayingProviders} />
+                      </div>
+                    ))}
+                    {dashPanel('continue', 'Continue Watching', 'lg:col-span-2', (
+                      <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                        <NebulaGlassStripe />
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <PanelControls side="start" />
+                            <h3 className="text-base font-semibold font-display text-default">Continue Watching</h3>
+                          </div>
+                          <PanelControls side="end" />
+                        </div>
+                        <div
+                          ref={scrollRowRef}
+                          onPointerDown={handleRowPointerDown}
+                          onPointerMove={handleRowPointerMove}
+                          onPointerUp={handleRowPointerUp}
+                          onPointerLeave={handleRowPointerUp}
+                          className={isTV ? 'flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated' : 'grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]'}
+                        >
+                          {continueWatching.map((item, index) => {
+                            const card = (
+                              <ContinueWatchingCard
+                                item={item}
+                                wide={!isTV}
+                                priority={index < 7}
+                                wasDraggedRef={wasDraggedRef}
+                                onRemove={handleDismissContinueWatching}
+                                onOpenDetails={setDetailModalItem}
+                                isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                                onMenuOpenChange={handleMenuOpenChange}
+                              />
+                            );
+                            return isTV ? (
+                              <TVFocusable key={`${item.userId}-${item.showId}`} onEnterPress={() => setDetailModalItem(item)}>
+                                {card}
+                              </TVFocusable>
+                            ) : (
+                              <Fragment key={`${item.userId}-${item.showId}`}>{card}</Fragment>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {dashPanel('upcoming', 'Coming up', 'lg:col-span-2', (
+                      <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} />
+                    ))}
+                    {dashPanel('recent', 'Recent Activity', '', (
+                      <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                        <NebulaGlassStripe />
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <PanelControls side="start" />
+                            <h3 className="text-base font-semibold font-display text-default">Recent Activity</h3>
+                          </div>
+                          <TVLink href="/activity" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                            View All →
+                          </TVLink>
+                      <PanelControls side="end" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          {isLoading ? (
+                            <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                          ) : recentActivityItems.length > 0 ? (
+                            recentActivityItems.map((np, index) => (
+                              <div
+                                key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
+                                className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4"
+                              >
+                                <span
+                                  className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
+                                  style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
+                                />
+                                <TVLink
+                                href={`/users/${np.user.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Open ${np.user.username}'s profile`}
+                                className="shrink-0 rounded-full transition-transform hover:scale-105"
+                              >
+                                <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
+                              </TVLink>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm break-words text-muted">
+                                    <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
+                                      {np.user.username.split(' ')[0]}
+                                    </span>{' '}
+                                    {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                                    {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+                                      <span className="text-subtle ml-1">
+                                        {np.item.season !== undefined && np.item.season > 0
+                                          ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
+                                          : `E${String(np.item.episode).padStart(2, '0')}`}
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-subtle">
+                                    {new Date(np.watchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                                {np.isLive && (
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider animate-pulse" style={{ color: 'var(--color-secondary)' }}>
+                                    Live
+                                  </span>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {dashPanel('topViewers', 'Top Viewers', '', (
+                      <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                        <NebulaGlassStripe />
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <PanelControls side="start" />
+                            <h3 className="text-base font-semibold font-display text-default">Top Viewers</h3>
+                          </div>
+                          <TVLink href="/users" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                            See All →
+                          </TVLink>
+                      <PanelControls side="end" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          {isLoading ? (
+                            <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                          ) : topUsers.length > 0 ? (
+                            topUsers.map((user, index) => (
+                              <TVLink key={user.id || user.name} href={`/users/${user.id}`} className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4" focusWrapperClassName="block">
+                                <span
+                                  className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
+                                  style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
+                                />
+                                <div className="relative shrink-0">
+                                  <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="sm" />
+                                  <div
+                                    className={`absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : 'rank-3'}`}
+                                  >
+                                    {index + 1}
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate text-default">{user.name}</p>
+                                  <div className="flex items-center gap-3 text-xs text-muted">
+                                    <span className="flex items-center gap-1">
+                                      <ClockIcon className="w-3.5 h-3.5" />
+                                      {Math.floor(user.watchTime / 60)}h {user.watchTime % 60}m
+                                    </span>
+                                    {user.streak > 0 && (
+                                      <span className="flex items-center gap-1">
+                                        <FireIcon className="w-3.5 h-3.5 text-warning" />
+                                        {user.streak}d
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </TVLink>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-sm text-muted">No user data</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {dashPanel('recentAddons', 'Recent Addons', '', (
+                      <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                        <NebulaGlassStripe />
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <PanelControls side="start" />
+                            <h3 className="text-base font-semibold font-display text-default">Recent Addons</h3>
+                          </div>
+                          <TVLink href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                            View All →
+                          </TVLink>
+                      <PanelControls side="end" />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {isLoading ? (
+                            <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                          ) : recentAddons.length > 0 ? (
+                            recentAddons.map((addon) => (
+                              <RecentAddonItem
+                                key={addon.id}
+                                addon={addon}
+                                isReloading={reloadingAddons.has(addon.id)}
+                                onReload={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (reloadingAddons.has(addon.id)) return;
 
-              {/* Recent Addons - reuses the exact same RecentAddonItem rows
-                  (and reload handler) as Current mode, just inside a glass
-                  panel instead of a Card. Third grid child, not a separate
-                  full-width section - CSS Grid auto-placement drops it into
-                  the right column's second row, under Top Viewers, since
-                  Recent Activity's row-span-2 already claims the left
-                  column for both rows. */}
-              <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold font-display text-default">Recent Addons</h3>
-                  <TVLink href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
-                    View All →
-                  </TVLink>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {isLoading ? (
-                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                  ) : recentAddons.length > 0 ? (
-                    recentAddons.map((addon) => (
-                      <RecentAddonItem
-                        key={addon.id}
-                        addon={addon}
-                        isReloading={reloadingAddons.has(addon.id)}
-                        onReload={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (reloadingAddons.has(addon.id)) return;
-
-                          setReloadingAddons((prev) => new Set(prev).add(addon.id));
-                          try {
-                            await api.reloadAddon(addon.id);
-                            toast.success(`Reloaded ${addon.name}`);
-                          } catch (err: any) {
-                            toast.error(err.message || 'Reload failed');
-                          } finally {
-                            setReloadingAddons((prev) => {
-                              const next = new Set(prev);
-                              next.delete(addon.id);
-                              return next;
-                            });
-                          }
-                        }}
-                      />
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-sm text-muted">No recent addons</div>
-                  )}
-                </div>
-              </div>
+                                  setReloadingAddons((prev) => new Set(prev).add(addon.id));
+                                  try {
+                                    await api.reloadAddon(addon.id);
+                                    toast.success(`Reloaded ${addon.name}`);
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Reload failed');
+                                  } finally {
+                                    setReloadingAddons((prev) => {
+                                      const next = new Set(prev);
+                                      next.delete(addon.id);
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              />
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-sm text-muted">No recent addons</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </div>
+            <HiddenTray arrange={dashArrange} labelOf={(id) => DASH_LABELS[id] || id} note="Hidden only here. Tap one to bring it back." />
           </div>
         </div>
 
@@ -1128,14 +1686,17 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Welcome back! Here's what's happening with SlickSync."
         actions={
-          <Button
-            variant="primary"
-            leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-            onClick={handleSyncAll}
-            isLoading={isSyncing}
-          >
-            Sync All
-          </Button>
+          <div className="flex items-center gap-2">
+            <ArrangeButton arrange={dashArrange} />
+            <Button
+              variant="primary"
+              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+              onClick={handleSyncAll}
+              isLoading={isSyncing}
+            >
+              Sync All
+            </Button>
+          </div>
         }
       />
 
@@ -1157,336 +1718,366 @@ export default function DashboardPage() {
             everything's done, and can be dismissed permanently. */}
         <SetupChecklist />
 
-        {/* Stats Grid - Fixed height cards */}
-        <PageSection className="mb-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Link href="/users" className="block">
-              <StatCard
-                label="Total Users"
-                value={isLoading ? '...' : stats.totalUsers}
-                icon={<UsersIcon className="w-5 h-5" />}
-                delay={0}
-              />
-            </Link>
-            <Link href="/groups" className="block">
-              <StatCard
-                label="Groups"
-                value={isLoading ? '...' : stats.totalGroups}
-                icon={<UserGroupIcon className="w-5 h-5" />}
-                delay={0.05}
-              />
-            </Link>
-            <Link href="/addons" className="block">
-              <StatCard
-                label="Addons"
-                value={isLoading ? '...' : stats.totalAddons}
-                icon={<PuzzlePieceIcon className="w-5 h-5" />}
-                delay={0.1}
-              />
-            </Link>
-            <Link href="/invitations" className="block">
-              <StatCard
-                label="Pending Invites"
-                value={isLoading ? '...' : stats.pendingInvites}
-                icon={<EnvelopeIcon className="w-5 h-5" />}
-                delay={0.15}
-              />
-            </Link>
-          </div>
-        </PageSection>
-
-        {/* Now Playing - same live nowPlaying feed Activity's "Currently
-            Watching" reads, surfaced here too so it's visible without
-            leaving the Dashboard. */}
-        {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
-          <PageSection className="mb-6" delay={0.17}>
-            <Card padding="lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold font-display text-default">Now Playing</h3>
-                <div className="flex items-center gap-1.5 text-xs text-muted">
-                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  <span>Live</span>
-                </div>
-              </div>
-              <NowPlayingSection items={metricsData.nowPlaying} now={nowTick} fetchedAt={metricsAt} />
-            </Card>
-          </PageSection>
-        )}
-
-        {/* Continue Watching */}
-        {continueWatching.length > 0 && (
-          <PageSection className="mb-6" delay={0.18}>
-            <Card padding="lg">
-              <h3 className="text-base font-semibold font-display text-default mb-4">
-                Continue Watching
-              </h3>
-              <div
-                ref={scrollRowRef}
-                onPointerDown={handleRowPointerDown}
-                onPointerMove={handleRowPointerMove}
-                onPointerUp={handleRowPointerUp}
-                onPointerLeave={handleRowPointerUp}
-                className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
-              >
-                {continueWatching.map((item, index) => (
-                  <ContinueWatchingCard
-                    key={`${item.userId}-${item.showId}`}
-                    item={item}
-                    priority={index < 6}
-                    wasDraggedRef={wasDraggedRef}
-                    onRemove={handleDismissContinueWatching}
-                    onOpenDetails={setDetailModalItem}
-                    isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                    onMenuOpenChange={handleMenuOpenChange}
-                  />
-                ))}
-              </div>
-            </Card>
-          </PageSection>
-        )}
-
-        {/* Coming up - upcoming episodes for shows being watched */}
-        <UpcomingEpisodesPanel />
-
-        {/* Main content grid - Matched heights */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          {/* Sync Activity Chart */}
-          <PageSection delay={0.2} className="lg:col-span-2">
-            <Card padding="lg" className={ACTIVITY_CARD_HEIGHT}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-semibold font-display text-default">
-                    Sync Activity
-                  </h3>
-                  <p className="text-sm text-muted">
-                    Syncs over the last 24 hours
-                  </p>
-                </div>
-                <Badge variant="muted">
-                  <ArrowTrendingUpIcon className="w-3.5 h-3.5 mr-1" />
-                  Last 24h
-                </Badge>
-              </div>
-              <div className="h-[calc(100%-80px)] paint-isolated">
-                <SyncActivityChart data={syncStatusData} />
-              </div>
-            </Card>
-          </PageSection>
-
-          {/* Recent Activity - Same height */}
-          <PageSection delay={0.25}>
-            <Card padding="lg" className={ACTIVITY_CARD_HEIGHT}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold font-display text-default">
-                  Recent Activity
-                </h3>
-                <Link href="/activity">
-                  <Button variant="ghost" size="sm">View All</Button>
-                </Link>
-              </div>
-
-              <div className="flex flex-col gap-2 overflow-y-auto max-h-[330px] pr-1 custom-scrollbar">
-                {isLoading ? (
-                  <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                ) : recentActivityItems.length > 0 ? (
-                  recentActivityItems.map((np, index) => (
-                    <motion.div
-                      key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
-                      initial={false}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 + index * 0.05 }}
-                      whileHover={{ x: 4 }}
-                      className="flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer bg-surface-hover hover:bg-surface"
-                    >
-                      <Link
-                        href={`/users/${np.user.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={`Open ${np.user.username}'s profile`}
-                        className="shrink-0 rounded-full transition-transform hover:scale-105"
-                      >
-                        <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
+        {/* The Dashboard's panels in this account's arrangement (see the
+            Nebula branch above). Six columns so the wide chart and the
+            narrower lists keep their old proportions wherever they land. */}
+        <ArrangeBar arrange={dashArrange} />
+        <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 items-stretch" style={{ gridAutoFlow: 'dense' }}>
+          {dashArrange.shown.map((id) => {
+            const dashPanel = (pid: string, label: string, span: string, node: React.ReactNode) => (pid === id ? (
+              <ArrangePanel key={pid} arrange={dashArrange} id={pid} label={label} className={span} ownHeading={pid !== 'stats' && pid !== 'quickActions'} emptyNote={dashArrange.isEmpty(pid) ? (pid === 'nowPlaying' ? 'Now Playing · nobody is watching' : 'Continue Watching · empty right now') : undefined}>{node}</ArrangePanel>
+            ) : null);
+            return (
+              <Fragment key={id}>
+                {dashPanel('stats', 'Numbers', 'lg:col-span-6', (
+                  <PageSection>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <Link href="/users" className="block">
+                        <StatCard
+                          label="Total Users"
+                          value={isLoading ? '...' : stats.totalUsers}
+                          icon={<UsersIcon className="w-5 h-5" />}
+                          delay={0}
+                        />
                       </Link>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm truncate text-muted">
-                          <span className="font-medium text-default">
-                            {np.user.username.split(' ')[0]}
-                          </span>{' '}
-                          {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
-                          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
-                            <span className="text-subtle ml-1">
-                              {np.item.season !== undefined && np.item.season > 0
-                                ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
-                                : `E${String(np.item.episode).padStart(2, '0')}`}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-subtle">
-                          {new Date(np.watchedAt).toLocaleTimeString()}
-                        </p>
+                      <Link href="/groups" className="block">
+                        <StatCard
+                          label="Groups"
+                          value={isLoading ? '...' : stats.totalGroups}
+                          icon={<UserGroupIcon className="w-5 h-5" />}
+                          delay={0.05}
+                        />
+                      </Link>
+                      <Link href="/addons" className="block">
+                        <StatCard
+                          label="Addons"
+                          value={isLoading ? '...' : stats.totalAddons}
+                          icon={<PuzzlePieceIcon className="w-5 h-5" />}
+                          delay={0.1}
+                        />
+                      </Link>
+                      <Link href="/invitations" className="block">
+                        <StatCard
+                          label="Pending Invites"
+                          value={isLoading ? '...' : stats.pendingInvites}
+                          icon={<EnvelopeIcon className="w-5 h-5" />}
+                          delay={0.15}
+                        />
+                      </Link>
+                    </div>
+                  </PageSection>
+                ))}
+                {dashPanel('nowPlaying', 'Now Playing', 'lg:col-span-6', (
+                  <PageSection delay={0.17}>
+                    <Card padding="lg">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <PanelControls side="start" />
+                          <h3 className="text-base font-semibold font-display text-default">Now Playing</h3>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted">
+                          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                          <span>Live</span>
+                        </div>
+                  <PanelControls side="end" />
                       </div>
-                      {np.isLive && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-semibold text-secondary uppercase tracking-wider animate-pulse">Live</span>
-                          <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+                      <NowPlayingSection items={metricsData?.nowPlaying ?? []} now={nowTick} providerByUser={nowPlayingProviders} />
+                    </Card>
+                  </PageSection>
+                ))}
+                {dashPanel('continue', 'Continue Watching', 'lg:col-span-6', (
+                  <PageSection delay={0.18}>
+                    <Card padding="lg">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <PanelControls side="start" />
+                          <h3 className="text-base font-semibold font-display text-default">Continue Watching</h3>
                         </div>
-                      )}
-                    </motion.div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted">No recent activity</div>
-                )}
-              </div>
-            </Card>
-          </PageSection>
-        </div>
-
-        {/* Bottom section - Matched heights */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-          {/* Top Users */}
-          <PageSection delay={0.3} className="h-full">
-            <Card padding="lg" className="h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold font-display text-default">
-                  Top Viewers
-                </h3>
-                <Link href="/users">
-                  <Button variant="ghost" size="sm">See All</Button>
-                </Link>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {isLoading ? (
-                  <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                ) : topUsers.length > 0 ? (
-                  topUsers.map((user, index) => (
-                    <Link key={user.id || user.name} href={`/users/${user.id}`} className="block">
-                      <motion.div
-                        initial={false}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.35 + index * 0.05 }}
-                        whileHover={{ scale: 1.01 }}
-                        className="flex items-center gap-3 p-3 rounded-lg transition-colors bg-surface-hover hover:bg-surface cursor-pointer"
+                        <PanelControls side="end" />
+                      </div>
+                      <div
+                        ref={scrollRowRef}
+                        onPointerDown={handleRowPointerDown}
+                        onPointerMove={handleRowPointerMove}
+                        onPointerUp={handleRowPointerUp}
+                        onPointerLeave={handleRowPointerUp}
+                        className={isTV ? 'flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated' : 'grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]'}
                       >
-                        <div className="relative">
-                          <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="md" />
-                          <div 
-                            className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : 'rank-3'}`}
-                          >
-                            {index + 1}
-                          </div>
-                        </div>
+                        {continueWatching.map((item, index) => (
+                          <ContinueWatchingCard
+                            key={`${item.userId}-${item.showId}`}
+                            item={item}
+                            wide={!isTV}
+                            priority={index < 7}
+                            wasDraggedRef={wasDraggedRef}
+                            onRemove={handleDismissContinueWatching}
+                            onOpenDetails={setDetailModalItem}
+                            isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                            onMenuOpenChange={handleMenuOpenChange}
+                          />
+                        ))}
+                      </div>
+                    </Card>
+                  </PageSection>
+                ))}
+                {dashPanel('upcoming', 'Coming up', 'lg:col-span-6', (
+                  <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} />
+                ))}
+                {dashPanel('syncActivity', 'Sync Activity', 'lg:col-span-4', (
+                  <PageSection delay={0.2}>
+                    <Card padding="lg" className={ACTIVITY_CARD_HEIGHT}>
+                      <div className="flex items-center gap-2 mb-4">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate text-default">
-                            {user.name}
-                          </p>
-                          <div className="flex items-center gap-3 text-xs text-muted">
-                            <span className="flex items-center gap-1">
-                              <ClockIcon className="w-3.5 h-3.5" />
-                              {Math.floor(user.watchTime / 60)}h {user.watchTime % 60}m
-                            </span>
-                            {user.streak > 0 && (
-                              <span className="flex items-center gap-1">
-                                <FireIcon className="w-3.5 h-3.5 text-warning" />
-                                {user.streak}{user.streak === 1 ? 'd' : 'd'}
-                              </span>
-                            )}
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <PanelControls side="start" />
+                            <h3 className="text-base font-semibold font-display text-default">
+                              Sync Activity
+                            </h3>
                           </div>
+                          <p className="text-sm text-muted">
+                            Syncs over the last 24 hours
+                          </p>
                         </div>
-                      </motion.div>
-                    </Link>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted">No user data</div>
-                )}
-              </div>
-            </Card>
-          </PageSection>
+                        <Badge variant="muted">
+                          <ArrowTrendingUpIcon className="w-3.5 h-3.5 mr-1" />
+                          Last 24h
+                        </Badge>
+                        <PanelControls side="end" />
+                      </div>
+                      <div className="h-[calc(100%-80px)] paint-isolated">
+                        <SyncActivityChart data={syncStatusData} />
+                      </div>
+                    </Card>
+                  </PageSection>
+                ))}
+                {dashPanel('recent', 'Recent Activity', 'lg:col-span-2', (
+                  <PageSection delay={0.25}>
+                    <Card padding="lg" className={ACTIVITY_CARD_HEIGHT}>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <PanelControls side="start" />
+                          <h3 className="text-base font-semibold font-display text-default">
+                          Recent Activity
+                        </h3>
+                        </div>
+                        <Link href="/activity">
+                          <Button variant="ghost" size="sm">View All</Button>
+                        </Link>
+                  <PanelControls side="end" />
+                      </div>
 
-          {/* Recent Addons - Adapts to content */}
-          <PageSection delay={0.35} className="h-full">
-            <Card padding="lg" className="h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold font-display text-default">
-                  Recent Addons
-                </h3>
-                <Link href="/addons">
-                  <Button variant="ghost" size="sm">View All</Button>
-                </Link>
-              </div>
+                      <div className="flex flex-col gap-2 overflow-y-auto max-h-[330px] pr-1 custom-scrollbar">
+                        {isLoading ? (
+                          <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                        ) : recentActivityItems.length > 0 ? (
+                          recentActivityItems.map((np, index) => (
+                            <motion.div
+                              key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
+                              initial={false}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: 0.3 + index * 0.05 }}
+                              whileHover={{ x: 4 }}
+                              className="flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer bg-surface-hover hover:bg-surface"
+                            >
+                              <Link
+                                href={`/users/${np.user.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Open ${np.user.username}'s profile`}
+                                className="shrink-0 rounded-full transition-transform hover:scale-105"
+                              >
+                                <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
+                              </Link>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm break-words text-muted">
+                                  <span className="font-medium text-default">
+                                    {np.user.username.split(' ')[0]}
+                                  </span>{' '}
+                                  {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                                  {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+                                    <span className="text-subtle ml-1">
+                                      {np.item.season !== undefined && np.item.season > 0
+                                        ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
+                                        : `E${String(np.item.episode).padStart(2, '0')}`}
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-subtle">
+                                  {new Date(np.watchedAt).toLocaleTimeString()}
+                                </p>
+                              </div>
+                              {np.isLive && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-semibold text-secondary uppercase tracking-wider animate-pulse">Live</span>
+                                  <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+                                </div>
+                              )}
+                            </motion.div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+                        )}
+                      </div>
+                    </Card>
+                  </PageSection>
+                ))}
+                {dashPanel('topViewers', 'Top Viewers', 'lg:col-span-3', (
+                  <PageSection delay={0.3} className="h-full">
+                    <Card padding="lg" className="h-full">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <PanelControls side="start" />
+                          <h3 className="text-base font-semibold font-display text-default">
+                          Top Viewers
+                        </h3>
+                        </div>
+                        <Link href="/users">
+                          <Button variant="ghost" size="sm">See All</Button>
+                        </Link>
+                  <PanelControls side="end" />
+                      </div>
 
-              <div className="flex flex-col gap-3">
-                {isLoading ? (
-                  <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                ) : recentAddons.length > 0 ? (
-                  recentAddons.map((addon) => (
-                    <RecentAddonItem
-                      key={addon.id}
-                      addon={addon}
-                      isReloading={reloadingAddons.has(addon.id)}
-                      onReload={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (reloadingAddons.has(addon.id)) return;
-                        
-                        setReloadingAddons(prev => new Set(prev).add(addon.id));
-                        try {
-                          await api.reloadAddon(addon.id);
-                          toast.success(`Reloaded ${addon.name}`);
-                        } catch (err: any) {
-                          toast.error(err.message || 'Reload failed');
-                        } finally {
-                          setReloadingAddons(prev => {
-                            const next = new Set(prev);
-                            next.delete(addon.id);
-                            return next;
-                          });
-                        }
-                      }}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted">No recent addons</div>
-                )}
-              </div>
-            </Card>
-          </PageSection>
+                      <div className="flex flex-col gap-3">
+                        {isLoading ? (
+                          <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                        ) : topUsers.length > 0 ? (
+                          topUsers.map((user, index) => (
+                            <Link key={user.id || user.name} href={`/users/${user.id}`} className="block">
+                              <motion.div
+                                initial={false}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.35 + index * 0.05 }}
+                                whileHover={{ scale: 1.01 }}
+                                className="flex items-center gap-3 p-3 rounded-lg transition-colors bg-surface-hover hover:bg-surface cursor-pointer"
+                              >
+                                <div className="relative">
+                                  <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="md" />
+                                  <div 
+                                    className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : 'rank-3'}`}
+                                  >
+                                    {index + 1}
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm truncate text-default">
+                                    {user.name}
+                                  </p>
+                                  <div className="flex items-center gap-3 text-xs text-muted">
+                                    <span className="flex items-center gap-1">
+                                      <ClockIcon className="w-3.5 h-3.5" />
+                                      {Math.floor(user.watchTime / 60)}h {user.watchTime % 60}m
+                                    </span>
+                                    {user.streak > 0 && (
+                                      <span className="flex items-center gap-1">
+                                        <FireIcon className="w-3.5 h-3.5 text-warning" />
+                                        {user.streak}{user.streak === 1 ? 'd' : 'd'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            </Link>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-sm text-muted">No user data</div>
+                        )}
+                      </div>
+                    </Card>
+                  </PageSection>
+                ))}
+                {dashPanel('recentAddons', 'Recent Addons', 'lg:col-span-3', (
+                  <PageSection delay={0.35} className="h-full">
+                    <Card padding="lg" className="h-full">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <PanelControls side="start" />
+                          <h3 className="text-base font-semibold font-display text-default">
+                          Recent Addons
+                        </h3>
+                        </div>
+                        <Link href="/addons">
+                          <Button variant="ghost" size="sm">View All</Button>
+                        </Link>
+                  <PanelControls side="end" />
+                      </div>
+
+                      <div className="flex flex-col gap-3">
+                        {isLoading ? (
+                          <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                        ) : recentAddons.length > 0 ? (
+                          recentAddons.map((addon) => (
+                            <RecentAddonItem
+                              key={addon.id}
+                              addon={addon}
+                              isReloading={reloadingAddons.has(addon.id)}
+                              onReload={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (reloadingAddons.has(addon.id)) return;
+              
+                                setReloadingAddons(prev => new Set(prev).add(addon.id));
+                                try {
+                                  await api.reloadAddon(addon.id);
+                                  toast.success(`Reloaded ${addon.name}`);
+                                } catch (err: any) {
+                                  toast.error(err.message || 'Reload failed');
+                                } finally {
+                                  setReloadingAddons(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(addon.id);
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-sm text-muted">No recent addons</div>
+                        )}
+                      </div>
+                    </Card>
+                  </PageSection>
+                ))}
+                {dashPanel('quickActions', 'Quick Actions', 'lg:col-span-6', (
+                  <PageSection delay={0.4}>
+                    <Card 
+                      padding="lg" 
+                      className="accent-border bg-surface"
+                    >
+                      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-semibold font-display mb-1 text-default">
+                            Quick Actions
+                          </h3>
+                          <p className="text-sm text-muted">
+                            Common tasks to manage your SlickSync instance
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Link href="/users">
+                            <Button variant="primary" size="sm" leftIcon={<UsersIcon className="w-4 h-4" />}>
+                              Manage Users
+                            </Button>
+                          </Link>
+                          <Link href="/groups">
+                            <Button variant="secondary" size="sm" leftIcon={<UserGroupIcon className="w-4 h-4" />}>
+                              Manage Groups
+                            </Button>
+                          </Link>
+                          <Link href="/invitations">
+                            <Button variant="ghost" size="sm" leftIcon={<EnvelopeIcon className="w-4 h-4" />}>
+                              Invitations
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    </Card>
+                  </PageSection>
+                ))}
+              </Fragment>
+            );
+          })}
         </div>
-
-        {/* Quick Actions */}
-        <PageSection delay={0.4} className="mt-4">
-          <Card 
-            padding="lg" 
-            className="accent-border bg-surface"
-          >
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold font-display mb-1 text-default">
-                  Quick Actions
-                </h3>
-                <p className="text-sm text-muted">
-                  Common tasks to manage your SlickSync instance
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href="/users">
-                  <Button variant="primary" size="sm" leftIcon={<UsersIcon className="w-4 h-4" />}>
-                    Manage Users
-                  </Button>
-                </Link>
-                <Link href="/groups">
-                  <Button variant="secondary" size="sm" leftIcon={<UserGroupIcon className="w-4 h-4" />}>
-                    Manage Groups
-                  </Button>
-                </Link>
-                <Link href="/invitations">
-                  <Button variant="ghost" size="sm" leftIcon={<EnvelopeIcon className="w-4 h-4" />}>
-                    Invitations
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </Card>
-        </PageSection>
+        <HiddenTray arrange={dashArrange} labelOf={(id) => DASH_LABELS[id] || id} note="Hidden only here. Tap one to bring it back." />
       </div>
 
       {detailModalItem && (

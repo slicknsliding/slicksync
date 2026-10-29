@@ -10,7 +10,8 @@ import JellyfinSignIn, { type JellyfinCredentials } from '@/components/jellyfin/
 import { NewJellyfinAccountForm } from '@/components/jellyfin/NewJellyfinAccountForm';
 import { inviteApi, InviteApiError } from '@/lib/invite-api';
 import { motion } from 'framer-motion';
-import { UserIcon } from '@heroicons/react/24/outline';
+import { formatDistanceToNow } from 'date-fns';
+import { PubCard, PubField, PubButton, PubSeg } from '@/components/v2/PublicV2';
 
 /**
  * Invite state machine states
@@ -48,6 +49,8 @@ export default function InviteRequestPage() {
   const [jellyfinOffer, setJellyfinOffer] = useState<{ server: string } | null>(null);
   const [jellyfinMode, setJellyfinMode] = useState<'new' | 'existing'>('new');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // What the invitation itself says: how many uses and when it ends.
+  const [inviteInfo, setInviteInfo] = useState<{ maxUses: number | null; currentUses: number; expiresAt: string | null } | null>(null);
 
   // Track if Stremio OAuth is ready (username entered)
   const [usernameConfirmed, setUsernameConfirmed] = useState(false);
@@ -128,6 +131,7 @@ export default function InviteRequestPage() {
           setGroupName(data.groupName);
         }
         if (data.jellyfinNewAccount) setJellyfinOffer(data.jellyfinNewAccount);
+        setInviteInfo({ maxUses: data.maxUses ?? null, currentUses: data.currentUses ?? 0, expiresAt: data.expiresAt ?? null });
 
         // If we have saved username+email, check their status FIRST
         const saved = localStorage.getItem(storageKey);
@@ -418,70 +422,60 @@ export default function InviteRequestPage() {
       case 'disabled':
         return <StatusCards.Disabled />;
 
-      case 'form':
+      case 'form': {
+        const stepNow = usernameConfirmed ? 2 : 1;
+        const steps = ['Pick a name', 'Sign in with your app', 'The person who runs it says yes'];
+        const facts: string[] = [];
+        if (inviteInfo?.maxUses && inviteInfo.maxUses > 0) facts.push(`${inviteInfo.currentUses} of ${inviteInfo.maxUses} used`);
+        if (inviteInfo) {
+          facts.push(inviteInfo.expiresAt ? `ends ${formatDistanceToNow(new Date(inviteInfo.expiresAt), { addSuffix: true })}` : 'never ends');
+        }
         return (
           <motion.div
-            className="rounded-2xl p-8"
-            style={{
-              backgroundColor: 'var(--color-surface)',
-              border: '1px solid var(--color-surface-border)',
-            }}
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
           >
-            {/* Header */}
-            <div className="text-center mb-8">
-              <motion.div
-                className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center"
-                style={{
-                  backgroundColor: 'var(--color-primary-muted)',
-                }}
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.4, delay: 0.1 }}
-              >
-                <UserIcon
-                  className="w-8 h-8"
-                  style={{ color: 'var(--color-primary)' }}
-                />
-              </motion.div>
-              <motion.h1
-                className="text-2xl font-semibold mb-2"
-                style={{ color: 'var(--color-text)' }}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.15 }}
-              >
-                Request Access
-              </motion.h1>
-              <motion.p
-                className="text-sm"
-                style={{ color: 'var(--color-text-muted)' }}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.2 }}
-              >
-                Choose a username and sign in with Stremio to request access
-              </motion.p>
-            </div>
+            <PubCard>
+              {/* Who invited you, and to what */}
+              <div className="flex gap-3 items-center mb-3">
+                <span className="flex-none w-3 rounded-[5px]" style={{ height: 44, background: 'var(--color-primary)' }} />
+                <div className="min-w-0">
+                  <h2 className="font-bold text-lg" style={{ color: 'var(--color-text)' }}>
+                    You&rsquo;re invited to {groupName || 'SlickSync'}
+                  </h2>
+                  {facts.length > 0 && (
+                    <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{facts.join(' · ')}</p>
+                  )}
+                </div>
+              </div>
 
-            {/* Step 1: Username input */}
-            <motion.div
-              className="space-y-4"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.25 }}
-            >
-              {/* Username field */}
-              <div>
-                <div className="relative">
-                  <div
-                    className={`absolute left-4 top-1/2 -translate-y-1/2 ${usernameError ? 'text-error' : 'text-subtle'}`}
+              {/* The three steps, the one you are on lit */}
+              <ol className="mb-3">
+                {steps.map((t, i) => (
+                  <li
+                    key={t}
+                    className="flex gap-3 items-center py-2.5"
+                    style={i === 0 ? undefined : { borderTop: '1px solid var(--color-surface-border)' }}
                   >
-                    <UserIcon className="w-5 h-5" />
-                  </div>
+                    <span
+                      className="w-[26px] h-[26px] rounded-full flex items-center justify-center font-bold text-[13px] flex-none"
+                      style={i + 1 <= stepNow
+                        ? { background: 'var(--color-primary-solid)', color: 'var(--color-on-primary-solid, #fff)' }
+                        : { background: 'var(--color-bg)', color: 'var(--color-text-muted)', border: '1px solid var(--color-surface-border)' }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-sm" style={{ color: i + 1 <= stepNow ? 'var(--color-text)' : 'var(--color-text-muted)' }}>{t}</span>
+                  </li>
+                ))}
+              </ol>
+
+              {/* Step 1: your name */}
+              <div className="space-y-4">
+                <PubField label="Your name" htmlFor="invite-username">
                   <input
+                    id="invite-username"
                     type="text"
                     value={username}
                     onChange={(e) => {
@@ -495,154 +489,113 @@ export default function InviteRequestPage() {
                         handleConfirmUsername();
                       }
                     }}
-                    placeholder="Username"
+                    placeholder="How you’ll appear to the others"
                     required
                     disabled={isSubmitting}
-                    className={`slicksync-input w-full pl-12 pr-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none ${usernameError ? 'bd-err' : 'bd-ok'}`}
+                    className={`slicksync-input w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none ${usernameError ? 'bd-err' : 'bd-ok'}`}
                     style={{
-                      backgroundColor: 'var(--color-bg-subtle)',
+                      backgroundColor: 'var(--color-bg)',
                       color: 'var(--color-text)',
                     }}
                   />
-                </div>
-                {usernameError && (
-                  <motion.p
-                    className="mt-2 text-sm"
-                    style={{ color: 'var(--color-error)' }}
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    {usernameError}
-                  </motion.p>
-                )}
-              </div>
-
-              {/* Step 2: Stremio OAuth (shown after username confirmed) */}
-              {!usernameConfirmed ? (
-                <motion.button
-                  onClick={handleConfirmUsername}
-                  disabled={!username.trim() || isSubmitting}
-                  className="w-full py-3.5 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2"
-                  style={{
-                    backgroundColor: 'var(--color-primary)',
-                    color: 'var(--color-bg)',
-                    opacity: (!username.trim() || isSubmitting) ? 0.6 : 1,
-                  }}
-                  whileHover={username.trim() ? { scale: 1.01 } : {}}
-                  whileTap={username.trim() ? { scale: 0.99 } : {}}
-                >
-                  Continue
-                </motion.button>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  {submitError && (
+                  {usernameError && (
                     <motion.p
-                      className="mb-4 text-sm text-center px-4 py-3 rounded-xl"
-                      style={{
-                        color: 'var(--color-error)',
-                        backgroundColor: 'var(--color-error-muted, rgba(239, 68, 68, 0.1))',
-                      }}
+                      className="mt-2 text-sm"
+                      style={{ color: 'var(--color-error)' }}
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
                     >
-                      {submitError}
+                      {usernameError}
                     </motion.p>
                   )}
-                  {/* Either provider can join, and the one picked here
-                      decides what kind of user the invite creates. */}
-                  <div className="flex gap-2 mb-4">
-                    {(['stremio', 'nuvio', 'jellyfin'] as const).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setJoinProvider(p)}
-                        className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
-                          joinProvider === p
-                            ? 'bg-primary/20 text-primary'
-                            : 'bg-white/[0.03] text-muted hover:bg-white/[0.06]'
-                        }`}
+                </PubField>
+
+                {/* Step 2: sign in with your app (shown after the name is confirmed) */}
+                {!usernameConfirmed ? (
+                  <PubButton primary onClick={handleConfirmUsername} disabled={!username.trim() || isSubmitting}>
+                    Continue
+                  </PubButton>
+                ) : (
+                  <motion.div
+                    className="space-y-4"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    {submitError && (
+                      <p
+                        className="text-sm text-center px-4 py-3 rounded-xl"
+                        role="alert"
+                        style={{
+                          color: 'var(--color-error)',
+                          backgroundColor: 'var(--color-error-muted, rgba(239, 68, 68, 0.1))',
+                        }}
                       >
-                        {p === 'stremio' ? 'Stremio' : p === 'nuvio' ? 'Nuvio' : 'Jellyfin'}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-center -mt-2 mb-4" style={{ color: 'var(--color-text-subtle)' }}>Also for AIOStreams and AIOMetadata</p>
+                        {submitError}
+                      </p>
+                    )}
+                    {/* Either provider can join, and the one picked here
+                        decides what kind of user the invite creates. */}
+                    <PubSeg
+                      value={joinProvider}
+                      onChange={setJoinProvider}
+                      options={[{ value: 'stremio', label: 'Stremio' }, { value: 'nuvio', label: 'Nuvio' }, { value: 'jellyfin', label: 'Jellyfin' }]}
+                    />
+                    <p className="text-xs text-center -mt-2" style={{ color: 'var(--color-text-subtle)' }}>Jellyfin also covers AIOStreams and AIOMetadata.</p>
 
-                  {joinProvider === 'jellyfin' ? (
-                    <div className="space-y-3">
-                      {jellyfinOffer && (
-                        <div className="flex gap-2 justify-center">
-                          {([['new', 'Make me an account'], ['existing', 'I already have one']] as const).map(([mode, label]) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => setJellyfinMode(mode)}
-                              aria-pressed={jellyfinMode === mode}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${jellyfinMode === mode ? 'bg-primary/20 text-primary' : 'bg-white/[0.03] text-muted hover:bg-white/[0.06]'}`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {jellyfinOffer && jellyfinMode === 'new' ? (
-                        <NewJellyfinAccountForm server={jellyfinOffer.server} username={username.trim()} onSubmit={handleNewJellyfinAccount} />
-                      ) : (
-                        <>
-                          <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                            Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
-                          </p>
-                          <JellyfinSignIn
-                            api={inviteApi.jellyfinSignIn(inviteCode)}
-                            onSubmit={handleJellyfinCredentials}
-                            submitLabel="Request access"
-                            compact
+                    {joinProvider === 'jellyfin' ? (
+                      <div className="space-y-3">
+                        {jellyfinOffer && (
+                          <PubSeg
+                            value={jellyfinMode}
+                            onChange={setJellyfinMode}
+                            options={[{ value: 'new', label: 'Make me an account' }, { value: 'existing', label: 'I already have one' }]}
                           />
-                        </>
-                      )}
-                    </div>
-                  ) : joinProvider === 'stremio' ? (
-                    <StremioOAuthCard
-                      onAuthKey={handleAuthKey}
-                      onError={(msg) => setSubmitError(msg)}
-                      isCompleting={isSubmitting}
-                      title="Sign in with Stremio"
-                      description="Connect your Stremio account to complete your request."
-                    />
-                  ) : (
-                    <NuvioOAuthCard
-                      inviteCode={inviteCode}
-                      onApproved={handleNuvioApproved}
-                      onError={(msg) => setSubmitError(msg)}
-                      isCompleting={isSubmitting}
-                    />
-                  )}
-                </motion.div>
-              )}
-            </motion.div>
+                        )}
+                        {jellyfinOffer && jellyfinMode === 'new' ? (
+                          <NewJellyfinAccountForm server={jellyfinOffer.server} username={username.trim()} onSubmit={handleNewJellyfinAccount} />
+                        ) : (
+                          <>
+                            <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                              Sign in with the server you watch on - Jellyfin, or the media server AIOStreams or AIOMetadata runs for your apps.
+                            </p>
+                            <JellyfinSignIn
+                              api={inviteApi.jellyfinSignIn(inviteCode)}
+                              onSubmit={handleJellyfinCredentials}
+                              submitLabel="Request access"
+                              compact
+                            />
+                          </>
+                        )}
+                      </div>
+                    ) : joinProvider === 'stremio' ? (
+                      <StremioOAuthCard
+                        onAuthKey={handleAuthKey}
+                        onError={(msg) => setSubmitError(msg)}
+                        isCompleting={isSubmitting}
+                        title="Sign in with Stremio"
+                        description="Connect your Stremio account to complete your request."
+                      />
+                    ) : (
+                      <NuvioOAuthCard
+                        inviteCode={inviteCode}
+                        onApproved={handleNuvioApproved}
+                        onError={(msg) => setSubmitError(msg)}
+                        isCompleting={isSubmitting}
+                      />
+                    )}
+                  </motion.div>
+                )}
+              </div>
 
-            {/* Info text */}
-            <motion.p
-              className="mt-6 text-xs text-center"
-              style={{ color: 'var(--color-text-subtle)' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.4 }}
-            >
-              Your request will be reviewed by an administrator.
-              {!usernameConfirmed && (
-                <>
-                  <br />
-                  You&apos;ll sign in with Stremio in the next step.
-                </>
-              )}
-            </motion.p>
+              {/* Info text */}
+              <p className="mt-5 text-xs text-center" style={{ color: 'var(--color-text-subtle)' }}>
+                Your request will be reviewed by the person who runs this.
+              </p>
+            </PubCard>
           </motion.div>
         );
+      }
 
       case 'pending':
         return <StatusCards.Pending />;

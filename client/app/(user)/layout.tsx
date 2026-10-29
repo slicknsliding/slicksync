@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { UserAuthProvider } from '@/lib/hooks/useUserAuth';
+import { UserAuthProvider, useUserAuth } from '@/lib/hooks/useUserAuth';
+import { PersonArrangeProvider } from '@/lib/arrange';
 import { UserAuthGate } from '@/components/user/UserAuthGate';
 import { PersonTopbar } from '@/components/user/PersonTopbar';
 import { UserPageContainer } from '@/components/user/UserPageContainer';
 import { UserMobileMenuContext } from '@/lib/hooks/useUserMobileMenu';
+import { PersonSidebar } from '@/components/user/PersonSidebar';
+import { useLayoutMode } from '@/lib/layout-mode';
 
 /**
  * User panel layout: the same top bar as the admin pages (PersonTopbar)
@@ -21,6 +24,9 @@ export default function UserLayout({
 }) {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Original layout: the sidebar from tablets up; phones keep the top bar.
+  const { layoutMode } = useLayoutMode();
+  const sidebar = layoutMode === 'current';
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -59,17 +65,26 @@ export default function UserLayout({
   return (
     <UserAuthProvider>
       <UserAuthGate>
+        <PersonArrange>
         <UserMobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
           <div className="relative min-h-screen">
             {/* The collapsed nav opens inside the bar, so nothing locks the page
                 behind it the way the old side drawer did. */}
-            <PersonTopbar />
-            <UserPageContainer>
+            {sidebar && <PersonSidebar />}
+            {sidebar ? <div className="md:hidden"><PersonTopbar /></div> : <PersonTopbar />}
+            <UserPageContainer sidebar={sidebar}>
               {children}
             </UserPageContainer>
           </div>
         </UserMobileMenuContext.Provider>
+        </PersonArrange>
       </UserAuthGate>
     </UserAuthProvider>
   );
+}
+
+// Their own arrangement of their pages, saved to them (lib/arrange.tsx).
+function PersonArrange({ children }: { children: React.ReactNode }) {
+  const { userId, authKey } = useUserAuth();
+  return <PersonArrangeProvider userId={userId} authKey={authKey}>{children}</PersonArrangeProvider>;
 }

@@ -2,99 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  ClockIcon, 
-  FireIcon,
-  FilmIcon,
-  TvIcon,
-  PlayIcon,
+import {
+  ClockIcon,
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ExclamationCircleIcon,
-  TrophyIcon,
 } from '@heroicons/react/24/outline';
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
-import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { ProfileAvatar } from '@/components/user/NuvioProfileSwitcher';
 import { ContinueWatchingRow } from '@/components/user/ContinueWatchingRow';
 import { userActivity, userSync, UserActivityData, AtRiskStatus, getOwnScreenTime } from '@/lib/user-api';
 import { MoonIcon as PausedMoonIcon, PauseCircleIcon as PausedIcon } from '@heroicons/react/24/outline';
 import { providerTypeLabel } from '@/lib/providers';
-import { PlaybackDot, PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
+import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
+import { UpcomingSection } from '@/components/user/home/UpcomingSection';
+import { HomeNumbers } from '@/components/user/home/HomeNumbers';
+import { RecentAndMost } from '@/components/user/home/RecentAndMost';
+import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePageArrangement } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
 
-// Format watch time from seconds to human-readable
-function formatWatchTime(seconds: number): string {
-  if (seconds < 60) return '<1m';
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
-  
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  return `${minutes}m`;
-}
-
-// Format duration in a more compact way for stats
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return '<1m';
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.round((seconds % 3600) / 60);
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
-
-// Stat Card Component
-interface StatCardProps {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color?: string;
-  delay?: number;
-}
-
-function StatCard({ label, value, icon, color = 'var(--color-primary)', delay = 0 }: StatCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      className="p-4 rounded-xl"
-      style={{ 
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-surface-border)'
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <div 
-          className="w-10 h-10 rounded-lg flex items-center justify-center"
-          style={{ background: `${color}20`, color }}
-        >
-          {icon}
-        </div>
-        <div>
-          <p 
-            className="text-2xl font-bold"
-            style={{ color: 'var(--color-text)' }}
-          >
-            {value}
-          </p>
-          <p 
-            className="text-xs"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {label}
-          </p>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+// The names the Arrange tray uses for hidden sections.
+const HOME_LABELS: Record<string, string> = {
+  nowPlaying: 'Now Playing', continue: 'Continue Watching', upcoming: 'Upcoming', numbers: 'Your numbers', recent: 'Recently watched',
+};
 
 export default function UserHomePage() {
   const { userId, userInfo, provider } = useUserAuth();
   const providerLabel = providerTypeLabel(provider);
   const { authKey, isReady } = useUserAuthHeaders();
+  // Grid or list, as picked under Themes (phones are always grid).
+  const { viewMode } = useDefaultViewMode();
   // Paused by a daily limit or bedtime: said at the top, so an empty stream
   // list in their app has its reason here. Looked at again every minute.
   const [paused, setPaused] = useState<{ untilLabel: string; reason: 'limit' | 'bedtime' } | null>(null);
@@ -206,154 +145,51 @@ export default function UserHomePage() {
   const riskBadge = getRiskBadge();
   const stats = activityData?.stats;
 
+  // Their own arrangement of this page: move, fold and hide each section,
+  // saved to them (lib/arrange.tsx).
+  const hasNowPlaying = !!activityData?.nowPlaying?.[0];
+  const homeArrange = usePageArrangement('home', hasNowPlaying
+    ? ['nowPlaying', 'continue', 'upcoming', 'numbers', 'recent']
+    : ['continue', 'upcoming', 'numbers', 'recent']);
+
   return (
     <div className="p-4 sm:p-8">
-      <UserPageHeader 
-        title={`Welcome back, ${userInfo?.username || 'User'}!`}
-        subtitle="Here's your activity overview"
-      />
-
-      {/* Profile Card with Sync Button and Risk Badge */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-4 sm:p-6 rounded-xl mb-8"
-        style={{ 
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-surface-border)'
-        }}
-      >
-        {/* Picture and name share a line; on a phone Sync goes underneath
-            rather than squeezing the picture into a pill. */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-          <div className="flex items-center gap-4 sm:gap-6 flex-1 min-w-0">
-          {/* Their picture; a Nuvio login with several profiles makes it the button that switches between them. */}
-          <ProfileAvatar className="w-16 h-16 sm:w-20 sm:h-20 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1">
-              <h2
-                className="text-xl font-bold break-words"
-                style={{ color: 'var(--color-text)' }}
-              >
-                {userInfo?.username}
-              </h2>
-              
-              {/* Risk Badge */}
-              {riskBadge && (
-                <div 
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                  style={{ background: riskBadge.bg, color: riskBadge.color }}
-                  title={atRiskStatus?.riskReason || undefined}
-                >
-                  {riskBadge.icon}
-                  <span>{riskBadge.text}</span>
-                </div>
-              )}
-            </div>
-            <p
-              className="text-sm truncate"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              {userInfo?.email}
-            </p>
-            {userInfo?.groupName && (
-              <p 
-                className="text-sm mt-1"
-                style={{ color: 'var(--color-text-subtle)' }}
-              >
-                Group: {userInfo.groupName}
-              </p>
+      {/* Hello, their picture, health, group and Sync Now. */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-4 mb-6">
+        {/* Their picture; a Nuvio login with several profiles makes it the button that switches between them. */}
+        <ProfileAvatar className="w-12 h-12 sm:w-14 sm:h-14 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[22px] sm:text-[28px] font-bold leading-tight break-words" style={{ color: 'var(--color-text)' }}>
+            Hello, {userInfo?.username || 'there'}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            {riskBadge && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ background: riskBadge.bg, color: riskBadge.color }} title={atRiskStatus?.riskReason || undefined}>
+                {riskBadge.icon}
+                {riskBadge.text}
+              </span>
             )}
+            {userInfo?.groupName && <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Group: {userInfo.groupName}</span>}
           </div>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-2">
+          <ArrangeButton arrange={homeArrange} />
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
+            style={{ background: 'var(--color-primary)', color: 'white' }}
+          >
+            <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
           </div>
-
-          {/* Sync Button */}
-          <div className="flex flex-row-reverse sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ 
-                background: 'var(--color-primary)',
-                color: 'white'
-              }}
-            >
-              <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
-              <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
-            </button>
-            {syncMessage && (
-              <motion.p 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className={`text-xs ${syncMessage.includes('completed') ? 'text-success' : 'text-error'}`}
-              >
-                {syncMessage}
-              </motion.p>
-            )}
-            {atRiskStatus?.lastSyncedAt && (
-              <p 
-                className="text-xs"
-                style={{ color: 'var(--color-text-subtle)' }}
-              >
-                Last sync: {new Date(atRiskStatus.lastSyncedAt).toLocaleString()}
-              </p>
-            )}
-          </div>
+          {syncMessage && (
+            <p className={`text-xs ${syncMessage.includes('completed') ? 'text-success' : 'text-error'}`}>{syncMessage}</p>
+          )}
         </div>
       </motion.div>
-
-      {/* Partly-watched shows and films, theirs only; hides itself when there are none. */}
-      <ContinueWatchingRow />
-
-      {/* Loading State */}
-      {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div
-            className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-            style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }}
-          />
-        </div>
-      )}
-
-      {/* Error State */}
-      {!loading && error && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-6 rounded-xl text-center"
-          style={{ 
-            background: 'var(--color-error-muted)',
-            border: '1px solid var(--color-error)'
-          }}
-        >
-          <ExclamationCircleIcon 
-            className="w-12 h-12 mx-auto mb-3"
-            style={{ color: 'var(--color-error)' }}
-          />
-          <h3 
-            className="text-lg font-semibold mb-2"
-            style={{ color: 'var(--color-error)' }}
-          >
-            Failed to load activity data
-          </h3>
-          <p 
-            className="text-sm mb-4"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {error}
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
-            style={{ 
-              background: 'var(--color-primary)',
-              color: 'white'
-            }}
-          >
-            Try Again
-          </button>
-        </motion.div>
-      )}
 
       {paused && (
         <div
@@ -372,280 +208,73 @@ export default function UserHomePage() {
         </div>
       )}
 
-      {/* Stats Grid */}
-      {!loading && !error && stats && (
-        <>
-          {/* Now Playing - first, above today's numbers: what is on right now is
-              what someone opens this page to see, and at the bottom it sat
-              below a phone's whole screen of stat cards. Only there while
-              something plays. */}
-          {activityData?.nowPlaying && activityData.nowPlaying.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="mb-8 p-5 rounded-xl"
-              style={{ 
-                background: 'var(--color-surface)',
-                border: '2px solid var(--color-secondary)',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                  Now Playing
-                </h3>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {activityData.nowPlaying.map((np, index) => (
-                  <div 
-                    key={index} 
-                    className="flex items-center gap-3 p-3 rounded-lg"
-                    style={{ background: 'var(--color-surface-elevated)' }}
-                  >
-                    {np.item.poster ? (
-                      <img 
-                        src={np.item.poster} 
-                        alt={np.item.name}
-                        className="w-10 h-14 rounded object-cover"
-                      />
-                    ) : (
-                      <div 
-                        className="w-10 h-14 rounded flex items-center justify-center"
-                        style={{ background: 'var(--color-surface)' }}
-                      >
-                        {np.item.type === 'movie' ? (
-                          <FilmIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
-                        ) : (
-                          <TvIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
-                        )}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: np.item.titlePending ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
-                        {np.item.name}
-                      </p>
-                      {np.item.type === 'series' && np.item.episode && (
-                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          {np.item.season ? `S${np.item.season}E${np.item.episode}` : `E${np.item.episode}`}
-                        </p>
-                      )}
-                      <PlaybackFreshnessLine row={np} />
-                    </div>
-                    <PlaybackDot row={np} liveClassName="bg-green-500" />
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
+      <ArrangeBar arrange={homeArrange} />
 
-          <motion.h3
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="text-lg font-semibold mb-4"
-            style={{ color: 'var(--color-text)' }}
-          >
-            Today's Activity
-          </motion.h3>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              label="Watch Time Today"
-              value={formatWatchTime(stats.watchTimeTodaySeconds)}
-              icon={<ClockIcon className="w-5 h-5" />}
-              color="var(--color-primary)"
-              delay={0.15}
-            />
-            <StatCard
-              label="Watched Today"
-              value={stats.watchedTodayCount}
-              icon={<PlayIcon className="w-5 h-5" />}
-              color="#3b82f6"
-              delay={0.2}
-            />
-            <StatCard
-              label="Current Streak"
-              value={`${stats.currentStreak} ${stats.currentStreak === 1 ? 'day' : 'days'}`}
-              icon={<FireIcon className="w-5 h-5" />}
-              color="#f59e0b"
-              delay={0.25}
-            />
-            <StatCard
-              label="Avg Watch Time"
-              value={formatWatchTime(stats.avgWatchTimeSeconds)}
-              icon={<ClockIcon className="w-5 h-5" />}
-              color="#10b981"
-              delay={0.3}
-            />
-          </div>
+      {/* Their sections, in their order. Now Playing first by default: the
+          reason most people open this page. */}
+      {homeArrange.shown.map((id) => {
+        if (id === 'nowPlaying' && activityData?.nowPlaying?.[0]) {
+          return (
+            <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false} className="mb-1">
+              <NowPlayingBanner row={activityData.nowPlaying[0]} provider={provider} profileLabel={activityData.profileLabel} />
+            </ArrangePanel>
+          );
+        }
+        if (id === 'continue') {
+          // Partly-watched shows and films, theirs only; hides itself when there are none.
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><ContinueWatchingRow view={viewMode} /></ArrangePanel>;
+        }
+        if (id === 'upcoming') {
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><UpcomingSection view={viewMode} /></ArrangePanel>;
+        }
+        if (!loading && !error && stats && id === 'numbers') {
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><HomeNumbers stats={stats} byDay={activityData?.watchTimeByDay || []} /></ArrangePanel>;
+        }
+        if (!loading && !error && stats && id === 'recent') {
+          return (
+            <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}>
+              <RecentAndMost
+                recent={activityData?.recentlyWatched || []}
+                most={activityData?.mostWatchedList || (activityData?.mostWatched ? [activityData.mostWatched] : [])}
+                provider={provider}
+              />
+            </ArrangePanel>
+          );
+        }
+        return null;
+      })}
+      <HiddenTray arrange={homeArrange} labelOf={(id) => HOME_LABELS[id] || id} />
 
-          <motion.h3
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.35 }}
-            className="text-lg font-semibold mb-4"
-            style={{ color: 'var(--color-text)' }}
-          >
-            All Time Stats
-          </motion.h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              label="Total Watch Time"
-              value={formatWatchTime(stats.totalWatchTimeSeconds)}
-              icon={<ClockIcon className="w-5 h-5" />}
-              color="#8b5cf6"
-              delay={0.4}
-            />
-            <StatCard
-              label="Movies Watched"
-              value={stats.moviesCount}
-              icon={<FilmIcon className="w-5 h-5" />}
-              color="#ec4899"
-              delay={0.45}
-            />
-            <StatCard
-              label="Series Watched"
-              value={stats.seriesCount}
-              icon={<TvIcon className="w-5 h-5" />}
-              color="#14b8a6"
-              delay={0.5}
-            />
-            <StatCard
-              label="Longest Streak"
-              value={`${stats.longestStreak} ${stats.longestStreak === 1 ? 'day' : 'days'}`}
-              icon={<TrophyIcon className="w-5 h-5" />}
-              color="#f59e0b"
-              delay={0.55}
-            />
-          </div>
-
-          {/* Most Watched & Binge Watches */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Most Watched */}
-            {activityData?.mostWatched && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                className="p-5 rounded-xl"
-                style={{ 
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-surface-border)'
-                }}
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <TrophyIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
-                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                    Most Watched
-                  </h3>
-                </div>
-                <div className="flex items-center gap-4">
-                  {activityData.mostWatched.poster ? (
-                    <img 
-                      src={activityData.mostWatched.poster} 
-                      alt={activityData.mostWatched.name}
-                      className="w-16 h-24 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div 
-                      className="w-16 h-24 rounded-lg flex items-center justify-center"
-                      style={{ background: 'var(--color-surface-elevated)' }}
-                    >
-                      {activityData.mostWatched.type === 'movie' ? (
-                        <FilmIcon className="w-8 h-8" style={{ color: 'var(--color-text-subtle)' }} />
-                      ) : (
-                        <TvIcon className="w-8 h-8" style={{ color: 'var(--color-text-subtle)' }} />
-                      )}
-                    </div>
-                  )}
-                  <div>
-                    <p className="font-medium" style={{ color: 'var(--color-text)' }}>
-                      {activityData.mostWatched.name}
-                    </p>
-                    <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                      {activityData.mostWatched.count} {activityData.mostWatched.count === 1 ? 'session' : 'sessions'}
-                    </p>
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                      {formatDuration(activityData.mostWatched.totalDuration)} total
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Binge Watches */}
-            {activityData?.bingeWatches && activityData.bingeWatches.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.65 }}
-                className="p-5 rounded-xl"
-                style={{ 
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-surface-border)'
-                }}
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <FireIcon className="w-5 h-5" style={{ color: 'var(--color-error)' }} />
-                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                    Recent Binge Watches
-                  </h3>
-                </div>
-                <div className="space-y-3">
-                  {activityData.bingeWatches.slice(0, 3).map((binge, index) => (
-                    <div key={index} className="flex items-center gap-3">
-                      {binge.poster ? (
-                        <img 
-                          src={binge.poster} 
-                          alt={binge.name}
-                          className="w-10 h-14 rounded object-cover"
-                        />
-                      ) : (
-                        <div 
-                          className="w-10 h-14 rounded flex items-center justify-center"
-                          style={{ background: 'var(--color-surface-elevated)' }}
-                        >
-                          <TvIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
-                          {binge.name}
-                        </p>
-                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          {binge.episodeCount} episodes in one day
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </div>
-
-        </>
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div
+            className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
+            style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }}
+          />
+        </div>
       )}
 
-      {/* Empty state */}
+      {!loading && error && (
+        <div className="p-6 rounded-xl text-center" style={{ background: 'var(--color-error-muted)', border: '1px solid var(--color-error)' }}>
+          <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-error)' }} />
+          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-error)' }}>Failed to load activity data</h3>
+          <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
+            style={{ background: 'var(--color-primary)', color: 'white' }}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {!loading && !error && !stats && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center py-20"
-        >
-          <ClockIcon
-            className="w-16 h-16 mx-auto mb-4"
-            style={{ color: 'var(--color-text-subtle)' }}
-          />
-          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
-            No activity data yet
-          </h3>
-          <p style={{ color: 'var(--color-text-muted)' }}>
-            Start watching content on {providerLabel} to see your stats here
-          </p>
-        </motion.div>
+        <div className="text-center py-20">
+          <ClockIcon className="w-16 h-16 mx-auto mb-4" style={{ color: 'var(--color-text-subtle)' }} />
+          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>No activity data yet</h3>
+          <p style={{ color: 'var(--color-text-muted)' }}>Start watching content on {providerLabel} to see your stats here</p>
+        </div>
       )}
     </div>
   );

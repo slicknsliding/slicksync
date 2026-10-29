@@ -9,6 +9,9 @@ import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { providerTypeLabel } from '@/lib/providers';
 import { ArchiveBoxIcon } from '@heroicons/react/24/outline';
+import { ArrangeSection } from '@/components/ui/Arrange';
+import type { PageArrange } from '@/lib/arrange';
+import { V2Button } from '@/components/v2/V2Bits';
 
 // The Graveyard (renamed from "Dropped" - the user's own word for it, and a
 // better one: bury implied a place, and for a while there wasn't one).
@@ -33,7 +36,8 @@ type Buried = Awaited<ReturnType<typeof api.getBuriedShows>>[number];
 
 const keyOf = (item: { userId: string; showId: string }) => `${item.userId}:${item.showId}`;
 
-export function DroppedShowsPanel() {
+/** `v2Arrange`: Page design v2 - the two shelves as sections the account can move, fold and hide. */
+export function DroppedShowsPanel({ v2Arrange }: { v2Arrange?: PageArrange } = {}) {
   const [items, setItems] = useState<Dropped[] | null>(null);
   const [buried, setBuried] = useState<Buried[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +105,7 @@ export function DroppedShowsPanel() {
       await api.unburyShow(item.userId, item.showId);
       setBuried((prev) => (prev || []).filter((i) => keyOf(i) !== key));
       setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
-      toast.success(`${item.showName} dug back up - it returns to Continue Watching or the unfinished list`);
+      toast.success(`Dug up ${item.showName}`, { line: 'It’s back in Continue Watching.' });
       // The unfinished list may now contain it again - refresh just that half.
       api.getAbandonedShows().then(setItems).catch(() => {});
     } catch (e) {
@@ -156,9 +160,9 @@ export function DroppedShowsPanel() {
       setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
       const erased = r.episodesDeleted > 0
         ? `${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased`
-        : 'its watch history erased';
-      const device = r.deviceRemoved ? ', removed from the account library' : '';
-      toast.success(`${item.showName} wiped - ${erased}${device} (undoable for 30 days in the Trash)`);
+        : 'Its watch history was erased';
+      const device = r.deviceRemoved ? ' It’s gone from the account library too.' : '';
+      toast.success(`Wiped ${item.showName}`, { line: `${erased}. It’s in the Trash for 30 days.${device}` });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not wipe that show');
     } finally {
@@ -180,7 +184,7 @@ export function DroppedShowsPanel() {
     setSelUnfinished(new Set());
     await load();
     if (ok === targets.length) toast.success(`Buried ${ok} show${ok === 1 ? '' : 's'}`);
-    else toast.error(`Buried ${ok} of ${targets.length} - the rest failed, try them again`);
+    else toast.warning(`Buried ${ok} of ${targets.length} shows`, { line: `${targets.length - ok} couldn’t be buried.` });
   };
 
   const unburyBulk = async () => {
@@ -194,8 +198,8 @@ export function DroppedShowsPanel() {
     setBulkBusy(false);
     setSelBuried(new Set());
     await load();
-    if (ok === targets.length) toast.success(`Dug up ${ok} show${ok === 1 ? '' : 's'}`);
-    else toast.error(`Dug up ${ok} of ${targets.length} - the rest failed, try them again`);
+    if (ok === targets.length) toast.success(`Dug up ${ok} show${ok === 1 ? '' : 's'}`, { line: 'They’re back in Continue Watching.' });
+    else toast.warning(`Dug up ${ok} of ${targets.length} shows`, { line: `${targets.length - ok} couldn’t be dug up.` });
   };
 
   // Bulk wipe gets the same two-step arming as a single wipe, with the
@@ -223,8 +227,8 @@ export function DroppedShowsPanel() {
     setBulkBusy(false);
     setSelBuried(new Set());
     await load();
-    if (ok === targets.length) toast.success(`Wiped ${ok} show${ok === 1 ? '' : 's'} - ${episodes} episode${episodes === 1 ? '' : 's'} of history erased (each undoable for 30 days in the Trash)`);
-    else toast.error(`Wiped ${ok} of ${targets.length} - the rest failed, try them again`);
+    if (ok === targets.length) toast.success(`Wiped ${ok} show${ok === 1 ? '' : 's'}`, { line: `${episodes} episode${episodes === 1 ? '' : 's'} of history erased. They’re in the Trash for 30 days.` });
+    else toast.warning(`Wiped ${ok} of ${targets.length} shows`, { line: `${targets.length - ok} couldn’t be wiped.` });
   };
 
   if (error) {
@@ -241,6 +245,135 @@ export function DroppedShowsPanel() {
   }
 
   const selBuriedEpisodes = buried.filter((i) => selBuried.has(keyOf(i))).reduce((n, i) => n + (i.episodesWatched || 0), 0);
+
+  if (v2Arrange) {
+    const arrange = v2Arrange;
+    const poster = (url: string | null | undefined, gray = false) => (url ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={url} alt="" width={44} height={64} className={`w-11 rounded-md object-cover shrink-0${gray ? ' grayscale' : ''}`} style={{ height: '4rem' }} />
+    ) : (
+      <div className="w-11 shrink-0 rounded-md" style={{ height: '4rem', background: 'var(--color-bg-subtle)' }} />
+    ));
+    const textBtn = 'text-[13px] text-muted hover:text-default transition-colors';
+    const unfinishedBody = items.length === 0 ? (
+      <div className="v2-box v2-box-pad text-center py-6">
+        <ArchiveBoxIcon className="w-9 h-9 text-subtle mx-auto mb-2" />
+        <p className="text-default font-medium mb-0.5">Nothing abandoned</p>
+        <p className="text-sm text-muted">Every show anyone started has either been finished or watched recently.</p>
+      </div>
+    ) : (
+      <>
+        <p className="text-muted text-[13.5px] mb-3">Started, then not touched in over {unfinishedDays} days. Pick one back up, or bury it.</p>
+        <div className="v2-tiles v2-tiles-3">
+          {items.map((item) => {
+            const key = keyOf(item);
+            return (
+              <div key={key} className="v2-tool" style={{ alignItems: 'center' }}>
+                {items.length > 1 && <SelectionCheckbox checked={selUnfinished.has(key)} onChange={() => toggleSel(setSelUnfinished, key)} />}
+                {poster(item.poster)}
+                <span className="flex-1 min-w-0 text-left">
+                  <span className="block font-semibold text-[14.5px] text-default truncate">{item.showName}</span>
+                  <span className="block text-muted text-[12.5px]">{item.username} · stopped at S{item.lastSeason}E{item.lastEpisode} · {item.daysSince} days ago</span>
+                  <span className="flex gap-2 mt-2">
+                    <V2Button disabled={working === key} onClick={() => bury(item)}>{working === key ? 'Burying' : 'Bury'}</V2Button>
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+    const buriedBody = (
+      <>
+        <p className="text-muted text-[13.5px] mb-3">
+          {buried.length === 0
+            ? 'Nothing is buried. A show buried from Continue Watching or the list above rests here.'
+            : 'Digging one up puts it back in Continue Watching. Wipe erases its watch history from SlickSync for good.'}
+        </p>
+        {buried.length > 0 && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={wipeOnDevice}
+            onClick={() => toggleWipeOnDevice(!wipeOnDevice)}
+            className={`wipe-app-opt ${wipeOnDevice ? 'wipe-app-opt-on' : ''}`}
+            style={{ marginTop: 0, marginBottom: '0.875rem' }}
+          >
+            <span className="wipe-app-mark" aria-hidden="true">!</span>
+            <span className="min-w-0 text-left">
+              <span className="block text-sm font-semibold text-default">Also remove it from their apps</span>
+              <span className="block text-xs text-muted mt-0.5 leading-relaxed">
+                Wipe will also delete the title from that person&apos;s Stremio or Jellyfin library, so it leaves their
+                home screen. <span className="wipe-app-strong">This can&apos;t be undone in the app.</span> Nuvio
+                libraries can&apos;t be edited, so they&apos;re skipped.
+              </span>
+            </span>
+            <span className="wipe-app-switch" aria-hidden="true"><i /></span>
+          </button>
+        )}
+        <div className="v2-tiles v2-tiles-3">
+          {buried.map((item) => {
+            const key = keyOf(item);
+            const armed = wipeArmed === key;
+            return (
+              <div key={key} className="v2-tool" style={{ alignItems: 'center' }}>
+                {buried.length > 1 && <SelectionCheckbox checked={selBuried.has(key)} onChange={() => toggleSel(setSelBuried, key)} />}
+                {poster(item.poster, true)}
+                <span className="flex-1 min-w-0 text-left">
+                  <span className="block font-semibold text-[14.5px] text-default truncate">{item.showName}</span>
+                  <span className="block text-muted text-[12.5px]">
+                    {item.username}{item.lastSeason != null && item.lastEpisode != null ? ` · rested at S${item.lastSeason}E${item.lastEpisode}` : ''} · buried {new Date(item.buriedAt).toLocaleDateString()}
+                  </span>
+                  {armed && <span className="block text-[12.5px] mt-1" style={{ color: 'var(--color-error, #ef4444)' }}>{wipeConfirmText(item)}</span>}
+                  <span className="flex gap-2 mt-2 flex-wrap">
+                    <V2Button disabled={working === key} onClick={() => unbury(item)}>Dig up</V2Button>
+                    <V2Button disabled={working === key} onClick={() => wipe(item)}>
+                      {armed ? 'Erase forever' : reachesApp(item) ? 'Wipe + app' : 'Wipe'}
+                    </V2Button>
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+    const unfinishedActions = items.length > 1 ? (
+      <span className="flex items-center gap-3">
+        <button type="button" className={textBtn} onClick={() => setSelUnfinished(selUnfinished.size === items.length ? new Set() : new Set(items.map(keyOf)))}>
+          {selUnfinished.size === items.length ? 'Select none' : 'Select all'}
+        </button>
+        {selUnfinished.size > 0 && <V2Button disabled={bulkBusy} onClick={buryBulk}>Bury {selUnfinished.size} selected</V2Button>}
+      </span>
+    ) : undefined;
+    const buriedActions = buried.length > 1 ? (
+      <span className="flex items-center gap-3 flex-wrap justify-end">
+        <button type="button" className={textBtn} onClick={() => { setBulkWipeArmed(false); setSelBuried(selBuried.size === buried.length ? new Set() : new Set(buried.map(keyOf))); }}>
+          {selBuried.size === buried.length ? 'Select none' : 'Select all'}
+        </button>
+        {selBuried.size > 0 && (
+          <>
+            <V2Button disabled={bulkBusy} onClick={unburyBulk}>Dig up {selBuried.size} selected</V2Button>
+            <V2Button disabled={bulkBusy} onClick={wipeBulk}>
+              {bulkWipeArmed
+                ? (selBuriedEpisodes > 0 ? `Erase ${selBuriedEpisodes} episode${selBuriedEpisodes === 1 ? '' : 's'} across ${selBuried.size} title${selBuried.size === 1 ? '' : 's'}${wipeOnDevice ? ' and remove them from their apps' : ''} forever?` : `Erase ${selBuried.size} title${selBuried.size === 1 ? '' : 's'} and their watch history${wipeOnDevice ? ', and remove them from their apps' : ''} forever?`)
+                : `Wipe ${selBuried.size} selected`}
+            </V2Button>
+          </>
+        )}
+      </span>
+    ) : undefined;
+    return (
+      <div className="flex flex-col">
+        {arrange.shown.map((id) => id === 'unfinished' ? (
+          <ArrangeSection key={id} arrange={arrange} id={id} title="Unfinished" meta={items.length} actions={unfinishedActions}>{unfinishedBody}</ArrangeSection>
+        ) : id === 'graveyard' ? (
+          <ArrangeSection key={id} arrange={arrange} id={id} title="The Graveyard" meta={buried.length} actions={buriedActions}>{buriedBody}</ArrangeSection>
+        ) : null)}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

@@ -42,7 +42,7 @@ export function Card({
       whileHover={isInteractive ? { scale: 1.015, y: -2 } : undefined}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
       className={clsx(
-        'rounded-2xl relative overflow-hidden',
+        'rounded-2xl relative overflow-hidden ss-card',
         paddingStyles[padding],
         variant === 'bordered' && 'accent-border',
         !isAurora && (isNebula ? 'card-bg-nebula' : 'card-bg-plain'),

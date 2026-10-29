@@ -1,0 +1,47 @@
+name: ❓ Question
+description: Ask for help with setup or using SlickSync
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before asking, the in-app **/guides** pages and the README's Troubleshooting section answer most setup questions.
+        Please remove passwords, API keys and private addresses from anything you paste.
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+  - type: input
+    id: version
+    attributes:
+      label: SlickSync version
+      placeholder: "v1.102.0"
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed?
+      options:
+        - Docker, private image
+        - Docker, public image
+        - Beta image
+        - Built from source
+        - slicksync.vip (hosted)
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Which provider is involved?
+      multiple: true
+      options:
+        - Nuvio
+        - Stremio
+        - Jellyfin
+        - AIOStreams
+        - AIOMetadata
+        - None / not sure

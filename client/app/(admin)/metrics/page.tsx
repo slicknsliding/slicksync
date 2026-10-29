@@ -62,7 +62,10 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { ScrollRow } from '@/components/ui/ScrollRow';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
 import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
+import { MetricsUsersV2, MetricsContentV2, MetricsAdminV2, MetricsHealthV2, type MetricsHealthPart } from '@/components/v2/MetricsV2';
 
 // Period options for filtering
 const PERIOD_OPTIONS = [
@@ -304,9 +307,27 @@ function HealthIgnoredList({
   );
 }
 
+// The names the Arrange tray uses for hidden panels.
+const METRICS_LABELS: Record<string, string> = {
+  hero: 'Watch time',
+  members: 'Members',
+  recap: 'Recap',
+  taste: 'Taste profiles',
+  overlap: 'Taste overlap',
+  numbers: 'Numbers',
+  top: 'Most watched and binges',
+  engagement: 'Engagement and breakdown',
+  joins: 'User joins',
+  lifecycle: 'Lifecycle and at-risk',
+  health: 'Server health',
+  addons: 'Addon performance',
+};
+
 export default function MetricsPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [period, setPeriod] = useState('30d');
   // The yearly recap opens on request. It is a once-a-year read, and it
@@ -479,13 +500,177 @@ export default function MetricsPage() {
     </select>
   );
 
+  // Each tab's panels in this account's own arrangement (lib/arrange.tsx).
+  // Panels that only show when there's data join the list only then.
+  // v2 keeps the taste panels and the recap folded until they are wanted.
+  const metricsUsersArrange = usePageArrangement('metrics-users', ['hero', 'members', 'recap', ...(tasteProfiles.length > 0 ? ['taste'] : []), ...(tasteOverlap.length > 0 ? ['overlap'] : [])], { defaultFolded: v2 ? ['taste', 'overlap', 'recap'] : [], widths: v2 });
+  const metricsContentArrange = usePageArrangement('metrics-content', ['numbers', 'top', 'engagement'], { widths: v2 });
+  const metricsAdminArrange = usePageArrangement('metrics-admin', ['numbers', ...(!!(metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0) ? ['joins'] : []), 'lifecycle', 'health', 'addons'], { widths: v2 });
+  const tabArrange = viewMode === 'users' ? metricsUsersArrange : viewMode === 'content' ? metricsContentArrange : viewMode === 'admin' ? metricsAdminArrange : null;
+
+  // ---- v2: the same data, drawn as v2 sections (components/v2/MetricsV2.tsx).
+  const periodName = PERIOD_OPTIONS.find((o) => o.value === period)?.label.toLowerCase() ?? period;
+  const periodMeta = period === 'all' ? 'all time' : `last ${periodName}`;
+  const periodLabel = period === 'all' ? 'Watched, all time' : `Watched in ${periodName}`;
+  const v2Subtitle = 'How much the household watches, and how SlickSync is doing';
+  const v2WatchChart = isLoading ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">Loading…</div>
+  ) : watchTimeChartData.length === 0 ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">Nothing watched in this period yet</div>
+  ) : <WatchTimeChart data={watchTimeChartData} />;
+  const v2ContentChart = isLoading ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">Loading…</div>
+  ) : contentBreakdownData.length === 0 ? (
+    <div className="flex items-center justify-center h-full text-sm text-muted">No watch activity in this period</div>
+  ) : <ContentBreakdownChart data={contentBreakdownData} />;
+  const v2JoinsChart = metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0 ? (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={metricsData.userJoins.byDay}>
+        <defs>
+          <linearGradient id="colorUserJoinsV2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="var(--color-chart-3)" stopOpacity={0.4} />
+            <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+        <XAxis dataKey="date" stroke="#64748b" fontSize={12} tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} />
+        <YAxis stroke="#64748b" fontSize={12} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          labelFormatter={(value) => new Date(String(value)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+          formatter={(value) => [`${value} ${Number(value) === 1 ? 'person' : 'people'}`, 'Joined']}
+        />
+        <Area type="monotone" dataKey="count" stroke="var(--color-chart-3)" strokeWidth={2} fillOpacity={1} fill="url(#colorUserJoinsV2)" />
+      </AreaChart>
+    </ResponsiveContainer>
+  ) : null;
+
+  // The Health tab's parts: what each one says, and the issues under it with
+  // the same ignore buttons Classic has on its cards.
+  const healthParts: MetricsHealthPart[] = (() => {
+    const h = healthData;
+    if (!h) return [];
+    const works = (ok: boolean | null): { tone: 'ok' | 'warn' | 'off'; words: string } => (
+      ok === null ? { tone: 'off', words: 'Not checked' } : ok ? { tone: 'ok', words: 'Working' } : { tone: 'warn', words: 'Needs a look' }
+    );
+    const parts: MetricsHealthPart[] = [];
+    parts.push({
+      key: 'version', title: 'Version',
+      ...(h.version.updateAvailable ? { tone: 'warn' as const, words: 'Update available' } : { tone: 'ok' as const, words: 'Up to date' }),
+      line: h.version.updateAvailable ? `Running ${h.version.running}. ${h.version.latestRelease} is out.` : `Running ${h.version.running}${h.version.latestRelease ? '' : ' (couldn’t reach GitHub to look for a newer one)'}`,
+    });
+    parts.push({
+      key: 'sync', title: 'Sync', ...works(h.sync.driftCount === 0),
+      line: h.sync.driftCount > 0 ? `${h.sync.driftCount} of ${h.sync.usersTracked} accounts drifted from their group’s addons` : `${h.sync.usersTracked} ${h.sync.usersTracked === 1 ? 'account' : 'accounts'} tracked, none drifted`,
+      body: (h.sync.driftCount > 0 || h.sync.ignored.length > 0) ? (
+        <div>
+          {h.sync.drifted.map((d, i) => <HealthIssueRow key={i} title={d.title} detail={d.body} meta={healthTimeAgo(d.since)} onIgnore={() => toggleSyncIgnored(d.userId, true)} />)}
+          <HealthIgnoredList items={h.sync.ignored.map((u) => ({ id: u.userId, name: u.title }))} onUnignore={(id) => toggleSyncIgnored(id, false)} />
+        </div>
+      ) : undefined,
+    });
+    parts.push({
+      key: 'addons', title: 'Addons', ...works(h.addons.offlineCount === 0),
+      line: h.addons.offlineCount > 0 ? `${h.addons.offlineCount} of ${h.addons.checked} checked can’t be reached` : `${h.addons.checked} of ${h.addons.total} checked, all reachable`,
+      body: (h.addons.offlineCount > 0 || h.addons.ignored.length > 0 || h.addons.uptime.length > 0) ? (
+        <div>
+          {h.addons.offline.map((a) => <HealthIssueRow key={a.id} title={a.name} detail={a.error} meta={healthTimeAgo(a.lastChecked)} onIgnore={() => toggleAddonIgnored(a.id, true)} />)}
+          <HealthIgnoredList items={h.addons.ignored} onUnignore={(id) => toggleAddonIgnored(id, false)} />
+          {h.addons.uptime.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-default">
+              <p className="text-[10px] uppercase tracking-wide text-subtle mb-1.5">Uptime</p>
+              <div className="space-y-1">
+                {h.addons.uptime.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-default truncate">{a.name}</span>
+                    <span className={`flex-shrink-0 font-medium ${a.uptime30d < 99 ? 'text-warning' : 'text-subtle'}`}>{a.uptime7d.toFixed(1)}% (7d) · {a.uptime30d.toFixed(1)}% (30d)</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : undefined,
+    });
+    parts.push({
+      key: 'vault', title: 'Vault', ...works(h.vault.failingCount === 0 && h.vault.expiringCount === 0),
+      line: h.vault.failingCount > 0 || h.vault.expiringCount > 0 ? `${h.vault.failingCount} failing, ${h.vault.expiringCount} ending soon` : `${h.vault.total} ${h.vault.total === 1 ? 'credential' : 'credentials'} tracked, all passing`,
+      body: (h.vault.failingCount > 0 || h.vault.expiringCount > 0 || h.vault.ignored.length > 0) ? (
+        <div>
+          {h.vault.failing.map((v) => <HealthIssueRow key={`f-${v.id}`} title={v.name} detail={v.message || 'Check failed'} meta={healthTimeAgo(v.lastChecked)} onIgnore={() => toggleVaultIgnored(v.id, true)} />)}
+          {h.vault.expiring.map((v) => <HealthIssueRow key={`e-${v.id}`} title={v.name} detail="Expiring soon" meta={new Date(v.expiresAt).toLocaleDateString()} onIgnore={() => toggleVaultIgnored(v.id, true)} />)}
+          <HealthIgnoredList items={h.vault.ignored} onUnignore={(id) => toggleVaultIgnored(id, false)} />
+        </div>
+      ) : undefined,
+    });
+    if (h.proxy) {
+      const px = h.proxy;
+      parts.push({
+        key: 'proxy', title: 'Proxy',
+        ...(!px.configured ? { tone: 'off' as const, words: 'Not set up' } : px.healthIgnored ? { tone: 'off' as const, words: 'Ignored' } : works(px.ok)),
+        line: !px.configured ? 'The AIOStreams proxy isn’t set up on this instance' : px.ok === false && !px.healthIgnored ? `Stats unreachable${px.error ? `: ${px.error}` : ''}` : `Now Playing is reaching AIOStreams. Last poll ${healthTimeAgo(px.at)}`,
+        body: px.configured && (px.healthIgnored || px.ok === false) ? (
+          px.healthIgnored ? (
+            <button type="button" onClick={() => toggleProxyIgnored(false)} className="flex items-center gap-1.5 text-xs text-subtle hover:text-default transition-colors" title="Un-ignore">
+              <EyeIcon className="w-3.5 h-3.5" />
+              Ignored - proxy connectivity alerts are muted
+            </button>
+          ) : (
+            <HealthIssueRow title="Proxy stats unreachable" detail={px.error} meta={healthTimeAgo(px.at)} onIgnore={() => toggleProxyIgnored(true)} />
+          )
+        ) : undefined,
+      });
+    }
+    if ((h.servers?.length ?? 0) > 0) {
+      const servers = h.servers!;
+      parts.push({
+        key: 'servers', title: 'Servers', ...works(servers.every((s) => s.status === 'up')),
+        line: `${servers.length} ${servers.length === 1 ? 'server' : 'servers'} people sign in to`,
+        body: (
+          <div className="space-y-2">
+            {servers.map((s) => (
+              <div key={s.key} className="flex items-start justify-between gap-3 text-xs">
+                <div className="min-w-0">
+                  <p className="text-sm text-default truncate">{s.address}</p>
+                  <p className="text-subtle">
+                    {s.label}
+                    {s.version ? ` ${s.channel === 'nightly' ? `nightly${s.commit ? ` ${s.commit.slice(0, 7)}` : ''}` : s.version}` : ''}
+                    {s.updateAvailable && s.latest ? <span className="text-warning"> · {s.latest} is out</span> : null}
+                    {' · '}{s.people.length} {s.people.length === 1 ? 'person' : 'people'}
+                    {s.status === 'down' && s.since ? ` · down since ${healthTimeAgo(s.since)}` : ''}
+                    {s.status === 'partial'
+                      ? ` · ${s.people.filter((p) => p.state !== 'ok').map((p) => `${p.name} ${p.state === 'reconnect' ? 'needs to reconnect' : 'failing'}`).join(', ')}`
+                      : ''}
+                  </p>
+                </div>
+                <Badge variant={s.status === 'up' ? 'success' : s.status === 'down' ? 'error' : 'warning'} size="sm" className="flex-shrink-0">
+                  {s.status === 'up' ? 'Up' : s.status === 'down' ? 'Down' : 'Some failing'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        ),
+      });
+    }
+    if (h.lumiere) {
+      const lm = h.lumiere;
+      parts.push({
+        key: 'lumiere', title: 'LumiereDB',
+        ...(lm.state === 'ready' ? { tone: 'ok' as const, words: 'Working' } : lm.state === 'building' ? { tone: 'warn' as const, words: 'Getting ready' } : { tone: 'bad' as const, words: 'Not answering' }),
+        line: lm.state === 'ready' ? `${lm.address} · Discover search, Trending and Smart Catalogs are answered from IMDb’s data` : `${lm.address} · ${lm.message}`,
+      });
+    }
+    return parts;
+  })();
+
   return (
     <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title="Metrics"
-          subtitle="Track watch time, content consumption, and user activity"
-          actions={<div className="flex items-center gap-3">{periodSelect}</div>}
+          subtitle={v2 ? v2Subtitle : 'Track watch time, content consumption, and user activity'}
+          actions={<div className="flex items-center gap-3">{tabArrange && <ArrangeButton arrange={tabArrange} />}{periodSelect}</div>}
         />
       )}
 
@@ -494,8 +679,8 @@ export default function MetricsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Metrics"
-          subtitle="Track watch time, content consumption, and user activity"
-          actions={periodSelect}
+          subtitle={v2 ? v2Subtitle : 'Track watch time, content consumption, and user activity'}
+          actions={<div className="flex items-center gap-2">{tabArrange && <ArrangeButton arrange={tabArrange} />}{periodSelect}</div>}
         />
       )}
         {/* View Mode Toggle - Centered */}
@@ -516,6 +701,8 @@ export default function MetricsPage() {
           />
         </PageSection>
 
+        {tabArrange && <ArrangeBar arrange={tabArrange} />}
+
         {/* Users tab.
             Rebuilt around what the page is actually for: how much the
             household watched, and who. It used to open with a full-height
@@ -528,594 +715,730 @@ export default function MetricsPage() {
             have. So: one hero that carries the headline number AND the
             chart, one dense members block that merges the leaderboard with
             streaks, and the recap demoted to a line you can open. */}
-        {viewMode === 'users' && (
+        {v2 && viewMode === 'users' && (
+          <MetricsUsersV2
+            arrange={metricsUsersArrange}
+            isLoading={isLoading}
+            periodMeta={periodMeta}
+            periodLabel={periodLabel}
+            totalMinutes={Math.round(watchTimeChartData.reduce((sum, d) => sum + (d.hours || 0), 0) * 60)}
+            trend={metricsData?.watchTime?.trend}
+            watchingNow={liveActiveUsersCount}
+            avgMinutes={Math.round(metricsData?.admin?.interestingMetrics?.avgWatchTimePerUser || 0)}
+            bestStreak={topUsersData.reduce((max, u) => Math.max(max, u.streak), 0)}
+            members={topUsersData}
+            chart={v2WatchChart}
+            tasteProfiles={tasteProfiles}
+            tasteOverlap={tasteOverlap}
+          />
+        )}
+        {!v2 && viewMode === 'users' && (
           <div className="space-y-6">
-            {/* Hero: the period's total, its trend, and the shape of it. */}
-            <PageSection className="mb-6">
-              <Card padding="lg">
-                <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wider text-muted mb-1">Watch time · last {period === '7d' ? '7 days' : period === '30d' ? '30 days' : period === '90d' ? '90 days' : 'all time'}</p>
-                    <div className="flex items-end gap-3 flex-wrap">
-                      <p className="text-3xl md:text-4xl font-bold text-default leading-none">
-                        {isLoading ? '…' : formatMinutes(Math.round(watchTimeChartData.reduce((sum, d) => sum + (d.hours || 0), 0) * 60))}
-                      </p>
-                      {metricsData?.watchTime?.trend && metricsData.watchTime.trend.percentage > 0 && (
-                        <Badge variant="primary">
-                          {metricsData.watchTime.trend.direction === 'up' ? (
-                            <ArrowTrendingUpIcon className="w-4 h-4 mr-1" />
-                          ) : (
-                            <ArrowTrendingDownIcon className="w-4 h-4 mr-1" />
-                          )}
-                          {metricsData.watchTime.trend.direction === 'up' ? '+' : '-'}{metricsData.watchTime.trend.percentage}%
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* The old four stat cards, as one strip. Same numbers,
-                      a quarter of the vertical space, and they read as a
-                      sentence about the household rather than four
-                      unrelated tiles. */}
-                  <div className="flex items-center gap-5 text-sm">
-                    {[
-                      { label: 'Watching', value: isLoading ? '…' : String(liveActiveUsersCount) },
-                      { label: 'Avg each', value: isLoading ? '…' : formatMinutes(Math.round(metricsData?.admin?.interestingMetrics?.avgWatchTimePerUser || 0)) },
-                      { label: 'Best streak', value: isLoading ? '…' : `${topUsersData.reduce((max, u) => Math.max(max, u.streak), 0)}d` },
-                    ].map((stat) => (
-                      <div key={stat.label} className="text-right">
-                        <p className="text-xs text-muted whitespace-nowrap">{stat.label}</p>
-                        <p className="text-lg font-semibold text-default leading-tight">{stat.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-40 md:h-56">
-                  {isLoading ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="flex items-center gap-2 text-sm text-muted">
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        <span>Loading…</span>
-                      </div>
-                    </div>
-                  ) : watchTimeChartData.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-sm text-muted">
-                      Nothing watched in this period yet
-                    </div>
-                  ) : (
-                    <WatchTimeChart data={watchTimeChartData} />
-                  )}
-                </div>
-              </Card>
-            </PageSection>
-
-            {/* Members: the leaderboard and the streaks panel, merged. Both
-                were per-member lists of the same people; two cards to say
-                that was the whole problem. */}
-            <PageSection delay={0.15}>
-              <Card padding="lg">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold font-display text-default">Members</h3>
-                  <span className="text-xs text-muted">{topUsersData.length} {topUsersData.length === 1 ? 'member' : 'members'}</span>
-                </div>
-
-                {isLoading ? (
-                  <p className="text-sm text-muted py-6 text-center">Loading…</p>
-                ) : topUsersData.length === 0 ? (
-                  <p className="text-sm text-muted py-6 text-center">No watch activity in this period.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {topUsersData.map((user, index) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-hover"
-                      >
-                        {/* Rank only carries meaning with more than one
-                            person in the list. */}
-                        {topUsersData.length > 1 && (
-                          <span
-                            className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${index === 0 ? 'rank-top-muted' : 'rank-rest-muted'}`}
-                          >
-                            {index + 1}
-                          </span>
-                        )}
-                        <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="sm" className="shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-default truncate leading-tight">{user.name}</p>
-                          <div className="flex items-center gap-3 text-xs text-muted mt-0.5">
-                            <span className="flex items-center gap-1"><FilmIcon className="w-3.5 h-3.5" />{user.movies}</span>
-                            <span className="flex items-center gap-1"><TvIcon className="w-3.5 h-3.5" />{user.series}</span>
-                            <span className="flex items-center gap-1"><FireIcon className="w-3.5 h-3.5" />{user.streak}d</span>
-                            <span className="flex items-center gap-1">
-                              {user.trend === 'up' ? (
-                                <ArrowTrendingUpIcon className="w-3.5 h-3.5 text-primary" />
-                              ) : (
-                                <ArrowTrendingDownIcon className="w-3.5 h-3.5" />
+            {metricsUsersArrange.shown.map((id) => {
+              switch (id) {
+              case 'hero':
+                return (
+                  <ArrangePanel key={id} arrange={metricsUsersArrange} id={id} label="Watch time" ownHeading={false}>
+                    <>
+                    {/* Hero: the period's total, its trend, and the shape of it. */}
+                    <PageSection className="mb-6">
+                      <Card padding="lg">
+                        <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-wider text-muted mb-1">Watch time · last {period === '7d' ? '7 days' : period === '30d' ? '30 days' : period === '90d' ? '90 days' : 'all time'}</p>
+                            <div className="flex items-end gap-3 flex-wrap">
+                              <p className="text-3xl md:text-4xl font-bold text-default leading-none">
+                                {isLoading ? '…' : formatMinutes(Math.round(watchTimeChartData.reduce((sum, d) => sum + (d.hours || 0), 0) * 60))}
+                              </p>
+                              {metricsData?.watchTime?.trend && metricsData.watchTime.trend.percentage > 0 && (
+                                <Badge variant="primary">
+                                  {metricsData.watchTime.trend.direction === 'up' ? (
+                                    <ArrowTrendingUpIcon className="w-4 h-4 mr-1" />
+                                  ) : (
+                                    <ArrowTrendingDownIcon className="w-4 h-4 mr-1" />
+                                  )}
+                                  {metricsData.watchTime.trend.direction === 'up' ? '+' : '-'}{metricsData.watchTime.trend.percentage}%
+                                </Badge>
                               )}
-                              {user.trend === 'up' ? 'rising' : 'falling'}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-base font-bold text-default shrink-0">{formatMinutes(user.watchTime)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </PageSection>
-
-            {/* The recap, out of the way until it is wanted. */}
-            <PageSection delay={0.2}>
-              {yearInReviewOpen ? (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setYearInReviewOpen(false)}
-                    className="text-xs text-muted hover:text-default transition-colors mb-2"
-                  >
-                    ← Hide year in review
-                  </button>
-                  <YearInReviewCard />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setYearInReviewOpen(true)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-hover hover:bg-surface transition-colors text-left"
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <SparklesIcon className="w-4 h-4 text-primary shrink-0" />
-                    <span className="text-sm font-medium text-default">Year in Review</span>
-                    <span className="text-xs text-muted truncate">everything this household watched this year</span>
-                  </span>
-                  <ChevronDownIcon className="w-4 h-4 text-muted shrink-0" />
-                </button>
-              )}
-            </PageSection>
-
-            {/* Taste profiles - per-user profile built from real watch data
-                (top titles by actual time, movie/series split, genres, and
-                closest household match). The richer replacement for the old
-                flat overlap list; the overlap "shared favorites" detail stays
-                below as a companion. */}
-            {tasteProfiles.length > 0 && (
-              <PageSection delay={0.33}>
-                <Card padding="lg">
-                  <div className="flex items-center gap-3 mb-6">
-                    <HeartIcon className="w-6 h-6" />
-                    <div>
-                      <h3 className="text-lg font-semibold font-display text-default">Taste profiles</h3>
-                      <p className="text-sm text-muted">Each member&apos;s real viewing fingerprint — from actual watch-time, not tags</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {tasteProfiles.map((p) => {
-                      const hrs = Math.floor(p.totalSeconds / 3600);
-                      const mins = Math.round((p.totalSeconds % 3600) / 60);
-                      const timeLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-                      return (
-                        <div key={p.user.id} className="p-4 rounded-xl bg-surface-hover flex flex-col gap-3">
-                          <div className="flex items-center gap-3">
-                            <UserAvatar userId={p.user.id} name={p.user.username} email={p.user.email} src={p.user.useGravatar ? undefined : (p.user.avatarUrl ?? undefined)} useGravatar={p.user.useGravatar} size="md" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-default truncate">{p.user.username}</p>
-                              <p className="text-xs text-muted">{timeLabel} · {p.movieCount} movies · {p.seriesCount} series</p>
                             </div>
                           </div>
 
-                          {p.topGenres.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5">
-                              {p.topGenres.map((g) => (
-                                <span key={g.genre} className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary-muted text-primary">{g.genre}</span>
-                              ))}
-                            </div>
-                          )}
-
-                          {p.topTitles.length > 0 && (
-                            <ScrollRow className="flex gap-2 pb-1">
-                              {p.topTitles.map((t) => (
-                                <div key={t.key} title={t.name} className="w-14 shrink-0">
-                                  <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface border border-default">
-                                    {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
-                                  </div>
-                                  <p className="text-[10px] text-muted mt-1 truncate">{t.name}</p>
-                                </div>
-                              ))}
-                            </ScrollRow>
-                          )}
-
-                          {p.tasteTwin && (
-                            <div className="flex items-center gap-2 pt-1 border-t border-default/50 mt-auto">
-                              <span className="text-xs text-muted">Closest match:</span>
-                              <UserAvatar userId={p.tasteTwin.user.id} name={p.tasteTwin.user.username} email={p.tasteTwin.user.email} src={p.tasteTwin.user.useGravatar ? undefined : (p.tasteTwin.user.avatarUrl ?? undefined)} useGravatar={p.tasteTwin.user.useGravatar} size="xs" />
-                              <span className="text-xs font-medium text-default truncate">{p.tasteTwin.user.username}</span>
-                              <Badge variant="primary" size="sm">{p.tasteTwin.similarity}%</Badge>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              </PageSection>
-            )}
-
-            {/* Taste Overlap - real behavioral overlap (actual watch-time
-                on shared titles), not genre-tag matching. Hidden entirely
-                for a single-user household, where a "pair" can't exist. */}
-            {tasteOverlap.length > 0 && (
-              <PageSection delay={0.35}>
-                <Card padding="lg">
-                  <div className="flex items-center gap-3 mb-6">
-                    <HeartIcon className="w-6 h-6" />
-                    <div>
-                      <h3 className="text-lg font-semibold font-display text-default">Taste overlap</h3>
-                      <p className="text-sm text-muted">Real shared watch-time between household members, not genre matching</p>
-                    </div>
-                  </div>
-                  <div className="space-y-5">
-                    {tasteOverlap.map((pair) => (
-                      <div key={`${pair.userA.id}-${pair.userB.id}`} className="p-4 rounded-xl bg-surface-hover">
-                        <div className="flex items-center gap-3 mb-3">
-                          <UserAvatar userId={pair.userA.id} name={pair.userA.username} email={pair.userA.email} src={pair.userA.useGravatar ? undefined : (pair.userA.avatarUrl ?? undefined)} useGravatar={pair.userA.useGravatar} size="sm" />
-                          <span className="text-sm font-medium text-default truncate">{pair.userA.username}</span>
-                          <Badge variant="primary">{pair.similarity}% overlap</Badge>
-                          <span className="text-sm font-medium text-default truncate">{pair.userB.username}</span>
-                          <UserAvatar userId={pair.userB.id} name={pair.userB.username} email={pair.userB.email} src={pair.userB.useGravatar ? undefined : (pair.userB.avatarUrl ?? undefined)} useGravatar={pair.userB.useGravatar} size="sm" />
-                        </div>
-                        <ScrollRow className="flex gap-2 pb-1">
-                          {pair.shared.map((item) => (
-                            <div key={item.key} title={item.name || undefined} className="w-16 shrink-0">
-                              <div className="w-16 h-24 rounded-lg overflow-hidden bg-surface border border-default">
-                                {item.poster && (
-                                  <img src={item.poster} alt={item.name || ''} className="w-full h-full object-cover" />
-                                )}
+                          {/* The old four stat cards, as one strip. Same numbers,
+                              a quarter of the vertical space, and they read as a
+                              sentence about the household rather than four
+                              unrelated tiles. */}
+                          <div className="flex items-center gap-5 text-sm">
+                            {[
+                              { label: 'Watching', value: isLoading ? '…' : String(liveActiveUsersCount) },
+                              { label: 'Avg each', value: isLoading ? '…' : formatMinutes(Math.round(metricsData?.admin?.interestingMetrics?.avgWatchTimePerUser || 0)) },
+                              { label: 'Best streak', value: isLoading ? '…' : `${topUsersData.reduce((max, u) => Math.max(max, u.streak), 0)}d` },
+                            ].map((stat) => (
+                              <div key={stat.label} className="text-right">
+                                <p className="text-xs text-muted whitespace-nowrap">{stat.label}</p>
+                                <p className="text-lg font-semibold text-default leading-tight">{stat.value}</p>
                               </div>
-                              <p className="text-xs text-muted mt-1 truncate">{item.name}</p>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="h-40 md:h-56">
+                          {isLoading ? (
+                            <div className="flex items-center justify-center h-full">
+                              <div className="flex items-center gap-2 text-sm text-muted">
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                <span>Loading…</span>
+                              </div>
                             </div>
-                          ))}
-                        </ScrollRow>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              </PageSection>
-            )}
+                          ) : watchTimeChartData.length === 0 ? (
+                            <div className="flex items-center justify-center h-full text-sm text-muted">
+                              Nothing watched in this period yet
+                            </div>
+                          ) : (
+                            <WatchTimeChart data={watchTimeChartData} />
+                          )}
+                        </div>
+                      </Card>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'members':
+                return (
+                  <ArrangePanel key={id} arrange={metricsUsersArrange} id={id} label="Members" ownHeading={false}>
+                    <>
+                    {/* Members: the leaderboard and the streaks panel, merged. Both
+                        were per-member lists of the same people; two cards to say
+                        that was the whole problem. */}
+                    <PageSection delay={0.15}>
+                      <Card padding="lg">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold font-display text-default">Members</h3>
+                          <span className="text-xs text-muted">{topUsersData.length} {topUsersData.length === 1 ? 'member' : 'members'}</span>
+                        </div>
+
+                        {isLoading ? (
+                          <p className="text-sm text-muted py-6 text-center">Loading…</p>
+                        ) : topUsersData.length === 0 ? (
+                          <p className="text-sm text-muted py-6 text-center">No watch activity in this period.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {topUsersData.map((user, index) => (
+                              <div
+                                key={user.id}
+                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-hover"
+                              >
+                                {/* Rank only carries meaning with more than one
+                                    person in the list. */}
+                                {topUsersData.length > 1 && (
+                                  <span
+                                    className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${index === 0 ? 'rank-top-muted' : 'rank-rest-muted'}`}
+                                  >
+                                    {index + 1}
+                                  </span>
+                                )}
+                                <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} useGravatar={user.useGravatar} size="sm" className="shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-default truncate leading-tight">{user.name}</p>
+                                  <div className="flex items-center gap-3 text-xs text-muted mt-0.5">
+                                    <span className="flex items-center gap-1"><FilmIcon className="w-3.5 h-3.5" />{user.movies}</span>
+                                    <span className="flex items-center gap-1"><TvIcon className="w-3.5 h-3.5" />{user.series}</span>
+                                    <span className="flex items-center gap-1"><FireIcon className="w-3.5 h-3.5" />{user.streak}d</span>
+                                    <span className="flex items-center gap-1">
+                                      {user.trend === 'up' ? (
+                                        <ArrowTrendingUpIcon className="w-3.5 h-3.5 text-primary" />
+                                      ) : (
+                                        <ArrowTrendingDownIcon className="w-3.5 h-3.5" />
+                                      )}
+                                      {user.trend === 'up' ? 'rising' : 'falling'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <p className="text-base font-bold text-default shrink-0">{formatMinutes(user.watchTime)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'recap':
+                return (
+                  <ArrangePanel key={id} arrange={metricsUsersArrange} id={id} label="Recap" ownHeading={false}>
+                    <>
+                    {/* The recap, out of the way until it is wanted. */}
+                    <PageSection delay={0.2}>
+                      {yearInReviewOpen ? (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setYearInReviewOpen(false)}
+                            className="text-xs text-muted hover:text-default transition-colors mb-2"
+                          >
+                            ← Hide year in review
+                          </button>
+                          <YearInReviewCard />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setYearInReviewOpen(true)}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-hover hover:bg-surface transition-colors text-left"
+                        >
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                            <SparklesIcon className="w-4 h-4 text-primary shrink-0" />
+                            <span className="text-sm font-medium text-default">Year in Review</span>
+                            <span className="text-xs text-muted break-words">everything this household watched this year</span>
+                          </span>
+                          <ChevronDownIcon className="w-4 h-4 text-muted shrink-0" />
+                        </button>
+                      )}
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'taste':
+                return (
+                  <ArrangePanel key={id} arrange={metricsUsersArrange} id={id} label="Taste profiles" ownHeading={false}>
+                    <>
+                    {/* Taste profiles - per-user profile built from real watch data
+                        (top titles by actual time, movie/series split, genres, and
+                        closest household match). The richer replacement for the old
+                        flat overlap list; the overlap "shared favorites" detail stays
+                        below as a companion. */}
+                    {tasteProfiles.length > 0 && (
+                      <PageSection delay={0.33}>
+                        <Card padding="lg">
+                          <div className="flex items-center gap-3 mb-6">
+                            <HeartIcon className="w-6 h-6" />
+                            <div>
+                              <h3 className="text-lg font-semibold font-display text-default">Taste profiles</h3>
+                              <p className="text-sm text-muted">Each member&apos;s real viewing fingerprint — from actual watch-time, not tags</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {tasteProfiles.map((p) => {
+                              const hrs = Math.floor(p.totalSeconds / 3600);
+                              const mins = Math.round((p.totalSeconds % 3600) / 60);
+                              const timeLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                              return (
+                                <div key={p.user.id} className="p-4 rounded-xl bg-surface-hover flex flex-col gap-3">
+                                  <div className="flex items-center gap-3">
+                                    <UserAvatar userId={p.user.id} name={p.user.username} email={p.user.email} src={p.user.useGravatar ? undefined : (p.user.avatarUrl ?? undefined)} useGravatar={p.user.useGravatar} size="md" />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-default truncate">{p.user.username}</p>
+                                      <p className="text-xs text-muted">{timeLabel} · {p.movieCount} movies · {p.seriesCount} series</p>
+                                    </div>
+                                  </div>
+
+                                  {p.topGenres.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {p.topGenres.map((g) => (
+                                        <span key={g.genre} className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary-muted text-primary">{g.genre}</span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {p.topTitles.length > 0 && (
+                                    <ScrollRow className="flex gap-2 pb-1">
+                                      {p.topTitles.map((t) => (
+                                        <div key={t.key} title={t.name} className="w-14 shrink-0">
+                                          <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface border border-default">
+                                            {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
+                                          </div>
+                                          <p className="text-[10px] text-muted mt-1 break-words">{t.name}</p>
+                                        </div>
+                                      ))}
+                                    </ScrollRow>
+                                  )}
+
+                                  {p.tasteTwin && (
+                                    <div className="flex items-center gap-2 pt-1 border-t border-default/50 mt-auto">
+                                      <span className="text-xs text-muted">Closest match:</span>
+                                      <UserAvatar userId={p.tasteTwin.user.id} name={p.tasteTwin.user.username} email={p.tasteTwin.user.email} src={p.tasteTwin.user.useGravatar ? undefined : (p.tasteTwin.user.avatarUrl ?? undefined)} useGravatar={p.tasteTwin.user.useGravatar} size="xs" />
+                                      <span className="text-xs font-medium text-default truncate">{p.tasteTwin.user.username}</span>
+                                      <Badge variant="primary" size="sm">{p.tasteTwin.similarity}%</Badge>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      </PageSection>
+                    )}
+                    </>
+                  </ArrangePanel>
+                );
+              case 'overlap':
+                return (
+                  <ArrangePanel key={id} arrange={metricsUsersArrange} id={id} label="Taste overlap" ownHeading={false}>
+                    <>
+                    {/* Taste Overlap - real behavioral overlap (actual watch-time
+                        on shared titles), not genre-tag matching. Hidden entirely
+                        for a single-user household, where a "pair" can't exist. */}
+                    {tasteOverlap.length > 0 && (
+                      <PageSection delay={0.35}>
+                        <Card padding="lg">
+                          <div className="flex items-center gap-3 mb-6">
+                            <HeartIcon className="w-6 h-6" />
+                            <div>
+                              <h3 className="text-lg font-semibold font-display text-default">Taste overlap</h3>
+                              <p className="text-sm text-muted">Real shared watch-time between household members, not genre matching</p>
+                            </div>
+                          </div>
+                          <div className="space-y-5">
+                            {tasteOverlap.map((pair) => (
+                              <div key={`${pair.userA.id}-${pair.userB.id}`} className="p-4 rounded-xl bg-surface-hover">
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
+                                  <UserAvatar userId={pair.userA.id} name={pair.userA.username} email={pair.userA.email} src={pair.userA.useGravatar ? undefined : (pair.userA.avatarUrl ?? undefined)} useGravatar={pair.userA.useGravatar} size="sm" />
+                                  <span className="text-sm font-medium text-default break-words">{pair.userA.username}</span>
+                                  <Badge variant="primary">{pair.similarity}% overlap</Badge>
+                                  <span className="text-sm font-medium text-default break-words">{pair.userB.username}</span>
+                                  <UserAvatar userId={pair.userB.id} name={pair.userB.username} email={pair.userB.email} src={pair.userB.useGravatar ? undefined : (pair.userB.avatarUrl ?? undefined)} useGravatar={pair.userB.useGravatar} size="sm" />
+                                </div>
+                                <ScrollRow className="flex gap-2 pb-1">
+                                  {pair.shared.map((item) => (
+                                    <div key={item.key} title={item.name || undefined} className="w-16 shrink-0">
+                                      <div className="w-16 h-24 rounded-lg overflow-hidden bg-surface border border-default">
+                                        {item.poster && (
+                                          <img src={item.poster} alt={item.name || ''} className="w-full h-full object-cover" />
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-muted mt-1 truncate">{item.name}</p>
+                                    </div>
+                                  ))}
+                                </ScrollRow>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      </PageSection>
+                    )}
+                    </>
+                  </ArrangePanel>
+                );
+              default: return null;
+              }
+            })}
+            <HiddenTray arrange={metricsUsersArrange} labelOf={(id) => METRICS_LABELS[id] || id} />
           </div>
         )}
 
         {/* Content Tab - Top Content + Engagement + Top Items + Watch Velocity + Started Playing */}
-        {viewMode === 'content' && (
+        {v2 && viewMode === 'content' && (
+          <MetricsContentV2
+            arrange={metricsContentArrange}
+            isLoading={isLoading}
+            error={!!error}
+            periodKey={period}
+            data={metricsData}
+            contentChart={v2ContentChart}
+          />
+        )}
+        {!v2 && viewMode === 'content' && (
           <div className="space-y-6">
-            {/* Stats Grid for Content Tab */}
-            <PageSection className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  label="Movies Watched"
-                  value={isLoading ? '...' : (metricsData?.summary?.totalMovies || 0)}
-                  icon={<FilmIcon className="w-6 h-6" />}
-                  delay={0}
-                />
-                <StatCard
-                  label="Series Watched"
-                  value={isLoading ? '...' : (metricsData?.summary?.totalShows || 0)}
-                  icon={<TvIcon className="w-6 h-6" />}
-                  delay={0.05}
-                />
-                <StatCard
-                  label="Most Watched"
-                  value={isLoading ? '...' : (() => {
-                    const name = metricsData?.admin?.topItems?.series?.[0]?.name;
-                    if (!name) return 'N/A';
-                    return name.length > 15 ? name.substring(0, 15) + '...' : name;
-                  })()}
-                  icon={<TrophyIcon className="w-6 h-6" />}
-                  delay={0.1}
-                />
-                <StatCard
-                  label="Binge Sessions"
-                  value={isLoading ? '...' : (metricsData?.admin?.interestingMetrics?.totalBingeSessions || 0)}
-                  icon={<FireIcon className="w-6 h-6" />}
-                  delay={0.15}
-                />
-              </div>
-            </PageSection>
-
-            {/* Top Row: Top Items + Watch Velocity side by side */}
-            <PageSection delay={0.25}>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Most Watched Section */}
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                                      <div className="flex items-center gap-3">
-                                        <TrophyIcon className="w-6 h-6" />
-                                        <h3 className="text-lg font-semibold font-display text-default">Most Watched</h3>
-                                      </div>
-                                    </div>
-                                    {metricsData?.admin?.topItems ? (
-                                      <TopItemsSection
-                                        key={period} // Only force reset when period changes
-                                        movies={metricsData.admin.topItems.movies}
-                                        series={metricsData.admin.topItems.series}
-                                      />
-                                    ) : (
-                                      <div className="text-center py-8 text-sm text-muted">No top items data available</div>
-                                    )}
-                                  </Card>
+            {metricsContentArrange.shown.map((id) => {
+              switch (id) {
+              case 'numbers':
+                return (
+                  <ArrangePanel key={id} arrange={metricsContentArrange} id={id} label="Numbers" ownHeading={false}>
+                    <>
+                    {/* Stats Grid for Content Tab */}
+                    <PageSection className="mb-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <StatCard
+                          label="Movies Watched"
+                          value={isLoading ? '...' : (metricsData?.summary?.totalMovies || 0)}
+                          icon={<FilmIcon className="w-6 h-6" />}
+                          delay={0}
+                        />
+                        <StatCard
+                          label="Series Watched"
+                          value={isLoading ? '...' : (metricsData?.summary?.totalShows || 0)}
+                          icon={<TvIcon className="w-6 h-6" />}
+                          delay={0.05}
+                        />
+                        <StatCard
+                          label="Most Watched"
+                          value={isLoading ? '...' : (() => {
+                            const name = metricsData?.admin?.topItems?.series?.[0]?.name;
+                            if (!name) return 'N/A';
+                            return name.length > 15 ? name.substring(0, 15) + '...' : name;
+                          })()}
+                          icon={<TrophyIcon className="w-6 h-6" />}
+                          delay={0.1}
+                        />
+                        <StatCard
+                          label="Binge Sessions"
+                          value={isLoading ? '...' : (metricsData?.admin?.interestingMetrics?.totalBingeSessions || 0)}
+                          icon={<FireIcon className="w-6 h-6" />}
+                          delay={0.15}
+                        />
+                      </div>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'top':
+                return (
+                  <ArrangePanel key={id} arrange={metricsContentArrange} id={id} label="Most watched and binges" ownHeading={false}>
+                    <>
+                    {/* Top Row: Top Items + Watch Velocity side by side */}
+                    <PageSection delay={0.25}>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Most Watched Section */}
+                        <Card padding="lg">
+                          <div className="flex items-center justify-between mb-6">
+                                              <div className="flex items-center gap-3">
+                                                <TrophyIcon className="w-6 h-6" />
+                                                <h3 className="text-lg font-semibold font-display text-default">Most Watched</h3>
+                                              </div>
+                                            </div>
+                                            {metricsData?.admin?.topItems ? (
+                                              <TopItemsSection
+                                                key={period} // Only force reset when period changes
+                                                movies={metricsData.admin.topItems.movies}
+                                                series={metricsData.admin.topItems.series}
+                                              />
+                                            ) : (
+                                              <div className="text-center py-8 text-sm text-muted">No top items data available</div>
+                                            )}
+                                          </Card>
                     
-                                  {/* Binge Watches Section */}
-                                  <Card padding="lg">
-                                    <div className="flex items-center justify-between mb-6">
-                                      <div className="flex items-center gap-3">
-                                        <FireIcon className="w-6 h-6" />
-                                        <h3 className="text-lg font-semibold font-display text-default">Binge Watches</h3>
-                                      </div>
-                                    </div>
-                                    {metricsData?.admin?.watchVelocity ? (
-                                      <BingeWatchesSection 
-                                        key={period}
-                                        items={metricsData.admin.watchVelocity} 
-                                      />
-                                    ) : (
-                                      <div className="text-center py-8 text-sm text-muted">No binge watch data available</div>
-                                    )}
-                                  </Card>
-                                </div>
-                              </PageSection>
-            {/* Second Row: Engagement Patterns + Content Breakdown side by side */}
-            <PageSection delay={0.3}>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Engagement Patterns */}
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold font-display text-default">Engagement Patterns</h3>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">Avg: {metricsData?.admin?.engagement?.averageSessionMinutes || 0} min</Badge>
-                      <Badge variant="secondary">Binge: {metricsData?.admin?.engagement?.bingeSessions || 0}</Badge>
-                    </div>
-                  </div>
-                  {metricsData?.admin?.engagement && (
-                    <HourlyHeatmap
-                      hourlyActivity={metricsData.admin.engagement.hourlyActivity}
-                      peakHour={metricsData.admin.engagement.peakHour}
-                    />
-                  )}
-                </Card>
+                                          {/* Binge Watches Section */}
+                                          <Card padding="lg">
+                                            <div className="flex items-center justify-between mb-6">
+                                              <div className="flex items-center gap-3">
+                                                <FireIcon className="w-6 h-6" />
+                                                <h3 className="text-lg font-semibold font-display text-default">Binge Watches</h3>
+                                              </div>
+                                            </div>
+                                            {metricsData?.admin?.watchVelocity ? (
+                                              <BingeWatchesSection 
+                                                key={period}
+                                                items={metricsData.admin.watchVelocity} 
+                                              />
+                                            ) : (
+                                              <div className="text-center py-8 text-sm text-muted">No binge watch data available</div>
+                                            )}
+                                          </Card>
+                                        </div>
+                                      </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'engagement':
+                return (
+                  <ArrangePanel key={id} arrange={metricsContentArrange} id={id} label="Engagement and breakdown" ownHeading={false}>
+                    <>
+                    {/* Second Row: Engagement Patterns + Content Breakdown side by side */}
+                    <PageSection delay={0.3}>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Engagement Patterns */}
+                        <Card padding="lg">
+                          <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-semibold font-display text-default">Engagement Patterns</h3>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary">Avg: {metricsData?.admin?.engagement?.averageSessionMinutes || 0} min</Badge>
+                              <Badge variant="secondary">Binge: {metricsData?.admin?.engagement?.bingeSessions || 0}</Badge>
+                            </div>
+                          </div>
+                          {metricsData?.admin?.engagement && (
+                            <HourlyHeatmap
+                              hourlyActivity={metricsData.admin.engagement.hourlyActivity}
+                              peakHour={metricsData.admin.engagement.peakHour}
+                            />
+                          )}
+                        </Card>
 
-                {/* Content Breakdown */}
-                <Card padding="lg" className="flex flex-col">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-lg font-semibold font-display text-default">Content Breakdown</h3>
-                      <p className="text-sm text-muted">Movies vs Series</p>
-                    </div>
-                  </div>
-                  <div className="h-40 md:h-64">
-                    {isLoading ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="flex items-center gap-2 text-sm text-muted">
-                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          <span>Loading...</span>
-                        </div>
+                        {/* Content Breakdown */}
+                        <Card padding="lg" className="flex flex-col">
+                          <div className="flex items-center justify-between mb-6">
+                            <div>
+                              <h3 className="text-lg font-semibold font-display text-default">Content Breakdown</h3>
+                              <p className="text-sm text-muted">Movies vs Series</p>
+                            </div>
+                          </div>
+                          <div className="h-40 md:h-64">
+                            {isLoading ? (
+                              <div className="flex items-center justify-center h-full">
+                                <div className="flex items-center gap-2 text-sm text-muted">
+                                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                  <span>Loading...</span>
+                                </div>
+                              </div>
+                            ) : error ? (
+                              <div className="flex items-center justify-center h-full text-sm text-muted">
+                                Failed to load data
+                              </div>
+                            ) : contentBreakdownData.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-full text-sm text-muted">
+                                <p className="mb-2">No watch activity data</p>
+                                <p className="text-xs opacity-70">
+                                  {metricsData?.watchActivity?.byDay 
+                                    ? "No activity in selected period" 
+                                    : "Loading data..."}
+                                </p>
+                              </div>
+                            ) : (
+                              <ContentBreakdownChart data={contentBreakdownData} />
+                            )}
+                          </div>
+                          {/* Legend */}
+                          <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-default">
+                            <div className="flex items-center gap-2">
+                              <span className="w-3 h-3 rounded-full" style={{ background: 'var(--color-chart-1)' }} />
+                              <span className="text-sm text-muted">Movies</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="w-3 h-3 rounded-full" style={{ background: 'var(--color-chart-2)' }} />
+                              <span className="text-sm text-muted">Series</span>
+                            </div>
+                          </div>
+                        </Card>
                       </div>
-                    ) : error ? (
-                      <div className="flex items-center justify-center h-full text-sm text-muted">
-                        Failed to load data
-                      </div>
-                    ) : contentBreakdownData.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-sm text-muted">
-                        <p className="mb-2">No watch activity data</p>
-                        <p className="text-xs opacity-70">
-                          {metricsData?.watchActivity?.byDay 
-                            ? "No activity in selected period" 
-                            : "Loading data..."}
-                        </p>
-                      </div>
-                    ) : (
-                      <ContentBreakdownChart data={contentBreakdownData} />
-                    )}
-                  </div>
-                  {/* Legend */}
-                  <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-default">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ background: 'var(--color-chart-1)' }} />
-                      <span className="text-sm text-muted">Movies</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ background: 'var(--color-chart-2)' }} />
-                      <span className="text-sm text-muted">Series</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </PageSection>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              default: return null;
+              }
+            })}
+            <HiddenTray arrange={metricsContentArrange} labelOf={(id) => METRICS_LABELS[id] || id} />
           </div>
         )}
 
         {/* Admin Tab - All Admin Sections */}
-        {viewMode === 'admin' && (
+        {v2 && viewMode === 'admin' && (
+          <MetricsAdminV2
+            arrange={metricsAdminArrange}
+            isLoading={isLoading}
+            data={metricsData}
+            joinsChart={v2JoinsChart}
+            joinsTotal={(metricsData?.userJoins?.byDay || []).reduce((sum, day) => sum + day.count, 0)}
+          />
+        )}
+        {!v2 && viewMode === 'admin' && (
           <div className="space-y-6">
-            {/* Stats Grid for Admin Tab */}
-            <PageSection className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  label="Most Active Hour"
-                  value={isLoading ? '...' : `${metricsData?.admin?.interestingMetrics?.mostActiveHour || 0}:00`}
-                  icon={<ClockIcon className="w-6 h-6" />}
-                  delay={0}
-                />
-                <StatCard
-                  label="Weekend Watching"
-                  value={isLoading ? '...' : `${(metricsData?.admin?.interestingMetrics?.weekendWatchPercentage || 0).toFixed(1)}%`}
-                  icon={<CalendarIcon className="w-6 h-6" />}
-                  delay={0.05}
-                />
-                <StatCard
-                  label="Completion Rate"
-                  value={isLoading ? '...' : `${(metricsData?.admin?.interestingMetrics?.completionRate || 0).toFixed(1)}%`}
-                  icon={<ChartBarIcon className="w-6 h-6" />}
-                  delay={0.1}
-                />
-                <StatCard
-                  label="Avg Session"
-                  value={isLoading ? '...' : formatMinutes(Math.round(metricsData?.admin?.interestingMetrics?.avgSessionDuration || 0))}
-                  icon={<PlayIcon className="w-6 h-6" />}
-                  delay={0.15}
-                />
-              </div>
-            </PageSection>
-
-            {/* User Joins Over Time Chart */}
-            {metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0 && (
-              <PageSection delay={0.22}>
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-lg font-semibold font-display text-default">User Joins Over Time</h3>
-                      <p className="text-sm text-muted">New user signups by day</p>
-                    </div>
-                    <Badge variant="primary">
-                      <UsersIcon className="w-4 h-4 mr-1" />
-                      {metricsData.userJoins.byDay.reduce((sum, day) => sum + day.count, 0)} Total
-                    </Badge>
-                  </div>
-                  <div className="h-40 md:h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={metricsData.userJoins.byDay}>
-                        <defs>
-                          <linearGradient id="colorUserJoins" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--color-chart-3)" stopOpacity={0.4} />
-                            <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                        <XAxis 
-                          dataKey="date" 
-                          stroke="#64748b" 
-                          fontSize={12}
-                          tickFormatter={(value) => {
-                            const date = new Date(value);
-                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-                          }}
+            {metricsAdminArrange.shown.map((id) => {
+              switch (id) {
+              case 'numbers':
+                return (
+                  <ArrangePanel key={id} arrange={metricsAdminArrange} id={id} label="Numbers" ownHeading={false}>
+                    <>
+                    {/* Stats Grid for Admin Tab */}
+                    <PageSection className="mb-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <StatCard
+                          label="Most Active Hour"
+                          value={isLoading ? '...' : `${metricsData?.admin?.interestingMetrics?.mostActiveHour || 0}:00`}
+                          icon={<ClockIcon className="w-6 h-6" />}
+                          delay={0}
                         />
-                        <YAxis stroke="#64748b" fontSize={12} />
-                        <Tooltip 
-                          contentStyle={TOOLTIP_STYLE} 
-                          labelStyle={TOOLTIP_LABEL_STYLE}
-                          labelFormatter={(value: any) => {
-                            const date = new Date(value);
-                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-                          }}
-                          formatter={(value) => [`${value} user${Number(value) !== 1 ? 's' : ''}`, 'New Signups']}
+                        <StatCard
+                          label="Weekend Watching"
+                          value={isLoading ? '...' : `${(metricsData?.admin?.interestingMetrics?.weekendWatchPercentage || 0).toFixed(1)}%`}
+                          icon={<CalendarIcon className="w-6 h-6" />}
+                          delay={0.05}
                         />
-                        <Area
-                          type="monotone"
-                          dataKey="count"
-                          stroke="var(--color-chart-3)"
-                          strokeWidth={2}
-                          fillOpacity={1}
-                          fill="url(#colorUserJoins)"
+                        <StatCard
+                          label="Completion Rate"
+                          value={isLoading ? '...' : `${(metricsData?.admin?.interestingMetrics?.completionRate || 0).toFixed(1)}%`}
+                          icon={<ChartBarIcon className="w-6 h-6" />}
+                          delay={0.1}
                         />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              </PageSection>
-            )}
+                        <StatCard
+                          label="Avg Session"
+                          value={isLoading ? '...' : formatMinutes(Math.round(metricsData?.admin?.interestingMetrics?.avgSessionDuration || 0))}
+                          icon={<PlayIcon className="w-6 h-6" />}
+                          delay={0.15}
+                        />
+                      </div>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'joins':
+                return (
+                  <ArrangePanel key={id} arrange={metricsAdminArrange} id={id} label="User joins" ownHeading={false}>
+                    <>
+                    {/* User Joins Over Time Chart */}
+                    {metricsData?.userJoins?.byDay && metricsData.userJoins.byDay.length > 0 && (
+                      <PageSection delay={0.22}>
+                        <Card padding="lg">
+                          <div className="flex items-center justify-between mb-6">
+                            <div>
+                              <h3 className="text-lg font-semibold font-display text-default">User Joins Over Time</h3>
+                              <p className="text-sm text-muted">New user signups by day</p>
+                            </div>
+                            <Badge variant="primary">
+                              <UsersIcon className="w-4 h-4 mr-1" />
+                              {metricsData.userJoins.byDay.reduce((sum, day) => sum + day.count, 0)} Total
+                            </Badge>
+                          </div>
+                          <div className="h-40 md:h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={metricsData.userJoins.byDay}>
+                                <defs>
+                                  <linearGradient id="colorUserJoins" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="var(--color-chart-3)" stopOpacity={0.4} />
+                                    <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                                <XAxis 
+                                  dataKey="date" 
+                                  stroke="#64748b" 
+                                  fontSize={12}
+                                  tickFormatter={(value) => {
+                                    const date = new Date(value);
+                                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+                                  }}
+                                />
+                                <YAxis stroke="#64748b" fontSize={12} />
+                                <Tooltip 
+                                  contentStyle={TOOLTIP_STYLE} 
+                                  labelStyle={TOOLTIP_LABEL_STYLE}
+                                  labelFormatter={(value: any) => {
+                                    const date = new Date(value);
+                                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+                                  }}
+                                  formatter={(value) => [`${value} user${Number(value) !== 1 ? 's' : ''}`, 'New Signups']}
+                                />
+                                <Area
+                                  type="monotone"
+                                  dataKey="count"
+                                  stroke="var(--color-chart-3)"
+                                  strokeWidth={2}
+                                  fillOpacity={1}
+                                  fill="url(#colorUserJoins)"
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </Card>
+                      </PageSection>
+                    )}
+                    </>
+                  </ArrangePanel>
+                );
+              case 'lifecycle':
+                return (
+                  <ArrangePanel key={id} arrange={metricsAdminArrange} id={id} label="Lifecycle and at-risk" ownHeading={false}>
+                    <>
+                    {/* Top Row: Lifecycle + At-Risk side by side */}
+                    <PageSection delay={0.25}>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* User Lifecycle Section */}
+                        <Card padding="lg">
+                          <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-semibold font-display text-default">User Lifecycle</h3>
+                            <Badge variant="primary">Retention</Badge>
+                          </div>
+                          {metricsData?.admin?.userLifecycle && (
+                            <UserLifecycleCard
+                              lifecycle={metricsData.admin.userLifecycle}
+                              userJoins={metricsData.userJoins?.byDay || []}
+                            />
+                          )}
+                        </Card>
 
-            {/* Top Row: Lifecycle + At-Risk side by side */}
-            <PageSection delay={0.25}>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* User Lifecycle Section */}
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold font-display text-default">User Lifecycle</h3>
-                    <Badge variant="primary">Retention</Badge>
-                  </div>
-                  {metricsData?.admin?.userLifecycle && (
-                    <UserLifecycleCard
-                      lifecycle={metricsData.admin.userLifecycle}
-                      userJoins={metricsData.userJoins?.byDay || []}
-                    />
-                  )}
-                </Card>
-
-                {/* At-Risk Users Section */}
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <ExclamationTriangleIcon className="w-6 h-6" />
-                      <h3 className="text-lg font-semibold font-display text-default">At-Risk Users</h3>
-                    </div>
-                    <Badge>
-                      {metricsData?.admin?.userLifecycle?.criticalRisk?.length || 0} Critical,{' '}
-                      {metricsData?.admin?.userLifecycle?.atRisk?.length || 0} Warning
-                    </Badge>
-                  </div>
-                  {metricsData?.admin?.userLifecycle && (
-                    <AtRiskUsersTable
-                      atRiskUsers={metricsData.admin.userLifecycle.atRisk}
-                      criticalUsers={metricsData.admin.userLifecycle.criticalRisk}
-                      onUserClick={setSelectedUser}
-                    />
-                  )}
-                </Card>
-              </div>
-            </PageSection>
-
-            {/* Server Health Section - Full width */}
-            <PageSection delay={0.3}>
-              <Card padding="lg">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <ServerIcon className="w-6 h-6 text-primary" />
-                    <h3 className="text-lg font-semibold font-display text-default">Server Health</h3>
-                  </div>
-                  <Badge 
-                    variant={
-                      metricsData?.admin?.serverHealth?.status === 'healthy' 
-                        ? 'success' 
-                        : metricsData?.admin?.serverHealth?.status === 'warning'
-                        ? 'warning'
-                        : 'error'
-                    }
-                  >
-                    {metricsData?.admin?.serverHealth?.status?.toUpperCase() || 'UNKNOWN'}
-                  </Badge>
-                </div>
-                {metricsData?.admin?.serverHealth && (
-                  <ServerHealthDashboard
-                    status={metricsData.admin.serverHealth.status}
-                    checks={metricsData.admin.serverHealth.checks}
-                    metrics={metricsData.admin.serverHealth.metrics}
-                  />
-                )}
-              </Card>
-            </PageSection>
-
-            {/* Addon Performance Section - Full width */}
-            <PageSection delay={0.35}>
-              <Card padding="lg">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <PuzzlePieceIcon className="w-6 h-6 text-secondary" />
-                    <h3 className="text-lg font-semibold font-display text-default">Addon Performance</h3>
-                  </div>
-                  <Badge variant="secondary">
-                    {metricsData?.admin?.addonAnalytics?.totalAddons || 0} Addons
-                  </Badge>
-                </div>
-                {metricsData?.admin?.addonAnalytics && (
-                  <AddonPerformanceCard
-                    totalAddons={metricsData.admin.addonAnalytics.totalAddons}
-                    activeAddons={metricsData.admin.addonAnalytics.activeAddons}
-                    topAddons={metricsData.admin.addonAnalytics.topAddons}
-                    byResource={metricsData.admin.addonAnalytics.byResource}
-                  />
-                )}
-              </Card>
-            </PageSection>
+                        {/* At-Risk Users Section */}
+                        <Card padding="lg">
+                          <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                              <ExclamationTriangleIcon className="w-6 h-6" />
+                              <h3 className="text-lg font-semibold font-display text-default">At-Risk Users</h3>
+                            </div>
+                            <Badge>
+                              {metricsData?.admin?.userLifecycle?.criticalRisk?.length || 0} Critical,{' '}
+                              {metricsData?.admin?.userLifecycle?.atRisk?.length || 0} Warning
+                            </Badge>
+                          </div>
+                          {metricsData?.admin?.userLifecycle && (
+                            <AtRiskUsersTable
+                              atRiskUsers={metricsData.admin.userLifecycle.atRisk}
+                              criticalUsers={metricsData.admin.userLifecycle.criticalRisk}
+                              onUserClick={setSelectedUser}
+                            />
+                          )}
+                        </Card>
+                      </div>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'health':
+                return (
+                  <ArrangePanel key={id} arrange={metricsAdminArrange} id={id} label="Server health" ownHeading={false}>
+                    <>
+                    {/* Server Health Section - Full width */}
+                    <PageSection delay={0.3}>
+                      <Card padding="lg">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-3">
+                            <ServerIcon className="w-6 h-6 text-primary" />
+                            <h3 className="text-lg font-semibold font-display text-default">Server Health</h3>
+                          </div>
+                          <Badge 
+                            variant={
+                              metricsData?.admin?.serverHealth?.status === 'healthy' 
+                                ? 'success' 
+                                : metricsData?.admin?.serverHealth?.status === 'warning'
+                                ? 'warning'
+                                : 'error'
+                            }
+                          >
+                            {metricsData?.admin?.serverHealth?.status?.toUpperCase() || 'UNKNOWN'}
+                          </Badge>
+                        </div>
+                        {metricsData?.admin?.serverHealth && (
+                          <ServerHealthDashboard
+                            status={metricsData.admin.serverHealth.status}
+                            checks={metricsData.admin.serverHealth.checks}
+                            metrics={metricsData.admin.serverHealth.metrics}
+                          />
+                        )}
+                      </Card>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              case 'addons':
+                return (
+                  <ArrangePanel key={id} arrange={metricsAdminArrange} id={id} label="Addon performance" ownHeading={false}>
+                    <>
+                    {/* Addon Performance Section - Full width */}
+                    <PageSection delay={0.35}>
+                      <Card padding="lg">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-3">
+                            <PuzzlePieceIcon className="w-6 h-6 text-secondary" />
+                            <h3 className="text-lg font-semibold font-display text-default">Addon Performance</h3>
+                          </div>
+                          <Badge variant="secondary">
+                            {metricsData?.admin?.addonAnalytics?.totalAddons || 0} Addons
+                          </Badge>
+                        </div>
+                        {metricsData?.admin?.addonAnalytics && (
+                          <AddonPerformanceCard
+                            totalAddons={metricsData.admin.addonAnalytics.totalAddons}
+                            activeAddons={metricsData.admin.addonAnalytics.activeAddons}
+                            topAddons={metricsData.admin.addonAnalytics.topAddons}
+                            byResource={metricsData.admin.addonAnalytics.byResource}
+                          />
+                        )}
+                      </Card>
+                    </PageSection>
+                    </>
+                  </ArrangePanel>
+                );
+              default: return null;
+              }
+            })}
+            <HiddenTray arrange={metricsAdminArrange} labelOf={(id) => METRICS_LABELS[id] || id} />
           </div>
         )}
 
@@ -1134,6 +1457,15 @@ export default function MetricsPage() {
                 <p className="text-sm text-muted">Couldn&apos;t load health status.</p>
               </Card>
             </PageSection>
+          ) : v2 ? (
+            <MetricsHealthV2
+              health={healthData}
+              parts={healthParts}
+              refreshing={healthRefreshing}
+              onRefresh={() => loadHealth(true)}
+              timeAgo={healthTimeAgo}
+              extra={<DbStorageCard />}
+            />
           ) : (
             <>
               <PageSection className="mb-6">

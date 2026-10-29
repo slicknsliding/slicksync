@@ -1,5 +1,9 @@
 'use client';
 
+import { usePageArrangement, usePageDesign, useSavedFilter } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
+import { VaultV2, VAULT_SECTIONS } from '@/components/v2/VaultV2';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -78,7 +82,9 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
 // Common currency codes for the Vault cost selector. Intl.NumberFormat
 // renders the correct symbol/placement for each, so only the ISO code is
 // stored - no hardcoded "$".
-const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'SEK', 'NOK', 'DKK', 'PLN', 'NZD', 'ZAR'];
+const CLASSIC_SECTION_LABELS: Record<string, string> = { cost: 'Cost summary', renewals: 'Upcoming renewals', entries: 'Entries' };
+const CLASSIC_SECTION_KEYS = Object.keys(CLASSIC_SECTION_LABELS);
+const CURRENCY_OPTIONS =['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'SEK', 'NOK', 'DKK', 'PLN', 'NZD', 'ZAR'];
 
 function daysUntil(dateStr?: string | null): number | null {
   if (!dateStr) return null;
@@ -436,7 +442,8 @@ function VaultPageContent() {
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
-  const [activeCategory, setActiveCategory] = useState('debrid'); // 'all' tab removed - defaults to first real category
+  // Kept between visits when "Keep each page's filter" is on (Themes).
+  const [activeCategory, setActiveCategory] = useSavedFilter('vault', 'debrid' as string); // 'all' tab removed - defaults to first real category
   const [isLoading, setIsLoading] = useState(true);
 
   // Instant navigation: the last-known entries of the category this page
@@ -722,9 +729,16 @@ function VaultPageContent() {
         const aioNote = aio ? `${aio} AIOStreams setup${aio === 1 ? '' : 's'}` : '';
         if (result?.rotation && result.rotation.addonsUpdated.length > 0) {
           const r = result.rotation;
-          toast.success(`Key rotated - updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'}${aioNote ? `, ${aioNote}` : ''} and re-synced ${r.usersSynced} user${r.usersSynced === 1 ? '' : 's'}${r.userFailures.length ? ` (${r.userFailures.length} sync failure${r.userFailures.length === 1 ? '' : 's'} - see notifications)` : ''}`);
+          const updated = `Updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'}${aioNote ? `, ${aioNote}` : ''} and re-synced ${r.usersSynced} ${r.usersSynced === 1 ? 'person' : 'people'}.`;
+          if (r.userFailures.length) {
+            toast.warning('Key rotated', {
+              line: `${updated} ${r.userFailures.length} couldn’t be re-synced. Details are in your notifications.`,
+            });
+          } else {
+            toast.success('Key rotated', { line: updated });
+          }
         } else if (aioNote) {
-          toast.success(`Key rotated - updated ${aioNote}`);
+          toast.success('Key rotated', { line: `Updated ${aioNote}.` });
         } else {
           toast.success('Vault entry updated');
         }
@@ -758,12 +772,12 @@ function VaultPageContent() {
     try {
       const { secret } = await api.revealVaultSecret(entry.id);
       if (!secret || !/^https?:\/\//i.test(secret.trim())) {
-        toast.error("This entry's secret doesn't look like an addon manifest URL (must start with http:// or https://)");
+        toast.error('That isn’t an addon address', { line: 'The secret has to be a link starting with http:// or https://.' });
         return;
       }
       await api.createAddon({ manifestUrl: secret.trim(), name: entry.name } as any);
       await api.deleteVaultEntry(entry.id);
-      toast.success(`Moved "${entry.name}" to Addons`);
+      toast.success(`Moved ${entry.name} to Addons`);
       load();
     } catch (err: any) {
       toast.error(err.message || 'Failed to move to Addons');
@@ -899,6 +913,18 @@ function VaultPageContent() {
     }
   };
 
+  // v2: what needs you first, then the rest; Arrange moves, folds and hides
+  // the two sections and hides single entries (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const { viewMode, setViewMode } = useDefaultViewMode();
+  const [renderedAt] = useState(() => Date.now());
+  const sectionArrange = usePageArrangement('vault', useMemo(() => VAULT_SECTIONS.map((x) => x.key), []));
+  const entryArrangeOwn = usePageArrangement('vault-items', useMemo(() => allCostEntries.map((e) => e.id), [allCostEntries]));
+  const classicArrange = usePageArrangement('vault-classic', CLASSIC_SECTION_KEYS);
+  const entryArrange = { ...entryArrangeOwn, arranging: sectionArrange.arranging };
+  const pageArrange = { ...sectionArrange, isDefault: sectionArrange.isDefault && entryArrangeOwn.isDefault, reset: () => { sectionArrange.reset(); entryArrangeOwn.reset(); } };
+
   const filterOptions = [
     ...Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
@@ -915,7 +941,7 @@ function VaultPageContent() {
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="font-semibold truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
+            <h3 className="font-semibold break-words" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
               {CATEGORY_LABELS[entry.category]}{entry.provider ? ` • ${entry.provider}` : ''}
             </p>
@@ -1041,6 +1067,165 @@ function VaultPageContent() {
     </Card>
   );
 
+  const classic = !v2 && !isTV;
+  const costSection = trackedCount > 0 ? (
+    <>
+      <div className="flex items-center justify-end mb-2">
+        <label className="text-xs text-muted mr-2">Currency</label>
+        {/* Explicit narrow width - the shared input-base class forces
+            width:100%, which stretched this three-letter selector across
+            the whole page. */}
+        <select
+          value={currency}
+          onChange={(e) => handleCurrencyChange(e.target.value)}
+          className="input-base px-2 py-1 text-xs rounded-lg"
+          style={{ width: '6rem' }}
+          title="Currency for all cost figures"
+        >
+          {CURRENCY_OPTIONS.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+        {[
+          { label: `Monthly Spend · ${trackedCount} service${trackedCount !== 1 ? 's' : ''}`, value: fmtMoney(monthlyTotal), icon: <BanknotesIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+          { label: 'Yearly', value: fmtMoney(monthlyTotal * 12), icon: <CreditCardIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+          { label: costPerHour != null ? 'Per Hour Watched (30d)' : 'Per Hour Watched', value: costPerHour != null ? fmtMoney(costPerHour) : '—', icon: <ClockIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+        ].map((s, i) => {
+          const isPrimary = i % 2 === 0;
+          return (
+            <div key={s.label} className={`${NEBULA_GLASS_CLASS} p-2.5 sm:p-3 md:p-5 flex items-center gap-2 md:gap-4 min-w-0`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <div className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0" style={{ background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)', color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)' }}>
+                {s.icon}
+              </div>
+              <div className="min-w-0">
+                <p className="text-base sm:text-lg md:text-3xl font-bold font-display text-default leading-none truncate">{s.value}</p>
+                <p className="text-[10px] md:text-sm text-muted mt-1 truncate">{s.label}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  ) : null;
+  const renewalsSection = trackedCount > 0 && upcomingRenewals.length > 0 ? (
+        <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
+          <NebulaGlassStripe />
+          <button
+            type="button"
+            onClick={() => setRenewalExpanded((v) => !v)}
+            className="w-full flex items-center gap-2 text-left"
+          >
+            <CalendarDaysIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+            <h3 className="text-sm font-semibold text-default flex-1">
+              Next {FORECAST_WINDOW_DAYS} days: {fmtMoney(forecastTotal)} across {upcomingRenewals.length} renewal{upcomingRenewals.length !== 1 ? 's' : ''}
+            </h3>
+            <ChevronDownIcon
+              className="w-4 h-4 shrink-0 transition-transform"
+              style={{ color: 'var(--color-text-muted)', transform: renewalExpanded ? 'rotate(180deg)' : undefined }}
+            />
+          </button>
+          {renewalExpanded && (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto mt-3 pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+              {upcomingRenewals.map((r, i) => {
+                const days = Math.max(0, Math.round((r.date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                return (
+                  <div key={`${r.entryId}-${i}`} className="flex items-center justify-between text-xs py-1">
+                    <span className="text-default truncate">{r.name}</span>
+                    <span className="text-muted shrink-0 ml-2">
+                      {days === 0 ? 'today' : `in ${days}d`} · {fmtMoney(r.amount)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+  ) : null;
+  const entriesSection = (
+  <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+  {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
+    <div className={v2 ? 'mb-2 flex items-center gap-3' : 'mb-5'}>
+      <div className={v2 ? 'flex-1 min-w-0' : ''}>
+        <FilterTabsResponsive fill options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
+      </div>
+    </div>
+
+    {isLoading ? (
+      <div className="text-center py-16" style={{ color: 'var(--color-text-muted)' }}>Loading vault...</div>
+    ) : entries.length === 0 ? (
+      // Straight on the panel, like the empty states on Invitations,
+      // Addons and Groups - not a second bordered box inside it.
+      <div className="text-center py-16">
+        <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
+          <ShieldCheckIcon className="w-8 h-8 text-subtle" />
+        </div>
+        <h3 className="text-lg font-medium mb-2 text-default">No entries yet</h3>
+        <p className="mb-6 text-muted">
+          Track API keys, accounts, and credentials with expiry alerts and active-checks.
+        </p>
+        <Button variant="primary" onClick={openAddModal}>
+          Add your first entry
+        </Button>
+      </div>
+    ) : v2 ? (
+      <>
+        <VaultV2
+          entries={entries}
+          labels={CATEGORY_LABELS}
+          arrange={sectionArrange}
+          entryArrange={entryArrange}
+          view={viewMode === 'list' ? 'list' : 'grid'}
+          testing={testingId}
+          now={renderedAt}
+          onOpen={openEditModal}
+          onCopy={handleCopy}
+          onTest={handleTest}
+          revealed={revealed}
+          onReveal={handleReveal}
+          onSnooze={handleSnooze}
+          onRotate={(entry) => {
+            window.open(entry.dashboardUrl || undefined, '_blank', 'noopener,noreferrer');
+            openEditModal(entry);
+          }}
+          onMoveToAddons={handleMoveToAddons}
+          onDelete={handleDelete}
+        />
+        <HiddenTray
+          arrange={sectionArrange}
+          labelOf={(key) => `${VAULT_SECTIONS.find((x) => x.key === key)?.label ?? 'Section'} (section)`}
+          extra={entryArrangeOwn.hidden.map((id) => ({ id: `e:${id}`, label: allCostEntries.find((e) => e.id === id)?.name ?? 'An entry', show: () => entryArrangeOwn.show(id) }))}
+          note="Hidden only here: entries keep working and keep their alerts. Tap one to bring it back."
+        />
+      </>
+    ) : (
+      <>
+        <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
+          Drag the handle to reorder within a category, drop onto a category tab above to recategorize, or drop onto "Addons" in the sidebar to move it there.
+        </p>
+        <SortableContext items={entries.map(e => e.id)} strategy={rectSortingStrategy}>
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {entries.map((entry) => (
+              <StaggerItem key={entry.id}>
+                <SortableEntryCard
+                  entry={entry}
+                  renderEntryCard={renderEntryCard}
+                  onTest={handleTest}
+                  onEdit={openEditModal}
+                  onMoveToAddons={handleMoveToAddons}
+                  onDelete={handleDelete}
+                />
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
+        </SortableContext>
+      </>
+    )}
+  </div>
+  );
+
   return (
     <Wrapper>
       <Head><title>SlickSync - Vault</title></Head>
@@ -1050,6 +1235,7 @@ function VaultPageContent() {
           subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
           actions={
             <>
+              {(v2 || classic) && <ArrangeButton arrange={v2 ? sectionArrange : classicArrange} />}
               <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
                 Add Entry
               </Button>
@@ -1070,139 +1256,32 @@ function VaultPageContent() {
                 Add Entry
               </Button>
             );
-            return isTV ? <TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable> : btn;
+            return isTV ? <TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable> : (v2 || classic) ? <div className="flex items-center gap-2"><ArrangeButton arrange={v2 ? sectionArrange : classicArrange} />{btn}</div> : btn;
           })()}
         />
       )}
-      {/* Cost summary - only once at least one entry has a cost set. Debrid,
-          usenet, and every other category count equally; whatever you tagged
-          with a cost is in the total. Monthly and yearly-billed entries are
-          normalized before summing. */}
-      {trackedCount > 0 && (
+      {classic ? (
         <>
-          <div className="flex items-center justify-end mb-2">
-            <label className="text-xs text-muted mr-2">Currency</label>
-            {/* Explicit narrow width - the shared input-base class forces
-                width:100%, which stretched this three-letter selector across
-                the whole page. */}
-            <select
-              value={currency}
-              onChange={(e) => handleCurrencyChange(e.target.value)}
-              className="input-base px-2 py-1 text-xs rounded-lg"
-              style={{ width: '6rem' }}
-              title="Currency for all cost figures"
-            >
-              {CURRENCY_OPTIONS.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
-            {[
-              { label: `Monthly Spend · ${trackedCount} service${trackedCount !== 1 ? 's' : ''}`, value: fmtMoney(monthlyTotal), icon: <BanknotesIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-              { label: 'Yearly', value: fmtMoney(monthlyTotal * 12), icon: <CreditCardIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-              { label: costPerHour != null ? 'Per Hour Watched (30d)' : 'Per Hour Watched', value: costPerHour != null ? fmtMoney(costPerHour) : '—', icon: <ClockIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-            ].map((s, i) => {
-              const isPrimary = i % 2 === 0;
-              return (
-                <div key={s.label} className={`${NEBULA_GLASS_CLASS} p-2.5 sm:p-3 md:p-5 flex items-center gap-2 md:gap-4 min-w-0`} style={nebulaGlassStyle}>
-                  <NebulaGlassStripe />
-                  <div className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0" style={{ background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)', color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)' }}>
-                    {s.icon}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-base sm:text-lg md:text-3xl font-bold font-display text-default leading-none truncate">{s.value}</p>
-                    <p className="text-[10px] md:text-sm text-muted mt-1 truncate">{s.label}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {upcomingRenewals.length > 0 && (
-            <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
-              <NebulaGlassStripe />
-              <button
-                type="button"
-                onClick={() => setRenewalExpanded((v) => !v)}
-                className="w-full flex items-center gap-2 text-left"
-              >
-                <CalendarDaysIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-primary)' }} />
-                <h3 className="text-sm font-semibold text-default flex-1">
-                  Next {FORECAST_WINDOW_DAYS} days: {fmtMoney(forecastTotal)} across {upcomingRenewals.length} renewal{upcomingRenewals.length !== 1 ? 's' : ''}
-                </h3>
-                <ChevronDownIcon
-                  className="w-4 h-4 shrink-0 transition-transform"
-                  style={{ color: 'var(--color-text-muted)', transform: renewalExpanded ? 'rotate(180deg)' : undefined }}
-                />
-              </button>
-              {renewalExpanded && (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto mt-3 pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
-                  {upcomingRenewals.map((r, i) => {
-                    const days = Math.max(0, Math.round((r.date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-                    return (
-                      <div key={`${r.entryId}-${i}`} className="flex items-center justify-between text-xs py-1">
-                        <span className="text-default truncate">{r.name}</span>
-                        <span className="text-muted shrink-0 ml-2">
-                          {days === 0 ? 'today' : `in ${days}d`} · {fmtMoney(r.amount)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          <ArrangeBar arrange={classicArrange} />
+          {classicArrange.shown.map((id) => {
+            const node = id === 'cost' ? costSection : id === 'renewals' ? renewalsSection : id === 'entries' ? entriesSection : null;
+            // An empty section still has its place while arranging, as a dashed placeholder.
+            if (!node && !classicArrange.arranging) return null;
+            return (
+              <ArrangePanel key={id} arrange={classicArrange} id={id} label={CLASSIC_SECTION_LABELS[id] ?? 'Section'} ownHeading={false}
+                emptyNote={node ? undefined : `${CLASSIC_SECTION_LABELS[id] ?? 'Section'} · shows when there is something in it`}>{node}</ArrangePanel>
+            );
+          })}
+          <HiddenTray arrange={classicArrange} labelOf={(key) => `${CLASSIC_SECTION_LABELS[key] ?? 'Section'} (section)`} />
+        </>
+      ) : (
+        <>
+          {costSection}
+          {renewalsSection}
+          {v2 && <ArrangeBar arrange={pageArrange} />}
+          {entriesSection}
         </>
       )}
-
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
-        <div className="mb-5">
-          <FilterTabsResponsive fill options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
-        </div>
-
-        {isLoading ? (
-          <div className="text-center py-16" style={{ color: 'var(--color-text-muted)' }}>Loading vault...</div>
-        ) : entries.length === 0 ? (
-          // Straight on the panel, like the empty states on Invitations,
-          // Addons and Groups - not a second bordered box inside it.
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <ShieldCheckIcon className="w-8 h-8 text-subtle" />
-            </div>
-            <h3 className="text-lg font-medium mb-2 text-default">No entries yet</h3>
-            <p className="mb-6 text-muted">
-              Track API keys, accounts, and credentials with expiry alerts and active-checks.
-            </p>
-            <Button variant="primary" onClick={openAddModal}>
-              Add your first entry
-            </Button>
-          </div>
-        ) : (
-          <>
-            <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
-              Drag the handle to reorder within a category, drop onto a category tab above to recategorize, or drop onto "Addons" in the sidebar to move it there.
-            </p>
-            <SortableContext items={entries.map(e => e.id)} strategy={rectSortingStrategy}>
-              <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {entries.map((entry) => (
-                  <StaggerItem key={entry.id}>
-                    <SortableEntryCard
-                      entry={entry}
-                      renderEntryCard={renderEntryCard}
-                      onTest={handleTest}
-                      onEdit={openEditModal}
-                      onMoveToAddons={handleMoveToAddons}
-                      onDelete={handleDelete}
-                    />
-                  </StaggerItem>
-                ))}
-              </StaggerContainer>
-            </SortableContext>
-          </>
-        )}
-      </div>
       </div>
       </div>
 

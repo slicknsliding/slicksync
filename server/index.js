@@ -478,7 +478,7 @@ app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, 
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/jellyfin', jellyfinRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
-app.use('/api/avatars', avatarsRouter({ imageUpload }));
+app.use('/api/avatars', avatarsRouter({ imageUpload, prisma }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/automation', automationRouter({ prisma, getAccountId }));
 app.use('/api/watch-together', require('./routes/watchTogether')({ prisma, getAccountId }));
@@ -563,6 +563,18 @@ app.use('/invite', invitationsRouter.createPublicRouter({ prisma, encrypt, assig
 // Public library router (no auth required)
 const { getCachedLibrary, setCachedLibrary } = require('./utils/libraryCache');
 app.use('/api/public-library', publicLibraryRouter({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary, JWT_SECRET }));
+
+// The addon proxy, streams and SlickTrax answer anyone holding the link and
+// fetch from addons on their behalf, so they get a limit of their own -
+// generous, since a whole household's devices share one address.
+const linkLimiter = rateLimit({
+  windowMs: parseInt(process.env.LINK_RATE_LIMIT_WINDOW_MS || '300000'),
+  max: parseInt(process.env.LINK_RATE_LIMIT_MAX_REQUESTS || '6000'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests from this address, please try again shortly.' },
+});
+app.use(['/proxy', '/stream', '/trax'], linkLimiter);
 
 // Addon proxy router (no auth required - UUID serves as bearer token)
 app.use('/proxy', proxyRouter({ prisma, decrypt, getAccountId, getServerKey }));

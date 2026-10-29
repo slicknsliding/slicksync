@@ -8,6 +8,9 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
 import { cachedImageUrl } from '@/lib/posterUrl';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { ConfirmV2Body } from '@/components/v2/ConfirmV2';
 
 interface ModalProps {
   isOpen: boolean;
@@ -43,6 +46,9 @@ interface ModalProps {
    * behaviour and by the overlay swallowing touches and wheel. No enter or
    * exit motion either way - the library shell had none in practice. */
   lightweight?: boolean;
+  /** v2: on a phone the panel rises from the bottom as a sheet instead of
+   * floating in the middle. Larger screens are unchanged. */
+  sheet?: boolean;
 }
 
 const sizeStyles = {
@@ -61,7 +67,7 @@ const sizeMaxWidthPx = {
   full: '896px',
 };
 
-export function Modal({ isOpen, onClose, title, ariaLabel, description, size = 'md', children, hideCloseButton = false, backdropImage, lightweight = false }: ModalProps) {
+export function Modal({ isOpen, onClose, title, ariaLabel, description, size = 'md', children, hideCloseButton = false, backdropImage, lightweight = false, sheet = false }: ModalProps) {
   // On a phone or tablet the close is a plain fade. The default close also
   // shrinks and slides the panel, and a transform on a panel whose backdrop
   // art is a large blurred image makes WebKit re-rasterize that image on
@@ -163,7 +169,7 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
 
   if (lightweight) {
     return (
-      <LightShell isOpen={isOpen} onClose={onClose} size={size} titleId={title ? titleId : undefined} ariaLabel={ariaLabel}>
+      <LightShell isOpen={isOpen} onClose={onClose} size={size} titleId={title ? titleId : undefined} ariaLabel={ariaLabel} sheet={sheet}>
         {panelBody}
       </LightShell>
     );
@@ -229,12 +235,13 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
 }
 
 // The shell behind `lightweight` - see that prop's comment on Modal.
-function LightShell({ isOpen, onClose, size, titleId, ariaLabel, children }: {
+function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children }: {
   isOpen: boolean;
   onClose: () => void;
   size: NonNullable<ModalProps['size']>;
   titleId?: string;
   ariaLabel?: string;
+  sheet?: boolean;
   children: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -283,7 +290,7 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, children }: {
         onWheel={(e) => e.preventDefault()}
         aria-hidden="true"
       />
-      <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+      <div className={clsx('fixed inset-0 flex justify-center pointer-events-none', sheet ? 'items-end sm:items-center p-0 sm:p-4' : 'items-center p-4')}>
         <div
           ref={panelRef}
           role="dialog"
@@ -294,7 +301,8 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, children }: {
           className={clsx(
             'relative w-full flex flex-col max-h-[85dvh] pointer-events-auto outline-none',
             sizeStyles[size],
-            'popup-panel rounded-2xl p-0 overflow-hidden overscroll-contain'
+            'popup-panel rounded-2xl p-0 overflow-hidden overscroll-contain',
+            sheet && 'max-sm:rounded-b-none! max-sm:max-w-none! max-sm:max-h-[92dvh]'
           )}
           style={{ maxWidth: sizeMaxWidthPx[size] }}
         >
@@ -317,6 +325,8 @@ interface ConfirmModalProps {
   cancelText?: string;
   variant?: 'danger' | 'warning' | 'default';
   isLoading?: boolean;
+  /** v2 only: a short line on how to undo it or where it goes. */
+  note?: string;
 }
 
 export function ConfirmModal({
@@ -329,7 +339,29 @@ export function ConfirmModal({
   cancelText = 'Cancel',
   variant = 'default',
   isLoading,
+  note,
 }: ConfirmModalProps) {
+  // v2 (Themes → Page design): icon, what happens, buttons that name the
+  // thing. Outside an ArrangeProvider this reads as Classic.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  if (design === 'v2' && !isTV) {
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} ariaLabel={title} size="sm">
+        <ConfirmV2Body
+          title={title}
+          description={description}
+          note={note}
+          variant={variant}
+          confirmText={confirmText}
+          cancelText={cancelText}
+          isLoading={isLoading}
+          onClose={onClose}
+          onConfirm={onConfirm}
+        />
+      </Modal>
+    );
+  }
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
       <p className="mb-6" style={{ color: 'var(--color-text-muted)' }}>{description}</p>

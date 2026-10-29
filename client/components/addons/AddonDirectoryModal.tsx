@@ -379,7 +379,7 @@ function SlickTraxRow() {
       await api.setTraxAddon(selected.id, true);
       await api.syncUser(selected.id);
       setUsers((prev) => prev.map((u) => (u.id === selected.id ? { ...u, traxAddonEnabled: true } : u)));
-      toast.success(`SlickTrax enabled and synced onto ${selected.username}'s account - the rows appear on their devices`);
+      toast.success(`SlickTrax is on for ${selected.username}`, { line: 'Its rows will appear on their devices.' });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not enable SlickTrax');
     } finally {
@@ -393,8 +393,8 @@ function SlickTraxRow() {
     try {
       const r = await api.setTraxAddon(selected.id, true); // idempotent - stable token, returns the URL
       const ok = await copyToClipboard(r.manifestUrl);
-      if (ok) toast.success('Manifest URL copied - paste it into any Stremio-compatible app');
-      else toast.error(`Copy failed - the URL is: ${r.manifestUrl}`);
+      if (ok) toast.success('Manifest link copied', { line: 'Paste it into any Stremio-compatible app.' });
+      else toast.error('Couldn’t copy the link', { line: `Here it is: ${r.manifestUrl}` });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not fetch the URL');
     } finally {

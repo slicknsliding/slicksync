@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HomeIcon,
   MagnifyingGlassIcon,
@@ -18,6 +18,9 @@ import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 import { NebulaBar, type NebulaNavSection } from './NebulaBar';
+import { useMenuArrangement } from '@/lib/arrange';
+import { arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
+import { PAGE_HEADER_CSS, useIconifyActions, usePageHeader } from '@/lib/pageHeader';
 
 // Replaces the sidebar for pages rendering Nebula layout mode (see
 // lib/layout-mode.tsx's NEBULA_ELIGIBLE_PATHS) - brand sits on its own row
@@ -92,9 +95,25 @@ export function NebulaTopbar() {
     window.location.href = '/login?mode=admin';
   };
 
+  // The account's own arrangement of the menu, if it has one: its order,
+  // hidden pages in More, one row or two, the logo's size and where the bar
+  // sits. Without one, the two default rows.
+  const { menu: arranged } = useMenuArrangement();
+  const sections = useMemo<NebulaNavSection[]>(() => {
+    const rows = arranged.rows ?? 2;
+    if (!menuIsArranged(arranged) && rows === 2) return NEBULA_NAV_SECTIONS;
+    const { shown } = arrangeMenu(arranged);
+    if (rows === 1) return [{ id: 'all', items: shown }];
+    const half = Math.ceil(shown.length / 2);
+    return [{ id: 'first', items: shown.slice(0, half) }, { id: 'second', items: shown.slice(half) }];
+  }, [arranged]);
+  const more = useMemo(() => arrangeMenu(arranged).more, [arranged]);
+
   return (
     <NebulaBar
-      sections={NEBULA_NAV_SECTIONS}
+      sections={sections}
+      more={more}
+      look={{ rows: arranged.rows ?? 2, logo: arranged.logo ?? 'large', align: arranged.align ?? 'center' }}
       homeHref="/"
       menu={menu}
       account={<PanelSwitcher mode="admin" userInfo={accountInfo} onLogout={handleLogout} variant="compact" align="left" />}
@@ -120,6 +139,7 @@ export function NebulaPageHeading({
   actions,
   stats,
   leading,
+  trailing,
 }: {
   title: string;
   subtitle?: string;
@@ -138,7 +158,67 @@ export function NebulaPageHeading({
       control reads as "leave this page" and belongs on the opposite side
       from Rename/Delete/the bell, not bunched in with them. */
   leading?: ReactNode;
+  /** Right of the title, on the bell's row (Catalogs' Collections pills moved there). */
+  trailing?: ReactNode;
 }) {
+  // Themes → Layout → Page header: Compact and Minimal draw their own, slimmer
+  // row; Full is the layout below, as it has always been.
+  const { mode } = usePageHeader();
+  const actionsRef = useRef<HTMLDivElement>(null);
+  useIconifyActions(actionsRef, mode === 'compact');
+  // No title of its own (a sub-page whose big title sits under this row): just
+  // the back control, any buttons, and the palette and bell.
+  if (!title) {
+    return (
+      <div className="mb-3 md:mb-4 flex items-center gap-x-2 gap-y-2 flex-wrap">
+        {leading && <div className="flex items-center min-w-0 max-w-full max-sm:[&:has(.collection-pills)]:basis-full">{leading}</div>}
+        <div className="flex-1" />
+        {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
+        {trailing}
+        <TopbarActions />
+      </div>
+    );
+  }
+  if (mode !== 'full') {
+    const compact = mode === 'compact';
+    return (
+      <div className="mb-4 md:mb-6">
+        <style>{PAGE_HEADER_CSS}</style>
+        <div
+          data-page-header={mode}
+          className={`flex items-center gap-x-2 gap-y-2 flex-wrap ${compact ? '' : 'pb-2.5'}`}
+          style={compact ? undefined : { borderBottom: '1px solid var(--color-surface-border)' }}
+        >
+          {leading && <div className="flex items-center min-w-0 max-w-full max-sm:[&:has(.collection-pills)]:basis-full">{leading}</div>}
+          {compact ? (
+            <div className="min-w-[8rem] flex-1">
+              <h1 className="text-xl md:text-2xl font-bold font-display leading-tight text-default line-clamp-2 break-words">{title}</h1>
+              {subtitle && <p className="text-xs md:text-sm text-muted leading-snug mt-0.5 line-clamp-3 break-words">{subtitle}</p>}
+            </div>
+          ) : (
+            <h1 className="sr-only">{title}</h1>
+          )}
+          {actions && (
+            <div
+              ref={actionsRef}
+              data-ph-actions={compact ? 'icons' : 'slim'}
+              className={`flex items-center flex-wrap ${compact ? 'gap-1.5 shrink-0 ml-auto' : 'gap-2 flex-1 min-w-0'}`}
+            >
+              {actions}
+            </div>
+          )}
+          {!actions && !compact && <div className="flex-1" />}
+          {trailing}
+          <TopbarActions />
+        </div>
+        {stats && (
+          <div className="mt-3 w-full flex justify-center">
+            {stats}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     // On desktop switch from flex to a 3-column grid so the title sits in the
     // MIDDLE column (centered on the page) while actions stay right-aligned in
@@ -186,6 +266,7 @@ export function NebulaPageHeading({
             left edge) even though the div itself was correctly flush right
             - every button/bell inside consistently sat short of the page's
             actual right margin as a result. */}
+        {trailing}
         <TopbarActions />
         {/* Zero-height, full-width flex item forces a line-break: the bell
             (above) always lands on its own line, `actions` (below) always
@@ -340,7 +421,7 @@ export function NebulaCompactStatCard({
               {icon}
             </div>
           )}
-          <p className="text-lg font-bold font-display text-default leading-none truncate">{value}</p>
+          <p className="text-lg font-bold font-display text-default leading-none">{value}</p>
         </div>
         <p className="text-[11px] leading-tight text-muted">{label}</p>
       </div>

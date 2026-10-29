@@ -11,6 +11,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
+import { joinNames } from '@/lib/sharedConfig';
 import { ShortcutRecipes } from '@/components/settings/ShortcutRecipes';
 import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettings';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
@@ -43,7 +44,6 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
-  Squares2X2Icon,
   ArrowTopRightOnSquareIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -51,7 +51,16 @@ import { SettingsNavigation, collectSettingsEntries, type SettingsTabDef } from 
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { LumiereDbField } from '@/components/settings/LumiereDbField';
-import { AboutPanel } from '@/components/settings/AboutPanel';
+import { AboutPanel, AboutV2, ABOUT_KEYS } from '@/components/settings/AboutPanel';
+import { THEME_KEYS } from '@/components/settings/ThemesPanel';
+import { usePageArrangement, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { ArrangeBar } from '@/components/ui/Arrange';
+import {
+  GeneralV2, GENERAL_KEYS, SyncV2, SYNC_KEYS, NotificationsV2, NOTIFICATION_KEYS,
+  FeaturesV2, FEATURE_KEYS, SecurityV2, SECURITY_KEYS,
+} from '@/components/v2/SettingsPanesV2';
+import { IntegrationsV2, INTEGRATION_KEYS } from '@/components/v2/IntegrationsV2';
+import { BackupKeyField, PoolKeysField } from '@/components/settings/KeyFields';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
 // ('timeZone') - a fairly recent addition (Baseline 2023), not guaranteed
@@ -184,10 +193,12 @@ function SettingRow({
 // labelled blocks and section headers that aren't SettingRows. Returns the
 // enclosing box so the flash outlines something meaningful, not bare text.
 function findSettingElement(target: string): HTMLElement | null {
-  const exact = document.querySelector(`[data-setting="${CSS.escape(target)}"]`);
+  const exact = document.querySelector(`[data-setting="${CSS.escape(target)}"]`)
+    // v2 renames some settings; the row remembers its older name.
+    ?? document.querySelector(`[data-setting-also="${CSS.escape(target)}"]`);
   if (exact) return exact as HTMLElement;
   const t = target.trim().toLowerCase();
-  for (const el of Array.from(document.querySelectorAll('label, h3'))) {
+  for (const el of Array.from(document.querySelectorAll('label, h2, h3'))) {
     const txt = (el.textContent || '').trim().toLowerCase();
     if (txt === t || txt.startsWith(t)) return (el.closest('div') || el) as HTMLElement;
   }
@@ -245,193 +256,6 @@ const AI_MODEL_OPTIONS_BY_PROVIDER: Record<string, { value: string; label: strin
 // everything rather than nothing.
 const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 
-// Optional failover key paired with one of the four metadata providers.
-// Only offered once a primary key exists (a backup with nothing to back up
-// is just a confusing second box), and collapsed behind a link until asked
-// for, so the common one-key setup looks exactly as it always did.
-// The backup is used only when the health check has actually found the
-// primary failing or rate-limited - see server/utils/listImport.js.
-
-// Key Pool editor - extra keys beyond the primary/backup pair. Same compact
-// chip-then-expand pattern as BackupKeyField above (and the same click-away
-// collapse), because the page's sizing complaints were heard: nothing here
-// takes space until asked for. With any pool keys present, lookups rotate
-// across every healthy key instead of hammering the primary - three free
-// MDBList keys become one pooled allowance.
-function PoolKeysField({
-  field, keys, primaryFilled, onSave,
-}: {
-  field: string;
-  keys: string[];
-  primaryFilled: boolean;
-  onSave: (next: string[]) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  if (!primaryFilled) return null;
-
-  const commit = async (next: string[]) => {
-    setSaving(true);
-    try { await onSave(next); } finally { setSaving(false); }
-  };
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors ml-2 ${keys.length > 0 ? 'keyset-on' : 'keyset-off'}`}
-      >
-        <Squares2X2Icon className="w-3.5 h-3.5" />
-        {keys.length > 0 ? `Key pool (${keys.length})` : 'Add key pool'}
-      </button>
-    );
-  }
-
-  return (
-    <div ref={wrapRef} className="mt-2 inline-block align-top rounded-lg p-2.5" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', maxWidth: '22rem' }}>
-      <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
-        Extra keys - lookups rotate across every healthy key, spreading the quota
-      </p>
-      {keys.map((k, i) => (
-        <div key={`${k}-${i}`} className="flex items-center gap-1.5 mb-1">
-          <code className="text-xs truncate flex-1" style={{ color: 'var(--color-text-muted)' }}>{'\u2022'.repeat(6)}{k.slice(-4)}</code>
-          <button
-            type="button"
-            onClick={() => commit(keys.filter((_, idx) => idx !== i))}
-            disabled={saving}
-            title="Remove this key"
-            aria-label="Remove this key"
-            className="p-1 rounded transition-colors shrink-0"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            <XMarkIcon className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ))}
-      <div className="flex items-center gap-1.5 mt-1.5">
-        <input
-          type="text"
-          value={draft}
-          autoFocus
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && draft.trim()) { commit([...keys, draft.trim()]); setDraft(''); }
-          }}
-          placeholder="Paste a key, press Enter"
-          autoComplete="off"
-          spellCheck={false}
-          data-field={field}
-          className="input-base px-2 py-1 text-xs w-52"
-        />
-      </div>
-    </div>
-  );
-}
-
-function BackupKeyField({
-  field, value, primaryFilled, onChange, onSave,
-}: {
-  field: string;
-  value: string;
-  primaryFilled: boolean;
-  onChange: (v: string) => void;
-  onSave: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const hasValue = !!value.trim();
-
-  // Collapses when focus or a click goes elsewhere on the page. This is a
-  // secondary field most people never touch, so leaving it expanded until
-  // manually closed just left clutter behind on a page that already has a
-  // lot of it. The input's own onBlur saves first, so collapsing never
-  // discards a value that was being typed.
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  if (!primaryFilled) return null;
-
-  return (
-    <div ref={wrapRef} className="mt-1.5">
-      {!open ? (
-        // Sized to its content rather than the full panel width - it is a
-        // secondary control and should not read as another key field.
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors ${hasValue ? 'keyset-ok' : 'keyset-off'}`}
-        >
-          <ShieldCheckIcon className="w-3.5 h-3.5" />
-          {hasValue ? 'Backup key set' : 'Add backup key'}
-        </button>
-      ) : (
-        <div className="inline-flex items-center gap-1.5 max-w-full">
-          <input
-            type="text"
-            value={value}
-            autoFocus
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={onSave}
-            placeholder="Backup key"
-            autoComplete="off"
-            spellCheck={false}
-            data-field={field}
-            className="input-base px-2.5 py-1.5 text-xs w-56 max-w-full"
-          />
-          {hasValue && (
-            <button
-              type="button"
-              onClick={() => { onChange(''); setTimeout(onSave, 0); }}
-              title="Remove backup key"
-              aria-label="Remove backup key"
-              className="p-1.5 rounded-md transition-colors shrink-0"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              <XMarkIcon className="w-3.5 h-3.5" />
-            </button>
-          )}
-          <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-            used if the key above fails
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Settings had grown to eleven stacked sections and roughly 2,600 lines of
 // page - long enough that finding one toggle meant scrolling past everything
 // else (user feedback). Same settings, grouped, one group on screen at a
@@ -484,6 +308,24 @@ export default function SettingsPage() {
   const useSettingsRail = layoutMode === 'nebula';
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
+  // Page design v2 (Themes → Layout → Page design). Each tab arranges on its own.
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const arranges: Record<SettingsTab, PageArrange> = {
+    general: usePageArrangement('settings-general', GENERAL_KEYS),
+    themes: usePageArrangement('settings-themes', THEME_KEYS, { defaultFolded: ['build'] }),
+    sync: usePageArrangement('settings-sync', SYNC_KEYS),
+    notifications: usePageArrangement('settings-notifications', NOTIFICATION_KEYS),
+    features: usePageArrangement('settings-features', FEATURE_KEYS),
+    integrations: usePageArrangement('settings-integrations', INTEGRATION_KEYS, { defaultFolded: ['shortcuts'] }),
+    security: usePageArrangement('settings-security', SECURITY_KEYS, { defaultFolded: ['danger'] }),
+    about: usePageArrangement('settings-about', ABOUT_KEYS),
+  };
+  // The search effect below runs once, so it reads these through refs.
+  const arrangesRef = useRef(arranges);
+  arrangesRef.current = arranges;
+  const v2Ref = useRef(v2);
+  v2Ref.current = v2;
   // The sections (each in a data-settings-pane) the search reads its index from.
   const contentRef = useRef<HTMLDivElement>(null);
   const [beginnerMode, setBeginnerModeState] = useState(false);
@@ -507,7 +349,12 @@ export default function SettingsPage() {
       const { keyHealth } = await api.checkProviderKeys();
       setSyncSettings((prev) => ({ ...prev, keyHealth }));
       const checkedProviders = Object.keys(keyHealth || {});
-      const failing = checkedProviders.filter((k) => keyHealth?.[k] && !keyHealth[k].ok).length;
+      const failingKeys = checkedProviders.filter((k) => keyHealth?.[k] && !keyHealth[k].ok);
+      const failing = failingKeys.length;
+      const keyNames: Record<string, string> = { tmdb: 'TMDb', mdblist: 'MDBList', rpdb: 'RPDB', omdb: 'OMDb' };
+      const keyOrder = ['tmdb', 'mdblist', 'rpdb', 'omdb'];
+      const failingNames = failingKeys.map((k) => keyNames[k] || k);
+      const firstFailing = keyOrder.find((k) => failingKeys.includes(k)) || failingKeys[0];
       // 0 failing out of 0 configured is vacuously "all passing" but reads
       // as false reassurance - confirmed live (a removed key's stale result
       // is correctly cleared now, and "0 failing" alone doesn't distinguish
@@ -518,7 +365,15 @@ export default function SettingsPage() {
       // flag. A warning here would be the same false-alarm mistake the
       // vacuous "all keys working" copy just got caught making.
       if (checkedProviders.length === 0) showToast.info('No API keys configured to check');
-      else if (failing > 0) toast.error(`${failing} of ${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} not working - see below`);
+      else if (failing > 0) {
+        toast.warning(`${failing} of ${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} ${failing === 1 ? 'isn’t' : 'aren’t'} working`, {
+          line: `${joinNames(failingNames)} didn’t accept ${failing === 1 ? 'its key' : 'their keys'}.`,
+          actions: [{
+            label: 'Show me',
+            onClick: () => document.getElementById(`provider-key-${firstFailing}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          }],
+        });
+      }
       else toast.success(`${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} working`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to check keys');
@@ -635,7 +490,7 @@ export default function SettingsPage() {
       setAiCheckStatus(result.lastCheckStatus);
       setAiCheckMessage(result.lastCheckMessage);
       if (result.lastCheckStatus === 'ok') toast.success('AI Services verified and saved');
-      else toast.error(`Saved, but verification failed: ${result.lastCheckMessage}`);
+      else toast.warning('AI Services saved, not verified', { line: result.lastCheckMessage || undefined });
       fetchLiveAiModels({ hasKey: true }); // refresh the model dropdown against whatever key/URL just got saved
     } catch (e: any) {
       toast.error(e.message || 'Failed to save AI Services');
@@ -982,6 +837,13 @@ export default function SettingsPage() {
         if (cancelled) return;
         const el = findSettingElement(target);
         if (!el) {
+          // v2 keeps a folded section's rows out of the page: open the
+          // sections folded on that tab, then look again.
+          if (tries === 3 && v2Ref.current) {
+            const tab = tabFor(target);
+            const a = tab ? arrangesRef.current[tab] : undefined;
+            a?.shown.filter((k) => a.isFolded(k)).forEach((k) => a.fold(k, false));
+          }
           if (++tries < 40) setTimeout(attempt, 150); // give up after ~6s
           return;
         }
@@ -1038,6 +900,17 @@ export default function SettingsPage() {
     }
   };
 
+  // Several settings in one save (the digest switch and its frequency).
+  const handleSaveSettings = async (patch: Partial<SyncSettings>) => {
+    setSyncSettings((prev) => ({ ...prev, ...patch }));
+    try {
+      await api.updateSyncSettings(patch);
+      toast.success('Setting saved');
+    } catch (e) {
+      toast.error((e instanceof Error && e.message) || 'Failed to save setting');
+    }
+  };
+
   const handleAvatarSave = async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
     await api.updateAccountAvatar(data.avatarUrl ?? null);
     setAccountInfo((prev) => prev ? { ...prev, avatarUrl: data.avatarUrl ?? null } : prev);
@@ -1084,11 +957,13 @@ export default function SettingsPage() {
     try {
       const result = await api.generateMosaicNow();
       if (result.posted) {
-        toast.success(syncSettings.webhookUrl?.trim()
-          ? `Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`
-          : `Sent ${result.month} recap — ${result.count} title${result.count === 1 ? '' : 's'} watched`);
+        toast.success(syncSettings.webhookUrl?.trim() ? `Posted the ${result.month} recap` : `Sent the ${result.month} recap`, {
+          line: syncSettings.webhookUrl?.trim()
+            ? `${result.count} title${result.count === 1 ? '' : 's'} watched, shared to Discord.`
+            : `${result.count} title${result.count === 1 ? '' : 's'} watched.`,
+        });
       } else if (result.reason === 'nothing watched') {
-        toast.error('Nothing watched last month - nothing to post');
+        toast.error('Nothing to post', { line: 'Nothing was watched last month.' });
       } else {
         toast.error(result.reason || 'Failed to generate mosaic');
       }
@@ -1179,7 +1054,7 @@ export default function SettingsPage() {
       setTwoFaRegenPrompt(false);
       setTwoFaRegenCode('');
       setTwoFaBackupCodes(result.backupCodes);
-      toast.success('New backup codes generated - your old codes no longer work');
+      toast.success('New backup codes ready', { line: 'Your old codes no longer work.' });
     } catch (e: any) {
       toast.error(e?.message || 'Incorrect code');
     } finally {
@@ -1260,6 +1135,30 @@ export default function SettingsPage() {
     }
   };
 
+  // Reads a self-hosted Nuvio backend's own /.well-known/nuvio to fill in its key.
+  const handleDetectNuvio = async () => {
+    const url = (syncSettings.nuvioServerUrl || '').trim();
+    if (!url) { toast.error('Enter the backend URL first'); return; }
+    setNuvioDiscovering(true);
+    try {
+      const r = await api.discoverNuvioBackend(url);
+      if (r.ok && r.anonKey) {
+        setSyncSettings(prev => ({ ...prev, nuvioServerUrl: r.url || url, nuvioAnonKey: r.anonKey }));
+        await handleSaveSetting('nuvioServerUrl' as keyof SyncSettings, r.url || url);
+        await handleSaveSetting('nuvioAnonKey' as keyof SyncSettings, r.anonKey);
+        toast.success('Backend detected and saved');
+      } else {
+        // Not fatal - the manual key field below always works.
+        toast.error(r.error || 'Couldn’t read that backend', { line: 'Enter the anon key by hand.' });
+      }
+    } catch (e) {
+      // The server says why when it has a reason (an address it may not reach).
+      toast.error((e instanceof Error && e.message) || 'Couldn’t reach that backend', { line: 'Enter the anon key by hand.' });
+    } finally {
+      setNuvioDiscovering(false);
+    }
+  };
+
   // Mask API key for display
   const maskedApiKey = apiKey 
     ? (apiKeyVisible ? apiKey : apiKey.slice(0, 8) + '••••••••' + apiKey.slice(-4))
@@ -1270,14 +1169,14 @@ export default function SettingsPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Settings"
-          subtitle="Customize your SlickSync experience"
+          subtitle={v2 ? 'Everything about how SlickSync works for you' : 'Customize your SlickSync experience'}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? 'min(120rem, 92vw)' : '896px' }}>
       {layoutMode === 'nebula' && (
-        <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
+        <NebulaPageHeading title="Settings" subtitle={v2 ? 'Everything about how SlickSync works for you' : 'Customize your SlickSync experience'} />
       )}
         {/* Settings navigation takes the axis the APP's own layout is not
             using. In Nebula (top nav) that is a left rail; in Original (which
@@ -1305,9 +1204,139 @@ export default function SettingsPage() {
           <div ref={contentRef} className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
 
 
-        {activeTab === 'themes' && <ThemesPanel embedded />}
+        {v2 && <ArrangeBar arrange={arranges[activeTab]} />}
 
-        {activeTab === 'about' && <AboutPanel lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} shared={isPublicInstance} />}
+        {activeTab === 'themes' && <ThemesPanel embedded arrange={v2 ? arranges.themes : undefined} />}
+
+        {activeTab === 'about' && (v2
+          ? <AboutV2 arrange={arranges.about} lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} shared={isPublicInstance} />
+          : <AboutPanel lumiere={!isPublicInstance && !!syncSettings.lumiereDbUrl} shared={isPublicInstance} />)}
+
+        {/* Page design v2: the same settings as short rows and tiles. */}
+        {v2 && (
+          <>
+            <div hidden={activeTab !== 'general'} data-settings-pane="general">
+              <GeneralV2
+                arrange={arranges.general}
+                isPublic={isPublicInstance}
+                accountInfo={accountInfo}
+                onPickAvatar={() => setAvatarModalOpen(true)}
+                nickname={{ draft: displayNameDraft, setDraft: setDisplayNameDraft, onSave: handleSaveDisplayName, saving: savingDisplayName }}
+                beginner={{ on: beginnerMode, set: (v) => { setBeginnerModePref(v); setBeginnerModeState(v); } }}
+                hideSensitive={hideSensitive}
+                onToggleHideSensitive={toggleHideSensitive}
+                sync={syncSettings}
+                save={handleSaveSetting}
+                timezones={TIMEZONES}
+              />
+            </div>
+            <div hidden={activeTab !== 'sync'} data-settings-pane="sync">
+              <SyncV2 arrange={arranges.sync} sync={syncSettings} save={handleSaveSetting} />
+            </div>
+            <div hidden={activeTab !== 'notifications'} data-settings-pane="notifications">
+              <NotificationsV2
+                arrange={arranges.notifications}
+                sync={syncSettings}
+                setSync={setSyncSettings}
+                save={handleSaveSetting}
+                saveMany={handleSaveSettings}
+                webhook={{ testing: isTestingWebhook, onTest: handleTestWebhook }}
+                mosaic={{ generating: isGeneratingMosaic, onGenerate: handleGenerateMosaic }}
+                devices={{
+                  list: pushDevices,
+                  editingId: editingDeviceId,
+                  setEditingId: setEditingDeviceId,
+                  label: editingLabel,
+                  setLabel: setEditingLabel,
+                  onRename: handleRenameDevice,
+                  onRevoke: handleRevokeDevice,
+                  nameOf: (d) => d.label || guessDeviceName(d.userAgent),
+                  guessName: (d) => guessDeviceName(d.userAgent),
+                  isMobile: (d) => isMobileDevice(d.userAgent),
+                  seenOf: (d) => formatLastSeen(d.lastSeenAt),
+                }}
+              />
+            </div>
+            <div hidden={activeTab !== 'features'} data-settings-pane="features">
+              <FeaturesV2 arrange={arranges.features} sync={syncSettings} setSync={setSyncSettings} save={handleSaveSetting} />
+            </div>
+            <div hidden={activeTab !== 'integrations'} data-settings-pane="integrations">
+              <IntegrationsV2
+                arrange={arranges.integrations}
+                sync={syncSettings}
+                setSync={setSyncSettings}
+                save={handleSaveSetting}
+                isPublic={isPublicInstance}
+                checkingKeys={checkingKeys}
+                onCheckKeys={handleCheckProviderKeys}
+                checkSingleKey={checkSingleKey}
+                ai={{
+                  configured: aiConfigured,
+                  apiKey: aiApiKey, setApiKey: setAiApiKey,
+                  keyVisible: aiKeyVisible, setKeyVisible: setAiKeyVisible,
+                  baseUrl: aiBaseUrl, setBaseUrl: setAiBaseUrl,
+                  model: aiModel, setModel: setAiModel,
+                  saving: isSavingAi,
+                  checkStatus: aiCheckStatus,
+                  checkMessage: aiCheckMessage,
+                  baseUrlOptions: AI_BASE_URL_OPTIONS,
+                  modelOptions: aiModelOptions,
+                  loadingModels: loadingAiModels,
+                  liveCount: liveAiModels.length,
+                  onBlur: handleAiFieldBlur,
+                  onReveal: handleRevealAiKey,
+                  onRemove: handleRemoveAiServices,
+                }}
+                nuvio={{ discovering: nuvioDiscovering, onDetect: handleDetectNuvio }}
+                apiKey={{
+                  value: apiKey,
+                  visible: apiKeyVisible,
+                  setVisible: setApiKeyVisible,
+                  masked: maskedApiKey,
+                  hideSensitive,
+                  generating: isGeneratingKey,
+                  onGenerate: handleGenerateApiKey,
+                  onCopy: handleCopyApiKey,
+                }}
+                shortcutsBase={syncSettings.ownAddress || syncSettings.publicBaseUrl}
+              />
+            </div>
+            <div hidden={activeTab !== 'security'} data-settings-pane="security">
+              <SecurityV2
+                arrange={arranges.security}
+                isPublic={isPublicInstance}
+                accountUuid={accountInfo?.uuid ?? null}
+                passkeys={{ list: passkeys, rpId: passkeyRpId, busy: passkeyBusy, supported: passkeySupported, onAdd: handleAddPasskey, onRemove: handleRemovePasskey }}
+                twoFa={{
+                  enabled: twoFaEnabled,
+                  setup: twoFaSetup,
+                  setupCode: twoFaSetupCode, setSetupCode: setTwoFaSetupCode,
+                  enabling: twoFaEnabling, startingSetup: twoFaStartingSetup,
+                  onStart: handleStart2fa, onConfirm: handleConfirm2fa, onCancel: handleCancel2faSetup,
+                  disablePrompt: twoFaDisablePrompt, setDisablePrompt: setTwoFaDisablePrompt,
+                  disableCode: twoFaDisableCode, setDisableCode: setTwoFaDisableCode,
+                  disabling: twoFaDisabling, onDisable: handleDisable2fa,
+                  regenPrompt: twoFaRegenPrompt, setRegenPrompt: setTwoFaRegenPrompt,
+                  regenCode: twoFaRegenCode, setRegenCode: setTwoFaRegenCode,
+                  regenerating: twoFaRegenerating, onRegenerate: handleRegenerate2faBackupCodes,
+                }}
+                uuidCopied={uuidCopied}
+                onCopyUuid={() => {
+                  if (!accountInfo?.uuid) return;
+                  copyToClipboard(accountInfo.uuid);
+                  setUuidCopied(true);
+                  toast.success('Account ID copied to clipboard');
+                  setTimeout(() => setUuidCopied(false), 2000);
+                }}
+                onReset={() => setIsResetModalOpen(true)}
+                onDeleteAccount={() => setIsDeleteAccountModalOpen(true)}
+              />
+            </div>
+          </>
+        )}
+
+        {!v2 && (
+        <>
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
@@ -2118,7 +2147,7 @@ export default function SettingsPage() {
                   Free from themoviedb.org (Settings -> API). Saved on blur,
                   same pattern as the webhook URL above. */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-tmdb" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.tmdbApiKey ? (
                     syncSettings.keyHealth?.tmdb ? (
@@ -2163,7 +2192,7 @@ export default function SettingsPage() {
                   from mdblist.com -> Preferences -> API Access. Same
                   optional-text-field pattern as the TMDb key above. */}
               <div className="pt-1">
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-mdblist" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">MDBList API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.mdblistApiKey ? (
                     syncSettings.keyHealth?.mdblist ? (
@@ -2209,7 +2238,7 @@ export default function SettingsPage() {
                   tier (Tier 0) already includes ratings, just not the
                   customizable badge styles - plenty for this purpose. */}
               <div className="pt-1">
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-rpdb" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.rpdbApiKey ? (
                     syncSettings.keyHealth?.rpdb ? (
@@ -2255,7 +2284,7 @@ export default function SettingsPage() {
                   it so this account's OMDb quota isn't shared with everyone
                   else on the instance. */}
               <div className="pt-1">
-                <div className="flex items-center justify-between mb-1.5">
+                <div id="provider-key-omdb" className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                   {syncSettings.omdbApiKey ? (
                     syncSettings.keyHealth?.omdb ? (
@@ -2310,7 +2339,7 @@ export default function SettingsPage() {
                         setSyncSettings((prev) => ({ ...prev, keyPoolQuotaWeighting: v }));
                         try {
                           await api.updateSyncSettings({ keyPoolQuotaWeighting: v });
-                          toast.success(v ? 'Pool requests now favor the key with the most quota left' : 'Pool back to taking strict turns');
+                          toast.success(v ? 'Pool favors the fullest key' : 'Pool takes strict turns', { line: v ? 'Requests go to the key with the most quota left.' : 'Each key gets its turn in order.' });
                         } catch {
                           toast.error('Could not save that setting');
                           setSyncSettings((prev) => ({ ...prev, keyPoolQuotaWeighting: !v }));
@@ -2329,7 +2358,7 @@ export default function SettingsPage() {
                         setSyncSettings((prev) => ({ ...prev, quotaAutopilot: v }));
                         try {
                           await api.updateSyncSettings({ quotaAutopilot: v });
-                          toast.success(v ? 'Background lookups will stand down near the daily cap' : 'Background lookups will always run');
+                          toast.success(v ? 'Background lookups ease off' : 'Background lookups always run', { line: v ? 'They stand down near the daily cap.' : undefined });
                         } catch {
                           toast.error('Could not save that setting');
                           setSyncSettings((prev) => ({ ...prev, quotaAutopilot: !v }));
@@ -2348,7 +2377,7 @@ export default function SettingsPage() {
                         setSyncSettings((prev) => ({ ...prev, keyPoolAutoRetire: v }));
                         try {
                           await api.updateSyncSettings({ keyPoolAutoRetire: v });
-                          toast.success(v ? 'Dead pool keys will retire themselves after 3 days' : 'Pool keys will only be removed by hand');
+                          toast.success(v ? 'Dead pool keys retire themselves' : 'Pool keys stay until removed', { line: v ? 'A key that stays dead for 3 days is dropped.' : 'Only you can remove them now.' });
                         } catch {
                           toast.error('Could not save that setting');
                           setSyncSettings((prev) => ({ ...prev, keyPoolAutoRetire: !v }));
@@ -2468,28 +2497,7 @@ export default function SettingsPage() {
                     variant="secondary"
                     size="sm"
                     isLoading={nuvioDiscovering}
-                    onClick={async () => {
-                      const url = (syncSettings.nuvioServerUrl || '').trim();
-                      if (!url) { toast.error('Enter the backend URL first'); return; }
-                      setNuvioDiscovering(true);
-                      try {
-                        const r = await api.discoverNuvioBackend(url);
-                        if (r.ok && r.anonKey) {
-                          setSyncSettings(prev => ({ ...prev, nuvioServerUrl: r.url || url, nuvioAnonKey: r.anonKey }));
-                          await handleSaveSetting('nuvioServerUrl' as keyof SyncSettings, r.url || url);
-                          await handleSaveSetting('nuvioAnonKey' as keyof SyncSettings, r.anonKey);
-                          toast.success('Backend detected and saved');
-                        } else {
-                          // Not fatal - the manual key field below always works.
-                          toast.error(r.error || 'Could not read that backend - enter the anon key manually');
-                        }
-                      } catch (e) {
-                        // The server says why when it has a reason (an address it may not reach).
-                        toast.error((e instanceof Error && e.message) || 'Could not reach that backend - enter the anon key manually');
-                      } finally {
-                        setNuvioDiscovering(false);
-                      }
-                    }}
+                    onClick={handleDetectNuvio}
                   >
                     Detect
                   </Button>
@@ -2771,32 +2779,6 @@ export default function SettingsPage() {
         </PageSection>
         </div>
 
-        {/* Backup codes - shown exactly once, right after enabling 2FA or
-            regenerating codes. Closing this modal is the only way past it,
-            same "you must acknowledge you saved this" pattern as the
-            Disaster Recovery Kit passphrase reveal elsewhere in the app. */}
-        <Modal isOpen={!!twoFaBackupCodes} onClose={() => setTwoFaBackupCodes(null)} title="Your backup codes" size="sm">
-          {twoFaBackupCodes && (
-            <div className="space-y-3">
-              <p className="text-sm text-default">
-                Save these somewhere safe. Each one lets you sign in <strong>once</strong> if you lose access to your authenticator app. They won&apos;t be shown again.
-              </p>
-              <div className="grid grid-cols-2 gap-1.5 p-3 rounded-lg bg-subtle border border-default">
-                {twoFaBackupCodes.map((c) => (
-                  <code key={c} className="text-xs font-mono text-default">{c}</code>
-                ))}
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={handleCopyBackupCodes} leftIcon={<ClipboardDocumentIcon className="w-4 h-4" />}>
-                  Copy
-                </Button>
-                <Button variant="primary" size="sm" onClick={() => setTwoFaBackupCodes(null)}>
-                  I&apos;ve saved these
-                </Button>
-              </div>
-            </div>
-          )}
-        </Modal>
 
         {/* Account ID - public-mode login is a UUID with no recovery flow
             (per the register page's own warning), and there was previously
@@ -2895,6 +2877,35 @@ export default function SettingsPage() {
           </Card>
         </PageSection>
         </div>
+        </>
+        )}
+
+        {/* Backup codes - shown exactly once, right after enabling 2FA or
+            regenerating codes. Closing this modal is the only way past it,
+            same "you must acknowledge you saved this" pattern as the
+            Disaster Recovery Kit passphrase reveal elsewhere in the app. */}
+        <Modal isOpen={!!twoFaBackupCodes} onClose={() => setTwoFaBackupCodes(null)} title="Your backup codes" size="sm">
+          {twoFaBackupCodes && (
+            <div className="space-y-3">
+              <p className="text-sm text-default">
+                Save these somewhere safe. Each one lets you sign in <strong>once</strong> if you lose access to your authenticator app. They won&apos;t be shown again.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 p-3 rounded-lg bg-subtle border border-default">
+                {twoFaBackupCodes.map((c) => (
+                  <code key={c} className="text-xs font-mono text-default">{c}</code>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={handleCopyBackupCodes} leftIcon={<ClipboardDocumentIcon className="w-4 h-4" />}>
+                  Copy
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => setTwoFaBackupCodes(null)}>
+                  I&apos;ve saved these
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
           </div>
         </div>
       </div>

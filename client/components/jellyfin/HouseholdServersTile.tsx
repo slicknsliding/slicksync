@@ -27,7 +27,7 @@ function ServerRow({ personId, personName, server }: { personId: string; personN
     setApproving(true);
     try {
       await api.approveHouseholdServerCode(server.id, personId, code);
-      toast.success(`Approved - the app is signed in as ${server.userName}`);
+      toast.success('Approved', { line: `The app is signed in as ${server.userName}.` });
       setCode('');
     } catch (err) {
       toast.error((err as Error)?.message || 'Could not approve the code');

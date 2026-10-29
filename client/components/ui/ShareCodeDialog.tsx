@@ -64,7 +64,7 @@ export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, extr
       await copyToClipboard(code);
       toast.success('Code copied');
     } catch {
-      toast.error('Could not copy - select the text and copy manually');
+      toast.error('Couldn’t copy the code', { line: 'Select the text and copy it by hand.' });
     }
   };
 

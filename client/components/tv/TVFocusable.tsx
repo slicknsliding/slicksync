@@ -2,6 +2,7 @@
 
 import { ReactNode, CSSProperties } from 'react';
 import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+import { initSpatialNav } from './spatialInit';
 
 interface TVFocusableProps {
   onEnterPress?: () => void;
@@ -26,6 +27,7 @@ export function TVFocusable({ onEnterPress, onFocus, className = '', style, focu
   // focus was almost certainly landing in the grid below the fold every
   // time, just never scrolled into view). block/inline: 'nearest' so an
   // already-visible element doesn't get yanked to an edge unnecessarily.
+  initSpatialNav();
   const { ref, focused } = useFocusable<object, HTMLDivElement>({
     onEnterPress,
     onFocus: () => {

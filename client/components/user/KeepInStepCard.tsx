@@ -111,7 +111,7 @@ export function KeepInStepCard({ userId }: { userId: string }) {
     }
   };
 
-  if (!data || data.places.length < 2) return null;
+  if (!data || (data.places?.length ?? 0) < 2) return null;
   const setMode = (side: string, mode: KeepInStepMode) =>
     save({ members: data.places.map((p) => ({ side: p.side, mode: p.side === side ? mode : p.mode })) });
 

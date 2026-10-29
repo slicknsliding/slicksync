@@ -119,7 +119,7 @@ function Pill({ icon: Icon, label, value, options, onChange }: {
  * kind, finished or not, and when. Each only offers what the feed actually
  * holds, and the page keeps them in the address so a view can be shared.
  */
-export function ActivityFilterBar({ value, onChange, people, sources, profiles, profileApps = {} }: {
+export function ActivityFilterBar({ value, onChange, people, sources, profiles: allProfiles, profileApps = {}, profileSources, profileNames = {} }: {
   value: ActivityFilters;
   onChange: (next: ActivityFilters) => void;
   people: Option[];
@@ -127,9 +127,20 @@ export function ActivityFilterBar({ value, onChange, people, sources, profiles, 
   profiles: string[];
   /** Which app each profile belongs to, so the list can say so. */
   profileApps?: Record<string, string>;
+  /** The apps each profile's viewing came from: with an app picked, only its profiles are offered. */
+  profileSources?: Record<string, string[]>;
+  /** Display names for profiles whose value is a key (a household's main profile). */
+  profileNames?: Record<string, string>;
 }) {
   const [copying, setCopying] = useState(false);
-  const set = (patch: Partial<ActivityFilters>) => onChange({ ...value, ...patch });
+  const inSource = (p: string, source: string) => !source || !profileSources || (profileSources[p] || []).includes(source);
+  const profiles = allProfiles.filter((p) => inSource(p, value.source));
+  const set = (patch: Partial<ActivityFilters>) => {
+    const next = { ...value, ...patch };
+    // Picking an app drops a profile that belongs to another one.
+    if ('source' in patch && next.profile && !inSource(next.profile, next.source)) next.profile = '';
+    onChange(next);
+  };
   const today = new Date().toISOString().slice(0, 10);
 
   const copyLink = async () => {
@@ -153,7 +164,7 @@ export function ActivityFilterBar({ value, onChange, people, sources, profiles, 
         )}
         {profiles.length > 0 && (
           <Pill icon={UserCircleIcon} label="Profile" value={value.profile} onChange={(profile) => set({ profile })}
-            options={[{ value: '', label: 'Any profile' }, ...profiles.map((p) => ({ value: p, label: profileOptionLabel(p, profileApps[p]) }))]} />
+            options={[{ value: '', label: 'Any profile' }, ...profiles.map((p) => ({ value: p, label: profileOptionLabel(profileNames[p] || p, profileApps[p]) }))]} />
         )}
         <Pill icon={FilmIcon} label="Kind" value={value.kind} onChange={(kind) => set({ kind })}
           options={[{ value: '', label: 'Movies & shows' }, { value: 'movie', label: 'Movies' }, { value: 'series', label: 'Shows' }]} />

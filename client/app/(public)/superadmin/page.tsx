@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, Button, Input, Badge, SlickSyncLogo, SelectionCheckbox, SelectAllCheckbox, ConfirmModal, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { XMarkIcon, MagnifyingGlassIcon, CircleStackIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { PubFrame, PubLogo, PubCard, PubHeading } from '@/components/v2/PublicV2';
+import { V2DetailHead, V2Numbers, V2MoreMenu, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2Button, V2Status, type V2Tone } from '@/components/v2/V2Bits';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -269,7 +272,7 @@ export default function SuperAdminPage() {
       const res = await fetch(`${API_BASE}/superadmin/db-maintenance/vacuum`, { method: 'POST', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || 'VACUUM failed');
-      toast.success('VACUUM completed - disk space reclaimed');
+      toast.success('Database compacted', { line: 'Disk space reclaimed.' });
       await loadMaintenance();
     } catch (e: any) {
       toast.error(e?.message || 'VACUUM failed');
@@ -425,8 +428,14 @@ export default function SuperAdminPage() {
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setAccounts((prev) => prev.filter((a) => !selectedIds.has(a.id) || data.failed?.includes(a.id)));
-      if (data.deleted > 0) toast.success(`${data.deleted} account${data.deleted !== 1 ? 's' : ''} deleted`);
-      if (data.failed?.length > 0) toast.error(`${data.failed.length} account${data.failed.length !== 1 ? 's' : ''} failed to delete`);
+      const failedCount = data.failed?.length || 0;
+      if (failedCount > 0 && data.deleted > 0) {
+        toast.warning(`Deleted ${data.deleted} of ${data.deleted + failedCount} accounts`, { line: `${failedCount} couldn’t be deleted.` });
+      } else if (failedCount > 0) {
+        toast.error(`${failedCount} account${failedCount !== 1 ? 's' : ''} couldn’t be deleted`);
+      } else if (data.deleted > 0) {
+        toast.success(`${data.deleted} account${data.deleted !== 1 ? 's' : ''} deleted`);
+      }
       setSelectedIds(new Set());
       setConfirmBulkDelete(false);
     } catch {
@@ -497,13 +506,10 @@ export default function SuperAdminPage() {
 
   if (!signedIn) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card padding="lg" className="w-full max-w-sm">
-          <div className="flex flex-col items-center mb-6">
-            <SlickSyncLogo className="w-10 h-10 mb-3" />
-            <h1 className="text-lg font-semibold text-default">Superadmin</h1>
-            <p className="text-xs text-muted mt-1 text-center">Operator access only — not a tenant account login.</p>
-          </div>
+      <PubFrame>
+        <PubLogo sub="Operator access only — not a tenant account login." />
+        <PubCard>
+          <PubHeading title="Superadmin" />
           <div className="space-y-3">
             <Input
               type="password"
@@ -517,99 +523,75 @@ export default function SuperAdminPage() {
               Sign in
             </Button>
           </div>
-        </Card>
-      </div>
+        </PubCard>
+      </PubFrame>
     );
   }
 
+  // The one status an account shows, in words.
+  const accountStatus = (a: SuperAdminAccount): { tone: V2Tone; words: string } => {
+    if (a.disabled) return { tone: 'off', words: 'Switched off' };
+    if (isOverQuota(a, quotaThreshold)) return { tone: 'bad', words: 'Over quota' };
+    if (isAbandoned(a)) return { tone: 'warn', words: 'Empty, never signed in' };
+    if (isRecentlyRegistered(a)) return { tone: 'live', words: 'New' };
+    if (!a.lastLoginAt) return { tone: 'warn', words: 'Never signed in' };
+    return { tone: 'live', words: 'Active' };
+  };
+
+  const headMore: V2MenuItem[] = [
+    { label: 'Refresh', onClick: loadAccounts, disabled: loadingAccounts },
+    ...(summary.abandoned > 0 ? [{ label: `Select ${summary.abandoned} abandoned`, onClick: selectAbandoned }] : []),
+    ...(summary.overQuota > 0 ? [{ label: `Select ${summary.overQuota} over quota`, onClick: selectOverQuota }] : []),
+  ];
+
+  const headFacts = [
+    `${accounts.length} registered account${accounts.length !== 1 ? 's' : ''}`,
+    recentCount > 0 ? `${recentCount} new in 48 h` : null,
+    summary.overQuota > 0 ? `${summary.overQuota} over the ${quotaThreshold}-record quota` : null,
+  ].filter(Boolean).join(' · ');
+
   return (
-    <div className="min-h-screen p-6 md:p-10">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-default">Superadmin</h1>
-            <p className="text-sm text-muted">{accounts.length} registered account{accounts.length !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={loadAccounts} isLoading={loadingAccounts}>Refresh</Button>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>Sign out</Button>
-          </div>
-        </div>
+    <PubFrame wide>
+      <div>
+        <V2DetailHead
+          lead={(
+            <span className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: 'var(--color-primary)' }}>
+              <SlickSyncLogo className="w-8 h-8" />
+            </span>
+          )}
+          title="Superadmin"
+          facts={headFacts}
+          actions={(
+            <>
+              {accounts.length > 0 && (
+                <V2Button
+                  primary
+                  onClick={() => { setBroadcastTarget(selectedIds.size > 0 ? 'selected' : 'all'); setShowBroadcast(true); }}
+                >
+                  Broadcast
+                </V2Button>
+              )}
+              <V2Button onClick={handleLogout}>Sign out</V2Button>
+            </>
+          )}
+          more={headMore}
+        />
 
-        {/* Health summary - counts only, same privacy boundary as everything
-            else on this page (nothing from inside a tenant's own data). */}
+        {/* Counts only, same privacy boundary as everything else on this
+            page (nothing from inside a tenant's own data). */}
         {accounts.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Card padding="md">
-              <p className="text-xs text-muted mb-2">Growth (30d)</p>
-              <GrowthSparkline series={growthSeries} />
-            </Card>
-            <Card padding="md">
-              <p className="text-xs text-muted mb-1">Active</p>
-              <p className="text-2xl font-semibold text-default">{summary.active}</p>
-            </Card>
-            <Card padding="md">
-              <p className="text-xs text-muted mb-1">Disabled</p>
-              <p className="text-2xl font-semibold text-default">{summary.disabled}</p>
-            </Card>
-            <Card padding="md">
-              <p className="text-xs text-muted mb-1">New (48h)</p>
-              <p className={`text-2xl font-semibold ${recentCount > 0 ? 'text-primary' : 'text-default'}`}>{recentCount}</p>
-            </Card>
-          </div>
+          <V2Numbers
+            items={[
+              { label: 'Growth (30 days)', value: <GrowthSparkline series={growthSeries} /> },
+              { label: 'Active', value: summary.active },
+              { label: 'New (48 h)', value: recentCount },
+              { label: 'Switched off', value: summary.disabled },
+              { label: 'Never signed in', value: summary.neverLoggedIn },
+            ]}
+          />
         )}
 
-        {!loadingMaintenance && maintenance?.supported && maintenance.settings && (
-          <Card padding="md" className="mb-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-sky-500/10 text-sky-400 shrink-0">
-                <CircleStackIcon className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-default">Database maintenance</h3>
-                <p className="text-xs text-muted">Instance-level - one shared SQLite file, not per-account. Off by default.</p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 py-2.5 border-t border-default">
-              <div>
-                <p className="text-sm text-default">Scheduled VACUUM</p>
-                <p className="text-xs text-muted">
-                  Reclaims disk space SQLite never auto-shrinks after deletes. Weekly, no data touched.
-                  {maintenance.settings.lastVacuumAt && ` Last ran ${new Date(maintenance.settings.lastVacuumAt).toLocaleString()}.`}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button variant="ghost" size="sm" onClick={handleRunVacuum} isLoading={vacuumBusy}>Run now</Button>
-                <ToggleSwitch
-                  checked={maintenance.settings.vacuumEnabled}
-                  onChange={() => updateMaintenanceSetting({ vacuumEnabled: !maintenance!.settings!.vacuumEnabled })}
-                  disabled={savingMaintenanceSetting}
-                />
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {accounts.length > 0 && (summary.neverLoggedIn > 0 || summary.abandoned > 0 || summary.overQuota > 0) && (
-          <div className="flex items-center gap-4 flex-wrap mb-4 text-xs text-muted">
-            <span><span className="text-default font-semibold">{summary.neverLoggedIn}</span> never logged in</span>
-            {summary.abandoned > 0 && (
-              <>
-                <span>·</span>
-                <span><span className="text-warning font-semibold">{summary.abandoned}</span> abandoned</span>
-              </>
-            )}
-            {summary.overQuota > 0 && (
-              <>
-                <span>·</span>
-                <span><span className="text-error font-semibold">{summary.overQuota}</span> over the {quotaThreshold}-record quota</span>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <div className="flex items-center gap-3 mt-4 mb-3 flex-wrap">
           {accounts.length > 0 && (
             <SelectAllCheckbox
               totalCount={filteredAccounts.length}
@@ -624,31 +606,13 @@ export default function SuperAdminPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by UUID or label..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+              placeholder="Find an account"
+              aria-label="Find an account"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
             />
           </div>
           {search && (
             <span className="text-xs text-subtle">{filteredAccounts.length} of {accounts.length}</span>
-          )}
-          {summary.abandoned > 0 && (
-            <Button variant="ghost" size="sm" onClick={selectAbandoned}>
-              Select {summary.abandoned} abandoned
-            </Button>
-          )}
-          {summary.overQuota > 0 && (
-            <Button variant="ghost" size="sm" onClick={selectOverQuota}>
-              Select {summary.overQuota} over quota
-            </Button>
-          )}
-          {accounts.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => { setBroadcastTarget(selectedIds.size > 0 ? 'selected' : 'all'); setShowBroadcast(true); }}
-            >
-              Broadcast
-            </Button>
           )}
           <div className="flex items-center gap-1.5 text-xs text-muted" title="An account at or above this many total records (users/groups/addons/catalogs/watch sessions/vault entries) is flagged as over quota - saved on this device only">
             <span>Quota</span>
@@ -664,7 +628,8 @@ export default function SuperAdminPage() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortKey)}
-            className="py-2 px-3 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+            aria-label="Sort accounts"
+            className="py-2 px-3 rounded-xl bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
           >
             <option value="createdAt">Newest first</option>
             <option value="lastLoginAt">Most recently active</option>
@@ -672,62 +637,84 @@ export default function SuperAdminPage() {
           </select>
         </div>
 
-        <Card padding="none">
-          <div className="divide-y divide-default">
-            {accounts.length === 0 && !loadingAccounts ? (
-              <p className="text-sm text-muted p-6 text-center">No accounts registered yet.</p>
-            ) : filteredAccounts.length === 0 ? (
-              <p className="text-sm text-muted p-6 text-center">No accounts match &quot;{search}&quot;.</p>
-            ) : (
-              filteredAccounts.map((a) => (
-                <div key={a.id} className={`flex items-center justify-between gap-4 p-4 transition-colors ${selectedIds.has(a.id) ? 'bg-primary-muted' : 'hover:bg-surface-hover'}`}>
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <SelectionCheckbox checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} visible={selectedIds.has(a.id)} />
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-xs font-semibold ${a.disabled ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
-                      {a.displayName ? a.displayName.slice(0, 2).toUpperCase() : (a.uuid || a.id).slice(0, 2).toUpperCase()}
+        <div className="v2-list">
+          {accounts.length === 0 && !loadingAccounts ? (
+            <p className="text-sm text-muted p-6 text-center">No accounts registered yet.</p>
+          ) : filteredAccounts.length === 0 ? (
+            <p className="text-sm text-muted p-6 text-center">No accounts match &quot;{search}&quot;.</p>
+          ) : (
+            filteredAccounts.map((a) => {
+              const st = accountStatus(a);
+              return (
+                <div
+                  key={a.id}
+                  className="v2-row"
+                  style={selectedIds.has(a.id) ? { background: 'var(--color-primary-muted)' } : undefined}
+                >
+                  <SelectionCheckbox checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} visible={selectedIds.has(a.id)} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {a.displayName ? (
+                        <>
+                          <span className="text-sm font-semibold text-default truncate" title="Set by the account holder in their own Settings">{a.displayName}</span>
+                          <span className="text-xs text-subtle font-mono truncate">{a.uuid || a.id}</span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-mono font-semibold text-default truncate">{a.uuid || a.id}</span>
+                      )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {a.displayName ? (
-                          <>
-                            <span className="text-sm font-semibold text-default truncate" title="Set by the account holder in their own Settings">{a.displayName}</span>
-                            <span className="text-xs text-subtle font-mono truncate">{a.uuid || a.id}</span>
-                          </>
-                        ) : (
-                          <span className="text-sm font-mono text-default truncate">{a.uuid || a.id}</span>
-                        )}
-                        {isRecentlyRegistered(a) && <Badge variant="primary" size="sm">New</Badge>}
-                        {a.disabled && <Badge variant="warning" size="sm">Disabled</Badge>}
-                        {isAbandoned(a) && <Badge variant="muted" size="sm" title="Registered a while ago, empty, never logged in">Abandoned</Badge>}
-                        {isOverQuota(a, quotaThreshold) && <Badge variant="error" size="sm" title={`At or above the ${quotaThreshold}-record quota`}>Over quota</Badge>}
-                      </div>
-                      <p className="text-xs text-muted mt-0.5">
-                        {a.userCount} user{a.userCount !== 1 ? 's' : ''} · {a.groupCount} group{a.groupCount !== 1 ? 's' : ''} · {a.addonCount} addon{a.addonCount !== 1 ? 's' : ''}
-                        <span className="text-subtle" title="Row count across users/groups/addons/catalogs/watch sessions/vault entries - a usage proxy, not a byte-accurate size"> · {a.resourceRowCount} record{a.resourceRowCount !== 1 ? 's' : ''} total</span>
-                      </p>
-                      <p className="text-xs text-subtle mt-0.5">
-                        Registered {new Date(a.createdAt).toLocaleDateString()} · Last login {a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : 'never'}
-                      </p>
-                    </div>
+                    <p className="text-xs text-muted mt-0.5">
+                      {a.userCount} user{a.userCount !== 1 ? 's' : ''} · {a.groupCount} group{a.groupCount !== 1 ? 's' : ''} · {a.addonCount} addon{a.addonCount !== 1 ? 's' : ''}
+                      <span className="text-subtle" title="Row count across users/groups/addons/catalogs/watch sessions/vault entries - a usage proxy, not a byte-accurate size"> · {a.resourceRowCount} record{a.resourceRowCount !== 1 ? 's' : ''} total</span>
+                    </p>
+                    <p className="text-xs text-subtle mt-0.5">
+                      Registered {new Date(a.createdAt).toLocaleDateString()} · Last login {a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : 'never'}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleToggleDisabled(a)}
-                      isLoading={busyId === a.id}
-                    >
-                      {a.disabled ? 'Enable' : 'Disable'}
-                    </Button>
-                    <Button variant="danger" size="sm" onClick={() => setConfirmDelete(a)}>
-                      Delete
-                    </Button>
-                  </div>
+                  <V2Status tone={st.tone}>{st.words}</V2Status>
+                  <V2MoreMenu
+                    label="Account actions"
+                    items={[
+                      { label: 'Notify', onClick: () => { setSelectedIds(new Set([a.id])); setBroadcastTarget('selected'); setShowBroadcast(true); } },
+                      { label: a.disabled ? 'Switch on' : 'Switch off', onClick: () => handleToggleDisabled(a), disabled: busyId === a.id },
+                      { label: 'Delete', danger: true, onClick: () => setConfirmDelete(a) },
+                    ]}
+                  />
                 </div>
-              ))
-            )}
+              );
+            })
+          )}
+        </div>
+
+        {!loadingMaintenance && maintenance?.supported && maintenance.settings && (
+          <div className="mt-6">
+            <h2 className="text-[15px] font-semibold mb-0.5" style={{ color: 'var(--color-text)' }}>Database</h2>
+            <p className="text-xs text-muted mb-2.5">One shared file for every account.</p>
+            <div className="v2-list">
+              <div className="v2-row">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-default">Weekly clean-up</p>
+                  <p className="text-xs text-muted">
+                    Shrinks the database once a week; no data is touched. Off by default.
+                    {maintenance.settings.lastVacuumAt && ` Last ran ${new Date(maintenance.settings.lastVacuumAt).toLocaleString()}.`}
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={maintenance.settings.vacuumEnabled}
+                  onChange={() => updateMaintenanceSetting({ vacuumEnabled: !maintenance!.settings!.vacuumEnabled })}
+                  disabled={savingMaintenanceSetting}
+                />
+              </div>
+              <div className="v2-row">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-default">Clean up now</p>
+                  <p className="text-xs text-muted">Takes a minute; nothing is lost.</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={handleRunVacuum} isLoading={vacuumBusy}>Run now</Button>
+              </div>
+            </div>
           </div>
-        </Card>
+        )}
 
         {/* Operator action trail - who got disabled/enabled/deleted and
             when. Collapsed by default and lazy-loaded, same reasoning as
@@ -873,6 +860,6 @@ export default function SuperAdminPage() {
         isLoading={bulkBusy}
       />
 
-    </div>
+    </PubFrame>
   );
 }

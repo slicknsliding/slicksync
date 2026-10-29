@@ -66,17 +66,17 @@ function jellyfinFields(probe, login, encrypt, req) {
 }
 
 /**
- * Which stored sign-ins are on the server just signed in to. A household's
- * install may reach one server by several names (a LAN address, a hostname),
- * so the id the server reports counts there as well as the address. On an
- * instance serving strangers only the address the person was added with
- * counts: the id is whatever the server at a typed-in address says it is, and
- * trusting it would let anyone run a server that claims another household's.
- * Stored addresses are the normalised ones a probe produced, and so is
- * probe.serverUrl, so that is a comparison of normalised addresses - under
- * either scheme, so a person who types the other one is still found.
+ * Which stored sign-ins are on the server just signed in to: those stored
+ * under the address signed in to, plus any `aliases` provenServerMatch has
+ * proven are the same server. The id a server reports is whatever the server
+ * at a typed-in address says it is, so on its own it never counts - trusting
+ * it let anyone run a server that claimed a household's and sign in as its
+ * people. Stored addresses are the normalised ones a probe produced, and so
+ * is probe.serverUrl, so that is a comparison of normalised addresses - under
+ * either scheme on an instance serving strangers, so a person who types the
+ * other one is still found.
  */
-function serverMatch(probe, login) {
+function serverMatch(probe, login, aliases = []) {
   if (jfAuth.restrictsPrivateAddresses()) {
     const rest = /^https?:\/\/(.+)$/i.exec(String(probe.serverUrl || ''))?.[1]
     if (!rest) return { jellyfinServerUrl: probe.serverUrl }
@@ -87,9 +87,32 @@ function serverMatch(probe, login) {
     const spellings = [...new Set([rest, rest.toLowerCase()])]
     return { OR: spellings.flatMap((r) => [{ jellyfinServerUrl: `https://${r}` }, { jellyfinServerUrl: `http://${r}` }]) }
   }
-  const servers = [{ jellyfinServerUrl: probe.serverUrl }]
-  if (login.serverId) servers.unshift({ jellyfinServerId: login.serverId })
-  return { OR: servers }
+  const urls = [...new Set([probe.serverUrl, ...aliases].filter(Boolean))]
+  return { OR: urls.map((u) => ({ jellyfinServerUrl: u })) }
+}
+
+/**
+ * serverMatch, plus the other names a household's install reaches the same
+ * server by (a LAN address, a hostname). A stored address counts only when
+ * the server stored there accepts the token this sign-in just got, as the
+ * same user: then it really is the server that issued it. Instances serving
+ * strangers match by address alone.
+ */
+async function provenServerMatch(prisma, probe, login) {
+  if (jfAuth.restrictsPrivateAddresses() || !login.serverId || !login.token) return serverMatch(probe, login)
+  const rows = await prisma.user.findMany({
+    where: { providerType: 'jellyfin', jellyfinServerId: login.serverId },
+    select: { jellyfinServerUrl: true },
+  }).catch(() => [])
+  const aliases = []
+  const others = [...new Set(rows.map((r) => r.jellyfinServerUrl).filter((u) => u && u !== probe.serverUrl))].slice(0, 10)
+  for (const url of others) {
+    try {
+      const me = await jfAuth.currentUser(url, login.token, { timeoutMs: 5000 })
+      if (me.userId === login.userId) aliases.push(url)
+    } catch { /* not the server that issued it, or not reachable: not proven */ }
+  }
+  return serverMatch(probe, login, aliases)
 }
 
 /**
@@ -112,7 +135,7 @@ function serverMatch(probe, login) {
 async function rememberSignIn(prisma, encrypt, probe, login) {
   const sealed = (accountId) => encrypt(login.token, { appAccountId: accountId || 'default' })
   try {
-    const match = serverMatch(probe, login)
+    const match = await provenServerMatch(prisma, probe, login)
     // On an instance serving strangers, a row that never held a sign-in has
     // nothing the server could have retired, and nothing proves its address
     // and user id were ever signed in to - so it is not handed one.
@@ -244,7 +267,7 @@ async function proveImportedSignIns(users, { limit = 4, max = 200 } = {}) {
 /** The SlickSync user already holding this server user, in one account. */
 async function findJellyfinUser(prisma, accountId, login, probe) {
   return prisma.user.findFirst({
-    where: { accountId, providerType: 'jellyfin', jellyfinUserId: login.userId, ...serverMatch(probe, login) },
+    where: { accountId, providerType: 'jellyfin', jellyfinUserId: login.userId, ...(await provenServerMatch(prisma, probe, login)) },
   })
 }
 
@@ -302,4 +325,4 @@ function mountSignInSteps(router, prefix = '') {
   })
 }
 
-module.exports = { signInFromBody, rememberSignIn, serverMatch, signInProven, proveImportedSignIns, jellyfinFields, findJellyfinUser, describeProbe, mountSignInSteps, sendError, httpError }
+module.exports = { signInFromBody, rememberSignIn, serverMatch, provenServerMatch, signInProven, proveImportedSignIns, jellyfinFields, findJellyfinUser, describeProbe, mountSignInSteps, sendError, httpError }

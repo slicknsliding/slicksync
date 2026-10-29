@@ -132,8 +132,8 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
         setJob(r.job);
         if (r.job && r.job.state !== 'running' && r.job.state !== 'undoing') {
           if (r.job.state === 'failed') toast.error(r.job.error || 'Could not finish');
-          else if (r.job.state === 'undone') toast.success(`Undone - ${r.job.show} is back how it was for ${name}`);
-          else toast.success(`${name} is caught up on ${r.job.show} to ${r.job.upTo}`);
+          else if (r.job.state === 'undone') toast.success('Undone', { line: `${r.job.show} is back how it was for ${name}.` });
+          else toast.success(`${name} is caught up`, { line: `${r.job.show}, up to ${r.job.upTo}.` });
         }
       }).catch(() => {});
     }, 1500);
@@ -224,7 +224,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
     try {
       const r = await api.unmarkEpisode(userId, list.showId, s, ep);
       setList({ ...list, episodes: list.episodes.map((e) => (e.season === s && e.episode === ep ? { ...e, watched: false } : e)) });
-      toast.success(`S${s}E${ep} is no longer watched${r.server === 'done' ? ' here or on their server' : ''}`);
+      toast.success(`S${s}E${ep} marked not watched`, r.server === 'done' ? { line: 'Here and on their server.' } : undefined);
     } catch (e) {
       toast.error((e as Error)?.message || 'Could not mark it not watched');
     } finally {

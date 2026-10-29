@@ -1,0 +1,13 @@
+# Discussions are not enabled on the repository, so questions use the Question form.
+# If Discussions is switched on later, add it here:
+#   - name: Ask the community
+#     url: https://github.com/slicknsliding/slicksync/discussions
+#     about: Open-ended questions and show-and-tell
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/slicknsliding/slicksync/security/advisories/new
+    about: Report a vulnerability privately. Please don't open a public issue.
+  - name: Try SlickSync without installing
+    url: https://slicksync.vip
+    about: The hosted public instance, free to register.

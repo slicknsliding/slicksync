@@ -23,6 +23,9 @@ import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { GroupsV2, type V2GroupCard } from '@/components/v2/GroupsV2';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -168,6 +171,12 @@ export default function GroupsPage() {
     group.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // v2: a card per group with its people and addons; Arrange moves and hides
+  // groups on this page (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const groupArrange = usePageArrangement('groups', useMemo(() => filteredGroups.map((g) => g.id), [filteredGroups]));
+
   // Register this page's drag-end logic with the layout-level DndContext,
   // same shared mechanism Addons/Users/Vault already use.
   const { registerDragEndHandler } = useVaultDrag();
@@ -190,12 +199,52 @@ export default function GroupsPage() {
       api.reorderGroups(reorderedIds).catch((err: any) => {
         toast.error(err.message || 'Failed to save new order');
       });
+      // v2 draws groups in the page's arranged order once one is saved, so a
+      // drop keeps that in step with the server's order.
+      if (v2 && !groupArrange.isDefault) groupArrange.moveTo(String(active.id), String(over.id));
     };
     return registerDragEndHandler(handleDragEnd);
-  }, [filteredGroups, registerDragEndHandler]);
+  }, [filteredGroups, registerDragEndHandler, v2, groupArrange]);
 
   // Nebula's stat row - real totals from the same groupsDisplay data already rendered.
   const totalMembers = groupsDisplay.reduce((sum, g) => sum + (g.userCount || 0), 0);
+
+  const [groupAddonNames, setGroupAddonNames] = useState<Record<string, string[]>>({});
+  const [syncingGroupIds, setSyncingGroupIds] = useState<Set<string>>(new Set());
+  const groupIdsKey = groups.map((g) => g.id).join(',');
+  useEffect(() => {
+    if (!v2 || !groupIdsKey) return;
+    let cancelled = false;
+    Promise.all(groupIdsKey.split(',').map((id) => api.getGroupAddons(id)
+      .then((list) => [id, list.map((a) => a.name)] as const)
+      .catch(() => [id, null] as const)))
+      .then((pairs) => {
+        if (cancelled) return;
+        const next: Record<string, string[]> = {};
+        for (const [id, names] of pairs) if (names) next[id] = names;
+        setGroupAddonNames(next);
+      });
+    return () => { cancelled = true; };
+  }, [v2, groupIdsKey]);
+  const v2Groups = useMemo<V2GroupCard[]>(() => {
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const rawById = new Map(groups.map((g) => [g.id, g]));
+    return filteredGroups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      colorIndex: g.colorIndex,
+      avatarUrl: g.avatarUrl,
+      isActive: g.isActive !== false,
+      lastSyncedAt: rawById.get(g.id)?.lastSyncedAt ?? null,
+      addonCount: g.addonCount,
+      addonNames: groupAddonNames[g.id],
+      people: g.users.map((p) => {
+        const u = userById.get(p.id);
+        return { id: p.id, name: u?.username || p.name, email: u?.email, avatarUrl: (u as { avatarUrl?: string | null } | undefined)?.avatarUrl, useGravatar: u?.useGravatar, colorIndex: u?.colorIndex };
+      }),
+    }));
+  }, [filteredGroups, users, groups, groupAddonNames]);
+  const v2Subtitle = `${groups.length} group${groups.length === 1 ? '' : 's'} · ${totalMembers} ${totalMembers === 1 ? 'person' : 'people'}`;
   const totalGroupAddons = groupsDisplay.reduce((sum, g) => sum + (g.addonCount || 0), 0);
 
   const toggleSelect = useCallback((id: string) => {
@@ -337,7 +386,10 @@ export default function GroupsPage() {
   );
   const syncAllGroupsButton = isTV ? (
     <TVFocusable onEnterPress={handleSyncAllGroups}>{syncAllGroupsButtonInner}</TVFocusable>
+  ) : v2 ? (
+    <div className="flex items-center gap-2"><ArrangeButton arrange={groupArrange} />{syncAllGroupsButtonInner}</div>
   ) : syncAllGroupsButtonInner;
+  const subtitle = isLoading ? 'Loading...' : v2 ? v2Subtitle : `${groups.length} group${groups.length !== 1 ? 's' : ''}`;
 
   return (
     <Wrapper>
@@ -347,7 +399,7 @@ export default function GroupsPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Groups"
-          subtitle={isLoading ? 'Loading...' : `${groups.length} group${groups.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
           actions={syncAllGroupsButton}
         />
       )}
@@ -357,19 +409,20 @@ export default function GroupsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Groups"
-          subtitle={isLoading ? 'Loading...' : `${groups.length} group${groups.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
           actions={syncAllGroupsButton}
         />
       )}
-      {layoutMode === 'nebula' && (
+      {layoutMode === 'nebula' && !v2 && (
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
           <NebulaCompactStatCard label="Total Groups" value={isLoading ? '...' : groups.length} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
           <NebulaCompactStatCard label="Total Members" value={isLoading ? '...' : totalMembers} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
           <NebulaCompactStatCard label="Addons Assigned" value={isLoading ? '...' : totalGroupAddons} icon={<PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
         </div>
       )}
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
+      {v2 && <ArrangeBar arrange={groupArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
           selectionConfig={{
@@ -418,7 +471,43 @@ export default function GroupsPage() {
           </div>
         ) : (
           <>
-            {/* Groups Grid/List */}
+            {/* Groups Grid/List - v2 draws its own cards. */}
+            {v2 ? (
+              <div className="mt-4">
+                <GroupsV2
+                  groups={v2Groups}
+                  arrange={groupArrange}
+                  view={viewMode === 'list' ? 'list' : 'grid'}
+                  syncing={syncingGroupIds}
+                  onSync={async (g) => {
+                    setSyncingGroupIds((prev) => new Set(prev).add(g.id));
+                    try {
+                      await api.syncGroup(g.id);
+                      toast.success(`Synced ${g.name}`);
+                      setGroups(await api.getGroups());
+                    } catch (err) {
+                      toast.error(`Couldn’t sync ${g.name}`, { line: err instanceof Error ? err.message : undefined });
+                    } finally {
+                      setSyncingGroupIds((prev) => { const n = new Set(prev); n.delete(g.id); return n; });
+                    }
+                  }}
+                  onClone={(g) => { const d = groupsDisplay.find((x) => x.id === g.id); if (d) setCloneTarget(d); }}
+                  onToggleActive={async (g) => {
+                    const on = !g.isActive;
+                    try {
+                      await api.toggleGroupStatus(g.id, on);
+                      toast.success(`${g.name} switched ${on ? 'on' : 'off'}`);
+                      setGroups((prev) => prev.map((x) => (x.id === g.id ? { ...x, isActive: on } : x)));
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : `Couldn’t switch ${g.name} ${on ? 'on' : 'off'}`);
+                    }
+                  }}
+                  onDelete={(g) => { const d = groupsDisplay.find((x) => x.id === g.id); if (d) setDeleteTarget(d); }}
+                />
+                <HiddenTray arrange={groupArrange} labelOf={(id) => groupsDisplay.find((g) => g.id === id)?.name ?? 'A group'}
+                  note="Hidden only here: the group keeps syncing as normal. Tap one to bring it back." />
+              </div>
+            ) : (
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
@@ -569,6 +658,7 @@ export default function GroupsPage() {
                 )}
               </AnimatePresence>
             </LayoutGroup>
+            )}
 
             {/* Empty state */}
             {filteredGroups.length === 0 && (
@@ -827,7 +917,7 @@ function GroupCard({
           />
           <Link
             href={`/groups/${group.id}`}
-            className="flex-1 min-w-0 font-semibold truncate transition-colors hover:text-primary text-default"
+            className="flex-1 min-w-0 font-semibold break-words transition-colors hover:text-primary text-default"
             onClick={(e) => e.stopPropagation()}
           >
             {group.name}
@@ -998,8 +1088,9 @@ function CreateGroupModal({
             }}
           />
 
-          <div className="fixed inset-0 flex items-center justify-center p-4">
+          <div className="fixed inset-0 flex items-start justify-center p-4 overflow-y-auto">
             <motion.div
+              className="my-auto w-full flex justify-center"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -1235,8 +1326,9 @@ function CloneGroupModal({
             }}
           />
 
-          <div className="fixed inset-0 flex items-center justify-center p-4">
+          <div className="fixed inset-0 flex items-start justify-center p-4 overflow-y-auto">
             <motion.div
+              className="my-auto w-full flex justify-center"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}

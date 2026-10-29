@@ -1,5 +1,8 @@
 const express = require('express');
 const { publicMessage } = require('../utils/publicError');
+const { isOutage, OUTAGE_ANSWER } = require('../utils/outage');
+const { recentlyWatchedGroups, latestProfileLabel } = require('../utils/memberHome');
+const { buildStremioLinks, buildNuvioAppUrl } = require('../utils/appLinks');
 const jwt = require('jsonwebtoken');
 const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
@@ -297,14 +300,14 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   // from the sign-in replaces the stored one (the server retires the old
   // token for the same device when it issues a new one).
   //
-  // Which server counts as "the same" depends on who is asking (serverMatch):
-  // on an instance serving strangers only the address the person was added
-  // with does (under either scheme), because the server id and user id in a
-  // sign-in are whatever the server at a typed-in address chooses to say. So
-  // someone whose server moves to a new address is reconnected by their admin
-  // before signing in here.
+  // Which server counts as "the same" is provenServerMatch's to say: the
+  // address the person was added with, and on a household's install another
+  // address only once the server stored for them accepts this sign-in's
+  // token - the server id and user id in a sign-in are whatever the server at
+  // a typed-in address chooses to say. So someone whose server moves to a new
+  // address is reconnected by their admin before signing in here.
   async function getPublicUserJellyfin(probe, login) {
-    const { serverMatch } = require('../utils/jellyfinConnect');
+    const { provenServerMatch } = require('../utils/jellyfinConnect');
     const { restrictsPrivateAddresses, addressToKeep } = require('../providers/jellyfinAuth');
     const personSelect = { id: true, username: true, email: true, accountId: true, isActive: true, colorIndex: true, createdAt: true, expiresAt: true };
     // The same server user can be a person in more than one household (a
@@ -330,8 +333,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
       return { why: firstRefusal };
     };
+    const match = await provenServerMatch(prisma, probe, login);
     const candidates = await prisma.user.findMany({
-      where: { providerType: 'jellyfin', jellyfinUserId: login.userId, ...serverMatch(probe, login) },
+      where: { providerType: 'jellyfin', jellyfinUserId: login.userId, ...match },
       select: personSelect,
       orderBy: { createdAt: 'asc' }
     });
@@ -339,7 +343,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     // A household profile (utils/jellyfinProfiles.js) signs in as the person
     // it belongs to, the way a Nuvio profile does.
     if (!candidates.length) {
-      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', ...serverMatch(probe, login) }, select: { id: true } });
+      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', ...match }, select: { id: true } });
       const profiles = owners.length
         ? await prisma.jellyfinProfile.findMany({ where: { ownerUserId: { in: owners.map((o) => o.id) }, jellyfinUserId: login.userId, skip: false }, orderBy: { createdAt: 'asc' } })
         : [];
@@ -670,6 +674,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       console.error('Error validating user:', error);
+      if (isOutage(error)) return res.status(503).json(OUTAGE_ANSWER);
       
       // Handle specific errors
       if (error?.message === 'USER_NOT_FOUND') {
@@ -873,6 +878,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       console.error('Error validating Nuvio user:', error);
+      if (isOutage(error)) return res.status(503).json(OUTAGE_ANSWER);
 
       if (error?.message === 'USER_NOT_FOUND') {
         return res.status(403).json({
@@ -982,6 +988,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
     } catch (error) {
       console.error('Error validating a Jellyfin session:', error?.message);
+      if (isOutage(error)) return res.status(503).json(OUTAGE_ANSWER);
       res.status(401).json({ error: 'Validation failed', message: 'Invalid session' });
     }
   });
@@ -2404,6 +2411,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         where: { id: userId },
         data: { apiKey: encrypted }
       });
+      require('../utils/apiKeyIndex').markKeysChanged();
 
       // Return the key
       res.json({ apiKey: key });
@@ -2828,9 +2836,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         item.totalDuration += (a.watchTimeSeconds || 0);
       });
       
-      const mostWatched = [...itemCounts.entries()]
+      // The top five for their Home (mostWatched stays the first, for older pages).
+      const mostWatchedList = [...itemCounts.entries()]
         .sort((a, b) => b[1].totalDuration - a[1].totalDuration)
-        .slice(0, 1)
+        .slice(0, 5)
         .map(([id, data]) => ({
           id,
           name: data.name,
@@ -2838,7 +2847,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           poster: data.poster,
           count: data.count,
           totalDuration: data.totalDuration
-        }))[0] || null;
+        }));
+      const mostWatched = mostWatchedList[0] || null;
 
       // Binge watches (3+ episodes of same series in one day)
       const bingeWatches = [];
@@ -2893,8 +2903,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // watch that ended, not one that is playing - the same rule the admin
       // Activity page uses (metricsBuilder.js).
       const { hasReachedEnd } = require('../utils/sessionTracker');
+      // Nuvio's own save time per title (the library read), for the 5-minute
+      // rule the admin Now Playing uses too (metricsBuilder nuvioOnlyCards).
+      const baseOf = (id) => /^tt\d+/.exec(String(id || ''))?.[0] || String(id || '');
+      const nuvioSave = (s) => {
+        if (user.providerType !== 'nuvio') return undefined;
+        const item = libraryCache.find(i => baseOf(i?._id || i?.id) === baseOf(s.itemId));
+        const at = Date.parse(item?.state?.lastWatched || '');
+        return Number.isFinite(at) ? at : (s.updatedAt ? s.updatedAt.getTime() : null);
+      };
       const nowPlaying = (user.providerType === 'jellyfin' ? [] : activeSessions)
         .filter(s => !hasReachedEnd(s.lastPosition, s.totalDuration))
+        .filter(s => !(Number(s.totalDuration) > 0 && Number(s.lastPosition) >= Number(s.totalDuration) * 0.92))
         .map(s => ({
         item: {
           id: s.itemId,
@@ -2908,7 +2928,13 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         videoId: s.videoId,
         lastPosition: s.lastPosition ?? null,
         totalDuration: s.totalDuration ?? null,
-        ...(s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
+        // Resume in their app once paused - the same episode-aware links as Continue Watching.
+        ...(s.itemId ? {
+          stremioAppUrl: buildStremioLinks(s.itemId, s.itemType === 'series' ? 'series' : 'movie', s.season, s.episode).appUrl,
+          nuvioAppUrl: buildNuvioAppUrl(s.itemType === 'series' ? 'series' : 'movie', s.itemId),
+        } : {}),
+        ...(nuvioSave(s) !== undefined ? { nuvioSavedAt: nuvioSave(s), ...(nuvioSave(s) != null ? { reportedAtTimestamp: nuvioSave(s) } : {}) }
+          : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
       }));
 
       // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings() -
@@ -2963,10 +2989,27 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           ...(typeof m.reportedAtTimestamp === 'number' ? { reportedAtTimestamp: m.reportedAtTimestamp } : {}),
           ...(m.paused === true ? { paused: true } : {}),
           ...(typeof m.playingUntilTimestamp === 'number' ? { playingUntilTimestamp: m.playingUntilTimestamp } : {}),
-          ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {})
+          ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {}),
+          ...(m.stremioAppUrl ? { stremioAppUrl: m.stremioAppUrl } : {}),
+          ...(m.nuvioAppUrl ? { nuvioAppUrl: m.nuvioAppUrl } : {}),
+          ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {})
         })));
       } catch (error) {
         console.warn('[PublicLibrary] Failed to merge proxy now playing:', error.message);
+      }
+      {
+        // A card only Nuvio's own saves stand behind: 5 minutes, newest only.
+        const { nuvioOnlyCards } = require('../utils/metricsBuilder');
+        const keep = nuvioOnlyCards(nowPlaying, Date.now());
+        nowPlaying.length = 0;
+        nowPlaying.push(...keep);
+      }
+      try {
+        // Runtime, the episode's name, and an estimate when the app hasn't said (shown only).
+        const { addEstimate } = require('../utils/nowPlayingEstimate');
+        for (const np of nowPlaying) addEstimate(np, np.startTime ? new Date(np.startTime).getTime() : undefined);
+      } catch (error) {
+        console.warn('[PublicLibrary] Failed to add Now Playing estimates:', error.message);
       }
 
       res.json({
@@ -2990,6 +3033,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         watchTimeByDay,
         nowPlaying,
         mostWatched,
+        mostWatchedList,
+        recentlyWatched: await recentlyWatchedGroups(prisma, user.accountId || DEFAULT_ACCOUNT_ID, userId),
+        profileLabel: await latestProfileLabel(prisma, user.accountId || DEFAULT_ACCOUNT_ID, userId),
         bingeWatches: bingeWatches.slice(0, 5),
         user: {
           id: user.id,
@@ -3207,7 +3253,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const { syncUserAddons } = require('./users');
       
       // Perform sync
-      const result = await syncUserAddons(prisma, userId, [], false, req, decrypt, getAccountId, true);
+      const result = await syncUserAddons(prisma, userId, [], false, req, decrypt, () => user.accountId, true);
       
       if (result.success) {
         res.json({ 
@@ -3713,6 +3759,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           remainingMinutes: r.remainingMinutes ?? null,
           lastWatchedAt: r.lastWatchedAt,
           providerType: r.providerType,
+          profileLabel: r.profileLabel || null,
           // Only Stremio and Nuvio have an address that opens their app on a
           // title; every other sign-in gets the title's page.
           appUrl: r.appUrl || null,
@@ -3723,6 +3770,56 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       pushError(res, error, 'Could not load Continue Watching');
     }
   });
+
+  // ---- Upcoming on the person's own Home ----
+  // The household's "Coming up" list narrowed to the shows this person has
+  // watched (their own history), soonest first.
+  router.get('/upcoming', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId);
+      const accountId = user.accountId || DEFAULT_ACCOUNT_ID;
+      const { getUpcomingEpisodes } = require('../utils/episodeAlerts');
+      const [all, theirs] = await Promise.all([
+        getUpcomingEpisodes(prisma, accountId, 120),
+        prisma.episodeWatchHistory.findMany({ where: { accountId, userId: user.id }, distinct: ['showId'], select: { showId: true } }),
+      ]);
+      const shows = new Set(theirs.map((r) => r.showId));
+      res.json({ items: all.filter((e) => shows.has(e.showId)).slice(0, 40) });
+    } catch (error) {
+      pushError(res, error, 'Could not load Upcoming');
+    }
+  });
+
+  // How this person arranged their own Home: section order, folded and
+  // hidden. Loose JSON the client owns (it falls back to the default for
+  // anything it doesn't recognise), capped so it can't bloat the row.
+  router.get('/home-arrange', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.query.userId)
+      const row = await prisma.user.findUnique({ where: { id: user.id }, select: { homeArrangeJson: true } })
+      let arrange = null
+      try { arrange = row?.homeArrangeJson ? JSON.parse(row.homeArrangeJson) : null } catch { arrange = null }
+      res.json({ arrange: arrange && typeof arrange === 'object' && !Array.isArray(arrange) ? arrange : null })
+    } catch (error) {
+      pushError(res, error, 'Could not read your Home arrangement')
+    }
+  })
+
+  router.put('/home-arrange', async (req, res) => {
+    try {
+      const user = await personAsking(req, req.body?.userId)
+      const arrange = req.body?.arrange
+      if (arrange !== null && (typeof arrange !== 'object' || Array.isArray(arrange))) {
+        return res.status(400).json({ error: 'arrange must be an object or null', message: 'arrange must be an object or null' })
+      }
+      const json = arrange ? JSON.stringify(arrange) : null
+      if (json && Buffer.byteLength(json) > 16 * 1024) return res.status(413).json({ error: 'Too large', message: 'That arrangement is too large to save' })
+      await prisma.user.update({ where: { id: user.id }, data: { homeArrangeJson: json } })
+      res.json({ arrange: arrange || null })
+    } catch (error) {
+      pushError(res, error, 'Could not save your Home arrangement')
+    }
+  })
 
   router.post('/continue-watching/dismiss', async (req, res) => {
     try {

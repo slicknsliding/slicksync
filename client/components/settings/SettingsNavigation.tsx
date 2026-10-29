@@ -57,11 +57,12 @@ export function collectSettingsEntries(
   const byLabel = new Map<string, SettingsSearchEntry>();
   const keywordsFor = new Map(index.map((e) => [e.label.toLowerCase(), e]));
   const tabLabel = (key: string) => tabs.find((t) => t.key === key)?.label || '';
-  const add = (label: string, description: string, tab: string) => {
+  const add = (label: string, description: string, tab: string, also?: string) => {
     const id = label.toLowerCase();
     if (!label || byLabel.has(id)) return;
-    const known = keywordsFor.get(id);
-    byLabel.set(id, { label, description, tab, keywords: `${known?.keywords || ''} ${known?.section || ''} ${tabLabel(tab)}` });
+    // A setting v2 renamed still finds its keywords, and its older name finds it.
+    const known = keywordsFor.get(id) || (also ? keywordsFor.get(also.toLowerCase()) : undefined);
+    byLabel.set(id, { label, description, tab, keywords: `${known?.keywords || ''} ${known?.section || ''} ${tabLabel(tab)} ${also || ''}` });
   };
   // Every label-ish text on the mounted sections: an index entry whose control
   // is not drawn right now (a key pool before a key exists, the account id on
@@ -72,11 +73,11 @@ export function collectSettingsEntries(
       const tab = pane.dataset.settingsPane || '';
       for (const row of Array.from(pane.querySelectorAll<HTMLElement>('[data-setting]'))) {
         const ps = row.querySelectorAll('p');
-        add(row.dataset.setting || '', clean(ps[1]?.textContent), tab);
+        add(row.dataset.setting || '', clean(ps[1]?.textContent), tab, row.dataset.settingAlso);
       }
-      for (const el of Array.from(pane.querySelectorAll('label, h3'))) present.push(clean(el.textContent).toLowerCase());
+      for (const el of Array.from(pane.querySelectorAll('label, h2, h3'))) present.push(clean(el.textContent).toLowerCase());
       // Card headings for the blocks that are not rows (a key field, 2FA...).
-      for (const h of Array.from(pane.querySelectorAll('h3'))) {
+      for (const h of Array.from(pane.querySelectorAll('h2, h3'))) {
         const sub = h.parentElement?.querySelector('p');
         add(clean(h.textContent), clean(sub?.textContent), tab);
       }
@@ -283,7 +284,9 @@ function SectionDropdown({ tabs, active, onSelect }: {
         aria-expanded={open}
         onClick={() => (open ? close() : replace())}
         className="w-full flex items-center gap-2.5 rounded-xl px-3 h-11 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        style={{ ...surface, boxShadow: '0 10px 24px -10px rgba(0,0,0,0.7)', ...(open ? { borderColor: 'var(--color-primary)' } : {}) }}
+        // The colour is always set: dropping it after the menu closed left the border
+        // its text colour (white), because `border` above is a shorthand.
+        style={{ ...surface, boxShadow: '0 10px 24px -10px rgba(0,0,0,0.7)', borderColor: open ? 'var(--color-primary)' : 'var(--color-surface-border)' }}
       >
         <CurrentIcon className="w-4 h-4 shrink-0 text-muted" />
         <span className="flex-1 min-w-0 text-sm font-semibold text-default truncate">{current.label}</span>

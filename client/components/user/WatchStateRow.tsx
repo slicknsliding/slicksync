@@ -153,7 +153,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
                   type="button"
                   className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
                   title="Copy link"
-                  onClick={async () => { (await copyToClipboard(view.manifestUrl!)) ? toast.success('Link copied') : toast.error('Copy failed - select and copy the link text directly'); }}
+                  onClick={async () => { (await copyToClipboard(view.manifestUrl!)) ? toast.success('Link copied') : toast.error('Couldn’t copy the link', { line: 'Select the text and copy it by hand.' }); }}
                 >
                   {view.manifestUrl}
                 </button>

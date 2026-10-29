@@ -16,6 +16,9 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { JfCollectionV2, JfCollectionCover, JfCatalogChips } from '@/components/v2/JellyfinCollectionV2';
 import { rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
 import {
@@ -102,6 +105,10 @@ export default function AiostreamsCollectionPage() {
   const collectionId = String(params.collectionId || 'new');
   const isNew = collectionId === 'new';
   const { layoutMode } = useLayoutMode();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
 
   const [initial] = useState(() => {
     const cached = userId ? api.peekGet<AioCollectionsView>(api.aioCollectionsPath(userId, profileId)) ?? null : null;
@@ -124,6 +131,7 @@ export default function AiostreamsCollectionPage() {
   }, []);
 
   const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [results, setResults] = useState<DiscoverItem[]>([]);
   const [searching, setSearching] = useState(false);
 
@@ -380,20 +388,165 @@ export default function AiostreamsCollectionPage() {
   const resultsRow = 'flex gap-3 snap-x snap-mandatory scroll-px-4 -mx-4 px-4 pb-2 sm:scroll-px-0 sm:mx-0 sm:px-0 sm:pb-0 sm:overflow-visible sm:grid sm:grid-cols-4 md:grid-cols-6';
   const resultCell = 'w-[30%] shrink-0 snap-start sm:w-auto';
 
+  const searchBox = (
+    <div>
+      <div className="relative mb-3">
+        <MagnifyingGlassIcon className="w-4 h-4 text-muted absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          ref={searchRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search movies and shows to add"
+          aria-label="Search movies and shows to add"
+          className={`${field} pl-10 pr-10`}
+          style={fieldStyle}
+        />
+        {query && (
+          <button type="button" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-default" aria-label="Clear search">
+            <XMarkIcon className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      {query.trim().length >= 2 && (
+        searching ? (
+          <ScrollRow className={resultsRow}>
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className={`${resultCell} aspect-[2/3] rounded-xl bg-surface-hover animate-pulse`} />)}
+          </ScrollRow>
+        ) : results.length === 0 ? (
+          <p className="text-sm text-muted">Nothing found for “{query.trim()}”.</p>
+        ) : (
+          <ScrollRow className={resultsRow}>
+            {results.map((r) => {
+              const added = inCollection.has(r.id);
+              return (
+                <div key={`${r.type}-${r.id}`} className={`relative ${resultCell}`}>
+                  <PosterCard
+                    item={toPosterItem(r)}
+                    onOpenDetails={() => setDetail({ id: r.id, type: r.type, name: r.name, poster: r.poster })}
+                    onToggleWatchlist={noop}
+                    onToggleWatched={noop}
+                    showWatchlistMenu={false}
+                    showWatchedMenu={false}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => (added ? undefined : addTitle(r))}
+                    disabled={busyTitle === r.id || added}
+                    className={`absolute top-1.5 right-1.5 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow transition-colors ${added ? 'bg-primary-solid' : 'bg-black/70 hover:bg-primary-solid'}`}
+                    aria-label={added ? `${r.name} is in this collection` : `Add ${r.name}`}
+                    title={added ? 'In this collection' : 'Add to this collection'}
+                  >
+                    {added ? <CheckIcon className="w-4 h-4 text-white" /> : <PlusIcon className="w-4 h-4 text-white" />}
+                  </button>
+                </div>
+              );
+            })}
+          </ScrollRow>
+        )
+      )}
+    </div>
+  );
+
+  const titlesBody = (
+    <>
+  {lists === null ? (
+    <div className={grid}>
+      {Array.from({ length: 8 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-xl bg-surface-hover animate-pulse" />)}
+    </div>
+  ) : titles.length === 0 ? (
+    <Card padding="lg">
+      <p className="text-sm text-muted text-center">
+        Nothing in it yet. Search above, or use Add to Catalogs on any title in Discover{home ? ` and pick “${home.name}”` : ''}.
+      </p>
+    </Card>
+  ) : (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} onDragCancel={() => { draggedAt.current = Date.now(); }}>
+      <SortableContext items={titles.map((t) => t.id)} strategy={rectSortingStrategy}>
+        <div className={grid}>
+          {titles.map((t) => (
+            <TitleTile key={t.id} t={t} onOpen={() => openTitle(t)} onRemove={() => removeTitle(t)} menuOpen={menuTitleId === t.id} onMenuOpenChange={onMenuOpenChange} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )}
+    </>
+  );
+
+  // v2: the same search, titles and catalogs, laid out by JfCollectionV2.
+  const chosenCatalogs = form.catalogIds.map((id) => catalogs.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
+  const addableCatalogs = catalogs.filter((c) => !form.catalogIds.includes(c.id));
+  const coverPosters = titles.filter((t) => t.poster).slice(0, 4).map((t) => posterUrl(t, rpdbEnabled)).filter((u): u is string => !!u);
+  const detailsFields = (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor="aio-col-name" className="block text-sm font-medium mb-2 text-default">Name</label>
+        <input id="aio-col-name" value={form.name} onChange={(e) => editText({ name: e.target.value })} maxLength={80} className={field} style={fieldStyle}
+          onKeyDown={(e) => { if (isNew && e.key === 'Enter') create(); }} autoFocus={isNew} />
+      </div>
+      <div>
+        <label htmlFor="aio-col-cover" className="block text-sm font-medium mb-2 text-default">Cover image address</label>
+        <input id="aio-col-cover" value={form.coverUrl} onChange={(e) => editText({ coverUrl: e.target.value })} placeholder="Optional - first title's poster" className={field} style={fieldStyle} />
+      </div>
+    </div>
+  );
+  const addTitles = () => {
+    searchRef.current?.scrollIntoView({ block: 'center' });
+    searchRef.current?.focus();
+  };
+
   return (
     <>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections', href: listPath }, { label: title }]} className="text-xl font-semibold" />}
-          subtitle={subtitle}
-          actions={<div className="flex items-center gap-2">{backButton}{actions}</div>}
+          subtitle={v2 ? '' : subtitle}
+          actions={<div className="flex items-center gap-2">{backButton}{v2 ? null : actions}</div>}
         />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-          {layoutMode === 'nebula' && <NebulaPageHeading title={title} subtitle={subtitle} leading={backButton} actions={actions} />}
+          {layoutMode === 'nebula' && (
+            v2
+              ? <NebulaPageHeading title="Jellyfin Collections" leading={backButton} />
+              : <NebulaPageHeading title={title} subtitle={subtitle} leading={backButton} actions={actions} />
+          )}
 
-          <PageSection>
+          {v2 && (
+            !ready ? (
+              <div className="space-y-4">
+                <div className="h-24 rounded-2xl bg-surface-hover animate-pulse" />
+                <div className="h-64 rounded-2xl bg-surface-hover animate-pulse" />
+              </div>
+            ) : (
+              <JfCollectionV2
+                isNew={isNew}
+                ready={ready}
+                title={title}
+                count={titles.length}
+                cover={<JfCollectionCover posters={coverPosters} cover={ownCover ? cachedImageUrl(ownCover, 342) : null} />}
+                creating={creating}
+                onCreate={create}
+                onAddTitles={addTitles}
+                onRemove={() => setConfirmRemove(true)}
+                search={<div className="mb-6">{searchBox}</div>}
+                titlesBody={titlesBody}
+                titlesNote={titles.length > 0 ? 'drag to reorder \u00b7 hold or right-click a title to remove it' : undefined}
+                catalogs={(
+                  <JfCatalogChips
+                    chosen={chosenCatalogs.map((c) => ({ id: c.id, name: c.name }))}
+                    options={addableCatalogs}
+                    onRemove={toggleCatalog}
+                    onAdd={toggleCatalog}
+                    note={<>New titles go into {home ? `\u201c${home.name}\u201d` : 'the first one'}.</>}
+                  />
+                )}
+                details={detailsFields}
+              />
+            )
+          )}
+
+          {!v2 && <PageSection>
             {!ready ? (
               <div className="space-y-4">
                 <div className="h-40 rounded-2xl bg-surface-hover animate-pulse" />
@@ -429,88 +582,14 @@ export default function AiostreamsCollectionPage() {
                   <p className="text-sm text-muted text-center">Name it and press Create - then search for titles to put in it.</p>
                 ) : (
                   <>
-                    <div>
-                      <div className="relative mb-3">
-                        <MagnifyingGlassIcon className="w-4 h-4 text-muted absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        <input
-                          value={query}
-                          onChange={(e) => setQuery(e.target.value)}
-                          placeholder="Search movies and shows to add"
-                          aria-label="Search movies and shows to add"
-                          className={`${field} pl-10 pr-10`}
-                          style={fieldStyle}
-                        />
-                        {query && (
-                          <button type="button" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-default" aria-label="Clear search">
-                            <XMarkIcon className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                      {query.trim().length >= 2 && (
-                        searching ? (
-                          <ScrollRow className={resultsRow}>
-                            {Array.from({ length: 8 }).map((_, i) => <div key={i} className={`${resultCell} aspect-[2/3] rounded-xl bg-surface-hover animate-pulse`} />)}
-                          </ScrollRow>
-                        ) : results.length === 0 ? (
-                          <p className="text-sm text-muted">Nothing found for “{query.trim()}”.</p>
-                        ) : (
-                          <ScrollRow className={resultsRow}>
-                            {results.map((r) => {
-                              const added = inCollection.has(r.id);
-                              return (
-                                <div key={`${r.type}-${r.id}`} className={`relative ${resultCell}`}>
-                                  <PosterCard
-                                    item={toPosterItem(r)}
-                                    onOpenDetails={() => setDetail({ id: r.id, type: r.type, name: r.name, poster: r.poster })}
-                                    onToggleWatchlist={noop}
-                                    onToggleWatched={noop}
-                                    showWatchlistMenu={false}
-                                    showWatchedMenu={false}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => (added ? undefined : addTitle(r))}
-                                    disabled={busyTitle === r.id || added}
-                                    className={`absolute top-1.5 right-1.5 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow transition-colors ${added ? 'bg-primary-solid' : 'bg-black/70 hover:bg-primary-solid'}`}
-                                    aria-label={added ? `${r.name} is in this collection` : `Add ${r.name}`}
-                                    title={added ? 'In this collection' : 'Add to this collection'}
-                                  >
-                                    {added ? <CheckIcon className="w-4 h-4 text-white" /> : <PlusIcon className="w-4 h-4 text-white" />}
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </ScrollRow>
-                        )
-                      )}
-                    </div>
+                    {searchBox}
 
                     <div>
                       <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3 mb-3">
                         <h2 className="text-base font-semibold text-default">In this collection</h2>
                         {titles.length > 0 && <p className="text-xs text-muted">Drag to reorder · hold or right-click a title to remove it</p>}
                       </div>
-                      {lists === null ? (
-                        <div className={grid}>
-                          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-xl bg-surface-hover animate-pulse" />)}
-                        </div>
-                      ) : titles.length === 0 ? (
-                        <Card padding="lg">
-                          <p className="text-sm text-muted text-center">
-                            Nothing in it yet. Search above, or use Add to Catalogs on any title in Discover{home ? ` and pick “${home.name}”` : ''}.
-                          </p>
-                        </Card>
-                      ) : (
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} onDragCancel={() => { draggedAt.current = Date.now(); }}>
-                          <SortableContext items={titles.map((t) => t.id)} strategy={rectSortingStrategy}>
-                            <div className={grid}>
-                              {titles.map((t) => (
-                                <TitleTile key={t.id} t={t} onOpen={() => openTitle(t)} onRemove={() => removeTitle(t)} menuOpen={menuTitleId === t.id} onMenuOpenChange={onMenuOpenChange} />
-                              ))}
-                            </div>
-                          </SortableContext>
-                        </DndContext>
-                      )}
+                      {titlesBody}
                     </div>
 
                     <div className="rounded-2xl border border-default">
@@ -564,7 +643,7 @@ export default function AiostreamsCollectionPage() {
                 )}
               </div>
             )}
-          </PageSection>
+          </PageSection>}
         </div>
       </div>
 

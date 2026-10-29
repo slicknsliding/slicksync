@@ -10,8 +10,10 @@ import { UserAvatar } from '@/components/ui';
 import { WatchSyncView } from '@/components/user/WatchSyncView';
 import { api, User } from '@/lib/api';
 import { providerTypeLabel } from '@/lib/providers';
+import { usePageDesign } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
 
-function ForSwitcher({ people, current, onPick }: { people: User[]; current: User | null; onPick: (id: string) => void }) {
+function ForSwitcher({ people, current, onPick, v2 }: { people: User[]; current: User | null; onPick: (id: string) => void; v2?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -24,7 +26,7 @@ function ForSwitcher({ people, current, onPick }: { people: User[]; current: Use
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('touchstart', close); document.removeEventListener('keydown', esc); };
   }, [open]);
   return (
-    <div className="flex items-center justify-center gap-2.5 mb-5">
+    <div className={`flex items-center gap-2.5 ${v2 ? 'mb-4' : 'justify-center mb-5'}`}>
       <span className="text-sm text-muted">For</span>
       <div ref={ref} className="relative">
         <button
@@ -70,6 +72,9 @@ function WatchSyncFromTasks() {
   const search = useSearchParams();
   const [people, setPeople] = useState<User[] | null>(null);
   useEffect(() => { api.getUsers().then(setPeople).catch(() => setPeople([])); }, []);
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
 
   const wanted = search.get('person');
   // Nobody is picked for you - the page waits until you choose who.
@@ -81,7 +86,7 @@ function WatchSyncFromTasks() {
       key={current?.id || 'nobody'}
       userId={current?.id || ''}
       home="tasks"
-      forSlot={<ForSwitcher people={people} current={current} onPick={(id) => router.replace(`/tasks/aiosync?person=${encodeURIComponent(id)}`)} />}
+      forSlot={<ForSwitcher v2={v2} people={people} current={current} onPick={(id) => router.replace(`/tasks/aiosync?person=${encodeURIComponent(id)}`)} />}
     />
   );
 }

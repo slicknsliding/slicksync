@@ -22,6 +22,9 @@ import { EditInvitationForm } from '@/components/invitations/EditInvitationForm'
 import { displayEmail } from '@/lib/providers';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
+import { InvitationsV2, INVITE_SECTIONS, type V2Invite, type V2Request } from '@/components/v2/InvitationsV2';
 import {
   PlusIcon,
   EnvelopeIcon,
@@ -112,6 +115,9 @@ export default function InvitationsPage() {
 
   // Duplicate state
   const [duplicateTarget, setDuplicateTarget] = useState<InvitationDisplay | null>(null);
+
+  // QR for an invite chosen from a v2 card's ⋯ menu (Classic's card has its own).
+  const [qrTarget, setQrTarget] = useState<V2Invite | null>(null);
 
   // Fetch invitations, groups, and requests
   useEffect(() => {
@@ -241,6 +247,69 @@ export default function InvitationsPage() {
 
   const pendingRequests = requestsDisplay.filter(r => r.status === 'pending');
 
+  // v2: one page - people waiting to join first, then the invites. Sections
+  // move, fold and hide; single invites hide (lib/arrange.tsx).
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
+  const sectionArrange = usePageArrangement('invitations', useMemo(() => INVITE_SECTIONS.map((x) => x.key), []));
+  const inviteArrangeOwn = usePageArrangement('invitations-items', useMemo(() => invitationsDisplay.map((i) => i.id), [invitationsDisplay]));
+  const inviteArrange = { ...inviteArrangeOwn, arranging: sectionArrange.arranging };
+  // Classic: its two tabs are the sections. At rest only the open tab shows;
+  // while arranging both show, in order, so they can be moved, folded or hidden.
+  const classicArrange = usePageArrangement('invitations-classic', useMemo(() => ['invitations', 'requests'], []));
+  const arrangeButton = isTV ? undefined : <ArrangeButton arrange={v2 ? sectionArrange : classicArrange} />;
+  const pageArrange = { ...sectionArrange, isDefault: sectionArrange.isDefault && inviteArrangeOwn.isDefault, reset: () => { sectionArrange.reset(); inviteArrangeOwn.reset(); } };
+  const [busyRequests, setBusyRequests] = useState<Set<string>>(new Set());
+  const [renderedAt] = useState(() => Date.now());
+  const v2Requests = useMemo<V2Request[]>(() => {
+    const invById = new Map(invitationsDisplay.map((i) => [i.id, i]));
+    return requestsDisplay
+      .filter((r) => r.status === 'pending' || r.status === 'accepted')
+      .map((r) => ({
+        id: r.id,
+        invitationId: r.invitationId,
+        name: r.username || displayEmail(r.email) || 'Someone',
+        email: r.email,
+        groupName: invById.get(String(r.invitationId))?.groupName,
+        createdAt: r.createdAt,
+        status: r.status === 'accepted' ? 'accepted' as const : 'pending' as const,
+      }));
+  }, [requestsDisplay, invitationsDisplay]);
+  const v2Invites = useMemo<V2Invite[]>(() => {
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    return invitationsDisplay.map((i) => ({
+      id: i.id,
+      code: i.code,
+      name: i.name,
+      groupName: i.groupName,
+      groupColorIndex: i.groupId ? groupById.get(i.groupId)?.colorIndex : undefined,
+      groupAvatarUrl: i.groupId ? (groupById.get(i.groupId) as { avatarUrl?: string | null } | undefined)?.avatarUrl : undefined,
+      groupMissing: i.groupMissing,
+      uses: i.uses,
+      maxUses: i.maxUses,
+      expiresAt: i.expiresAt,
+      isActive: i.isActive !== false,
+    }));
+  }, [invitationsDisplay, groups]);
+  const answerRequest = async (r: V2Request, action: 'accept' | 'reject') => {
+    setBusyRequests((prev) => new Set(prev).add(r.id));
+    try {
+      if (action === 'accept') await api.acceptInviteRequest(r.id);
+      else await api.rejectInviteRequest(r.id);
+      // Reflect the answer here at once; the full list refreshes behind it.
+      setRequests((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: action === 'accept' ? 'accepted' : 'rejected' } : x)));
+      toast.success(action === 'accept' ? `Approved ${r.name}` : `Rejected ${r.name}`, action === 'accept' ? { line: 'They can sign in now.' } : undefined);
+      api.getInvitations().then(setInvitations).catch(() => {});
+    } catch (err) {
+      toast.error(action === 'accept' ? `Couldn’t approve ${r.name}` : `Couldn’t reject ${r.name}`, { line: err instanceof Error ? err.message : undefined });
+    } finally {
+      setBusyRequests((prev) => { const n = new Set(prev); n.delete(r.id); return n; });
+    }
+  };
+  const subtitle = isLoading ? 'Loading...'
+    : v2 ? `${invitations.length} invite${invitations.length === 1 ? '' : 's'}${pendingRequests.length ? ` · ${pendingRequests.length} ${pendingRequests.length === 1 ? 'person' : 'people'} waiting` : ''}`
+    : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`;
+
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -321,68 +390,8 @@ export default function InvitationsPage() {
 
   const hasSelection = selectedIds.size > 0;
 
-  return (
-    <Wrapper>
-      {layoutMode !== 'nebula' && (
-        <Header
-          title="Invitations"
-          subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
-        />
-      )}
-
-      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-      {layoutMode === 'nebula' && (
-        <NebulaPageHeading
-          title="Invitations"
-          subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
-        />
-      )}
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
-        {/* Filters */}
-        <PageToolbar
-          selectionConfig={activeTab === 'invitations' ? {
-            totalCount: invitationsDisplay.length,
-            selectedCount: selectedIds.size,
-            onSelectAll: selectAll,
-            onDeselectAll: deselectAll,
-          } : undefined}
-          filterTabs={{
-            options: [
-              { key: 'invitations', label: 'Invitations' },
-              {
-                key: 'requests',
-                label: 'Requests',
-                badge: pendingRequests.length > 0 ? { value: pendingRequests.length, variant: 'error' as const } : undefined
-              },
-            ],
-            activeKey: activeTab,
-            onChange: (key) => handleTabChange(key as 'invitations' | 'requests'),
-            layoutId: 'invitations-filter-tabs',
-          }}
-          primaryAction={(() => {
-            const btn = (
-              <Button
-                variant="primary"
-                leftIcon={<PlusIcon className="w-5 h-5" />}
-                onClick={() => setIsCreateModalOpen(true)}
-              >
-                Add
-              </Button>
-            );
-            return isTV ? <TVFocusable onEnterPress={() => setIsCreateModalOpen(true)}>{btn}</TVFocusable> : btn;
-          })()}
-        />
-
-        <AnimatePresence mode="wait">
-          {activeTab === 'invitations' ? (
-            <motion.div
-              key="invitations"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
+  const classicInvitesBody = (
+    <>
               {isLoading ? (
                 <div className="text-center py-16">
                   <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
@@ -534,14 +543,11 @@ export default function InvitationsPage() {
                   </Button>
                 </div>
               )}
-            </motion.div>
-          ) : (
-            <motion.div
-              key="requests"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-            >
+    </>
+  );
+
+  const classicRequestsBody = (
+    <>
               {/* Request Status Summary */}
               {!isLoading && requestsDisplay.length > 0 && (
                 <div className="mb-6">
@@ -607,9 +613,151 @@ export default function InvitationsPage() {
                   </p>
                 </div>
               )}
+    </>
+  );
+
+  return (
+    <Wrapper>
+      {layoutMode !== 'nebula' && (
+        <Header
+          title="Invitations"
+          subtitle={subtitle}
+          actions={arrangeButton}
+        />
+      )}
+
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading
+          title="Invitations"
+          subtitle={subtitle}
+          actions={arrangeButton}
+        />
+      )}
+      {v2 ? <ArrangeBar arrange={pageArrange} /> : !isTV && <ArrangeBar arrange={classicArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
+        {/* Filters */}
+        <PageToolbar
+          selectionConfig={activeTab === 'invitations' ? {
+            totalCount: invitationsDisplay.length,
+            selectedCount: selectedIds.size,
+            onSelectAll: selectAll,
+            onDeselectAll: deselectAll,
+          } : undefined}
+          filterTabs={v2 ? undefined : {
+            options: [
+              { key: 'invitations', label: 'Invitations' },
+              {
+                key: 'requests',
+                label: 'Requests',
+                badge: pendingRequests.length > 0 ? { value: pendingRequests.length, variant: 'error' as const } : undefined
+              },
+            ],
+            activeKey: activeTab,
+            onChange: (key) => handleTabChange(key as 'invitations' | 'requests'),
+            layoutId: 'invitations-filter-tabs',
+          }}
+          primaryAction={(() => {
+            const btn = (
+              <Button
+                variant="primary"
+                leftIcon={<PlusIcon className="w-5 h-5" />}
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                Add
+              </Button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => setIsCreateModalOpen(true)}>{btn}</TVFocusable> : btn;
+          })()}
+        />
+
+        {v2 ? (
+          isLoading ? (
+            <p className="text-muted text-center py-16">Loading invitations...</p>
+          ) : (
+            <>
+              <InvitationsV2
+                requests={v2Requests}
+                invites={v2Invites}
+                arrange={sectionArrange}
+                inviteArrange={inviteArrange}
+                view={viewMode === 'list' ? 'list' : 'grid'}
+                busy={busyRequests}
+                onApprove={(r) => answerRequest(r, 'accept')}
+                onReject={(r) => answerRequest(r, 'reject')}
+                onCopy={(i) => {
+                  copyToClipboard(`${window.location.origin}/invite/${i.code}`);
+                  toast.success('Invite link copied', { line: i.code });
+                }}
+                onEdit={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setEditTarget(d); }}
+                onDuplicate={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setDuplicateTarget(d); }}
+                onCopyCode={(i) => {
+                  copyToClipboard(i.code);
+                  toast.success('Invitation code copied to clipboard');
+                }}
+                onShowQr={(i) => setQrTarget(i)}
+                onDelete={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setDeleteTarget(d); }}
+                now={renderedAt}
+              />
+              <HiddenTray
+                arrange={sectionArrange}
+                labelOf={(key) => `${INVITE_SECTIONS.find((x) => x.key === key)?.label ?? 'Section'} (section)`}
+                extra={inviteArrangeOwn.hidden.map((id) => ({ id: `i:${id}`, label: invitationsDisplay.find((i) => i.id === id)?.code ?? 'An invite', show: () => inviteArrangeOwn.show(id) }))}
+                note="Hidden only here: invites keep working. Tap one to bring it back."
+              />
+              {v2Requests.length === 0 && v2Invites.length === 0 && (
+                <div className="text-center py-16">
+                  <h3 className="text-lg font-medium mb-2 text-default">No invitations</h3>
+                  <p className="mb-6 text-muted">Create an invitation to start inviting people</p>
+                  <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>Create Invite</Button>
+                </div>
+              )}
+            </>
+          )
+        ) : classicArrange.arranging ? (
+          <>
+            <div className="space-y-6">
+              {classicArrange.shown.map((id) => (
+                <ArrangePanel key={id} arrange={classicArrange} id={id} label={id === 'requests' ? 'Requests' : 'Invitations'} ownHeading={false}>
+                  {id === 'requests' ? classicRequestsBody : classicInvitesBody}
+                </ArrangePanel>
+              ))}
+            </div>
+            <HiddenTray arrange={classicArrange} labelOf={(key) => `${key === 'requests' ? 'Requests' : 'Invitations'} (section)`} />
+          </>
+        ) : (
+        <AnimatePresence mode="wait">
+          {activeTab === 'invitations' ? (
+            <motion.div
+              key="invitations"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+            >
+              {isTV ? classicInvitesBody : classicArrange.shown.includes('invitations') && (
+                <ArrangePanel arrange={classicArrange} id="invitations" label="Invitations" ownHeading={false}>
+                  {classicInvitesBody}
+                </ArrangePanel>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="requests"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              {isTV ? classicRequestsBody : classicArrange.shown.includes('requests') && (
+                <ArrangePanel arrange={classicArrange} id="requests" label="Requests" ownHeading={false}>
+                  {classicRequestsBody}
+                </ArrangePanel>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </div>
       </div>
       </div>
@@ -708,6 +856,24 @@ export default function InvitationsPage() {
             onClose={() => setEditTarget(null)}
           />
         )}
+      </Modal>
+
+      <Modal isOpen={!!qrTarget} onClose={() => setQrTarget(null)} title="Scan to join" size="sm">
+        {qrTarget && (() => {
+          const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${qrTarget.code}`;
+          return (
+            <div className="text-center space-y-3">
+              <div className="inline-block p-3 rounded-xl bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/qr?data=${encodeURIComponent(url)}`} alt={`QR code for invitation ${qrTarget.name || qrTarget.code}`} width={240} height={240} />
+              </div>
+              <p className="text-sm text-muted">
+                Point a phone camera at this. It opens the invite, they connect their own account, and sync sets them up - nothing to type, no credentials through you.
+              </p>
+              <code className="block text-xs text-subtle break-all">{url}</code>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* Duplicate Invitation Modal */}
@@ -1466,8 +1632,11 @@ function CreateInvitationModal({
             }}
           />
 
-          <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
+          {/* Top-aligned and scrollable: a centred panel taller than a phone
+              would start above the screen with no way to reach its top. */}
+          <div className="fixed inset-0 flex items-start justify-center p-4 overflow-y-auto">
             <motion.div
+              className="my-auto w-full flex justify-center"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}

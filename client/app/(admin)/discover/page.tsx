@@ -19,7 +19,11 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { Header } from '@/components/layout/Header';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { MediaDetailModal, Badge, PosterCard, PosterCardItem, VirtualPosterGrid } from '@/components/ui';
+import { MediaDetailModal, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, PageToolbar } from '@/components/ui';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { SortableItem, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, ArrangeGrip, ArrangeSection, HiddenTray, StretchHandle } from '@/components/ui/Arrange';
+import { V2Button } from '@/components/v2/V2Bits';
 import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime, PersonSearchResult, DiscoverPerson, DiscoverFacets } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -30,10 +34,10 @@ import {
   GENRES, SORTS, WATCHLIST_SORTS, DECADES, RATINGS, LENGTHS, KINDS, describeGrid, uniqueById, mergeNew, retryDelay, pickSurprise,
   type Kind, type SortKey, type Decade, type Length, type WatchedFilter, type WatchlistSort,
 } from '@/lib/discoverWords';
-import { workAsPerson, bornLine } from '@/lib/personFacts';
+import { workAsPerson, bornLine, wikipediaLine } from '@/lib/personFacts';
 import {
   MagnifyingGlassIcon, SparklesIcon, UserIcon, ChevronDownIcon, AdjustmentsHorizontalIcon, XMarkIcon,
-  ArrowsRightLeftIcon, CheckIcon, CalendarDaysIcon, MapPinIcon, BellIcon,
+  ArrowsRightLeftIcon, CheckIcon, CalendarDaysIcon, MapPinIcon, BellIcon, EyeIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -109,6 +113,8 @@ const yearOf = (s: string | null | undefined) => parseInt(/\d{4}/.exec(s || '')?
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
 
   const [address] = useState(personFromAddress);
@@ -528,7 +534,7 @@ export default function DiscoverPage() {
       if (!personFollow) {
         const row = await api.followSubject('person', followId, name, person.person.profile);
         setPersonFollow({ id: row.id, muted: row.muted });
-        toast.success(`Following ${name} - you'll hear when they have something new out`);
+        toast.success(`Following ${name}`, { line: 'You’ll hear when they have something new out.' });
       } else {
         // Mute rather than unfollow, as everywhere: the row survives, so
         // turning it back on doesn't replay news already announced.
@@ -676,13 +682,53 @@ export default function DiscoverPage() {
     sortPop.setOpen(false);
   };
 
-  const lenses: Array<{ key: Lens; label: string; count?: number }> = [
+  const lensesAvail: Array<{ key: Lens; label: string; count?: number }> = [
     { key: 'titles', label: 'Titles' },
     // TV has no search box to type a name in; a person opened from a title's cast still shows.
     ...(!isTV || lens === 'people' ? [{ key: 'people' as const, label: 'People' }] : []),
     ...(enableRecommendations ? [{ key: 'foryou' as const, label: 'For you' }, { key: 'nobody' as const, label: 'Nobody’s seen it' }] : []),
     ...(enableWatchlist ? [{ key: 'watchlist' as const, label: 'Watchlist', count: watchlist.length }] : []),
   ];
+  // Arrange (v2): the lenses can be put in another order or hidden, and each
+  // lens's rows can be moved, folded and hidden. Rows are saved per lens.
+  const lensArrange = usePageArrangement('discover-lenses', lensesAvail.map((l) => l.key), { layout: 'tiles' });
+  const lenses = v2 ? lensArrange.shown.map((k) => lensesAvail.find((l) => l.key === k)!).filter(Boolean) : lensesAvail;
+  // Hiding the open lens moves to the first one kept; Undo or Cancel bringing
+  // it back (while arranging) returns to it. Picking a lens forgets it.
+  const bumpedLens = useRef<Lens | null>(null);
+  useEffect(() => {
+    if (!v2 || lenses.length === 0) return;
+    const back = bumpedLens.current;
+    if (back && lenses.some((l) => l.key === back)) { bumpedLens.current = null; if (back !== lens) setLens(back); return; }
+    if (!lensArrange.arranging) bumpedLens.current = null;
+    if (!lenses.some((l) => l.key === lens)) { if (lensArrange.arranging) bumpedLens.current = lens; setLens(lenses[0].key); }
+  }, [v2, lenses, lens, lensArrange.arranging]);
+  const pickLens = (key: Lens) => { bumpedLens.current = null; setLens(key); };
+  const libraryOn = instantOnly.length > 0 && !describing;
+  const airingOn = seasonalAnime.length > 0 || !!seasonalUnavailable;
+  const trendingOn = keepByWatched(simklTrending).length > 0;
+  const sagasOn = kind !== 'series' && sagas.length > 0;
+  const rowKeys = !v2 ? [] : lens === 'titles' ? ['library', 'grid']
+    : lens === 'foryou' ? ['airing', 'trending', 'sagas', ...recRows.map((_, i) => `rec-${i}`)]
+      : lens === 'nobody' ? ['house'] : lens === 'watchlist' ? ['watchlist'] : [];
+  const rowEmpty = !v2 ? [] : lens === 'titles' ? (libraryOn ? [] : ['library'])
+    : lens === 'foryou' ? [
+      ...(airingOn ? [] : ['airing']), ...(trendingOn ? [] : ['trending']), ...(sagasOn ? [] : ['sagas']),
+      ...recRows.flatMap((r, i) => (keepByWatched(r.items).length === 0 ? [`rec-${i}`] : [])),
+    ] : [];
+  const rowsArrange = usePageArrangement(`discover-${lens}`, rowKeys, { empty: rowEmpty });
+  // One Arrange button and bar for the page: it arranges the lenses and the rows together.
+  const lensArranging = lensArrange.arranging;
+  const setLensArranging = lensArrange.setArranging;
+  useEffect(() => {
+    if (lensArranging !== rowsArrange.arranging) setLensArranging(rowsArrange.arranging);
+  }, [lensArranging, rowsArrange.arranging, setLensArranging]);
+  const arrangeAll = {
+    ...rowsArrange,
+    reset: () => { rowsArrange.reset(); lensArrange.reset(); },
+    isDefault: rowsArrange.isDefault && lensArrange.isDefault,
+  };
+  const arranging = v2 && rowsArrange.arranging;
   // On a phone the tabs sit in rows of equal buttons, never a strip to swipe:
   // five go three and two, four go two and two.
   const lensSpan = (i: number) => {
@@ -741,7 +787,75 @@ export default function DiscoverPage() {
     </>
   );
 
+  const sortFilters = !isTV && (sortOptions || hasFilters) ? (
+      <div className="relative flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
+        {sortOptions && (
+          <div ref={sortPop.ref} className="flex-1 sm:flex-none sm:relative">
+            <button
+              type="button"
+              onClick={() => sortPop.setOpen(!sortPop.open)}
+              aria-expanded={sortPop.open}
+              className="w-full h-10 sm:h-9 px-3.5 sm:px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center justify-between sm:justify-start gap-1.5"
+              style={{ background: 'var(--color-surface-hover)' }}
+            >
+              <span><span className="text-muted">Sort</span> {sortLabel}</span>
+              <ChevronDownIcon className="w-3.5 h-3.5" />
+            </button>
+            {sortPop.open && (
+              <div ref={sortPop.fit} className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-52 p-1.5 rounded-2xl overflow-y-auto" style={panelStyle}>
+                {sortOptions.map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    onClick={() => pickSort(o.key)}
+                    className={`w-full h-10 px-3 rounded-lg text-sm text-left flex items-center justify-between ${sortValue === o.key ? 'text-default' : 'text-muted hover:text-default hover:bg-surface-hover'}`}
+                  >
+                    {o.label}
+                    {sortValue === o.key && <CheckIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {hasFilters && (
+          <div ref={filtersPop.ref} className={sortOptions ? 'sm:relative' : 'flex-1 sm:flex-none sm:relative'}>
+            <button
+              type="button"
+              onClick={() => filtersPop.setOpen(!filtersPop.open)}
+              aria-expanded={filtersPop.open}
+              aria-label={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
+              className={`relative h-10 sm:h-9 ${sortOptions ? 'w-10 sm:w-auto justify-center' : 'w-full sm:w-auto justify-between sm:justify-start'} sm:pl-3 sm:pr-2 px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center gap-2 disc-filters-btn ${filtersPop.open ? 'is-open' : ''}`}
+              data-open={filtersPop.open || undefined}
+            >
+              <AdjustmentsHorizontalIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+              <span className={sortOptions ? 'hidden sm:inline' : ''}>Filters</span>
+              {filterCount > 0 && (
+                <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary-solid)' }}>{filterCount}</span>
+              )}
+            </button>
+            {filtersPop.open && (
+              <div ref={filtersPop.fit} data-filters-panel className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-[min(560px,92vw)] p-5 rounded-2xl flex flex-col gap-4 overflow-y-auto overscroll-contain" style={panelStyle}>
+                {filtersBody}
+              </div>
+            )}
+          </div>
+        )}
+{!v2 && (
+          <button type="button" onClick={() => { void surprise(); }} aria-label="Surprise me" className="sm:hidden h-10 w-10 shrink-0 rounded-xl inline-flex items-center justify-center text-default" style={{ background: 'var(--color-surface-hover)' }}>
+          <ArrowsRightLeftIcon className="w-5 h-5" />
+        </button>
+)}
+      </div>
+  ) : null;
+
   const Wrapper = isTV ? TVPageProvider : Fragment;
+  const surpriseButton = (
+    <div className="flex items-center gap-2 flex-wrap">
+      <ArrangeButton arrange={arrangeAll} />
+      <V2Button onClick={() => { void surprise(); }} icon={<ArrowsRightLeftIcon className="w-4 h-4" />}>Surprise me</V2Button>
+    </div>
+  );
   const spinner = (
     <div className="flex items-center justify-center py-24 text-muted">
       <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -788,19 +902,64 @@ export default function DiscoverPage() {
   const watchedNote = watchedFilter === 'hide' ? 'Hiding what you’ve watched' : watchedFilter === 'only' ? 'Only what you’ve watched' : enableWatchedIndicators ? '✓ marks what you’ve seen' : '';
   const rowHeading = (title: React.ReactNode, note?: React.ReactNode) => (
     <div className="flex items-baseline gap-2 mb-3 flex-wrap">
-      <h3 className="text-base font-semibold font-display text-default">{title}</h3>
+      {v2 ? <h2 className="text-lg font-semibold">{title}</h2> : <h3 className="text-base font-semibold font-display text-default">{title}</h3>}
       {note}
     </div>
   );
+  // v2 titles each part of a lens the way the other v2 pages title their sections.
+  const sectionTitle = v2 ? 'text-lg font-semibold' : 'text-lg sm:text-xl font-semibold font-display text-default';
+  // One row of a lens: in v2 a section that can be moved, folded and hidden (and sized); in Classic the plain heading and body.
+  const gridAttrs = (id: string) => (v2 ? rowsArrange.cardAttrs(id) : {});
+  const gridHandle = (id: string, label: string) => (v2 ? <StretchHandle arrange={rowsArrange} id={id} kind="posters" label={label} /> : null);
+  const row = (id: string, title: string, note: React.ReactNode, body: React.ReactNode, o: { cards?: boolean; mb?: string; actions?: React.ReactNode; empty?: string } = {}) => (
+    v2 ? (
+      <ArrangeSection
+        key={id} arrange={rowsArrange} id={id} title={title} meta={note} cards={o.cards} actions={o.actions}
+        emptyNote={rowsArrange.isEmpty(id) ? o.empty : undefined}
+      >
+        {body}
+      </ArrangeSection>
+    ) : (
+      <div key={id} className={o.mb ?? 'mb-8'}>{rowHeading(title, note)}{body}</div>
+    )
+  );
+  const gridCls = `${GRID} arrange-cardgrid`;
+  const titlesHeading = describing ? 'From your description' : describeGrid({ sort, kind, genre, decade, minRating, length, query: debouncedQuery });
+  const titlesDescribe = (
+    <>
+      {debouncedQuery && !isTV && (
+        describing ? (
+          <button type="button" onClick={() => { setDescribeResults(null); setDescribeError(null); }} className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>Back to title matches</button>
+        ) : (
+          <button type="button" onClick={() => { void runDescribe(); }} title="Describe a plot you half-remember - results are checked against TMDb, never invented" className="text-sm font-medium inline-flex items-center gap-1" style={{ color: 'var(--color-primary)' }}>
+            <SparklesIcon className="w-4 h-4" />Not it? Describe it instead
+          </button>
+        )
+      )}
+    </>
+  );
+  const rowLabels: Record<string, string> = {
+    library: 'From your library', grid: typeof titlesHeading === 'string' ? titlesHeading : 'Titles', airing: 'Airing this season', trending: 'Trending on SIMKL',
+    sagas: 'Finish the saga', house: 'Nobody here has seen these', watchlist: 'Your watchlist',
+    ...Object.fromEntries(recRows.map((r, i) => [`rec-${i}`, r.reason])),
+  };
 
   return (
     <Wrapper>
       {layoutMode !== 'nebula' && (
-        <Header title="Discover" subtitle="Browse or search for something to watch, then open it straight in Stremio or Nuvio" />
+        <Header
+          title="Discover"
+          subtitle={v2 ? 'Find something to watch for anyone in the house' : 'Browse or search for something to watch, then open it straight in Stremio or Nuvio'}
+          actions={v2 ? surpriseButton : undefined}
+        />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-4 md:p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-          {layoutMode === 'nebula' && <h1 className="sr-only">Discover</h1>}
+          {layoutMode === 'nebula' && (v2
+            ? <NebulaPageHeading title="Discover" subtitle="Find something to watch for anyone in the house" actions={surpriseButton} />
+            : <h1 className="sr-only">Discover</h1>)}
+
+          {v2 && <ArrangeBar arrange={arrangeAll} />}
 
           {/* The search, what kind, and Surprise me. TV has no search - typing on a remote isn't worth it. */}
           <div className="flex flex-wrap items-center gap-3">
@@ -843,22 +1002,64 @@ export default function DiscoverPage() {
                 </Focus>
               ))}
             </div>
-            <Focus tv={isTV} onEnter={() => { void surprise(); }}>
+            {v2 && sortFilters}
+            {!v2 && <Focus tv={isTV} onEnter={() => { void surprise(); }}>
               <button type="button" onClick={() => { void surprise(); }} className="h-10 px-3.5 rounded-xl text-sm font-medium text-default hidden sm:inline-flex items-center gap-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
                 <ArrowsRightLeftIcon className="w-4 h-4" />
                 Surprise me
               </button>
-            </Focus>
+            </Focus>}
           </div>
 
           {/* What you are looking through, and in what order and with what filters. */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            {arranging ? (
+              <div className="w-full flex flex-wrap gap-2" role="group" aria-label="Arrange the lenses">
+                {lenses.map((l) => (
+                  <SortableItem key={l.key} scope={lensArrange.sort} itemKey={l.key}>
+                    {(d) => (
+                      <div
+                        ref={d.ref as React.Ref<HTMLDivElement>}
+                        style={d.style}
+                        className={`arrange-section-on inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full ${d.className}`}
+
+                      >
+                        <ArrangeGrip drag={d} label={l.label} />
+                        <span className="px-1 text-[15px] font-medium">{l.label}</span>
+                        <button
+                          type="button"
+                          className="arrange-icon"
+                          aria-label={`Hide ${l.label}`}
+                          title={`Hide ${l.label}`}
+                          disabled={lenses.length < 2}
+                          onClick={() => lensArrange.hide(l.key)}
+                        >
+                          <EyeIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </SortableItem>
+                ))}
+              </div>
+            ) : v2 ? (
+              <div className="w-full">
+                <PageToolbar
+                  animate={false}
+                  filterTabs={{
+                    options: lenses.map((l) => ({ key: l.key, label: l.label, count: l.count })),
+                    activeKey: lens,
+                    onChange: (key) => pickLens(key as Lens),
+                    layoutId: 'discover-lens-tabs',
+                  }}
+                />
+              </div>
+            ) : (
             <div className="grid grid-cols-6 gap-1.5 w-full sm:w-auto sm:flex sm:flex-wrap sm:gap-2">
               {lenses.map((l, i) => (
-                <Focus key={l.key} tv={isTV} onEnter={() => setLens(l.key)}>
+                <Focus key={l.key} tv={isTV} onEnter={() => pickLens(l.key)}>
                   <button
                     type="button"
-                    onClick={() => setLens(l.key)}
+                    onClick={() => pickLens(l.key)}
                     aria-pressed={lens === l.key}
                     className={`px-1.5 sm:px-4 py-2 sm:py-1.5 rounded-full text-[14px] sm:text-[15px] font-medium text-center whitespace-nowrap transition-colors ${lens === l.key ? 'text-default disc-choice-on' : 'text-muted hover:text-default'}`}
                     style={{ gridColumn: `span ${lensSpan(i)}` }}
@@ -869,66 +1070,9 @@ export default function DiscoverPage() {
                 </Focus>
               ))}
             </div>
-
-            {!isTV && (sortOptions || hasFilters) && (
-              <div className="relative flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
-                {sortOptions && (
-                  <div ref={sortPop.ref} className="flex-1 sm:flex-none sm:relative">
-                    <button
-                      type="button"
-                      onClick={() => sortPop.setOpen(!sortPop.open)}
-                      aria-expanded={sortPop.open}
-                      className="w-full h-10 sm:h-9 px-3.5 sm:px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center justify-between sm:justify-start gap-1.5"
-                      style={{ background: 'var(--color-surface-hover)' }}
-                    >
-                      <span><span className="text-muted">Sort</span> {sortLabel}</span>
-                      <ChevronDownIcon className="w-3.5 h-3.5" />
-                    </button>
-                    {sortPop.open && (
-                      <div ref={sortPop.fit} className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-52 p-1.5 rounded-2xl overflow-y-auto" style={panelStyle}>
-                        {sortOptions.map((o) => (
-                          <button
-                            key={o.key}
-                            type="button"
-                            onClick={() => pickSort(o.key)}
-                            className={`w-full h-10 px-3 rounded-lg text-sm text-left flex items-center justify-between ${sortValue === o.key ? 'text-default' : 'text-muted hover:text-default hover:bg-surface-hover'}`}
-                          >
-                            {o.label}
-                            {sortValue === o.key && <CheckIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {hasFilters && (
-                  <div ref={filtersPop.ref} className={sortOptions ? 'sm:relative' : 'flex-1 sm:flex-none sm:relative'}>
-                    <button
-                      type="button"
-                      onClick={() => filtersPop.setOpen(!filtersPop.open)}
-                      aria-expanded={filtersPop.open}
-                      aria-label={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
-                      className={`relative h-10 sm:h-9 ${sortOptions ? 'w-10 sm:w-auto justify-center' : 'w-full sm:w-auto justify-between sm:justify-start'} sm:pl-3 sm:pr-2 px-3 rounded-xl sm:rounded-[10px] text-sm font-medium text-default inline-flex items-center gap-2 disc-filters-btn ${filtersPop.open ? 'is-open' : ''}`}
-                      data-open={filtersPop.open || undefined}
-                    >
-                      <AdjustmentsHorizontalIcon className="w-5 h-5 sm:w-4 sm:h-4" />
-                      <span className={sortOptions ? 'hidden sm:inline' : ''}>Filters</span>
-                      {filterCount > 0 && (
-                        <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold inline-flex items-center justify-center text-white ${sortOptions ? 'absolute -top-1.5 -right-1.5 sm:static' : ''}`} style={{ background: 'var(--color-primary-solid)' }}>{filterCount}</span>
-                      )}
-                    </button>
-                    {filtersPop.open && (
-                      <div ref={filtersPop.fit} data-filters-panel className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-[min(560px,92vw)] p-5 rounded-2xl flex flex-col gap-4 overflow-y-auto overscroll-contain" style={panelStyle}>
-                        {filtersBody}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <button type="button" onClick={() => { void surprise(); }} aria-label="Surprise me" className="sm:hidden h-10 w-10 shrink-0 rounded-xl inline-flex items-center justify-center text-default" style={{ background: 'var(--color-surface-hover)' }}>
-                  <ArrowsRightLeftIcon className="w-5 h-5" />
-                </button>
-              </div>
             )}
+
+            {!v2 && sortFilters}
           </div>
 
           {/* TV: the order and genre as rows of pills - a remote can't drive a popup. */}
@@ -956,6 +1100,41 @@ export default function DiscoverPage() {
           {/* ---------- Titles ---------- */}
           {lens === 'titles' && (
             <section className="mt-5" aria-label="Titles">
+              {v2 ? rowsArrange.shown.map((id) => (id === 'library'
+                ? row('library', 'From your library', null, (
+                  <div className={gridCls} {...gridAttrs('library')}>{instantOnly.map((item) => card(item, `inst:${item.id}`))}{gridHandle('library', 'From your library')}</div>
+                ), { cards: true, empty: 'From your library · shows when your library has a match' })
+                : row('grid', typeof titlesHeading === 'string' ? titlesHeading : 'Titles', null, (
+                  <>
+              <p className="text-[13px] text-muted mb-4">{[describing ? 'Every one checked against TMDb, so nothing invented shows up' : debouncedQuery ? '' : sortInfo.about, watchedNote].filter(Boolean).join(' · ')}</p>
+              {describing ? (
+                describeBusy ? <p className="text-sm text-muted py-8 text-center">Working out what that could be…</p>
+                  : describeError ? <p className="text-sm text-muted py-8 text-center max-w-lg mx-auto">{describeError}</p>
+                    : <div className={GRID}>{keepByWatched(describeResults ?? []).map((item) => card(item, `desc:${item.id}`))}</div>
+              ) : isLoading ? spinner : shownItems.length === 0 ? (
+                emptyNote(filterCount > 0 ? 'Nothing here with these filters.' : 'No results found.')
+              ) : (
+                <>
+                  {/* The one unbounded grid here - windowed, so only rows near the screen are real. */}
+                  <VirtualPosterGrid items={shownItems} getKey={(item) => item.id} gridClassName={GRID} disabled={isTV} renderItem={(item) => card(item, `grid:${item.id}`)} />
+                  {!debouncedQuery && (
+                    <div className="mt-8 flex flex-col items-center justify-center gap-3 py-6">
+                      {isLoadingMore && (
+                        <div className="flex items-center gap-2 text-sm text-muted">
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          Loading more…
+                        </div>
+                      )}
+                      {!hasMore && shownItems.length >= 40 && <p className="text-xs text-muted">That’s everything this list has here.</p>}
+                      <div ref={sentinelRef} aria-hidden className="h-px w-full" />
+                    </div>
+                  )}
+                </>
+              )}
+                  </>
+                ), { actions: titlesDescribe })
+              )) : (
+                <>
               {instantOnly.length > 0 && !describing && (
                 <div className="mb-6">
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-2 text-muted">From your library</p>
@@ -963,7 +1142,7 @@ export default function DiscoverPage() {
                 </div>
               )}
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="text-lg sm:text-xl font-semibold font-display text-default [text-wrap:balance]">
+                <h2 className={`${sectionTitle} [text-wrap:balance]`}>
                   {describing ? 'From your description' : describeGrid({ sort, kind, genre, decade, minRating, length, query: debouncedQuery })}
                 </h2>
                 {debouncedQuery && !isTV && (
@@ -999,6 +1178,8 @@ export default function DiscoverPage() {
                       <div ref={sentinelRef} aria-hidden className="h-px w-full" />
                     </div>
                   )}
+                </>
+              )}
                 </>
               )}
             </section>
@@ -1042,6 +1223,26 @@ export default function DiscoverPage() {
                               );
                             })()}
                             {person.person.bio && <p className="text-[15px] sm:text-[17px] leading-relaxed text-default" style={{ maxWidth: 720, opacity: 0.9 }}>{person.person.bio}</p>}
+                            {(() => {
+                              // Where the facts came from, and a way to read more: nothing
+                              // when TMDb had it all and there is no IMDb page to offer. The
+                              // IMDb link leaves the app, so it is not on TV.
+                              const said = person.person.factsFrom === 'wikipedia' ? wikipediaLine(person.person.factsFilled) : null;
+                              const none = !person.person.bio && person.source !== 'lumiere' ? 'No biography yet on TMDb or Wikipedia.' : null;
+                              const note = said && none ? `${said}. ${none}` : said || none;
+                              const imdb = !isTV && person.person.imdbId ? `https://www.imdb.com/name/${person.person.imdbId}/` : null;
+                              if (!note && !imdb) return null;
+                              return (
+                                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5 text-[14px] text-muted">
+                                  {note && <span>{note}</span>}
+                                  {imdb && (
+                                    <a href={imdb} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-[5px] rounded-full border border-default text-default font-semibold no-underline hover:opacity-80">
+                                      IMDb page ↗
+                                    </a>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                           <div className="flex flex-col items-center sm:items-end gap-3 shrink-0">
                             <span className="text-[17px] font-semibold text-default">{person.results.length} title{person.results.length === 1 ? '' : 's'}</span>
@@ -1110,30 +1311,36 @@ export default function DiscoverPage() {
                     <Pill key={m} tv={isTV} on={recMode === m} onClick={() => setRecMode(m)}>{m === 'personal' ? 'Personal' : 'Shared with…'}</Pill>
                   ))}
                   {isTV ? recUsers.map((u) => <Pill key={u.id} tv on={recUserId === u.id} onClick={() => setRecUserId(u.id)}>{u.name || u.username}</Pill>) : (
-                    <select value={recUserId} onChange={(e) => setRecUserId(e.target.value)} aria-label={recMode === 'personal' ? 'Show recommendations for' : 'First person'} className="h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0">
-                      {recUsers.map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
-                    </select>
+                    <label className={v2 ? 'v2-btn' : undefined}>
+                      {v2 && <span className="text-muted">For</span>}
+                      <select value={recUserId} onChange={(e) => setRecUserId(e.target.value)} aria-label={recMode === 'personal' ? 'Show recommendations for' : 'First person'} className={v2 ? 'bg-transparent text-default border-0 outline-none cursor-pointer font-medium' : 'h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0'}>
+                        {recUsers.map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
+                      </select>
+                    </label>
                   )}
                   {recMode === 'shared' && (
                     <>
-                      <span className="text-sm text-muted">and</span>
+                      {!v2 && <span className="text-sm text-muted">and</span>}
                       {isTV ? recUsers.filter((u) => u.id !== recUserId).map((u) => <Pill key={u.id} tv on={recUserId2 === u.id} onClick={() => setRecUserId2(u.id)}>{u.name || u.username}</Pill>) : (
-                        <select value={recUserId2} onChange={(e) => setRecUserId2(e.target.value)} aria-label="Second person" className="h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0">
-                          {recUsers.filter((u) => u.id !== recUserId).map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
-                        </select>
+                        <label className={v2 ? 'v2-btn' : undefined}>
+                          {v2 && <span className="text-muted">and</span>}
+                          <select value={recUserId2} onChange={(e) => setRecUserId2(e.target.value)} aria-label="Second person" className={v2 ? 'bg-transparent text-default border-0 outline-none cursor-pointer font-medium' : 'h-8 px-3 rounded-full text-[13px] font-medium cursor-pointer bg-surface-hover text-default border-0'}>
+                            {recUsers.filter((u) => u.id !== recUserId).map((u) => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
+                          </select>
+                        </label>
                       )}
                     </>
                   )}
                 </div>
               )}
 
-              {seasonalAnime.length === 0 && seasonalUnavailable && (
-                <div className="mb-6">{rowHeading('Airing this season')}<p className="text-xs text-muted -mt-2">{seasonalUnavailable}</p></div>
-              )}
-              {seasonalAnime.length > 0 && (
-                <div className="mb-8">
-                  {rowHeading('Airing this season', <span className="text-xs text-muted">Anime airing now, newest episodes first</span>)}
-                  <ScrollRow className="flex gap-3 pb-2 -mx-1 px-1">
+              {rowsArrange.shown.filter((id) => !id.startsWith('rec-')).map((id) => {
+                if (id === 'airing') {
+                  if (!airingOn && !arranging) return null;
+                  return seasonalAnime.length === 0
+                    ? row(id, 'Airing this season', null, <p className="text-xs text-muted">{seasonalUnavailable}</p>, { mb: 'mb-6', empty: 'Airing this season · shows when something is airing' })
+                    : row(id, 'Airing this season', <span className="text-xs text-muted">Anime airing now, newest episodes first</span>, (
+                      <ScrollRow className="flex gap-3 pb-2 -mx-1 px-1">
                     {seasonalAnime.map((a) => (
                       <button key={a.anilistId} type="button" onClick={() => { setSearchQuery(a.name); setLens('titles'); }} className="w-32 sm:w-36 shrink-0 text-left group" title={`Search Discover for ${a.name}`}>
                         <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-surface-hover shadow-xl">
@@ -1150,51 +1357,52 @@ export default function DiscoverPage() {
                       </button>
                     ))}
                   </ScrollRow>
-                </div>
-              )}
-
-              {keepByWatched(simklTrending).length > 0 && (
-                <div className="mb-8">
-                  {rowHeading('Trending on SIMKL')}
-                  <ScrollRow className="flex gap-3 pb-2 -mx-1 px-1">
+                    ), { empty: 'Airing this season · shows when something is airing' });
+                }
+                if (id === 'trending') {
+                  return row(id, 'Trending on SIMKL', null, (
+                    <ScrollRow className="flex gap-3 pb-2 -mx-1 px-1">
                     {keepByWatched(simklTrending).map((item) => <div key={item.id} className="w-32 sm:w-36 shrink-0">{card(item, `trend:${item.id}`)}</div>)}
                   </ScrollRow>
-                </div>
-              )}
-
-              {kind !== 'series' && sagas.length > 0 && (
-                <div className="space-y-8 mb-8">
-                  {sagas.map((saga) => (
+                  ), { empty: 'Trending on SIMKL · shows when there is something trending' });
+                }
+                if (id === 'sagas') {
+                  return row(id, 'Finish the saga', null, (
+                    <div className="space-y-8">
+                      {sagas.map((saga) => (
                     <div key={saga.collectionId}>
-                      {rowHeading(`Finish the saga: ${saga.name}`, <span className="text-xs text-muted">· watched {saga.watchedCount} of {saga.total}{saga.unwatched.length === 1 ? ' - one to go' : ''}</span>)}
-                      <div className={GRID}>
+                      {rowHeading(v2 ? saga.name : `Finish the saga: ${saga.name}`, <span className="text-xs text-muted">· watched {saga.watchedCount} of {saga.total}{saga.unwatched.length === 1 ? ' - one to go' : ''}</span>)}
+                      <div className={v2 ? gridCls : GRID}>
                         {saga.unwatched.map((part) => card({ id: part.id, type: 'movie', name: part.title, poster: part.poster, releaseInfo: part.releaseYear }, `saga:${part.id}`))}
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
+
+                    </div>
+                  ), { cards: false, empty: 'Finish the saga · shows when a collection is partly watched' });
+                }
+                return null;
+              })}
 
               {!recsLoaded ? spinner : recRows.length === 0 ? (
                 <div className="text-center py-16 text-muted"><p>No recommendations yet - watch a few things first, and we’ll suggest more.</p></div>
               ) : (
-                <div className="space-y-8">
-                  {recRows.map((row, ri) => {
-                    const visible = keepByWatched(row.items);
-                    if (visible.length === 0) return null;
-                    return (
-                      <div key={`${row.seedId}-${ri}`}>
-                        {rowHeading(row.reason, (
-                          <>
-                            {row.hasRealSignal && (
-                              <Badge variant="primary" size="sm" icon={<SparklesIcon className="w-3 h-3" />} title="Backed by real watch-time overlap in your household, not just this title's own score">Real match</Badge>
-                            )}
-                            <span className="text-xs text-muted">· Top rated {row.genre}</span>
-                          </>
-                        ))}
-                        <div className={GRID}>{visible.map((item) => card(item, `rec:${ri}:${item.id}`, true))}</div>
-                      </div>
-                    );
+                <div className={v2 ? '' : 'space-y-8'}>
+                  {recRows.map((r, ri) => {
+                    const id = `rec-${ri}`;
+                    if (!rowsArrange.shown.includes(id)) return null;
+                    const visible = keepByWatched(r.items);
+                    if (visible.length === 0 && !arranging) return null;
+                    return row(id, r.reason, (
+                      <>
+                        {r.hasRealSignal && (
+                          <Badge variant="primary" size="sm" icon={<SparklesIcon className="w-3 h-3" />} title="Backed by real watch-time overlap in your household, not just this title's own score">Real match</Badge>
+                        )}
+                        <span className="text-xs text-muted">· Top rated {r.genre}</span>
+                      </>
+                    ), (
+                      <div className={v2 ? gridCls : GRID} {...gridAttrs(id)}>{visible.map((item) => card(item, `rec:${ri}:${item.id}`, true))}{gridHandle(id, 'these titles')}</div>
+                    ), { cards: true, mb: '', empty: `${r.reason} · nothing left to show here` });
                   })}
                   <p className="text-xs text-muted italic text-center pt-2">
                     Rows come from the genres you actually spend the most time watching (weighted toward recent viewing), plus what’s on your Watchlist, and they shift as your habits do.
@@ -1210,9 +1418,21 @@ export default function DiscoverPage() {
               {!picksLoaded ? spinner : !householdPicks || keepByWatched(householdPicks.items).length === 0 ? (
                 <div className="text-center py-24 text-muted"><p>Nothing to suggest yet - once a few people here have watched things, this fills with what none of you has seen.</p></div>
               ) : (
+                v2 ? rowsArrange.shown.map((id) => id === 'house' && row(id, 'Nobody here has seen these', (
+                  <>
+                    {householdPicks.sharedAppeal && householdPicks.memberCount > 1 && (
+                      <Badge variant="primary" size="sm" icon={<SparklesIcon className="w-3 h-3" />} title="In genres several people here like">House pick</Badge>
+                    )}
+                  </>
+                ), (
+                  <>
+                    <p className="text-[13px] text-muted mb-3">{householdPicks.genres.join(', ')}, the genres the house likes</p>
+                    <div className={gridCls} {...gridAttrs('house')}>{keepByWatched(householdPicks.items).map((item) => card(item, `house:${item.id}`, true))}{gridHandle('house', 'For the household')}</div>
+                  </>
+                ), { cards: true })) : (
                 <>
                   <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-                    <h2 className="text-lg sm:text-xl font-semibold font-display text-default">Nobody here has seen these</h2>
+                    <h2 className={sectionTitle}>Nobody here has seen these</h2>
                     {householdPicks.sharedAppeal && householdPicks.memberCount > 1 && (
                       <Badge variant="primary" size="sm" icon={<SparklesIcon className="w-3 h-3" />} title="In genres several people here like">House pick</Badge>
                     )}
@@ -1220,6 +1440,7 @@ export default function DiscoverPage() {
                   <p className="text-[13px] text-muted mb-4">{householdPicks.genres.join(', ')}, the genres the house likes</p>
                   <div className={GRID}>{keepByWatched(householdPicks.items).map((item) => card(item, `house:${item.id}`, true))}</div>
                 </>
+               )
               )}
             </section>
           )}
@@ -1230,13 +1451,27 @@ export default function DiscoverPage() {
               {!watchlistLoaded ? spinner : watchlist.length === 0 ? emptyNote('Your watchlist is empty. Add titles with the bookmark on any poster.')
                 : shownWatchlist.length === 0 ? emptyNote('Nothing on your watchlist matches this view.')
                   : (
+                    v2 ? rowsArrange.shown.map((id) => id === 'watchlist' && row(id, 'Your watchlist', null, (
+                      <>
+                        <p className="text-[13px] text-muted mb-3">{[`${shownWatchlist.length} title${shownWatchlist.length === 1 ? '' : 's'}`, watchedNote].filter(Boolean).join(' · ')}</p>
+                        <div className={gridCls} {...gridAttrs('watchlist')}>{shownWatchlist.map((item) => card(item, `wl:${item.id}`))}{gridHandle('watchlist', 'Watchlist')}</div>
+                      </>
+                    ), { cards: true })) : (
                     <>
-                      <h2 className="text-lg sm:text-xl font-semibold font-display text-default">Your watchlist</h2>
+                      <h2 className={sectionTitle}>Your watchlist</h2>
                       <p className="text-[13px] text-muted mt-1 mb-4">{[`${shownWatchlist.length} title${shownWatchlist.length === 1 ? '' : 's'}`, watchedNote].filter(Boolean).join(' · ')}</p>
                       <div className={GRID}>{shownWatchlist.map((item) => card(item, `wl:${item.id}`))}</div>
                     </>
+                   )
                   )}
             </section>
+          )}
+          {v2 && (
+            <HiddenTray
+              arrange={arrangeAll}
+              labelOf={(id) => (rowLabels[id] || id)}
+              extra={lensArrange.hidden.map((k) => ({ id: `lens-${k}`, label: lensesAvail.find((l) => l.key === k)?.label || k, show: () => lensArrange.show(k) }))}
+            />
           )}
         </div>
       </div>

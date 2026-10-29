@@ -31,6 +31,10 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } fro
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
+import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
+import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
+import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
+import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -103,7 +107,10 @@ export default function UsersPage() {
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [peopleFilter, setPeopleFilter] = useState<'all' | 'dormant'>('all');
+  // Kept between visits when "Keep each page's filter" is on (Themes).
+  const [peopleFilter, setPeopleFilter] = useSavedFilter('users', 'all' as 'all' | 'dormant' | 'watching' | 'fix' | 'off', ['all', 'dormant', 'watching', 'fix', 'off']);
+  const { design } = usePageDesign();
+  const v2 = design === 'v2' && !isTV;
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -250,18 +257,76 @@ export default function UsersPage() {
   }, [users, groups]);
 
   const dormantCount = usersDisplay.filter((u) => u.dormant).length;
+  // v2's filters: who is watching, who needs a fix, who is switched off.
+  const watchingIds = useMemo(() => new Set(nowPlaying.map((np) => np.user.id)), [nowPlaying]);
+  const fixCount = usersDisplay.filter((u) => !!u.providerConnectionError).length;
+  const offCount = usersDisplay.filter((u) => u.status === 'expired').length;
+  const matchesFilter = (user: UserDisplay) => {
+    switch (peopleFilter) {
+      case 'dormant': return user.dormant;
+      case 'watching': return watchingIds.has(user.id);
+      case 'fix': return !!user.providerConnectionError;
+      case 'off': return user.status === 'expired';
+      default: return true;
+    }
+  };
   const filteredUsers = usersDisplay.filter(user =>
-    (peopleFilter === 'all' || user.dormant) && (
+    matchesFilter(user) && (
       (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
 
+  // Nebula's stat row - real counts from the same usersDisplay data the
+  // grid/table already render, not a new fetch.
+  // "Active" here is who's watching right now (live nowPlaying, deduped by
+  // user id) - same fix as Dashboard/Activity/Metrics' "Active Users",
+  // applied here per explicit request despite this stat previously meaning
+  // account status (not expired) paired with the "Expired" stat next to it.
+  // That account-status breakdown is deliberately NOT removed - "Expired"
+  // stays as-is, and each user row's own status badge still shows it - only
+  // this one stat's own meaning changed. The two no longer sum to Total
+  // Users as a result (they measure different things now); that's expected.
+  const activeCount = new Set(nowPlaying.map((np) => np.user.id)).size;
+
+  // v2: groups as sections the account can move, fold and hide, and people
+  // it can hide (lib/arrange.tsx). Sections follow the Groups page's order;
+  // anyone in no group gathers at the end.
+  const v2Groups = useMemo<V2Group[]>(() => groups.map((g) => ({ key: `g:${g.id}`, name: g.name, colorIndex: g.colorIndex, avatarUrl: (g as { avatarUrl?: string | null }).avatarUrl, addons: g.addons })), [groups]);
+  const groupArrange = usePageArrangement('users', useMemo(() => [...v2Groups.map((g) => g.key), NO_GROUP_KEY], [v2Groups]));
+  const peopleArrangeOwn = usePageArrangement('users-people', useMemo(() => users.map((u) => u.id), [users]));
+  const peopleArrange = { ...peopleArrangeOwn, arranging: groupArrange.arranging };
+  const peoplePins = usePinned('users');
+  // The bar's Reset puts it all back: the groups, anyone hidden, any pins.
+  const pageArrange = { ...groupArrange, isDefault: groupArrange.isDefault && peopleArrangeOwn.isDefault && peoplePins.pinned.length === 0, reset: () => { groupArrange.reset(); peopleArrangeOwn.reset(); peoplePins.reset(); } };
+  const v2People = useMemo<V2Person[]>(() => filteredUsers.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    avatarUrl: u.avatarUrl,
+    useGravatar: u.useGravatar,
+    colorIndex: u.colorIndex,
+    appLabel: providerLabel(u),
+    appColor: u.providerType === 'nuvio' ? '#8fb4f0' : u.providerType === 'jellyfin' ? (u.jellyfinServerKind && u.jellyfinServerKind !== 'jellyfin' ? '#b3aaff' : '#7dd3fc') : '#c4b5fd',
+    groups: u.groups,
+    status: u.status,
+    connectionError: u.providerConnectionError,
+    hasAddons: hasAddonList(u),
+    lastSeen: u.lastSeen,
+    watchTime: u.watchTime,
+    addonCount: u.addonCount,
+  })), [filteredUsers]);
   // Register this page's drag-end logic with the layout-level DndContext,
   // same shared mechanism Addons/Vault already use - only one page is ever
   // mounted at a time, so there's no cross-page collision despite the
   // "currently registered handler" being a single shared ref.
+  // v2 groups people by their group: dropping someone on a person in another
+  // group's section moves them to that group; within a group it reorders.
   const { registerDragEndHandler } = useVaultDrag();
+  const v2GroupKeyOf = useCallback((u: UserDisplay) => {
+    const g = v2Groups.find((x) => x.name === u.groups[0]);
+    return g ? g.key : NO_GROUP_KEY;
+  }, [v2Groups]);
   useEffect(() => {
     const handleDragEnd = (event: DragEndEvent) => {
       const { active, over } = event;
@@ -269,6 +334,32 @@ export default function UsersPage() {
       const oldIndex = filteredUsers.findIndex(u => u.id === active.id);
       const newIndex = filteredUsers.findIndex(u => u.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
+      if (v2) {
+        const mover = filteredUsers[oldIndex];
+        const target = filteredUsers[newIndex];
+        const fromKey = v2GroupKeyOf(mover);
+        const toKey = v2GroupKeyOf(target);
+        if (fromKey !== toKey) {
+          const toGroup = v2Groups.find((g) => g.key === toKey);
+          const fromGroup = v2Groups.find((g) => g.key === fromKey);
+          void (async () => {
+            try {
+              if (toGroup) await api.addUserToGroup(toGroup.key.replace(/^g:/, ''), mover.id);
+              if (fromGroup) await api.removeUserFromGroup(fromGroup.key.replace(/^g:/, ''), mover.id);
+              toast.success(`Moved ${mover.name} to ${toGroup?.name ?? 'No group'}`);
+            } catch (err) {
+              toast.error(`Couldn’t move ${mover.name}`, { line: err instanceof Error ? err.message : undefined });
+            } finally {
+              try {
+                const [u, g] = await Promise.all([api.getUsers(), api.getGroups()]);
+                setUsers(u);
+                setGroups(g);
+              } catch { /* keep what is shown */ }
+            }
+          })();
+          return;
+        }
+      }
       const reorderedIds = filteredUsers.map(u => u.id);
       const [movedId] = reorderedIds.splice(oldIndex, 1);
       reorderedIds.splice(newIndex, 0, movedId);
@@ -283,19 +374,19 @@ export default function UsersPage() {
       });
     };
     return registerDragEndHandler(handleDragEnd);
-  }, [filteredUsers, registerDragEndHandler]);
+  }, [filteredUsers, registerDragEndHandler, v2, v2Groups, v2GroupKeyOf]);
 
-  // Nebula's stat row - real counts from the same usersDisplay data the
-  // grid/table already render, not a new fetch.
-  // "Active" here is who's watching right now (live nowPlaying, deduped by
-  // user id) - same fix as Dashboard/Activity/Metrics' "Active Users",
-  // applied here per explicit request despite this stat previously meaning
-  // account status (not expired) paired with the "Expired" stat next to it.
-  // That account-status breakdown is deliberately NOT removed - "Expired"
-  // stays as-is, and each user row's own status badge still shows it - only
-  // this one stat's own meaning changed. The two no longer sum to Total
-  // Users as a result (they measure different things now); that's expected.
-  const activeCount = new Set(nowPlaying.map((np) => np.user.id)).size;
+  const watchingTitles = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const np of nowPlaying) if (!m.has(np.user.id)) m.set(np.user.id, np.item?.titlePending ? '' : (np.item?.name || ''));
+    return m;
+  }, [nowPlaying]);
+  const v2Summary = (() => {
+    const parts = [`${users.length} ${users.length === 1 ? 'person' : 'people'} in ${groups.length} group${groups.length === 1 ? '' : 's'}`];
+    if (activeCount) parts.push(`${activeCount} watching`);
+    if (fixCount) parts.push(`${fixCount} need${fixCount === 1 ? 's' : ''} a fix`);
+    return parts.join(' · ');
+  })();
   const expiredCount = usersDisplay.filter(u => u.status === 'expired').length;
 
   const toggleSelect = useCallback((id: string) => {
@@ -371,7 +462,7 @@ export default function UsersPage() {
     try {
       await api.syncUser(id);
       await refreshUsersQuietly();
-      toast.success(`${name} re-synced - SlickSync's setup is back on the account`);
+      toast.success(`${name} re-synced`, { line: 'SlickSync’s setup is back on the account.' });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Failed to sync ${name}`);
     } finally { setGuardBusyId(null); }
@@ -451,7 +542,9 @@ export default function UsersPage() {
     setIsDeleting(true);
     try {
       await api.deleteUser(deleteTarget.id);
-      toast.success(`${deleteTarget.name} deleted successfully`);
+      // v2 says where they went, with Undo; Classic keeps its plain toast.
+      if (v2) void showPersonDeletedWithUndo(deleteTarget.name, () => { api.getUsers().then(setUsers).catch(() => {}); });
+      else toast.success(`${deleteTarget.name} deleted successfully`);
       // Refresh users
       try {
         const usersData = await api.getUsers();
@@ -466,9 +559,18 @@ export default function UsersPage() {
       setIsDeleting(false);
       setDeleteTarget(null);
     }
-  }, [deleteTarget]);
+  }, [deleteTarget, v2]);
 
   const hasSelection = selectedIds.size > 0;
+
+  // The same fix-the-sign-in flow from the Fix sign-in button and the
+  // "Sign-in problem" pill, in both designs.
+  const openReconnect = useCallback((userId: string, userName: string) => {
+    setReconnectUserId(userId);
+    setReconnectUserName(userName);
+    setReconnectProvider(users.find((u) => u.id === userId)?.providerType || 'stremio');
+    setIsReconnectModalOpen(true);
+  }, [users]);
 
   const handleSyncStart = useCallback((userId: string) => {
     setSyncingUserIds((prev) => {
@@ -531,7 +633,10 @@ export default function UsersPage() {
   );
   const syncAllButton = isTV ? (
     <TVFocusable onEnterPress={handleSyncAll}>{syncAllButtonInner}</TVFocusable>
+  ) : v2 ? (
+    <div className="flex items-center gap-2"><ArrangeButton arrange={groupArrange} />{syncAllButtonInner}</div>
   ) : syncAllButtonInner;
+  const subtitle = isLoading ? 'Loading...' : v2 ? v2Summary : `${users.length} total user${users.length !== 1 ? 's' : ''}`;
 
   return (
     <Wrapper>
@@ -541,7 +646,7 @@ export default function UsersPage() {
       {layoutMode !== 'nebula' && (
         <Header
           title="Users"
-          subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
           actions={syncAllButton}
         />
       )}
@@ -557,11 +662,11 @@ export default function UsersPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Users"
-          subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
+          subtitle={subtitle}
           actions={syncAllButton}
         />
       )}
-      {layoutMode === 'nebula' && (
+      {layoutMode === 'nebula' && !v2 && (
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
           <NebulaCompactStatCard label="Total Users" value={isLoading ? '...' : users.length} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
           <NebulaCompactStatCard label="Active" value={isLoading ? '...' : activeCount} icon={<CheckIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
@@ -598,8 +703,9 @@ export default function UsersPage() {
           </div>
         );
       })}
-      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-      {layoutMode === 'nebula' && <NebulaGlassStripe />}
+      {v2 && <ArrangeBar arrange={pageArrange} />}
+      <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
         {/* Filters and controls */}
         <PageToolbar
           selectionConfig={{
@@ -613,7 +719,18 @@ export default function UsersPage() {
             onChange: (value) => setSearchQuery(value),
             placeholder: 'Search users...',
           }}
-          filterTabs={{
+          filterTabs={v2 ? {
+            options: [
+              { key: 'all', label: 'Everyone', count: usersDisplay.length },
+              { key: 'watching', label: 'Watching', count: activeCount },
+              { key: 'fix', label: 'Needs a fix', count: fixCount },
+              { key: 'off', label: 'Off', count: offCount },
+              { key: 'dormant', label: 'Dormant', count: dormantCount },
+            ],
+            activeKey: peopleFilter,
+            onChange: (key) => setPeopleFilter(key as typeof peopleFilter),
+            layoutId: 'users-people-filter',
+          } : {
             options: [
               { key: 'all', label: 'All' },
               { key: 'dormant', label: 'Dormant', count: dormantCount },
@@ -658,11 +775,76 @@ export default function UsersPage() {
           </div>
         ) : (
           <>
-            {/* Users grid/list */}
+            {/* Users grid/list - v2 groups people by their group instead. */}
+            {v2 ? (
+              <>
+                <PeopleV2
+                  people={v2People}
+                  groups={v2Groups}
+                  arrange={groupArrange}
+                  peopleArrange={peopleArrange}
+                  pins={peoplePins}
+                  view={viewMode === 'list' ? 'list' : 'grid'}
+                  watching={watchingTitles}
+                  syncing={syncingUserIds}
+                  onSync={async (p) => {
+                    handleSyncStart(p.id);
+                    try {
+                      await api.syncUser(p.id);
+                      toast.success(`Synced ${p.name}`);
+                    } catch (err) {
+                      toast.error(`Couldn’t sync ${p.name}`, { line: err instanceof Error ? err.message : undefined });
+                    } finally {
+                      handleSyncEnd(p.id);
+                    }
+                  }}
+                  onFix={(p) => openReconnect(p.id, p.name)}
+                  onReloadAddons={async (p) => {
+                    try {
+                      const res = await api.getUserStremioAddons(p.id);
+                      toast.success(`Reloaded ${p.name}’s addons`, { line: `${res.length} on their account.` });
+                      refreshUsersQuietly();
+                    } catch (err) {
+                      toast.error(`Couldn’t reload ${p.name}’s addons`, { line: err instanceof Error ? err.message : undefined });
+                    }
+                  }}
+                  onImportAddons={async (p) => {
+                    toast.success(`Importing addons from ${p.name}...`);
+                    try {
+                      const result = await api.importUserAddons(p.id);
+                      toast.success(result.message || `Successfully imported ${result.importedCount} addon${result.importedCount !== 1 ? 's' : ''}`);
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : `Failed to import addons from ${p.name}`);
+                    }
+                  }}
+                  onToggleActive={async (p) => {
+                    const on = p.status === 'expired';
+                    try {
+                      await api.toggleUserStatus(p.id, on);
+                      toast.success(`${p.name} switched ${on ? 'on' : 'off'}`);
+                      setUsers((prev) => prev.map((u) => (u.id === p.id ? { ...u, status: on ? 'active' : 'inactive' } : u)));
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : `Couldn’t switch ${p.name} ${on ? 'on' : 'off'}`);
+                    }
+                  }}
+                  onDelete={(p) => { const u = usersDisplay.find((x) => x.id === p.id); if (u) setDeleteTarget(u); }}
+                />
+                <HiddenTray
+                  arrange={groupArrange}
+                  labelOf={(key) => `${v2Groups.find((g) => g.key === key)?.name ?? 'No group'} (group)`}
+                  extra={peopleArrange.hidden.map((id) => ({
+                    id: `p:${id}`,
+                    label: usersDisplay.find((u) => u.id === id)?.name ?? 'Someone',
+                    show: () => peopleArrange.show(id),
+                  }))}
+                  note="Hidden only here: they keep syncing and watching as normal. Tap one to bring it back."
+                />
+              </>
+            ) : (
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
-                  <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <StaggerContainer key="grid" className="user-card-grid">
                     <AnimatePresence mode="popLayout">
                       <SortableContext items={filteredUsers.map(u => u.id)} strategy={rectSortingStrategy}>
                       {filteredUsers.map((user) => (
@@ -674,12 +856,7 @@ export default function UsersPage() {
                             isSelected={selectedIds.has(user.id)}
                             onToggleSelect={() => toggleSelect(user.id)}
                             onDelete={() => setDeleteTarget(user)}
-                            onReconnect={(userId, userName) => {
-                              setReconnectUserId(userId);
-                              setReconnectUserName(userName);
-                              setReconnectProvider(users.find((u) => u.id === userId)?.providerType || 'stremio');
-                              setIsReconnectModalOpen(true);
-                            }}
+                            onReconnect={openReconnect}
                             onToggleStatus={(userId, newStatus) => {
                               setUsers(prev => prev.map(u =>
                                 u.id === userId
@@ -791,10 +968,7 @@ export default function UsersPage() {
                                         </Badge>
                                       )}
                                       {user.providerConnectionError && (
-                                        <ExclamationTriangleIcon
-                                          className="w-4 h-4 text-warning shrink-0"
-                                          title={user.providerConnectionError}
-                                        />
+                                        <SignInPill user={user} onReconnect={openReconnect} />
                                       )}
                                     </div>
                                     <p className="text-sm text-subtle">
@@ -856,6 +1030,7 @@ export default function UsersPage() {
                 )}
               </AnimatePresence>
             </LayoutGroup>
+            )}
 
             {/* Empty state */}
             {filteredUsers.length === 0 && (
@@ -1070,6 +1245,24 @@ function SortableUserRow({ id, onClick, className, children }: { id: string; onC
   );
 }
 
+// The amber "Sign-in problem" pill: says what is wrong in words (the bare
+// warning triangle only explained itself on hover) and a tap starts the same
+// fix-the-sign-in flow as Fix sign-in. The error text is its tooltip.
+function SignInPill({ user, onReconnect }: { user: UserDisplay; onReconnect?: (userId: string, userName: string) => void }) {
+  return (
+    <button
+      type="button"
+      title={user.providerConnectionError || 'Sign-in problem'}
+      aria-label={`Sign-in problem for ${user.name}: ${user.providerConnectionError || 'sign-in stopped working'}`}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReconnect?.(user.id, user.name); }}
+      className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium cursor-pointer relative z-10 bg-warning-muted text-warning border border-transparent hover:border-current transition-colors"
+    >
+      <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+      Sign-in problem
+    </button>
+  );
+}
+
 // User Card Component - single click opens, long press/right-click shows menu
 function UserCard({
   user,
@@ -1177,10 +1370,8 @@ function UserCard({
       <Card
         variant="interactive"
         padding="md"
-        // The switch sits on the name line. The provider and sync badges sit
-        // beside the name on a wide card and get a line of their own on a
-        // narrow one (see .user-card-head); Limits and Caught up follow the
-        // group / addons / time line.
+        // One thing per line: name and switch, the badges, group and addons,
+        // then time with Limits and Caught up (see .user-card-head).
         className={`user-card group cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
@@ -1203,7 +1394,7 @@ function UserCard({
           <div className="user-card-name-cell">
             <Link
               href={`/users/${user.id}`}
-              className="user-card-name block font-semibold truncate transition-colors hover:text-primary text-default"
+              className="user-card-name block font-semibold break-words transition-colors hover:text-primary text-default"
               onClick={(e) => e.stopPropagation()}
             >
               {user.name}
@@ -1229,12 +1420,11 @@ function UserCard({
                 {providerTypeLabel(user.secondaryProviderType)}
               </Badge>
             )}
-            {user.providerConnectionError && (
-              <ExclamationTriangleIcon
-                className="w-4 h-4 text-warning shrink-0"
-                title={user.providerConnectionError}
-              />
-            )}
+            {user.providerConnectionError ? (
+              // A broken sign-in says so instead of a sync state: "Synced"
+              // beside it would only contradict it.
+              <SignInPill user={user} onReconnect={onReconnect} />
+            ) : (
             <SyncBadge
               key={`sync-badge-${user.id}`}
               userId={user.id}
@@ -1257,6 +1447,7 @@ function UserCard({
               isSyncing={syncingUserIds.has(user.id)}
               size="sm"
             />
+            )}
           </div>
           <div className="user-card-toggle">
             <ToggleSwitch
@@ -1275,9 +1466,9 @@ function UserCard({
           </div>
         </div>
         {/* Group, addons and time, then Limits and Caught up - no dots, like
-            the Groups cards. On a narrow card the time starts a second line
+            the Groups cards. The time starts a second line
             with the two after it. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm text-muted whitespace-nowrap">
+        <div className="user-card-meta mt-3 flex flex-wrap items-center gap-x-2.5 text-sm text-muted whitespace-nowrap">
           <span className="flex items-center gap-1.5">
             <UserGroupIcon className="w-4 h-4 text-secondary" />
             {user.groups.length > 0 ? (
@@ -1312,7 +1503,7 @@ function UserCard({
             <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
           </span>
         </div>
-        <div className="mt-1.5 flex items-center justify-between gap-3">
+        <div className="mt-2.5 flex items-center justify-between gap-3">
           <p className="text-xs text-subtle">
             {user.lastSeen === 'Never' ? 'Never seen' : `Last seen ${user.lastSeen}`}
           </p>

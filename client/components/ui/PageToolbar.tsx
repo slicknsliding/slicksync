@@ -287,6 +287,7 @@ export function PageToolbar({
             invitation, Add/Browse addon - simply did not exist on a phone.
             The only way in was the empty-state button, so once a list had
             anything in it the page became read-only on mobile. */}
+        {/* Grid or list for this page only (Themes sets the default). Phones are always grid. */}
         {primaryAction && <div>{primaryAction}</div>}
         {rightContent ? rightContent : rightActions}
       </div>

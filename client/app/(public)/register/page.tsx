@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ClipboardIcon, CheckIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
-import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
+import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { PubFrame, PubLogo, PubCard, PubButton, PubHeading, PubField, PubError, pubInputStyle } from '@/components/v2/PublicV2';
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -88,94 +88,44 @@ export default function RegisterPage() {
 
   if (INSTANCE_TYPE !== 'public') {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center p-6"
-        style={{ background: 'var(--color-bg)' }}
-      >
-        {/* max-w-md no-ops under globals.css's unlayered `* { max-width: 100vw }` - see NebulaTopbar.tsx */}
-        <div className="w-full text-center" style={{ maxWidth: '448px' }}>
-          <h1 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
-            Registration isn't available
-          </h1>
-          <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>
-            This instance is running in private mode, which uses a single shared
-            login rather than separate self-registered accounts.
-          </p>
-          <button
-            onClick={() => router.push('/login?mode=admin')}
-            className="text-sm hover:underline"
-            style={{ color: 'var(--color-primary)' }}
-          >
+      <PubFrame>
+        <PubLogo sub="This instance is private" />
+        <PubCard>
+          <PubHeading
+            title="Registration isn’t available"
+            line="This instance is running in private mode, which uses a single shared login rather than separate self-registered accounts."
+          />
+          <PubButton primary onClick={() => router.push('/login?mode=admin')}>
             Go to sign in
-          </button>
-        </div>
-      </div>
+          </PubButton>
+        </PubCard>
+      </PubFrame>
     );
   }
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: 'var(--color-bg)' }}
-    >
-      {/* Background gradient - matches the login page */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {/* Drawn without a blur filter - see .glow in globals.css. */}
-        <div className="glow glow-corner-a" />
-        <div className="glow glow-corner-b" />
-      </div>
+    <PubFrame>
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+        <PubLogo sub="Create the account that runs this SlickSync" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full relative"
-        style={{ maxWidth: '448px' }}
-      >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-            style={{ background: 'var(--color-primary)' }}
-          >
-            <SlickSyncLogo className="w-10 h-10" />
-          </motion.div>
-          <h1 className="text-3xl font-bold font-display mb-2" style={{ color: 'var(--color-text)' }}>
-            SlickSync
-          </h1>
-          <p style={{ color: 'var(--color-text-muted)' }}>
-            Create your admin account
-          </p>
-        </div>
-
-        <motion.div
-          className="rounded-2xl overflow-hidden"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-surface-border)',
-          }}
-        >
-          <div className="h-1" style={{ background: 'var(--color-primary)' }} />
-
-          <div className="p-6 space-y-4">
+        <PubCard>
+          <div className="space-y-4">
             {/* Account ID - server-generated, not user-chosen. This is the
                 permanent login identifier with no recovery flow, so it's
                 shown up front with a copy button and a clear warning rather
                 than buried until after registration completes. */}
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                Your account ID
-              </label>
-              <div className="flex items-center gap-2">
+            <div
+              className="rounded-2xl p-3.5"
+              style={{
+                border: '1px solid color-mix(in srgb, var(--color-warning, #f59e0b) 45%, transparent)',
+                background: 'color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent)',
+              }}
+            >
+              <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>Your account ID</p>
+              <div className="flex items-center gap-2 mt-2">
                 <div
-                  className="flex-1 px-4 py-3 rounded-xl text-sm font-mono truncate"
-                  style={{
-                    background: 'var(--color-bg)',
-                    border: '1px solid var(--color-surface-border)',
-                    color: 'var(--color-text)',
-                  }}
+                  className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-sm font-mono truncate"
+                  style={pubInputStyle}
                 >
                   {uuid || (uuidError ? '—' : 'Generating…')}
                 </div>
@@ -185,8 +135,7 @@ export default function RegisterPage() {
                   disabled={!uuid}
                   className="shrink-0 p-3 rounded-xl transition-all"
                   style={{
-                    background: 'var(--color-bg)',
-                    border: '1px solid var(--color-surface-border)',
+                    ...pubInputStyle,
                     opacity: uuid ? 1 : 0.5,
                   }}
                   aria-label="Copy account ID"
@@ -198,8 +147,8 @@ export default function RegisterPage() {
                   )}
                 </button>
               </div>
-              <p className="text-xs mt-2" style={{ color: 'var(--color-warning)' }}>
-                Save this somewhere safe - it's your login ID, and there's no way to recover it if lost.
+              <p className="text-[12.5px] mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                Save it somewhere safe: it&rsquo;s how you sign in, and it can&rsquo;t be recovered.
               </p>
               {uuidError && (
                 <p className="text-xs mt-2" style={{ color: 'var(--color-error)' }}>
@@ -212,10 +161,7 @@ export default function RegisterPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Password
-                </label>
+              <PubField label="Password" htmlFor="password">
                 <div className="relative">
                   <input
                     id="password"
@@ -223,22 +169,15 @@ export default function RegisterPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
-                    style={{
-                      background: 'var(--color-bg)',
-                      border: '1px solid var(--color-surface-border)',
-                      color: 'var(--color-text)',
-                    }}
+                    style={pubInputStyle}
                     placeholder="At least 4 characters"
                     autoComplete="new-password"
                   />
                   <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
                 </div>
-              </div>
+              </PubField>
 
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Confirm password
-                </label>
+              <PubField label="Password again" htmlFor="confirmPassword">
                 <div className="relative">
                   <input
                     id="confirmPassword"
@@ -246,66 +185,40 @@ export default function RegisterPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
-                    style={{
-                      background: 'var(--color-bg)',
-                      border: '1px solid var(--color-surface-border)',
-                      color: 'var(--color-text)',
-                    }}
+                    style={pubInputStyle}
                     placeholder="********"
                     autoComplete="new-password"
                   />
                   <PasswordToggleButton visible={confirmPasswordVisible} onToggle={() => setConfirmPasswordVisible((v) => !v)} />
                 </div>
-              </div>
+              </PubField>
 
-              {formError && (
-                <motion.p
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-sm"
-                  style={{ color: 'var(--color-error)' }}
-                >
-                  {formError}
-                </motion.p>
-              )}
+              {formError && <PubError>{formError}</PubError>}
 
-              <button
+              <PubButton
+                primary
                 type="submit"
                 disabled={isSubmitting || !uuid || !password || !confirmPassword}
-                className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                style={{
-                  background: 'var(--color-primary-solid)',
-                  color: 'white',
-                  opacity: isSubmitting || !uuid || !password || !confirmPassword ? 0.5 : 1,
-                }}
+                icon={isSubmitting ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
               >
-                {isSubmitting ? (
-                  <>
-                    <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Creating account...
-                  </>
-                ) : (
-                  <>
-                    <ArrowRightIcon className="w-5 h-5" />
-                    Create account
-                  </>
-                )}
-              </button>
+                {isSubmitting ? 'Creating account...' : 'Create account'}
+              </PubButton>
             </form>
-          </div>
-        </motion.div>
 
-        <p className="text-center mt-6 text-sm" style={{ color: 'var(--color-text-subtle)' }}>
-          Already have an account?{' '}
-          <button
-            onClick={() => router.push('/login?mode=admin')}
-            className="hover:underline"
-            style={{ color: 'var(--color-primary)' }}
-          >
-            Sign in
-          </button>
-        </p>
+            <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => router.push('/login?mode=admin')}
+                className="hover:underline font-semibold"
+                style={{ color: 'var(--color-primary)' }}
+              >
+                Sign in
+              </button>
+            </p>
+          </div>
+        </PubCard>
       </motion.div>
-    </div>
+    </PubFrame>
   );
 }

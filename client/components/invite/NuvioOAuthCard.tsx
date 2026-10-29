@@ -1,12 +1,8 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import {
-  ArrowTopRightOnSquareIcon,
-  ClipboardIcon,
-  CheckIcon,
-  ArrowPathIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { PubButton, PubCode, PubHeading, PubLink, PubQr, PubWaiting } from '@/components/v2/PublicV2';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { inviteApi } from '@/lib/invite-api';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -119,66 +115,45 @@ export function NuvioOAuthCard({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"
+      className="space-y-4 text-center"
     >
-      <h3 className="text-base font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-muted">{description}</p>
+      <PubHeading title={title} line={description} />
 
       {!code ? (
-        <button
-          type="button"
-          onClick={start}
-          disabled={busy}
-          className="mt-4 w-full rounded-xl bg-primary/20 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/30 disabled:opacity-50"
-        >
+        <PubButton primary onClick={start} disabled={busy}>
           {isStarting ? 'Starting…' : 'Get a sign-in code'}
-        </button>
+        </PubButton>
       ) : (
-        <div className="mt-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <span className="font-mono text-xl tracking-[0.2em]">{code}</span>
-            <button
-              type="button"
-              onClick={copy}
-              className="shrink-0 rounded-lg p-2 hover:bg-white/5"
-              aria-label="Copy the code"
-            >
-              {copied ? <CheckIcon className="w-5 h-5 text-primary" /> : <ClipboardIcon className="w-5 h-5" />}
-            </button>
+        <>
+          {webUrl && !expired && <PubQr data={webUrl} alt="Scan with your phone to open Nuvio" />}
+          <PubCode code={code} copied={copied} onCopy={copy} />
+
+          {expired
+            ? <p className="text-sm" style={{ color: 'var(--color-text-subtle)' }}>That code has expired.</p>
+            : isWaiting
+              ? <PubWaiting>{`Waiting for you to approve it in Nuvio${secondsLeft !== null ? ` · ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')} left` : ''}`}</PubWaiting>
+              : <p className="text-sm" style={{ color: 'var(--color-text-subtle)' }}>Approved.</p>}
+
+          <div className="grid gap-2">
+            {webUrl && (
+              <a
+                href={webUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2"
+                style={{ background: 'var(--color-primary-solid)', color: 'var(--color-on-primary-solid, #fff)' }}
+              >
+                <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                Open Nuvio to enter it
+              </a>
+            )}
+            {expired && (
+              <PubLink onClick={start} disabled={busy} icon={<ArrowPathIcon className="w-4 h-4" />} className="py-2">
+                Get a new code
+              </PubLink>
+            )}
           </div>
-
-          {webUrl && (
-            <a
-              href={webUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-            >
-              Open Nuvio to enter it
-              <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-            </a>
-          )}
-
-          <p className="text-xs text-subtle">
-            {expired
-              ? 'That code has expired.'
-              : isWaiting
-                ? `Waiting for you to approve it in Nuvio${secondsLeft !== null ? ` · ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')} left` : ''}`
-                : 'Approved.'}
-          </p>
-
-          {expired && (
-            <button
-              type="button"
-              onClick={start}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 self-start text-sm text-primary hover:underline disabled:opacity-50"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-              Get a new code
-            </button>
-          )}
-        </div>
+        </>
       )}
     </motion.div>
   );

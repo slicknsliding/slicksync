@@ -16,7 +16,7 @@
 // used. Served through the AIOStreams link - see server/utils/aioCollections.js
 // and routes/traxAddon.js. A tile opens its own page ([collectionId]/page.tsx).
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -29,6 +29,12 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageDesign, usePageArrangement } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { V2DetailHead, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
+import { V2Button, V2Status } from '@/components/v2/V2Bits';
+import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { JfLead, JfSwitcher, JfChoices, JfCollectionTile } from '@/components/v2/JellyfinCollectionsV2';
 import { Avatar } from '@/components/ui/Avatar';
 import { ServerStackIcon } from '@heroicons/react/24/outline';
 import { ServerCollections } from '@/components/jellyfin/ServerCollections';
@@ -102,6 +108,10 @@ export default function AiostreamsCollectionsPage() {
   const userId = searchParams.get('user') || '';
   const profileParam = searchParams.get('profile') || '';
   const { layoutMode } = useLayoutMode();
+  // v2 page design (Themes → Layout → Page design); Classic stays as it is.
+  const { design } = usePageDesign();
+  const isTV = useIsTV();
+  const v2 = design === 'v2' && !isTV;
   const [accounts, setAccounts] = useState<AioCollectionAccount[] | null>(
     () => api.peekGet<{ accounts: AioCollectionAccount[] }>('/jellyfin/collections/accounts')?.accounts ?? null,
   );
@@ -147,23 +157,64 @@ export default function AiostreamsCollectionsPage() {
     </Button>
   );
   const subtitle = 'Which catalogs show up as collections in AIOStreams’ apps and on your own Jellyfin server';
+  const switcher = (
+    <JfSwitcher
+      servers={servers || []}
+      accounts={accounts || []}
+      serverKey={selectedServer?.key || ''}
+      accountId={selected?.id || ''}
+      profileId={profile?.id || null}
+      onPickServer={pickServer}
+      onPickAccount={pick}
+      onPickProfile={pickProfile}
+    />
+  );
 
   return (
     <>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections' }]} className="text-xl font-semibold" />}
-          subtitle={subtitle}
+          subtitle={v2 ? '' : subtitle}
           actions={backButton}
         />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
           {layoutMode === 'nebula' && (
-            <NebulaPageHeading title="Jellyfin Collections" subtitle={subtitle} leading={backButton} />
+            v2
+              ? <NebulaPageHeading title="Catalogs" leading={backButton} />
+              : <NebulaPageHeading title="Jellyfin Collections" subtitle={subtitle} leading={backButton} />
           )}
 
-          <PageSection>
+          {v2 && (
+            selectedServer ? (
+              <ServerCollections key={selectedServer.key} server={selectedServer} canSwitch={choices > 1} onSwitch={() => pick('')} v2 switcher={switcher} />
+            ) : selected ? (
+              <AccountCollections
+                key={`${selected.id}:${profile?.id || ''}`}
+                account={selected}
+                profile={profile}
+                accounts={accounts || []}
+                onProfileChanged={loadAccounts}
+                v2
+                switcher={switcher}
+              />
+            ) : (
+              <>
+                <V2DetailHead lead={<JfLead />} title="Jellyfin Collections" facts="collections on a Jellyfin server or AIOStreams" />
+                <JfChoices
+                  loading={loading || (!userId && !serverKey && choices === 1)}
+                  servers={servers || []}
+                  accounts={accounts || []}
+                  onPickServer={pickServer}
+                  onPickAccount={pick}
+                />
+              </>
+            )
+          )}
+
+          {!v2 && <PageSection>
             {/* Same account grid -> compact strip as Nuvio Collections. */}
             {selectedServer ? (
               <ServerCollections key={selectedServer.key} server={selectedServer} canSwitch={choices > 1} onSwitch={() => pick('')} />
@@ -274,7 +325,7 @@ export default function AiostreamsCollectionsPage() {
                 onProfileChanged={loadAccounts}
               />
             )}
-          </PageSection>
+          </PageSection>}
         </div>
       </div>
     </>
@@ -285,15 +336,20 @@ export default function AiostreamsCollectionsPage() {
 type CopyTarget = { userId: string; profileId: string | null; name: string; detail: string; blocked: string | null };
 
 /** One AIOStreams account's (or profile's) collections: reorder, hide, remove, open. */
-function AccountCollections({ account, profile, accounts, onProfileChanged }: {
+function AccountCollections({ account, profile, accounts, onProfileChanged, v2 = false, switcher }: {
   account: AioCollectionAccount;
   profile: AioCollectionAccount['profiles'][number] | null;
   /** Every AIOStreams account here - where "Copy to" can send these. */
   accounts: AioCollectionAccount[];
   onProfileChanged: () => void;
+  /** The v2 page design: the same collections and actions, drawn as v2. */
+  v2?: boolean;
+  /** v2's button for which server, sign-in and profile this is. */
+  switcher?: ReactNode;
 }) {
   const router = useRouter();
   const sensors = useSortableSensors();
+  const arrange = usePageArrangement('jellyfin-collections', ['collections']);
   const userId = account.id;
   const profileId = profile?.id || null;
   const path = api.aioCollectionsPath(userId, profileId);
@@ -480,8 +536,112 @@ function AccountCollections({ account, profile, accounts, onProfileChanged }: {
     }
   };
 
+  const moreItems: V2MenuItem[] = [
+    ...(profile
+      ? (!shared && view?.profile ? [{ label: `Use ${account.name}’s collections`, icon: <ArrowUturnLeftIcon className="w-4 h-4" />, onClick: () => setConfirmReset(true) }] : [])
+      : (view?.configured ? [{ label: 'One per catalog', icon: <ArrowUturnLeftIcon className="w-4 h-4" />, onClick: () => setConfirmReset(true) }] : [])),
+    { label: 'Copy to another profile…', icon: <DocumentDuplicateIcon className="w-4 h-4" />, disabled: collections.length === 0 || targets.length === 0, onClick: () => setCopyOpen(true) },
+    { label: 'Import from a file…', icon: <ArrowUpTrayIcon className="w-4 h-4" />, onClick: () => fileRef.current?.click() },
+    { label: 'Export to a file', icon: <ArrowUpTrayIcon className="w-4 h-4" />, disabled: collections.length === 0, onClick: exportFile },
+    { label: 'Paste a code…', icon: <DocumentDuplicateIcon className="w-4 h-4" />, onClick: () => setPasteOpen(true) },
+    { label: 'Create a code…', icon: <DocumentDuplicateIcon className="w-4 h-4" />, disabled: collections.length === 0, onClick: () => setShareOpen(true) },
+  ];
+
+  const v2Status = !view ? undefined
+    : shared ? <V2Status tone="off">Using {account.name}’s</V2Status>
+      : view.configured ? <V2Status tone="ok">Arranged</V2Status>
+        : <V2Status tone="off">One per catalog</V2Status>;
+
   return (
     <>
+      {v2 && (
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }}
+          />
+          <V2DetailHead
+            lead={<JfLead />}
+            title="Jellyfin Collections"
+            status={v2Status}
+            facts={`${collections.length} collection${collections.length === 1 ? '' : 's'} · AIOStreams`}
+            actions={(
+              <>
+                <ArrangeButton arrange={arrange} />
+                <V2Button primary icon={<PlusIcon className="w-4 h-4" />} onClick={() => open('new')}>New collection</V2Button>
+              </>
+            )}
+            more={moreItems}
+          />
+          <ArrangeBar arrange={arrange} />
+          {switcher && <div className="mb-5">{switcher}</div>}
+
+          {view && !view.linked && (
+            <div className="v2-box v2-box-pad mb-4">
+              <p className="text-sm text-default">
+                These reach AIOStreams through this account&rsquo;s AIOStreams watch history link. Turn it on (their page &rarr; Watch-tracking integrations) and add its link to AIOStreams.{' '}
+                <Link href="/guides/aiostreams-watch-history" className="text-primary hover:underline">How</Link>
+              </p>
+            </div>
+          )}
+
+          {profile && view?.profile && (
+            <div className="v2-box v2-box-pad mb-4">
+              <p className="text-sm text-default">
+                {shared
+                  ? <>{profile.name} sees {account.name}&rsquo;s collections. Change anything below and {profile.name} gets their own &ndash; SlickSync sets that up for {profile.name} in AIOStreams.</>
+                  : <>{profile.name} has their own collections. {account.name} and the other profiles don&rsquo;t see these.</>}
+                {shared && !account.canSplit && <> To do that, SlickSync needs {account.name}&rsquo;s AIOStreams configuration password &ndash; sign {account.name} in again with it.</>}
+              </p>
+            </div>
+          )}
+
+          {arrange.shown.includes('collections') && (
+            <ArrangeSection
+              arrange={arrange}
+              id="collections"
+              title="Collections"
+              meta={view ? `${collections.length} · drag to reorder` : undefined}
+              noun="section"
+            >
+              {!view ? (
+                <V2Tiles wide={4}>
+                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-[170px] rounded-2xl bg-surface-hover animate-pulse" />)}
+                </V2Tiles>
+              ) : collections.length === 0 ? (
+                <div className="v2-box v2-box-pad">
+                  <p className="text-sm text-muted text-center">
+                    {view.configured
+                      ? 'No collections. Add one with New collection, or go back to One per catalog (in ⋯).'
+                      : 'No catalogs with titles yet. Make one on the Catalogs page.'}
+                  </p>
+                </div>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} onDragCancel={() => { draggedAt.current = Date.now(); }}>
+                  <SortableContext items={collections.map((c) => c.id)} strategy={rectSortingStrategy}>
+                    <V2Tiles wide={4}>
+                      {collections.map((c) => (
+                        <JfCollectionTile
+                          key={c.id}
+                          c={c}
+                          onOpen={() => open(c.id)}
+                          onToggle={() => change(collections.map((x) => (x.id === c.id ? { ...x, hidden: !x.hidden } : x)))}
+                          onRemove={() => setRemoving(c)}
+                        />
+                      ))}
+                    </V2Tiles>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </ArrangeSection>
+          )}
+          <div className="mt-4"><HiddenTray arrange={arrange} labelOf={() => 'Collections'} /></div>
+        </>
+      )}
+      {!v2 && (<>
             {view && !view.linked && (
               <Card padding="md" className="mb-4">
                 <p className="text-sm text-default">
@@ -581,6 +741,7 @@ function AccountCollections({ account, profile, accounts, onProfileChanged }: {
                 </SortableContext>
               </DndContext>
             )}
+      </>)}
 
       <ConfirmModal
         isOpen={!!removing}
