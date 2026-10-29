@@ -424,6 +424,31 @@ test('a deleted owner: their household loses its rows in AIOStreams, and the cho
   await rows.forgetOwnRows(prisma, decrypt, 'u1')
 })
 
+test('switched off but refused by AIOStreams: the healer takes the rows away later, then forgets', async () => {
+  const sync = { aioAiometadataOwn: { prof_kid: true } }
+  const { prisma, state } = fakePrisma({ sync })
+  const w = fakeWorld(baseConfig(), { version: '3.9.0' })
+  await rows.healOwnRows(prisma, decrypt)
+  assert.ok(variantOf(w.config))
+  // The route saves 'remove' when AIOStreams refuses the switch-off.
+  await rows.saveOwnRowsChoice(prisma, 'acc', 'prof_kid', 'remove')
+  assert.equal(state.sync.aioAiometadataOwn.prof_kid, 'remove')
+  const choices = await rows.ownRowsChoices(prisma, 'acc')
+  assert.notEqual(choices.prof_kid, true, 'reads as off')
+  await rows.healOwnRows(prisma, decrypt)
+  assert.equal(variantOf(w.config), undefined)
+  assert.equal(state.sync.aioAiometadataOwn?.prof_kid, undefined)
+})
+
+test('a deleted owner whose AIOStreams hangs: the deletion waits a few seconds at most', async () => {
+  const sync = { aioAiometadataOwn: { prof_kid: true } }
+  const { prisma } = fakePrisma({ sync })
+  global.fetch = () => new Promise(() => {})
+  const started = Date.now()
+  await rows.forgetOwnRows(prisma, decrypt, 'u1')
+  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
+})
+
 test('the 30-minute profile check (healProfileVariants) also looks after these', async () => {
   const { prisma } = fakePrisma({ sync: { aioAiometadataOwn: { prof_kid: true } } })
   const w = fakeWorld(baseConfig(), { version: '3.9.0' })

@@ -447,9 +447,13 @@ async function ownRowsChoices(prisma, accountId) {
   return flags && typeof flags === 'object' ? flags : {}
 }
 
-/** Keep (or forget, when off) the choice. Kept whether or not AIOStreams takes the change. */
+/**
+ * Keep (or forget, when off) the choice. Kept whether or not AIOStreams takes
+ * the change. 'remove': switched off, but AIOStreams refused to take the rows
+ * away - the 30-minute check keeps trying, then forgets it.
+ */
 async function saveOwnRowsChoice(prisma, accountId, profileId, on) {
-  await require('./aioSlickTrax').patchMap(prisma, accountId, AIOM_FLAGS, profileId, on ? true : null)
+  await require('./aioSlickTrax').patchMap(prisma, accountId, AIOM_FLAGS, profileId, on === 'remove' ? 'remove' : on ? true : null)
 }
 
 /**
@@ -478,7 +482,12 @@ async function healOwnRows(prisma, decrypt) {
       })
       if (!owner) continue
       try {
-        await syncOwnRows(prisma, decrypt, owner, profile)
+        if (flags[profile.id] === 'remove') {
+          await setOwnRowsVariant(prisma, decrypt, owner, profile, false)
+          await saveOwnRowsChoice(prisma, acc.id, profile.id, false)
+        } else {
+          await syncOwnRows(prisma, decrypt, owner, profile)
+        }
       } catch (e) {
         console.warn(`[AioProfileVariants] ${profile.name}'s own rows not brought up to date:`, e?.message)
       }
@@ -502,9 +511,10 @@ async function forgetOwnRows(prisma, decrypt, ownerId) {
     const accountId = owner.accountId || 'default'
     const choices = await ownRowsChoices(prisma, accountId)
     const profiles = await prisma.jellyfinProfile.findMany({ where: { ownerUserId: ownerId }, select: { id: true, name: true, ownerUserId: true, jellyfinUserId: true, skip: true } })
-    for (const profile of profiles.filter((p) => choices[p.id] === true)) {
+    for (const profile of profiles.filter((p) => choices[p.id])) {
       if (owner.aioConfigId && owner.aioConfigPassword) {
-        await setOwnRowsVariant(prisma, decrypt, owner, profile, false)
+        // A few seconds at most: an AIOStreams that doesn't answer must not hold up the deletion.
+        await withTimeout(setOwnRowsVariant(prisma, decrypt, owner, profile, false), SHORT_MS)
           .catch((e) => console.warn(`[AioProfileVariants] ${profile.name}'s own rows not taken away:`, e?.message))
       }
       await saveOwnRowsChoice(prisma, accountId, profile.id, false).catch(() => {})

@@ -897,9 +897,10 @@ export function MediaDetailModal({
     let cancelled = false;
     api.getSimilarItems(effectiveId, effectiveType).then((result) => {
       if (cancelled) return;
-      setSimilarItems(result.items);
-      setSimilarHasRealSignal(result.hasRealSignal);
-    }).finally(() => {
+      // An odd answer leaves the section empty rather than taking the whole window down.
+      setSimilarItems(Array.isArray(result?.items) ? result.items : []);
+      setSimilarHasRealSignal(!!result?.hasRealSignal);
+    }).catch(() => {}).finally(() => {
       if (!cancelled) setSimilarLoading(false);
     });
     return () => {

@@ -774,6 +774,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
         await rows.setOwnRowsVariant(prisma, decrypt, found.owner, found.profile, on);
       } catch (e) {
         error = e?.message || 'AIOStreams refused the change';
+        // Switched off but still in AIOStreams: the 30-minute check takes it away once it can.
+        if (!on) await rows.saveOwnRowsChoice(prisma, found.profile.accountId, found.profile.id, 'remove').catch(() => {});
       }
       res.json({ success: !error, profiles: await describeFor(found.owner.id), ...(error ? { error } : {}) });
     } catch (error) {
