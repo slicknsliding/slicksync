@@ -551,28 +551,28 @@ export function useNameFolds() {
   return { on, setOn };
 }
 
-/** Now Playing: the progress bar and times on the picture (the default) or under the card. */
+/** Now Playing: the progress bar and times under the card (the default) or on the picture. */
 export function useNowPlayingProgress() {
   const { arrangement, update } = useArrangement();
-  const where: 'on' | 'under' = arrangement.nowPlayingProgress === 'under' ? 'under' : 'on';
+  const where: 'on' | 'under' = arrangement.nowPlayingProgress === 'on' ? 'on' : 'under';
   const setWhere = useCallback((w: 'on' | 'under') => {
     update((prev) => {
-      const out: Arrangement = { ...prev, nowPlayingProgress: 'under' };
-      if (w === 'on') delete out.nowPlayingProgress;
+      const out: Arrangement = { ...prev, nowPlayingProgress: 'on' };
+      if (w === 'under') delete out.nowPlayingProgress;
       return out;
     });
   }, [update]);
   return { where, setWhere };
 }
 
-/** Continue Watching: time left and Up next on the picture (the default) or under the card, with the episode name. */
+/** Continue Watching: time left and Up next under the card with the episode name (the default), or on the picture. */
 export function useCwTime() {
   const { arrangement, update } = useArrangement();
-  const where: 'on' | 'under' = arrangement.cwTime === 'under' ? 'under' : 'on';
+  const where: 'on' | 'under' = arrangement.cwTime === 'on' ? 'on' : 'under';
   const setWhere = useCallback((w: 'on' | 'under') => {
     update((prev) => {
-      const out: Arrangement = { ...prev, cwTime: 'under' };
-      if (w === 'on') delete out.cwTime;
+      const out: Arrangement = { ...prev, cwTime: 'on' };
+      if (w === 'under') delete out.cwTime;
       return out;
     });
   }, [update]);

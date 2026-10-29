@@ -2,9 +2,9 @@
   {
     "version": "1.103.0",
     "date": "2026-10-29",
-    "title": "1.103.0 - Page design v2 everywhere, and make every page your own",
+    "title": "1.103.0 - Make every page your own, a first look at page design v2, and security fixes",
     "features": [
-      "Page design v2 across the whole app (Themes → Layout → Page design; Classic stays): Users grouped by their group with one status in plain words (Watching now, All synced, Needs a fix, Switched off) and one button (Sync or Fix sign-in), on narrow cards so more fit on a row.",
+      "Page design v2, a preview to try while it is still being worked on (Themes → Layout → Page design; Classic stays the default): Users grouped by their group with one status in plain words (Watching now, All synced, Needs a fix, Switched off) and one button (Sync or Fix sign-in), on narrow cards so more fit on a row.",
       "Groups show who is in each and the addons they give, with the group's own picture; Addons sort by what they give, with health in words and the groups that have them; Invitations put people waiting to join first with Approve and Reject on the row; Catalogs lead with their posters; the Vault puts what needs you on top with Fix, Renew or Test.",
       "Detail pages for a person, a group, an addon, an invite (with a QR code) and a catalog: a header with one status and the obvious button, a strip of numbers, and rarer actions in a ⋯ menu. Dashboard, Activity, Metrics, Discover, Collections, Tasks, AIOSync, Settings, What's New, Guides, a person's own pages, the sign-in and invite pages and the shared windows follow the same design.",
       "On every card: tags, a menu (long-press or right-click), rename in place, select several, drag to sort, and drop onto a tag or Protected.",
