@@ -1,7 +1,7 @@
 name: Docker Hub tag cleanup
 
-# Docker Hub keeps only the two floating tags, private and public. This
-# removes every other tag (old per-version tags, latest). Run it from the
+# Docker Hub keeps only the floating tags: public, latest (the same image
+# as public) and private. This removes every other tag (old per-version tags). Run it from the
 # Actions tab, or by pushing a tag named hub-cleanup-<anything>.
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete every tag except private and public
+      - name: Delete every tag except public, latest and private
         env:
           HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
           HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -36,7 +36,7 @@ jobs:
           done
           deleted=0; failed=0
           for t in $TAGS; do
-            case "$t" in private|public) continue ;; esac
+            case "$t" in private|public|latest) continue ;; esac
             code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $JWT" \
               "https://hub.docker.com/v2/repositories/$REPO/tags/$t/")
             if [ "$code" = 204 ]; then deleted=$((deleted+1)); else failed=$((failed+1)); echo "Could not delete $t ($code)"; fi

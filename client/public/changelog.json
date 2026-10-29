@@ -1,5 +1,41 @@
 [
   {
+    "version": "1.103.0",
+    "date": "2026-10-29",
+    "title": "1.103.0 - Page design v2 everywhere, and make every page your own",
+    "features": [
+      "Page design v2 across the whole app (Themes → Layout → Page design; Classic stays): Users grouped by their group with one status in plain words (Watching now, All synced, Needs a fix, Switched off) and one button (Sync or Fix sign-in), on narrow cards so more fit on a row.",
+      "Groups show who is in each and the addons they give, with the group's own picture; Addons sort by what they give, with health in words and the groups that have them; Invitations put people waiting to join first with Approve and Reject on the row; Catalogs lead with their posters; the Vault puts what needs you on top with Fix, Renew or Test.",
+      "Detail pages for a person, a group, an addon, an invite (with a QR code) and a catalog: a header with one status and the obvious button, a strip of numbers, and rarer actions in a ⋯ menu. Dashboard, Activity, Metrics, Discover, Collections, Tasks, AIOSync, Settings, What's New, Guides, a person's own pages, the sign-in and invite pages and the shared windows follow the same design.",
+      "On every card: tags, a menu (long-press or right-click), rename in place, select several, drag to sort, and drop onto a tag or Protected.",
+      "Arrange any page: move, fold and hide sections and single cards. Undo steps back one change and Cancel puts the page back as it was. Reset is always there.",
+      "Stretch cards to size by dragging a card's corner or with the arrow keys; phones keep their own size. Sections can be Full, Half or Third wide on laptops and up.",
+      "Your own menu bar (Themes → Layout → Arrange the menu): page order, what goes into More or is hidden (still reachable from search), one row or two, the logo's size, centred or on the left. The phone menu follows your rows.",
+      "Your defaults: Compact density (now the default), a start page, grid or list chosen once for every page, filters that stay, pinned people and addons, and a Full, Compact or Minimal page header.",
+      "Settings → Themes: Fold arrows Show or Hide (hidden by default), and a separate Tap a name to fold switch (off by default).",
+      "Needs you on the Dashboard can be dismissed, snoozed for a week or turned off for a whole kind; Settings → Notifications lists what is hidden with Show again.",
+      "Catalogs: drag the Nuvio and Jellyfin Collections pills to either side of the title (above or below it on a phone), line each row up left, centre or right, and size each pill on its own.",
+      "Now Playing shows how far in, how long is left and when it ends, plus the episode's name. When an app hasn't said where playback is, it estimates from when the title started, with a dashed bar and a short note; the app's own position always wins. Put the progress on the picture or under it in Settings → Themes.",
+      "A person's Home, redesigned: a Now Playing banner with Resume in their app, Continue Watching with time left, Upcoming on a strip of dates, their numbers in one row, and Recently watched beside their top five. People can arrange their own Home, and their pages follow the Original layout too.",
+      "Dashboard: Continue Watching as wide picture cards with time left or Up next, and Coming up as tiles with the poster, when it airs and who is watching, in Classic and v2.",
+      "Pop-ups redone: an icon, a short title and a second line, with buttons that do the next thing (Undo, Open Graveyard, Save changes, Show me, Try again). Errors stay until closed.",
+      "Activity: with AIOStreams or AIOMetadata picked, Profile lists each household's main profile beside its other profiles."
+    ],
+    "bugFixes": [
+      "On a phone, names, titles and status lines wrap instead of being cut off with \"…\"; tight rows move their buttons under the text, and banners grow to fit a long title.",
+      "Phones: a card's ⋯ menu opens over the page (upward near the bottom), tall windows start at the top and scroll, iPhone text fields no longer zoom the page, and dropdowns follow the theme instead of showing a blank white box.",
+      "A title's details rise from the bottom on a phone and open from the Now Playing picture.",
+      "Going to another page starts at the very top; Back still returns to where you were.",
+      "When SlickSync's database, Stremio, Nuvio or a Jellyfin server doesn't answer, a person's page tries again instead of signing them out.",
+      "A show whose next episode hasn't aired leaves Continue Watching and comes back the day it airs.",
+      "A Nuvio card on Now Playing shows for 5 minutes after Nuvio's own save, is replaced when another title starts, and leaves at the credits.",
+      "Settings: the section picker no longer stays outlined in white after you pick a section.",
+      "Arrange: Undo or Cancel that brings back a tab (Discover's lenses, Activity's tabs) switches back to it.",
+      "Catalogs no longer scrolls sideways on a phone; a catalog, Keep in step and Nuvio profiles keep working when a reply comes back incomplete.",
+      "The Vault opens a card with Enter, Add a person has a close button, and the menu logo's Small size is really smaller on a phone."
+    ]
+  },
+  {
     "version": "1.102.0",
     "date": "2026-10-22",
     "title": "1.102.0 - Your Jellyfin server for groups, a fuller member page, and a calmer look",

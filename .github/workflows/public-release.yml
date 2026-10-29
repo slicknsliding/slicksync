@@ -154,12 +154,14 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_IMAGE_NAME }}
           flavor: latest=false
-          # Floating tag only - no per-version tag. The instances track
-          # this moving tag, and a release is identified by its git tag and
-          # GitHub Release rather than by a second copy of the same image
-          # sitting in the registry forever.
+          # Floating tags only - no per-version tag. The instances track
+          # these moving tags (latest is the same image as public), and a
+          # release is identified by its git tag and GitHub Release rather
+          # than by a second copy of the same image sitting in the registry
+          # forever.
           tags: |
             type=raw,value=public
+            type=raw,value=latest
           labels: |
             org.opencontainers.image.title=slicksync-public
 
