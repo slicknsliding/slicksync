@@ -110,7 +110,7 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
         <div className="flex items-center gap-3.5 min-w-0">
           <UserAvatar userId={r.id} name={r.name} email={r.email} size="lg" />
           <div className="flex-1 min-w-0">
-            <div className="text-[17px] font-semibold text-default truncate">{r.name}</div>
+            <div className="text-[17px] font-semibold text-default break-words min-w-0">{r.name}</div>
             {r.status === 'accepted'
               ? <div className="mt-1"><V2Status tone="ok">Approved, waiting for them to sign in</V2Status></div>
               : <div className="mt-1"><V2Status tone="warn">Wants to join</V2Status></div>}

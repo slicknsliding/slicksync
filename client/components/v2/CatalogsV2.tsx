@@ -104,7 +104,7 @@ export function CatalogsV2({ lists, arrange, view, coverStyle, onTogglePin, onRe
             <V2Card action={action(l)}>
               <Cover list={l} coverStyle={coverStyle} tall />
               <div className="min-w-0">
-                <div className="text-[17px] font-semibold text-default truncate">{l.name}</div>
+                <div className="text-[17px] font-semibold text-default break-words min-w-0">{l.name}</div>
                 <div className="text-muted text-[13px] truncate">{sub(l)}</div>
               </div>
             </V2Card>

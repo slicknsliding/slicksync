@@ -1394,7 +1394,7 @@ function UserCard({
           <div className="user-card-name-cell">
             <Link
               href={`/users/${user.id}`}
-              className="user-card-name block font-semibold truncate transition-colors hover:text-primary text-default"
+              className="user-card-name block font-semibold break-words transition-colors hover:text-primary text-default"
               onClick={(e) => e.stopPropagation()}
             >
               {user.name}

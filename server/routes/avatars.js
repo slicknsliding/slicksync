@@ -61,7 +61,14 @@ module.exports = ({ imageUpload, prisma }) => {
   // POST /api/avatars/upload - accepts a single image file (field name "avatar"),
   // saves it under data/avatars/, and returns the URL to store as avatarUrl.
   // Used for both user and group pictures — the caller decides where to save the returned URL.
-  router.post('/upload', imageUpload.single('avatar'), async (req, res) => {
+  // A file the upload refuses (another type, over 5 MB) is the sender's mistake, so it answers 400.
+  const readPicture = (req, res, next) => imageUpload.single('avatar')(req, res, (err) => {
+    if (!err) return next();
+    const error = err.code === 'LIMIT_FILE_SIZE' ? 'That picture is over 5 MB' : (err.message || 'Could not read that picture');
+    res.status(400).json({ error });
+  });
+
+  router.post('/upload', readPicture, async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No image file provided (expected field name "avatar")' });

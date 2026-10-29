@@ -1265,9 +1265,11 @@ function VaultPageContent() {
           <ArrangeBar arrange={classicArrange} />
           {classicArrange.shown.map((id) => {
             const node = id === 'cost' ? costSection : id === 'renewals' ? renewalsSection : id === 'entries' ? entriesSection : null;
-            if (!node) return null;
+            // An empty section still has its place while arranging, as a dashed placeholder.
+            if (!node && !classicArrange.arranging) return null;
             return (
-              <ArrangePanel key={id} arrange={classicArrange} id={id} label={CLASSIC_SECTION_LABELS[id] ?? 'Section'} ownHeading={false}>{node}</ArrangePanel>
+              <ArrangePanel key={id} arrange={classicArrange} id={id} label={CLASSIC_SECTION_LABELS[id] ?? 'Section'} ownHeading={false}
+                emptyNote={node ? undefined : `${CLASSIC_SECTION_LABELS[id] ?? 'Section'} · shows when there is something in it`}>{node}</ArrangePanel>
             );
           })}
           <HiddenTray arrange={classicArrange} labelOf={(key) => `${CLASSIC_SECTION_LABELS[key] ?? 'Section'} (section)`} />

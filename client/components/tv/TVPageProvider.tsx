@@ -1,14 +1,8 @@
 'use client';
 
 import { ReactNode, useEffect, useRef } from 'react';
-import { FocusContext, useFocusable, init } from '@noriginmedia/norigin-spatial-navigation';
-
-// init() wires up the library's own global keydown listener (arrow keys +
-// Enter) - called once per app lifetime, guarded here since a page using
-// TVPageProvider can mount/unmount as you navigate. Only ever imported by
-// components already gated behind useIsTV(), so this never runs (and the
-// library never attaches a listener) on PC/mobile.
-let initialized = false;
+import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+import { initSpatialNav } from './spatialInit';
 
 // Root focus scope for a TV-mode page - establishes the FocusContext every
 // TVFocusable descendant on the page navigates within. One of these per
@@ -79,19 +73,13 @@ function useTVScrollPadding(active: boolean) {
   }, [active]);
 }
 
-function initOnce() {
-  if (initialized || typeof window === 'undefined') return;
-  initialized = true;
-  init({ debug: false, visualDebug: false, distanceCalculationMethod: 'center' });
-}
-
 export function TVPageProvider({ children }: { children: ReactNode }) {
   // Started while this first renders, not in an effect: a page that knows it
   // is on a TV from its first render (useIsTV's remembered answer) mounts its
   // TVFocusables at once, and React runs their effects before this one's -
   // each one measured itself against a library not started yet and threw
   // ("reading 'measureLayout'"), a dozen times per page.
-  initOnce();
+  initSpatialNav();
   useTVViewport(true);
   useTVScrollPadding(true);
 

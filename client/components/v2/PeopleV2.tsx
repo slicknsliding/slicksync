@@ -255,7 +255,7 @@ function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix }:
         <div className="flex items-center gap-3.5 min-w-0">
           <UserAvatar userId={p.id} name={p.name} email={p.email} colorIndex={p.colorIndex} src={p.avatarUrl || undefined} useGravatar={p.useGravatar} size="lg" />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default truncate">{p.name}</span>{pinMark}</div>
+            <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default break-words min-w-0">{p.name}</span>{pinMark}</div>
             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
               <V2AppPill label={p.appLabel} color={p.appColor} />
               {p.connectionError && <SignInPill p={p} onFix={onFix} />}

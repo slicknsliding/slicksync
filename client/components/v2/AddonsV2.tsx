@@ -241,7 +241,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
         <div className="flex items-center gap-3.5 min-w-0">
           <Logo a={a} size={48} />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0">{nameOf(a, 'text-[17px] font-semibold text-default truncate')}{shield(a)}{pinMark(a)}</div>
+            <div className="flex items-center gap-1.5 min-w-0">{nameOf(a, 'text-[17px] font-semibold text-default break-words min-w-0')}{shield(a)}{pinMark(a)}</div>
             <div className="text-muted text-[12.5px] truncate">{kindLine(a)}</div>
           </div>
         </div>

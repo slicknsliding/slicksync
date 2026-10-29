@@ -453,7 +453,8 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
     } catch (error) {
       console.error('Error proxying request:', error);
       errorMessage = error?.message || 'Internal server error';
-      if (error?.code === 'BODY_TOO_LARGE' || error?.code === 'BODY_TIMEOUT' || error?.name === 'TimeoutError') {
+      // A reply that stalls mid-body is cut off by the fetch's own deadline, which ends the stream as 'aborted'.
+      if (['BODY_TOO_LARGE', 'BODY_TIMEOUT', 'ECONNRESET'].includes(error?.code) || ['TimeoutError', 'AbortError'].includes(error?.name) || error?.message === 'aborted') {
         return res.status(502).json({ error: 'Upstream reply was too large or too slow' });
       }
       res.status(500).json({ error: 'Internal server error' });

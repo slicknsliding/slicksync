@@ -123,7 +123,7 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
         <div className="flex items-center gap-3.5 min-w-0">
           {icon(48)}
           <div className="flex-1 min-w-0">
-            <div className="text-[17px] font-semibold text-default truncate">{e.name}</div>
+            <div className="text-[17px] font-semibold text-default break-words min-w-0">{e.name}</div>
             <div className="text-muted text-[12.5px] truncate">{kind(e)}</div>
           </div>
         </div>
