@@ -95,7 +95,10 @@ export function TVPageProvider({ children }: { children: ReactNode }) {
   useTVViewport(true);
   useTVScrollPadding(true);
 
-  const { ref, focusKey, focusSelf, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ focusable: false, trackChildren: true });
+  // Focusable, so Down from the top menu can land back in the page: a container
+  // marked unfocusable is skipped by the spatial search, and focus stayed stuck
+  // in the menu. Landing on it hands focus to the button last used in the page.
+  const { ref, focusKey, focusSelf, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ focusable: true, trackChildren: true, saveLastFocusedChild: true });
 
   // hasFocusedChild is reactive (triggers a re-render), but the retry
   // timers below are scheduled once on mount and read this via a ref so
