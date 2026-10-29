@@ -13,7 +13,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
-import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { V2DetailHead, V2MoreMenu, V2Numbers, V2ToolTile, V2Box, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
 import { V2Button, V2Status, type V2Tone } from '@/components/v2/V2Bits';
 import { PillTool, CopyHistoryTool, TitleRows } from '@/components/v2/PersonV2';
@@ -243,6 +243,13 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
     </Card>
   );
 });
+
+// The names the Arrange tray uses for hidden Classic sections.
+const CLASSIC_LABELS: Record<string, string> = {
+  hero: 'Profile', syncDebug: 'Sync debug', merge: 'Merge with another user', household: 'Household numbers',
+  servers: 'Servers', tracking: 'Watch-Tracking Integrations', merged: 'Merged account',
+  history: 'Watch History Import/Export', tabs: 'Overview and Addons',
+};
 
 export default function UserDetailPage() {
   const { layoutMode } = useLayoutMode();
@@ -532,6 +539,13 @@ export default function UserDetailPage() {
   const [protectedAddonNames, setProtectedAddonNames] = useState<Set<string>>(new Set());
   const [isRefreshingAddons, setIsRefreshingAddons] = useState(false);
   const [showSyncDebug, setShowSyncDebug] = useState(false);
+  // Classic page design keeps its own arrangement: its sections differ from v2's.
+  const classic = !v2 && !isTV;
+  const classicKeys = useMemo(() => [
+    'hero', ...(showSyncDebug ? ['syncDebug'] : []), ...(!mergeInfo ? ['merge'] : []),
+    'household', 'servers', 'tracking', ...(mergeInfo ? ['merged'] : []), 'history', 'tabs',
+  ], [showSyncDebug, mergeInfo]);
+  const classicArrange = usePageArrangement('person-classic', classicKeys);
   const [syncPlanLoading, setSyncPlanLoading] = useState(false);
   const [syncPlanError, setSyncPlanError] = useState<string | null>(null);
   const [syncPlan, setSyncPlan] = useState<{
@@ -1939,59 +1953,18 @@ export default function UserDetailPage() {
     );
   };
 
-  return (
-    <>
-      {layoutMode !== 'nebula' && (
-        <Header
-          title={
-            <Breadcrumbs
-              items={[
-                { label: 'Users', href: '/users' },
-                { label: isLoading ? 'Loading...' : (user?.username || user?.name || 'User') },
-              ]}
-              className="text-xl font-semibold"
-            />
-          }
-          actions={v2 ? <ArrangeButton arrange={arrange} /> : detailActions}
-        />
-      )}
-
-      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-      {layoutMode === 'nebula' && (
-        <NebulaPageHeading
-          title={v2 ? 'Users' : isLoading ? 'Loading...' : (user?.username || user?.name || 'User')}
-          subtitle={v2 ? undefined : 'Users'}
-          actions={v2 ? <ArrangeButton arrange={arrange} /> : detailActions}
-        />
-      )}
-        {/* Loading state */}
-        {isLoading ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-            </div>
-            <p className="text-muted">Loading user data...</p>
-          </div>
-        ) : error ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <XMarkIcon className="w-8 h-8 text-error" />
-            </div>
-            <h3 className="text-lg font-medium mb-2 text-default">Error Loading User</h3>
-            <p className="text-muted mb-4">{error.message}</p>
-            <Button variant="primary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </div>
-        ) : !user ? (
-          <div className="text-center py-16">
-            <p className="text-muted">User not found</p>
-          </div>
-        ) : v2 ? (
-          renderV2()
-        ) : (
-          <>
+  // Classic page design: the same sections, in this account's arrangement
+  // (Arrange button in the header; lib/arrange.tsx). The tabs and the panel
+  // under them are one section. Nothing about this shows until arranging.
+  const renderClassic = () => {
+    const panel = (key: string, label: string, node: React.ReactNode) => (
+      <ArrangePanel key={key} arrange={classicArrange} id={key} label={label} ownHeading={false}>{node}</ArrangePanel>
+    );
+    const sectionOf = (key: string): React.ReactNode => {
+      switch (key) {
+        case 'hero':
+          return panel('hero', 'Profile', (
+            <>
             {/* User Hero Section */}
             <PageSection className="mb-6 md:mb-8">
               <Card padding="md" className="md:lg:p-6">
@@ -2200,14 +2173,22 @@ export default function UserDetailPage() {
                 </div>
               </Card>
             </PageSection>
-
+            </>
+          ));
+        case 'syncDebug':
+          return panel('syncDebug', 'Sync debug', (
+            <>
             {/* Sync Debug Section */}
             {showSyncDebug && (
               <PageSection className="mb-6">
                 {renderSyncDebug()}
               </PageSection>
             )}
-
+            </>
+          ));
+        case 'merge':
+          return panel('merge', 'Merge with another user', (
+            <>
             {/* Manual merge - shown when this account hasn't already
                 absorbed a second provider's account. */}
             {!mergeInfo && (
@@ -2230,7 +2211,11 @@ export default function UserDetailPage() {
                 </Card>
               </PageSection>
             )}
-
+            </>
+          ));
+        case 'household':
+          return panel('household', 'Household numbers', (
+            <>
             {/* Household numbers: a test or guest person can be left out of
                 totals, Top Viewers and Wrapped without losing their own page. */}
             <PageSection className="mb-6">
@@ -2259,13 +2244,11 @@ export default function UserDetailPage() {
                 </div>
               </Card>
             </PageSection>
-
-            {/* Watch-tracking integrations. Trakt used to sit here as a
-                second row doing a one-time OAuth pull; Trakt now gates
-                creating an API application behind VIP, so that route needed
-                a paid Trakt account to work at all. Bringing a Trakt history
-                across is handled by the import below instead, which reads
-                Trakt's own free export and needs no app and no VIP. */}
+            </>
+          ));
+        case 'servers':
+          return panel('servers', 'Servers', (
+            <>
             {/* Their Jellyfin / AIOStreams / AIOMetadata in their Nuvio profile -
                 only for someone with both sign-ins (renders nothing otherwise). */}
             {/* Their accounts on the Jellyfin servers given to their groups on
@@ -2277,7 +2260,17 @@ export default function UserDetailPage() {
             <PageSection className="mb-6 empty:hidden">
               <NuvioServersTile userId={user.id} />
             </PageSection>
-
+            </>
+          ));
+        case 'tracking':
+          return panel('tracking', 'Watch-Tracking Integrations', (
+            <>
+            {/* Watch-tracking integrations. Trakt used to sit here as a
+                second row doing a one-time OAuth pull; Trakt now gates
+                creating an API application behind VIP, so that route needed
+                a paid Trakt account to work at all. Bringing a Trakt history
+                across is handled by the import below instead, which reads
+                Trakt's own free export and needs no app and no VIP. */}
             <PageSection className="mb-6">
               <Card padding="lg">
                 <button
@@ -2307,7 +2300,11 @@ export default function UserDetailPage() {
 
               </Card>
             </PageSection>
-
+            </>
+          ));
+        case 'merged':
+          return panel('merged', 'Merged account', (
+            <>
             {/* Merged-account state - this user has already absorbed a
                 second provider's account. See server/utils/userMerge.js;
                 undo is best-effort (see its module comment for exactly
@@ -2349,7 +2346,11 @@ export default function UserDetailPage() {
                 </Card>
               </PageSection>
             )}
-
+            </>
+          ));
+        case 'history':
+          return panel('history', 'Watch History Import/Export', (
+            <>
             {/* Watch History Import/Export - the biggest adoption blocker
                 for a Trakt alternative is leaving your history behind, so
                 this lets an admin bring an existing IMDb/Letterboxd CSV or
@@ -2386,7 +2387,11 @@ export default function UserDetailPage() {
                 </div>)}
               </Card>
             </PageSection>
-
+            </>
+          ));
+        case 'tabs':
+          return panel('tabs', 'Overview and Addons', (
+            <>
             {/* Tab Navigation */}
             <PageSection className="mb-6 md:mb-8">
               <ScrollRow className="flex items-center gap-2 p-1 rounded-xl bg-surface w-fit max-w-full">
@@ -2641,7 +2646,81 @@ export default function UserDetailPage() {
                 </PageSection>
               </>
             )}
-          </>
+            </>
+          ));
+        default:
+          return null;
+      }
+    };
+    return (
+      <>
+        <ArrangeBar arrange={classicArrange} />
+        {classicArrange.shown.map((key) => sectionOf(key))}
+        <HiddenTray arrange={classicArrange} labelOf={(key) => CLASSIC_LABELS[key] || key} />
+      </>
+    );
+  };
+
+  const headerActions = v2 ? <ArrangeButton arrange={arrange} /> : classic ? (
+    <div className="flex items-center gap-3 flex-wrap justify-end">
+      <ArrangeButton arrange={classicArrange} />
+      {detailActions}
+    </div>
+  ) : detailActions;
+
+  return (
+    <>
+      {layoutMode !== 'nebula' && (
+        <Header
+          title={
+            <Breadcrumbs
+              items={[
+                { label: 'Users', href: '/users' },
+                { label: isLoading ? 'Loading...' : (user?.username || user?.name || 'User') },
+              ]}
+              className="text-xl font-semibold"
+            />
+          }
+          actions={headerActions}
+        />
+      )}
+
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading
+          title={v2 ? 'Users' : isLoading ? 'Loading...' : (user?.username || user?.name || 'User')}
+          subtitle={v2 ? undefined : 'Users'}
+          actions={headerActions}
+        />
+      )}
+        {/* Loading state */}
+        {isLoading ? (
+          <div className="text-center py-16">
+            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
+              <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
+            </div>
+            <p className="text-muted">Loading user data...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
+              <XMarkIcon className="w-8 h-8 text-error" />
+            </div>
+            <h3 className="text-lg font-medium mb-2 text-default">Error Loading User</h3>
+            <p className="text-muted mb-4">{error.message}</p>
+            <Button variant="primary" onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          </div>
+        ) : !user ? (
+          <div className="text-center py-16">
+            <p className="text-muted">User not found</p>
+          </div>
+        ) : v2 ? (
+          renderV2()
+        ) : (
+          renderClassic()
         )}
       </div>
       </div>

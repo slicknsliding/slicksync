@@ -19,7 +19,7 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TaskCategoryTiles } from '@/components/tasks/TaskCategoryTiles';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
-import { ArrangeButton } from '@/components/ui/Arrange';
+import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
 import { TasksV2, TASK_SECTIONS } from '@/components/v2/TasksV2';
 import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
@@ -141,6 +141,29 @@ const TASK_CATEGORIES = [
 ] as const;
 type TaskCategoryKey = typeof TASK_CATEGORIES[number]['key'];
 const TASK_SECTION_KEYS: string[] = TASK_SECTIONS.map((s) => s.key);
+// Classic's own sections, one per card, each filed under the tile it opens
+// under. Not the v2 key list: v2's sections are different groupings.
+const CLASSIC_TASK_SECTIONS = [
+  { key: 'users', label: 'Users', category: 'daily' },
+  { key: 'groups', label: 'Groups', category: 'daily' },
+  { key: 'addons', label: 'Addons', category: 'daily' },
+  { key: 'automation', label: 'Automation', category: 'daily' },
+  { key: 'watchsync', label: 'AIOSync', category: 'daily' },
+  { key: 'templates', label: 'Addon Templates', category: 'data' },
+  { key: 'library', label: 'Library', category: 'data' },
+  { key: 'history', label: 'History', category: 'data' },
+  { key: 'config', label: 'Configuration', category: 'data' },
+  { key: 'backups', label: 'Automatic Backups', category: 'backup' },
+  { key: 'drkit', label: 'Disaster Recovery Kit', category: 'backup' },
+  { key: 'migrate', label: 'Move to a New Server', category: 'backup' },
+  { key: 'maintenance', label: 'Maintenance', category: 'schedule' },
+  { key: 'autosync', label: 'Automatic Sync', category: 'schedule' },
+  { key: 'health', label: 'Addon Health Check', category: 'schedule' },
+  { key: 'scheduled', label: 'Scheduled Tasks', category: 'schedule' },
+] as const;
+const CLASSIC_TASK_KEYS: string[] = CLASSIC_TASK_SECTIONS.map((s) => s.key);
+const CLASSIC_CATEGORY: Record<string, TaskCategoryKey> = Object.fromEntries(CLASSIC_TASK_SECTIONS.map((s) => [s.key, s.category]));
+const CLASSIC_LABEL: Record<string, string> = Object.fromEntries(CLASSIC_TASK_SECTIONS.map((s) => [s.key, s.label]));
 const TASKS_SUBTITLE = 'Manage and export all your SlickSync data';
 const TASKS_V2_SUBTITLE = 'Everything you run now and then, and what runs by itself';
 
@@ -152,6 +175,9 @@ export default function TasksPage() {
   const { design } = usePageDesign();
   const v2 = design === 'v2' && !isTV;
   const taskArrange = usePageArrangement('tasks', TASK_SECTION_KEYS, { widths: v2 });
+  // Classic arranges its own cards (not on TV, which keeps the page as it is).
+  const classicArrange = usePageArrangement('tasks-classic', CLASSIC_TASK_KEYS);
+  const arrangeActions = isTV ? undefined : <ArrangeButton arrange={v2 ? taskArrange : classicArrange} />;
   const { layoutMode } = useLayoutMode();
   // State for loading indicators
   const [syncingUsers, setSyncingUsers] = useState(false);
@@ -1177,7 +1203,7 @@ export default function TasksPage() {
         <Header
           title="Tasks"
           subtitle={v2 ? TASKS_V2_SUBTITLE : TASKS_SUBTITLE}
-          actions={v2 ? <ArrangeButton arrange={taskArrange} /> : undefined}
+          actions={arrangeActions}
         />
       )}
 
@@ -1187,7 +1213,7 @@ export default function TasksPage() {
         <NebulaPageHeading
           title="Tasks"
           subtitle={v2 ? TASKS_V2_SUBTITLE : TASKS_SUBTITLE}
-          actions={v2 ? <ArrangeButton arrange={taskArrange} /> : undefined}
+          actions={arrangeActions}
         />
       )}
       {v2 ? (<>
@@ -1279,12 +1305,15 @@ export default function TasksPage() {
           }}
         />
       </>) : (<>
+        <ArrangeBar arrange={classicArrange} />
         <TaskCategoryTiles categories={TASK_CATEGORIES} active={taskCategory} onSelect={(key) => setTaskCategory(key as TaskCategoryKey)} isTV={isTV} />
         {/* Every category stays mounted and is only hidden, so switching
             between them keeps a half-done import, the chosen user in a
             dialog and the file inputs exactly as they were. */}
         <div hidden={taskCategory !== 'daily'} className="lg:grid lg:grid-cols-2 lg:gap-x-5 lg:items-start">
+        {classicArrange.shown.filter((id) => CLASSIC_CATEGORY[id] === 'daily').map((id) => (<Fragment key={id}>
         {/* Users */}
+        {id === 'users' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="users" label="Users">
         <PageSection>
           <TaskCard
             icon={<UsersIcon className="w-5 h-5 text-secondary" />}
@@ -1315,9 +1344,10 @@ export default function TasksPage() {
               isLoading={clearingUserAddons}
             />
           </TaskCard>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Groups */}
+        {id === 'groups' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="groups" label="Groups">
         <PageSection delay={0.05}>
           <TaskCard
             icon={<UserGroupIcon className="w-5 h-5 text-primary" />}
@@ -1341,9 +1371,10 @@ export default function TasksPage() {
               variant="danger"
             />
           </TaskCard>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Addons */}
+        {id === 'addons' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="addons" label="Addons">
         <PageSection delay={0.1}>
           <TaskCard
             icon={<PuzzlePieceIcon className="w-5 h-5 text-success" />}
@@ -1400,11 +1431,12 @@ export default function TasksPage() {
             onChange={handleAddonFileChange}
             className="hidden"
           />
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Automation - "when X happens, do Y" rules (server/utils/automation/).
             Operator tooling, same category as everything else on this page -
             lives in a Modal here rather than its own nav-level route. */}
+        {id === 'automation' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="automation" label="Automation">
         <PageSection delay={0.11}>
           <TaskCard
             icon={<BoltIcon className="w-5 h-5 text-primary" />}
@@ -1418,19 +1450,23 @@ export default function TasksPage() {
               label="Manage Rules"
             />
           </TaskCard>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* AIOSync - copy watch history between sign-ins and profiles, or
             keep them in step (components/user/WatchSyncCard.tsx). */}
-        <PageSection className="lg:col-span-full">
+        {id === 'watchsync' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="watchsync" label="AIOSync" className="lg:col-span-full">
+        <PageSection>
           <WatchSyncCard />
-        </PageSection>
+        </PageSection></ArrangePanel>)}
+        </Fragment>))}
         </div>
 
         <div hidden={taskCategory !== 'data'}>
+        {classicArrange.shown.filter((id) => CLASSIC_CATEGORY[id] === 'data').map((id) => (<Fragment key={id}>
         {/* Addon Templates - the backend (/api/snapshots) already existed
             fully built (save a user's/group's current addon set, deploy it
             to any user later) but had no UI anywhere calling it. */}
+        {id === 'templates' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="templates" label="Addon Templates">
         <PageSection delay={0.12}>
           <TaskCard
             icon={<DocumentDuplicateIcon className="w-5 h-5 text-secondary" />}
@@ -1502,9 +1538,10 @@ export default function TasksPage() {
               </div>
             </Card>
           )}
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Library */}
+        {id === 'library' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="library" label="Library">
         <PageSection delay={0.15}>
           <Card padding="lg" className="mb-6">
             <div className="flex items-center gap-3 mb-4">
@@ -1579,9 +1616,10 @@ export default function TasksPage() {
               );
             })()}
           </Card>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* History */}
+        {id === 'history' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="history" label="History">
         <PageSection delay={0.2}>
           <Card padding="lg" className="mb-6">
             <div className="flex items-center gap-3 mb-4">
@@ -1673,9 +1711,10 @@ export default function TasksPage() {
             onChange={handleHistoryFileChange}
             className="hidden"
           />
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Configuration */}
+        {id === 'config' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="config" label="Configuration">
         <PageSection delay={0.25}>
           <TaskCard
             icon={<Cog6ToothIcon className="w-5 h-5 text-indigo-400" />}
@@ -1718,12 +1757,15 @@ export default function TasksPage() {
             onChange={handleConfigFileChange}
             className="hidden"
           />
-        </PageSection>
+        </PageSection></ArrangePanel>)}
+        </Fragment>))}
 
         </div>
 
         <div hidden={taskCategory !== 'backup'}>
+        {classicArrange.shown.filter((id) => CLASSIC_CATEGORY[id] === 'backup').map((id) => (<Fragment key={id}>
         {/* Automatic Backups */}
+        {id === 'backups' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="backups" label="Automatic Backups">
         <PageSection delay={0.3}>
           <Card padding="lg" className="mb-6">
             <div className="flex items-center gap-3 mb-4">
@@ -1817,7 +1859,7 @@ export default function TasksPage() {
               </p>
             )}
           </Card>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Disaster Recovery Kit - the regular backup above never touches
             Vault (its secrets are encrypted under THIS instance's own
@@ -1828,6 +1870,7 @@ export default function TasksPage() {
             scheduled - it's real, usable credential access protected only
             as strongly as the passphrase, not something to generate on a
             timer and forget about. */}
+        {id === 'drkit' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="drkit" label="Disaster Recovery Kit">
         <PageSection delay={0.32}>
           <Card padding="lg" className="mb-6">
             <div className="flex items-center gap-3 mb-4">
@@ -1918,11 +1961,12 @@ export default function TasksPage() {
               e.target.value = '';
             }}
           />
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* One-code migration - the DR Kit's live sibling: one code moves
             the whole household to a new instance in a minute, instead of
             export-file / carry / import / retype-passphrase. */}
+        {id === 'migrate' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="migrate" label="Move to a New Server">
         <PageSection className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-1">
@@ -1969,15 +2013,18 @@ export default function TasksPage() {
               </div>
             </div>
           </Card>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
+        </Fragment>))}
 
         </div>
 
         <div hidden={taskCategory !== 'schedule'}>
+        {classicArrange.shown.filter((id) => CLASSIC_CATEGORY[id] === 'schedule').map((id) => (<Fragment key={id}>
         {/* Maintenance - off-site backup targets, database upkeep, and
             applying updates. All set-once-and-forget, which is why they
             live behind one card rather than as three more things on the
             page. */}
+        {id === 'maintenance' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="maintenance" label="Maintenance">
         <PageSection delay={0.115}>
           <TaskCard
             icon={<WrenchScrewdriverIcon className="w-5 h-5 text-primary" />}
@@ -1991,9 +2038,10 @@ export default function TasksPage() {
               label="Open Maintenance"
             />
           </TaskCard>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Automatic Sync */}
+        {id === 'autosync' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="autosync" label="Automatic Sync">
         <PageSection delay={0.35}>
           <Card padding="lg" className="mb-6">
             <div className="flex items-center gap-3 mb-4">
@@ -2030,9 +2078,10 @@ export default function TasksPage() {
               </Button>
             </div>
           </Card>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
         {/* Addon Health Check */}
+        {id === 'health' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="health" label="Addon Health Check">
         <PageSection delay={0.375}>
           <Card padding="lg" className="mb-6">
             <div className="flex items-center gap-3 mb-4">
@@ -2076,7 +2125,7 @@ export default function TasksPage() {
               Checks if addon manifests are reachable and tracks online/offline status
             </p>
           </Card>
-        </PageSection>
+        </PageSection></ArrangePanel>)}
 
 {/*
         <PageSection delay={0.38}>
@@ -2190,10 +2239,13 @@ export default function TasksPage() {
         */}
 
         {/* Scheduled Tasks */}
+        {id === 'scheduled' && (<ArrangePanel arrange={classicArrange} ownHeading={false} id="scheduled" label="Scheduled Tasks">
         <PageSection delay={0.4}>
           <ScheduledTasksSection syncFrequency={syncFrequency} backupDays={backupDays} healthCheckMinutes={healthCheckMinutes} />
-        </PageSection>
+        </PageSection></ArrangePanel>)}
+        </Fragment>))}
         </div>
+        <HiddenTray arrange={classicArrange} labelOf={(id) => CLASSIC_LABEL[id] || id} />
       </>)}
       </div>
       </div>

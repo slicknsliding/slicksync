@@ -538,13 +538,13 @@ export default function ListsPage() {
     </PillRow>
   ));
   const anyIn = (row: PillRowId) => collectionArrange.shown.some((k) => rowOf(k) === row) || (pillDragging && collectionArrange.arranging);
-  const collectionsButtons = v2 ? (anyIn(phone ? 'above' : 'left') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
+  const collectionsButtons = !isTV ? (anyIn(phone ? 'above' : 'left') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
       {onTV(nuvioCollectionsButton, () => router.push('/catalogs/nuvio-collections'))}
       {onTV(aiostreamsCollectionsButton, () => router.push('/catalogs/aiostreams-collections'))}
     </div>
   );
-  const rightPills = v2 && anyIn(phone ? 'below' : 'right') ? rowsOf([phone ? 'below' : 'right'])[0] : undefined;
+  const rightPills = !isTV && anyIn(phone ? 'below' : 'right') ? rowsOf([phone ? 'below' : 'right'])[0] : undefined;
 
   return (
     <Wrapper>
@@ -590,10 +590,10 @@ export default function ListsPage() {
                 </Button>,
                 () => setShowCreate(true),
               )}
-              {v2 && <ArrangeButton arrange={catalogArrange} />}
+              {!isTV && <ArrangeButton arrange={catalogArrange} />}
             </div>
           </div>
-          {v2 && <ArrangeBar arrange={catalogArrange} />}
+          {!isTV && <ArrangeBar arrange={catalogArrange} />}
 
           {loaded && lists.length === 0 && (
             <Card padding="lg" className="text-center">
@@ -623,6 +623,10 @@ export default function ListsPage() {
               note="Hidden only here: the catalog keeps working everywhere it's used. Tap one to bring it back." />
           )}
 
+          {/* Classic arranges only the Collections pills; its catalog list stays as it is. */}
+          {!v2 && !isTV && (
+            <HiddenTray arrange={collectionArrange} labelOf={(key) => collectionPills[key]?.label ?? 'A collection'} />
+          )}
           {!v2 && lists.length > 0 && (() => {
             // At most one hero - the pinned catalog with the most recent
             // activity if more than one happens to be pinned (see the
