@@ -80,7 +80,8 @@ export function useIconifyActions(ref: RefObject<HTMLElement | null>, on: boolea
       el.querySelectorAll<HTMLElement>('button, a[href]').forEach((b) => {
         const text = (b.textContent || '').replace(/\s+/g, ' ').trim();
         const hasIcon = !!b.querySelector('svg');
-        if (!text || !hasIcon || b.hasAttribute('aria-haspopup')) {
+        // data-ph-keep: things that keep their words (Catalogs' Collections pills).
+        if (!text || !hasIcon || b.hasAttribute('aria-haspopup') || b.closest('[data-ph-keep]')) {
           b.removeAttribute('data-ph-icon');
           return;
         }

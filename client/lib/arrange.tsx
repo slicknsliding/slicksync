@@ -379,6 +379,13 @@ export function usePageArrangement(pageId: string, keys: string[], opts: {
     }),
     /** The class that gives a section's wrapper its width inside an <ArrangeGrid>. */
     spanClass: (key: string) => SPAN[widthOf(key)],
+    /** Which side of the page title something sits on (left unless moved). */
+    sideOf: (key: string): 'left' | 'right' => page?.sides?.[key] ?? 'left',
+    setSide: (key: string, side: 'left' | 'right') => setPage((p) => {
+      const sides = { ...(p?.sides || {}) };
+      if (side === 'left') delete sides[key]; else sides[key] = side;
+      return { ...p, sides };
+    }),
     /** The stretched size of a row or grid of cards (StretchHandle sets it). */
     cardSizing: (key: string): CardSizing => cardSizingOf(page, key),
     setCardSizing: (key: string, next: CardSizing) => setPage((p) => {

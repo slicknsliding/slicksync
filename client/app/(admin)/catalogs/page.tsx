@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, type Ref } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type Ref } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -14,6 +15,8 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
+import { useVaultDrag } from '@/components/providers/VaultDragContext';
+import { useIsPhoneWidth } from '@/lib/pageHeader';
 import { SortableItem, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangeGrip, HiddenTray } from '@/components/ui/Arrange';
 import { CatalogsV2 } from '@/components/v2/CatalogsV2';
@@ -38,6 +41,81 @@ function coverColorStyle(colorIndex: number): React.CSSProperties {
 // a popup - browsing a list's contents is a destination, not a transient
 // action). Titles are ADDED to a list from the "Add to list" control on a
 // title's detail modal elsewhere.
+
+// Catalogs' Collections pills: the logo's size sets the whole pill (the default
+// is the full size), and each side of the title is a drop area while arranging.
+const PILL_MIN = 26;
+const PILL_MAX = 44;
+const PILL_DROP = { left: 'catalog-pills-left', right: 'catalog-pills-right' } as const;
+
+function useDragRegistry() {
+  try {
+    return useVaultDrag();
+  } catch {
+    return null;
+  }
+}
+
+function PillSide({ side, arranging, size, empty, children }: { side: 'left' | 'right'; arranging: boolean; size: number | null; empty: boolean; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: PILL_DROP[side], disabled: !arranging });
+  return (
+    <div
+      ref={setNodeRef}
+      data-ph-keep
+      {...(size != null ? { 'data-ps': '' } : {})}
+      style={size != null ? ({ '--ps': `${size}px` } as CSSProperties) : undefined}
+      className={`collection-pills flex flex-wrap items-center gap-3 ${side === 'left' ? 'w-full' : 'justify-end shrink-0 md:min-w-max'}${arranging ? ' collection-pills-arranging' : ''}${isOver ? ' collection-pills-over' : ''}`}
+    >
+      {empty
+        ? <span className="collection-pills-drop">{side === 'right' ? 'Drop here to put them right of “Catalogs”' : 'Drop here to put them left of “Catalogs”'}</span>
+        : children}
+    </div>
+  );
+}
+
+/** The round handle on a pill's corner while arranging: drag (or the arrows) for smaller or bigger pills. */
+function PillSizer({ size, label, onLive, onDone }: { size: number; label: string; onLive: (n: number | null) => void; onDone: (n: number) => void }) {
+  const fit = (n: number) => Math.max(PILL_MIN, Math.min(PILL_MAX, Math.round(n)));
+  return (
+    <button
+      type="button"
+      className="stretch-handle"
+      style={{ right: -12, bottom: -12, margin: 0 }}
+      aria-label={`Size of ${label}: drag, or press the left and right arrows`}
+      title="Drag to make the pills bigger or smaller"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        btn.setPointerCapture(e.pointerId);
+        const x0 = e.clientX;
+        let now = size;
+        const move = (ev: PointerEvent) => { now = fit(size + (ev.clientX - x0) / 5); onLive(now); };
+        const up = () => {
+          btn.removeEventListener('pointermove', move);
+          btn.removeEventListener('pointerup', up);
+          btn.removeEventListener('pointercancel', up);
+          onLive(null);
+          if (now !== size) onDone(now);
+        };
+        btn.addEventListener('pointermove', move);
+        btn.addEventListener('pointerup', up);
+        btn.addEventListener('pointercancel', up);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        e.stopPropagation();
+        onDone(fit(size + (e.key === 'ArrowRight' ? 2 : -2)));
+      }}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="w-3.5 h-3.5" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 15l6-6M10 9h5v5" />
+      </svg>
+    </button>
+  );
+}
 
 export default function ListsPage() {
   const { layoutMode } = useLayoutMode();
@@ -264,7 +342,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
+      className="collection-pill flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
         // A logo lockup (icon chip + wordmark), same shape as the app's own
         // Sidebar branding, sized up and given real breathing room per
@@ -281,14 +359,14 @@ export default function ListsPage() {
       <span
         className="flex items-center justify-center rounded-2xl shrink-0"
         style={{
-          width: 44,
-          height: 44,
+          width: 'var(--ps, 44px)',
+          height: 'var(--ps, 44px)',
           background: 'linear-gradient(135deg, #2E9FE0 0%, #6C5CE7 55%, #C24FE0 100%)',
         }}
       >
         <PlayIcon className="w-5 h-5 text-white ml-0.5" />
       </span>
-      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(147, 197, 253)' }}>
+      <span className="collection-pill-word font-display font-bold text-lg sm:text-xl tracking-tight truncate" style={{ color: 'rgb(147, 197, 253)' }}>
         Nuvio Collections
       </span>
     </button>
@@ -302,7 +380,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/aiostreams-collections')}
-      className="flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
+      className="collection-pill flex-[0_1_19rem] min-w-0 flex items-center gap-3 pl-3 pr-6 py-2.5 rounded-full transition-transform hover:scale-105"
       style={{
         background: 'linear-gradient(rgba(0, 11, 37, 0.94), rgba(6, 16, 46, 0.94)) padding-box, linear-gradient(115deg, rgba(190, 110, 215, 0.95), rgba(0, 180, 235, 0.95)) border-box',
         border: '1.5px solid transparent',
@@ -311,11 +389,11 @@ export default function ListsPage() {
     >
       <span
         className="flex items-center justify-center rounded-2xl shrink-0"
-        style={{ width: 44, height: 44, background: '#000B25', border: '1px solid rgba(120, 130, 220, 0.35)' }}
+        style={{ width: 'var(--ps, 44px)', height: 'var(--ps, 44px)', background: '#000B25', border: '1px solid rgba(120, 130, 220, 0.35)' }}
       >
         <JellyfinLogo />
       </span>
-      <span className="font-display font-bold text-lg sm:text-xl tracking-tight truncate">
+      <span className="collection-pill-word font-display font-bold text-lg sm:text-xl tracking-tight truncate">
         {/* A plain colour, not gradient-clipped text: page-recolouring
             extensions darken the gradient "background" behind the letters. */}
         <span style={{ color: 'rgb(220, 226, 255)' }}>Jellyfin Collections</span>
@@ -330,37 +408,74 @@ export default function ListsPage() {
     nuvio: { label: 'Nuvio Collections', node: nuvioCollectionsButton },
     jellyfin: { label: 'Jellyfin Collections', node: aiostreamsCollectionsButton },
   };
-  const collectionsButtons = v2 ? (
-    <div className="w-full flex flex-wrap items-center gap-3">
-      {collectionArrange.shown.map((key) => {
-        const pill = collectionPills[key];
-        if (!pill) return null;
-        return (
-          <SortableItem key={key} scope={collectionArrange.sort} itemKey={key}>
-            {(d) => (
-              <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex items-center gap-2 min-w-0 max-w-full ${d.className}`}>
-                {pill.node}
-                {collectionArrange.arranging && (
-                  <span className="flex items-center gap-1.5 shrink-0">
-                    <ArrangeGrip drag={d} label={pill.label} />
-                    <button type="button" className="arrange-icon" aria-label={`Hide ${pill.label}`} title="Hide on this page"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); collectionArrange.hide(key); }}>
-                      <EyeIcon className="w-4 h-4" />
-                    </button>
-                  </span>
-                )}
-              </div>
+  // Each pill sits left or right of the title (moved while arranging), all at one size.
+  const phone = useIsPhoneWidth();
+  const pillSaved = collectionArrange.cardSizing('pills').w ?? null;
+  const [pillLive, setPillLive] = useState<number | null>(null);
+  const pillSize = pillLive ?? pillSaved;
+  const setPillSize = (n: number) => collectionArrange.setCardSizing('pills', { w: n >= PILL_MAX ? undefined : n });
+  const leftKeys = collectionArrange.shown.filter((k) => collectionArrange.sideOf(k) === 'left');
+  const rightKeys = collectionArrange.shown.filter((k) => collectionArrange.sideOf(k) === 'right');
+  // Dropping a pill on the other side's area (or on a pill over there) moves it there.
+  const dragRegistry = useDragRegistry();
+  const pillArrange = useRef(collectionArrange);
+  useEffect(() => { pillArrange.current = collectionArrange; });
+  const pillPrefix = collectionArrange.sort.prefix;
+  useEffect(() => {
+    if (!dragRegistry) return;
+    return dragRegistry.registerDragEndHandler((e) => {
+      const active = String(e.active.id);
+      const over = e.over ? String(e.over.id) : '';
+      if (!active.startsWith(pillPrefix) || !over) return;
+      const key = active.slice(pillPrefix.length);
+      const arr = pillArrange.current;
+      const side = over === PILL_DROP.left ? 'left'
+        : over === PILL_DROP.right ? 'right'
+          : over.startsWith(pillPrefix) ? arr.sideOf(over.slice(pillPrefix.length)) : null;
+      if (side && side !== arr.sideOf(key)) arr.setSide(key, side);
+    });
+  }, [dragRegistry, pillPrefix]);
+  const pillItem = (key: string) => {
+    const pill = collectionPills[key];
+    if (!pill) return null;
+    return (
+      <SortableItem key={key} scope={collectionArrange.sort} itemKey={key}>
+        {(d) => (
+          <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex items-center gap-2 min-w-0 max-w-full ${d.className}`}>
+            <span className="relative inline-flex min-w-0 max-w-full">
+              {pill.node}
+              {collectionArrange.arranging && (
+                <PillSizer size={pillSize ?? PILL_MAX} label={pill.label} onLive={setPillLive} onDone={setPillSize} />
+              )}
+            </span>
+            {collectionArrange.arranging && (
+              <span className="flex items-center gap-1.5 shrink-0">
+                <ArrangeGrip drag={d} label={pill.label} />
+                <button type="button" className="arrange-icon" aria-label={`Hide ${pill.label}`} title="Hide on this page"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); collectionArrange.hide(key); }}>
+                  <EyeIcon className="w-4 h-4" />
+                </button>
+              </span>
             )}
-          </SortableItem>
-        );
-      })}
-    </div>
-  ) : (
+          </div>
+        )}
+      </SortableItem>
+    );
+  };
+  const pillRow = (side: 'left' | 'right', keys: string[]) => (
+    <PillSide side={side} arranging={collectionArrange.arranging} size={pillSize} empty={keys.length === 0}>
+      {keys.map(pillItem)}
+    </PillSide>
+  );
+  const showLeft = leftKeys.length > 0 || collectionArrange.arranging;
+  const showRight = rightKeys.length > 0 || collectionArrange.arranging;
+  const collectionsButtons = v2 ? (showLeft ? pillRow('left', leftKeys) : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
       {nuvioCollectionsButton}
       {aiostreamsCollectionsButton}
     </div>
   );
+  const rightPills = v2 && showRight ? pillRow('right', rightKeys) : undefined;
 
   return (
     <>
@@ -374,7 +489,8 @@ export default function ListsPage() {
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} />}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} trailing={phone ? undefined : rightPills} />}
+        {layoutMode === 'nebula' && phone && rightPills && <div className="-mt-2 mb-5">{rightPills}</div>}
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>

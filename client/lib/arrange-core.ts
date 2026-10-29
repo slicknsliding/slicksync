@@ -12,6 +12,8 @@ export type PageArrangement = {
   unfolded?: string[];
   /** How much of the page's width a section takes, by key. A key not listed keeps the page's default. */
   widths?: Record<string, SectionSize>;
+  /** Which side of the page title a thing sits on, by key (Catalogs' Collections pills). Not listed: left. */
+  sides?: Record<string, 'left' | 'right'>;
   /** How big the cards in a row or grid are, stretched to size while arranging (by key). Not listed: the page's own size. */
   cards?: Record<string, CardSizing>;
 };
@@ -159,6 +161,7 @@ export function tidyPage(page: PageArrangement): PageArrangement | undefined {
   if (page.folded?.length) out.folded = page.folded;
   if (page.unfolded?.length) out.unfolded = page.unfolded;
   if (page.widths && Object.keys(page.widths).length) out.widths = page.widths;
+  if (page.sides && Object.keys(page.sides).length) out.sides = page.sides;
   if (page.cards && Object.keys(page.cards).length) out.cards = page.cards;
   return Object.keys(out).length ? out : undefined;
 }

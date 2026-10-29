@@ -2002,6 +2002,14 @@ select:not(.appearance-none) {
   position: absolute; z-index: 21; pointer-events: none; padding: 7px 13px; border-radius: 999px; white-space: nowrap;
   font-size: 13px; font-weight: 700; color: #fff; background: var(--color-primary); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
+/* Catalogs' Collections pills: --ps (the logo's size) sizes the whole pill;
+   each side of the title is a drop area while arranging. */
+.collection-pills[data-ps] .collection-pill { flex: none !important; padding: calc(var(--ps) * .16) calc(var(--ps) * .45) calc(var(--ps) * .16) calc(var(--ps) * .16) !important; gap: calc(var(--ps) * .25) !important; }
+.collection-pills[data-ps] .collection-pill-word { font-size: calc(var(--ps) * .45) !important; }
+.collection-pills[data-ps] .collection-pill > span:first-child { border-radius: calc(var(--ps) * .32) !important; }
+.collection-pills-arranging { outline: 2px dashed var(--color-primary); outline-offset: 6px; border-radius: 18px; min-height: 44px; padding: 2px; }
+.collection-pills-over { background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+.collection-pills-drop { padding: 8px 12px; font-size: 12.5px; font-weight: 600; color: var(--color-primary); }
 /* Sections that carry their own width sit in a grid: no stacking margin on top of its gap. */
 .grid > .arrange-section + .arrange-section { margin-top: 0; }
 /* Tasks: each tile while arranging gets a small floating strip (grip, pin, arrows, eye). */

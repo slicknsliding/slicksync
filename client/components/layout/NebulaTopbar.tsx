@@ -139,6 +139,7 @@ export function NebulaPageHeading({
   actions,
   stats,
   leading,
+  trailing,
 }: {
   title: string;
   subtitle?: string;
@@ -157,6 +158,8 @@ export function NebulaPageHeading({
       control reads as "leave this page" and belongs on the opposite side
       from Rename/Delete/the bell, not bunched in with them. */
   leading?: ReactNode;
+  /** Right of the title, on the bell's row (Catalogs' Collections pills moved there). */
+  trailing?: ReactNode;
 }) {
   // Themes → Layout → Page header: Compact and Minimal draw their own, slimmer
   // row; Full is the layout below, as it has always been.
@@ -168,9 +171,10 @@ export function NebulaPageHeading({
   if (!title) {
     return (
       <div className="mb-3 md:mb-4 flex items-center gap-x-2 gap-y-2 flex-wrap">
-        {leading && <div className="flex items-center min-w-0 max-w-full">{leading}</div>}
+        {leading && <div className="flex items-center min-w-0 max-w-full max-sm:[&:has(.collection-pills)]:basis-full">{leading}</div>}
         <div className="flex-1" />
         {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
+        {trailing}
         <TopbarActions />
       </div>
     );
@@ -185,7 +189,7 @@ export function NebulaPageHeading({
           className={`flex items-center gap-x-2 gap-y-2 flex-wrap ${compact ? '' : 'pb-2.5'}`}
           style={compact ? undefined : { borderBottom: '1px solid var(--color-surface-border)' }}
         >
-          {leading && <div className="flex items-center min-w-0 max-w-full">{leading}</div>}
+          {leading && <div className="flex items-center min-w-0 max-w-full max-sm:[&:has(.collection-pills)]:basis-full">{leading}</div>}
           {compact ? (
             <div className="min-w-[8rem] flex-1">
               <h1 className="text-xl md:text-2xl font-bold font-display leading-tight text-default line-clamp-2 break-words">{title}</h1>
@@ -204,6 +208,7 @@ export function NebulaPageHeading({
             </div>
           )}
           {!actions && !compact && <div className="flex-1" />}
+          {trailing}
           <TopbarActions />
         </div>
         {stats && (
@@ -261,6 +266,7 @@ export function NebulaPageHeading({
             left edge) even though the div itself was correctly flush right
             - every button/bell inside consistently sat short of the page's
             actual right margin as a result. */}
+        {trailing}
         <TopbarActions />
         {/* Zero-height, full-width flex item forces a line-break: the bell
             (above) always lands on its own line, `actions` (below) always
