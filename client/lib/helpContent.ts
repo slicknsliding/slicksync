@@ -1379,7 +1379,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'On the Dashboard the numbers sit in their own "At a glance" section, and while arranging each number has its own eye. On Discover you can reorder or hide the Titles, People, For you and Watchlist tabs and each row; on Tasks each tile can be pinned first, moved or hidden.',
       'Each tile in Needs you has an ✕: dismiss it, snooze it for a week, or stop showing that kind. It comes back if something new happens, and you can bring dismissed ones back from Settings → Notifications → Hidden from Needs you, or while arranging the Dashboard.',
       'On Activity, Arrange moves and hides the tabs, and the page opens on the first tab you kept.',
-      'On Catalogs, drag the Nuvio and Jellyfin Collections pills by their grip to either side of the title, and drag the round handle on a pill to make both pills smaller or bigger.',
+      'On Catalogs, drag the Nuvio and Jellyfin Collections pills by their grip: while you drag, spots appear to the left, center and right of each row (above or below the title on a phone, either side of it on a computer). Drop a pill on one and it stays there. The ↔ button under a pill drags sideways to make just that pill smaller or bigger; smaller pills fit side by side.',
     ],
     tips: ['Everyone on the account sees the same arrangement on the admin pages. A person’s own Home is theirs alone.'],
     related: ['arrange-menu', 'page-design-v2', 'personal-touches'],

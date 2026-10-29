@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type Ref } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -49,7 +49,8 @@ function coverColorStyle(colorIndex: number): React.CSSProperties {
 // is the full size), and each side of the title is a drop area while arranging.
 const PILL_MIN = 26;
 const PILL_MAX = 44;
-const PILL_DROP = { left: 'catalog-pills-left', right: 'catalog-pills-right' } as const;
+// A drop spot's id: which row (PC: left / right of the title; phone: above / below it) and where in it.
+const SPOT = 'catalog-spot:';
 
 function useDragRegistry() {
   try {
@@ -60,73 +61,52 @@ function useDragRegistry() {
 }
 
 type PillAlign = 'left' | 'center' | 'right';
+type PillRowId = 'left' | 'right' | 'above' | 'below';
 const JUSTIFY: Record<PillAlign, string> = { left: 'justify-start', center: 'justify-center', right: 'justify-end' };
+const SPOT_ALIGNS: PillAlign[] = ['left', 'center', 'right'];
+const SPOT_LABEL: Record<PillAlign, string> = { left: 'Left', center: 'Center', right: 'Right' };
 
-function PillSide({ side, arranging, size, empty, align, wide, controls, children }: {
-  side: 'left' | 'right';
-  arranging: boolean;
-  size: number | null;
-  empty: boolean;
+/** One place a dragged pill can land; it lights up while the pill is over it. */
+function PillSpot({ row, align }: { row: PillRowId; align: PillAlign }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${SPOT}${row}:${align}` });
+  return <div ref={setNodeRef} className={`collection-spot${isOver ? ' collection-spot-on' : ''}`}>{SPOT_LABEL[align]}</div>;
+}
+
+/**
+ * A row of Collections pills. While a pill is being dragged it shows three
+ * spots to drop on (Left, Center, Right); otherwise just the pills, lined up
+ * the way the last drop said. An empty row only shows while dragging.
+ */
+function PillRow({ row, align, dragging, wide, empty, children }: {
+  row: PillRowId;
   align: PillAlign;
+  dragging: boolean;
   /** A row of its own (left of the title, or a phone): it spans the width, so alignment shows. */
   wide: boolean;
-  /** While arranging: where the row sits and how it lines up. */
-  controls?: React.ReactNode;
+  empty: boolean;
   children: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: PILL_DROP[side], disabled: !arranging });
-  // Beside the bell (right of the title on a wide screen) the row only spans
-  // more than its pills when it isn't pushed to the right.
-  const width = wide ? 'w-full' : align === 'right' ? 'shrink-0 md:min-w-max' : 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]';
+  if (empty && !dragging) return null;
+  // Beside the bell (right of the title on a wide screen) the row only spans more than its pills when it isn't pushed right.
+  const width = wide ? 'w-full' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
   return (
-    <div
-      ref={setNodeRef}
-      data-ph-keep
-      {...(size != null ? { 'data-ps': '' } : {})}
-      style={size != null ? ({ '--ps': `${size}px` } as CSSProperties) : undefined}
-      className={`collection-pills flex flex-wrap items-center gap-3 ${JUSTIFY[align]} ${width}${arranging ? ' collection-pills-arranging' : ''}${isOver ? ' collection-pills-over' : ''}`}
-    >
-      {empty
-        ? <span className="collection-pills-drop">{side === 'right' ? 'Drop here to put them right of “Catalogs”' : 'Drop here to put them left of “Catalogs”'}</span>
-        : children}
-      {controls}
+    <div data-ph-keep className={`collection-pills flex flex-col gap-2 ${width}`}>
+      {!empty && <div className={`flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
+      {dragging && <div className="grid grid-cols-3 gap-2 w-full">{SPOT_ALIGNS.map((a) => <PillSpot key={a} row={row} align={a} />)}</div>}
     </div>
   );
 }
 
-/** Small segmented choice used by the pill rows' controls. */
-function PillSeg<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: { value: T; text: React.ReactNode; title: string }[]; onPick: (v: T) => void }) {
-  return (
-    <span className="arrange-seg" role="group" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.value} type="button" title={o.title} aria-label={`${label}: ${o.title}`} aria-pressed={value === o.value} className={value === o.value ? 'on' : ''}
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPick(o.value); }}>
-          {o.text}
-        </button>
-      ))}
-    </span>
-  );
-}
-
-const alignIcon = (d: string) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-[15px] h-[15px]" aria-hidden="true"><path d={d} /></svg>
-);
-const ALIGN_OPTIONS: { value: PillAlign; text: React.ReactNode; title: string }[] = [
-  { value: 'left', text: alignIcon('M4 6h16M4 12h10M4 18h13'), title: 'Left' },
-  { value: 'center', text: alignIcon('M4 6h16M7 12h10M5.5 18h13'), title: 'Center' },
-  { value: 'right', text: alignIcon('M4 6h16M10 12h10M7 18h13'), title: 'Right' },
-];
-
-/** The round handle on a pill's corner while arranging: drag (or the arrows) for smaller or bigger pills. */
-function PillSizer({ size, label, onLive, onDone }: { size: number; label: string; onLive: (n: number | null) => void; onDone: (n: number) => void }) {
+/** The ↔ button beside a pill's grip and eye: drag it sideways (or press the arrows) to make that pill bigger or smaller. */
+function PillResize({ size, label, onLive, onDone }: { size: number; label: string; onLive: (n: number | null) => void; onDone: (n: number) => void }) {
   const fit = (n: number) => Math.max(PILL_MIN, Math.min(PILL_MAX, Math.round(n)));
   return (
     <button
       type="button"
-      className="stretch-handle"
-      style={{ right: -12, bottom: -12, margin: 0 }}
-      aria-label={`Size of ${label}: drag, or press the left and right arrows`}
-      title="Drag to make the pills bigger or smaller"
+      className="arrange-icon"
+      style={{ cursor: 'ew-resize', touchAction: 'none' }}
+      aria-label={`Size of ${label}: drag sideways, or press the left and right arrows`}
+      title="Drag sideways to resize"
       onPointerDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -154,8 +134,8 @@ function PillSizer({ size, label, onLive, onDone }: { size: number; label: strin
       }}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="w-3.5 h-3.5" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 15l6-6M10 9h5v5" />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+        <path d="M7 8l-4 4 4 4M17 8l4 4-4 4M3 12h18" />
       </svg>
     </button>
   );
@@ -461,19 +441,35 @@ export default function ListsPage() {
     nuvio: { label: 'Nuvio Collections', node: nuvioCollectionsButton },
     jellyfin: { label: 'Jellyfin Collections', node: aiostreamsCollectionsButton },
   };
-  // Each pill sits left or right of the title (moved while arranging), all at one size.
+  // Each pill sits in a row (wide screens: left or right of the title; a phone:
+  // above or below it), at its own size; each row lines up as its last drop said.
   const phone = useIsPhoneWidth();
-  const pillSaved = collectionArrange.cardSizing('pills').w ?? null;
-  const [pillLive, setPillLive] = useState<number | null>(null);
-  const pillSize = pillLive ?? pillSaved;
-  const setPillSize = (n: number) => collectionArrange.setCardSizing('pills', { w: n >= PILL_MAX ? undefined : n });
-  const leftKeys = collectionArrange.shown.filter((k) => collectionArrange.sideOf(k) === 'left');
-  const rightKeys = collectionArrange.shown.filter((k) => collectionArrange.sideOf(k) === 'right');
-  // Dropping a pill on the other side's area (or on a pill over there) moves it there.
-  const dragRegistry = useDragRegistry();
-  const pillArrange = useRef(collectionArrange);
-  useEffect(() => { pillArrange.current = collectionArrange; });
+  const sharedSize = collectionArrange.cardSizing('pills').w ?? null; // one size for both, from before
+  const [pillLive, setPillLive] = useState<{ key: string; size: number } | null>(null);
+  const sizeOf = (key: string) => (pillLive?.key === key ? pillLive.size : collectionArrange.cardSizing(`pill-${key}`).w ?? sharedSize);
+  const setPillSize = (key: string, n: number) => collectionArrange.setCardSizing(`pill-${key}`, { w: n >= PILL_MAX ? undefined : n });
+  const sideDefaultRow = (key: string): PillRowId => {
+    const side = collectionArrange.sideOf(key);
+    return collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, side === 'left' ? 'above' : 'below');
+  };
+  const rowOf = (key: string): PillRowId => (phone
+    ? collectionArrange.placeOf<PillRowId>(`phone-row-${key}`, sideDefaultRow(key))
+    : collectionArrange.sideOf(key));
+  const alignDefault = (row: PillRowId): PillAlign => (row === 'right' || row === 'below' ? 'right' : 'left');
+  const alignOf = (row: PillRowId) => collectionArrange.placeOf<PillAlign>(`${phone ? 'phone-' : ''}align-${row}`, alignDefault(row));
+  // While a pill is being dragged, every row shows where it can land.
+  const [pillDragging, setPillDragging] = useState(false);
   const pillPrefix = collectionArrange.sort.prefix;
+  useDndMonitor({
+    onDragStart: (e) => { if (String(e.active.id).startsWith(pillPrefix)) setPillDragging(true); },
+    onDragEnd: () => setPillDragging(false),
+    onDragCancel: () => setPillDragging(false),
+  });
+  // Dropping on a spot puts the pill in that row and lines the row up that way;
+  // dropping on another pill puts it in that pill's row.
+  const dragRegistry = useDragRegistry();
+  const pillState = useRef({ arrange: collectionArrange, phone, rowOf });
+  useEffect(() => { pillState.current = { arrange: collectionArrange, phone, rowOf }; });
   useEffect(() => {
     if (!dragRegistry) return;
     return dragRegistry.registerDragEndHandler((e) => {
@@ -481,25 +477,34 @@ export default function ListsPage() {
       const over = e.over ? String(e.over.id) : '';
       if (!active.startsWith(pillPrefix) || !over) return;
       const key = active.slice(pillPrefix.length);
-      const arr = pillArrange.current;
-      const side = over === PILL_DROP.left ? 'left'
-        : over === PILL_DROP.right ? 'right'
-          : over.startsWith(pillPrefix) ? arr.sideOf(over.slice(pillPrefix.length)) : null;
-      if (side && side !== arr.sideOf(key)) arr.setSide(key, side);
+      const { arrange: arr, phone: onPhone, rowOf: rowNow } = pillState.current;
+      let row: PillRowId | null = null;
+      if (over.startsWith(SPOT)) {
+        const [r, a] = over.slice(SPOT.length).split(':') as [PillRowId, PillAlign];
+        row = r;
+        arr.setPlace(`${onPhone ? 'phone-' : ''}align-${r}`, a, r === 'right' || r === 'below' ? 'right' : 'left');
+      } else if (over.startsWith(pillPrefix)) {
+        row = rowNow(over.slice(pillPrefix.length));
+      }
+      if (!row || row === rowNow(key)) return;
+      if (onPhone) arr.setPlace(`phone-row-${key}`, row, '');
+      else arr.setSide(key, row as 'left' | 'right');
     });
   }, [dragRegistry, pillPrefix]);
   const pillItem = (key: string) => {
     const pill = collectionPills[key];
     if (!pill) return null;
+    const size = sizeOf(key);
     return (
       <SortableItem key={key} scope={collectionArrange.sort} itemKey={key}>
         {(d) => (
-          <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex items-center gap-2 min-w-0 max-w-full ${d.className}`}>
-            <span className="relative inline-flex min-w-0 max-w-full">
+          <div ref={d.ref as Ref<HTMLDivElement>} style={d.style} className={`flex flex-col items-center gap-1.5 min-w-0 max-w-full ${d.className}`}>
+            <span
+              className="collection-pill-size relative inline-flex min-w-0 max-w-full"
+              {...(size != null ? { 'data-ps': '' } : {})}
+              style={size != null ? ({ '--ps': `${size}px` } as CSSProperties) : undefined}
+            >
               {pill.node}
-              {collectionArrange.arranging && !isTV && (
-                <PillSizer size={pillSize ?? PILL_MAX} label={pill.label} onLive={setPillLive} onDone={setPillSize} />
-              )}
             </span>
             {collectionArrange.arranging && (
               <span className="flex items-center gap-1.5 shrink-0">
@@ -508,6 +513,11 @@ export default function ListsPage() {
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); collectionArrange.hide(key); }}>
                   <EyeIcon className="w-4 h-4" />
                 </button>
+                {!isTV && (
+                  <PillResize size={size ?? PILL_MAX} label={pill.label}
+                    onLive={(n) => setPillLive(n == null ? null : { key, size: n })}
+                    onDone={(n) => setPillSize(key, n)} />
+                )}
               </span>
             )}
           </div>
@@ -515,53 +525,26 @@ export default function ListsPage() {
       </SortableItem>
     );
   };
-  const ph = phone ? 'phone-' : '';
-  const alignDefault = (side: 'left' | 'right'): PillAlign => (side === 'left' ? 'left' : 'right');
-  const posDefault = (side: 'left' | 'right') => (side === 'left' ? 'above' : 'below');
-  const alignOf = (side: 'left' | 'right') => collectionArrange.placeOf<PillAlign>(`${ph}align-${side}`, alignDefault(side));
-  const posOf = (side: 'left' | 'right') => collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, posDefault(side));
-  const pillRow = (side: 'left' | 'right', keys: string[]) => (
-    <PillSide
-      key={side}
-      side={side}
-      arranging={collectionArrange.arranging}
-      size={pillSize}
-      empty={keys.length === 0}
-      align={alignOf(side)}
-      wide={phone || side === 'left'}
-      controls={collectionArrange.arranging && !isTV ? (
-        <span className={`flex items-center gap-2 ${phone ? 'w-full justify-end' : ''}`}>
-          {phone && (
-            <PillSeg<'above' | 'below'>
-              label="Where this row sits"
-              value={posOf(side)}
-              options={[{ value: 'above', text: 'Above', title: 'Above the title' }, { value: 'below', text: 'Below', title: 'Below the title' }]}
-              onPick={(v) => collectionArrange.setPlace(`phone-pos-${side}`, v, posDefault(side))}
-            />
-          )}
-          <PillSeg<PillAlign> label="Line up" value={alignOf(side)} options={ALIGN_OPTIONS} onPick={(v) => collectionArrange.setPlace(`${ph}align-${side}`, v, alignDefault(side))} />
-        </span>
-      ) : undefined}
+  const rowsOf = (rows: PillRowId[]) => rows.map((row) => (
+    <PillRow
+      key={row}
+      row={row}
+      align={alignOf(row)}
+      dragging={pillDragging && collectionArrange.arranging}
+      wide={phone || row === 'left'}
+      empty={!collectionArrange.shown.some((k) => rowOf(k) === row)}
     >
-      {keys.map(pillItem)}
-    </PillSide>
-  );
-  const rowKeys = { left: leftKeys, right: rightKeys };
-  const rowShown = (side: 'left' | 'right') => rowKeys[side].length > 0 || collectionArrange.arranging;
-  const showLeft = rowShown('left');
-  const showRight = rowShown('right');
-  // A phone stacks the rows above or below the title, as each one says.
-  const phoneRows = (pos: 'above' | 'below') => {
-    const sides = (['left', 'right'] as const).filter((s) => rowShown(s) && posOf(s) === pos);
-    return sides.length ? <div className="w-full flex flex-col gap-3">{sides.map((s) => pillRow(s, rowKeys[s]))}</div> : undefined;
-  };
-  const collectionsButtons = v2 ? (phone ? phoneRows('above') : showLeft ? pillRow('left', leftKeys) : undefined) : (
+      {collectionArrange.shown.filter((k) => rowOf(k) === row).map(pillItem)}
+    </PillRow>
+  ));
+  const anyIn = (row: PillRowId) => collectionArrange.shown.some((k) => rowOf(k) === row) || (pillDragging && collectionArrange.arranging);
+  const collectionsButtons = v2 ? (anyIn(phone ? 'above' : 'left') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
       {onTV(nuvioCollectionsButton, () => router.push('/catalogs/nuvio-collections'))}
       {onTV(aiostreamsCollectionsButton, () => router.push('/catalogs/aiostreams-collections'))}
     </div>
   );
-  const rightPills = v2 ? (phone ? phoneRows('below') : showRight ? pillRow('right', rightKeys) : undefined) : undefined;
+  const rightPills = v2 && anyIn(phone ? 'below' : 'right') ? rowsOf([phone ? 'below' : 'right'])[0] : undefined;
 
   return (
     <Wrapper>
