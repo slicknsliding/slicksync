@@ -886,10 +886,10 @@ export default function MetricsPage() {
                           onClick={() => setYearInReviewOpen(true)}
                           className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-hover hover:bg-surface transition-colors text-left"
                         >
-                          <span className="flex items-center gap-2 min-w-0">
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
                             <SparklesIcon className="w-4 h-4 text-primary shrink-0" />
                             <span className="text-sm font-medium text-default">Year in Review</span>
-                            <span className="text-xs text-muted truncate">everything this household watched this year</span>
+                            <span className="text-xs text-muted break-words">everything this household watched this year</span>
                           </span>
                           <ChevronDownIcon className="w-4 h-4 text-muted shrink-0" />
                         </button>
@@ -947,7 +947,7 @@ export default function MetricsPage() {
                                           <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface border border-default">
                                             {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
                                           </div>
-                                          <p className="text-[10px] text-muted mt-1 truncate">{t.name}</p>
+                                          <p className="text-[10px] text-muted mt-1 break-words">{t.name}</p>
                                         </div>
                                       ))}
                                     </ScrollRow>
@@ -991,11 +991,11 @@ export default function MetricsPage() {
                           <div className="space-y-5">
                             {tasteOverlap.map((pair) => (
                               <div key={`${pair.userA.id}-${pair.userB.id}`} className="p-4 rounded-xl bg-surface-hover">
-                                <div className="flex items-center gap-3 mb-3">
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
                                   <UserAvatar userId={pair.userA.id} name={pair.userA.username} email={pair.userA.email} src={pair.userA.useGravatar ? undefined : (pair.userA.avatarUrl ?? undefined)} useGravatar={pair.userA.useGravatar} size="sm" />
-                                  <span className="text-sm font-medium text-default truncate">{pair.userA.username}</span>
+                                  <span className="text-sm font-medium text-default break-words">{pair.userA.username}</span>
                                   <Badge variant="primary">{pair.similarity}% overlap</Badge>
-                                  <span className="text-sm font-medium text-default truncate">{pair.userB.username}</span>
+                                  <span className="text-sm font-medium text-default break-words">{pair.userB.username}</span>
                                   <UserAvatar userId={pair.userB.id} name={pair.userB.username} email={pair.userB.email} src={pair.userB.useGravatar ? undefined : (pair.userB.avatarUrl ?? undefined)} useGravatar={pair.userB.useGravatar} size="sm" />
                                 </div>
                                 <ScrollRow className="flex gap-2 pb-1">

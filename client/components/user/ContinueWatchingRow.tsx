@@ -107,14 +107,14 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
         )}
       </div>
       <div className="p-3">
-        <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{card.name}</p>
-        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{under ? episodeName(card) : episodeLine(card)}</p>
-        <div className="flex items-center gap-2 mt-2 min-w-0">
+        <p className="text-sm font-medium break-words" style={{ color: 'var(--color-text)' }}>{card.name}</p>
+        <p className="text-xs break-words mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{under ? episodeName(card) : episodeLine(card)}</p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 min-w-0">
           <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm">{app}</Badge>
-          {card.profileLabel && <span className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{card.profileLabel}</span>}
+          {card.profileLabel && <span className="text-[11px] break-words" style={{ color: 'var(--color-text-muted)' }}>{card.profileLabel}</span>}
           {under && (card.resume
-            ? <span className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>{leftLabel(card)}</span>
-            : <span className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-primary)' }}>Up next</span>)}
+            ? <span className="text-[11px] font-semibold break-words" style={{ color: 'var(--color-text)' }}>{leftLabel(card)}</span>
+            : <span className="text-[11px] font-semibold break-words" style={{ color: 'var(--color-primary)' }}>Up next</span>)}
         </div>
       </div>
     </>
@@ -174,8 +174,8 @@ const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
         )}
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>{card.name}</span>
-        <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{episodeLine(card)}</span>
+        <span className="block text-sm font-semibold break-words" style={{ color: 'var(--color-text)' }}>{card.name}</span>
+        <span className="block text-xs break-words" style={{ color: 'var(--color-text-muted)' }}>{episodeLine(card)}</span>
       </span>
       <span className="hidden sm:block w-28 shrink-0 text-xs" style={{ color: 'var(--color-text-muted)' }}>{leftLabel(card)}</span>
       <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm" className="shrink-0">{app}</Badge>

@@ -264,7 +264,7 @@ function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix }:
         </div>
         <div>
           <V2Status tone={st.tone}>{st.words}</V2Status>
-          <div className="text-muted text-[13px] mt-1 truncate" title={st.lineTitle}>{st.line}</div>
+          <div className="text-muted text-[13px] mt-1 break-words" title={st.lineTitle}>{st.line}</div>
         </div>
         <div className="flex gap-4 text-[13px]">
           <span><b className="text-[15px] text-default">{watched(p.watchTime)}</b><span className="text-muted"> watched</span></span>

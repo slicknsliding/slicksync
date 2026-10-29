@@ -105,7 +105,7 @@ export function InlineEdit({
       className={`flex items-center gap-2 cursor-pointer group rounded px-1 -ml-1 hover:bg-surface-hover transition-colors ${disabled ? 'cursor-default' : ''} ${className}`}
       title={disabled ? '' : 'Click to edit'}
     >
-      <span className="text-inherit font-inherit truncate max-w-full">
+      <span className="text-inherit font-inherit min-w-0 max-w-full break-words">
         {value || placeholder || 'Click to edit'}
       </span>
       {!disabled && (

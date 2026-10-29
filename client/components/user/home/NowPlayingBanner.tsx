@@ -106,10 +106,10 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
   const canOpen = !!baseId && !row.item.titlePending;
   const mediaType: 'movie' | 'series' = row.item.type === 'movie' ? 'movie' : 'series';
   const whoLine = (
-    <div className={`flex items-center gap-2 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
       {who}
       <span className={`w-2 h-2 rounded-full shrink-0 ${playing ? 'animate-pulse' : ''}`} style={{ background: playing ? '#22c55e' : '#facc15', boxShadow: playing ? '0 0 0 4px rgba(34,197,94,.2)' : undefined }} />
-      <span className="min-w-0 truncate">{playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
+      <span className="min-w-0 break-words">{playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
     </div>
   );
 
@@ -120,16 +120,16 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
       tabIndex={canOpen ? 0 : undefined}
       onClick={canOpen ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) setDetailsOpen(true); } : undefined}
       onKeyDown={canOpen ? (e) => { if (e.key === 'Enter') setDetailsOpen(true); } : undefined}
-      className={`relative rounded-[20px] overflow-hidden ${canOpen ? 'cursor-pointer ' : ''}${flush || under || progressUnder ? '' : 'mb-8 '}${compact ? 'h-[176px]' : 'h-[230px] sm:h-[300px] min-[2000px]:h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
+      className={`relative flex flex-col rounded-[20px] overflow-hidden ${canOpen ? 'cursor-pointer ' : ''}${flush || under || progressUnder ? '' : 'mb-8 '}${compact ? 'min-h-[176px]' : 'min-h-[230px] sm:min-h-[300px] min-[2000px]:min-h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
       {art && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center' }} />
       )}
       {/* Dark on the side the words sit on, so they read on every theme. */}
       <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.96) 0%, rgba(10,12,20,.85) 45%, rgba(10,12,20,.15) 100%)' }} />
-      <div className={`relative h-full flex flex-col justify-end max-w-full ${compact ? 'p-3 gap-0.5 sm:max-w-[80%]' : 'gap-2 p-5 sm:p-8 sm:max-w-[60%]'}`}>
+      <div className={`relative flex-1 flex flex-col justify-end max-w-full ${compact ? 'p-3 gap-0.5 sm:max-w-[80%]' : 'gap-2 p-5 sm:p-8 sm:max-w-[60%]'}`}>
         {!under && whoLine}
-        <h2 className={`font-bold leading-tight text-white line-clamp-2 ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
+        <h2 className={`font-bold leading-tight text-white line-clamp-3 ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
         {episode && <p className="text-sm" style={{ color: '#d1d5db' }}>{episode}</p>}
         {!progressUnder && progressBlock(true)}
         {resumeUrl && (

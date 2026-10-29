@@ -81,7 +81,7 @@ export function MeActivityV2({
             : s.itemType === 'movie' ? <FilmIcon className="w-5 h-5 text-subtle" /> : <TvIcon className="w-5 h-5 text-subtle" />}
         </button>
         <div className="flex-1 min-w-0">
-          <button type="button" className="font-semibold text-[14.5px] text-default truncate max-w-full text-left" onClick={() => onFilterByContent(s.itemName)}>
+          <button type="button" className="font-semibold text-[14.5px] text-default block break-words max-w-full text-left" onClick={() => onFilterByContent(s.itemName)}>
             {s.itemName}{ep && <span className="text-muted font-normal"> · {ep}</span>}
           </button>
           <div className="text-muted text-[12.5px] truncate">

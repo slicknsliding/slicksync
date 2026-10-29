@@ -30,7 +30,7 @@ function Who({ np }: { np: NowPlayingRows[number] }) {
   return (
     <Link href={`/users/${np.user.id}`} className="inline-flex items-center gap-2 min-w-0 hover:underline" style={{ color: 'inherit' }} aria-label={`Open ${np.user.username}’s profile`}>
       <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} colorIndex={np.user.colorIndex} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="xs" />
-      <b className="truncate">{np.user.username.split(' ')[0]}</b>
+      <b className="break-words min-w-0">{np.user.username.split(' ')[0]}</b>
       <span aria-hidden="true">·</span>
     </Link>
   );
@@ -126,30 +126,34 @@ export function NeedsYouTiles({ items, onPutAway, stretch }: {
   return (
     <div className="v2-tiles v2-tiles-3" {...(stretch ? stretch.arrange.cardAttrs(stretch.id) : {})}>
       {items.map((it) => (
-        <div key={it.key} className="v2-tool" style={{ alignItems: 'center', borderColor: 'color-mix(in srgb, var(--color-warning, #f59e0b) 35%, var(--color-surface-border))' }}>
+        <div key={it.key} className="v2-tool flex-wrap" style={{ alignItems: 'center', borderColor: 'color-mix(in srgb, var(--color-warning, #f59e0b) 35%, var(--color-surface-border))' }}>
           {it.person
             ? (it.person.id
               ? <UserAvatar userId={it.person.id} name={it.person.name} email={it.person.email} colorIndex={it.person.colorIndex} src={it.person.useGravatar ? undefined : (it.person.avatarUrl ?? undefined)} useGravatar={it.person.useGravatar} size="md" />
               : <Avatar name={it.person.name} email={it.person.email} size="md" />)
             : <span className="v2-tool-icon">{it.icon}</span>}
-          <span className="flex-1 min-w-0 text-left">
-            <span className="block font-semibold text-[14.5px] text-default truncate">{it.title}</span>
-            <span className="block text-[12.5px] truncate" style={{ color: 'var(--color-warning, #f59e0b)' }}>{it.line}</span>
+          {/* Too narrow for the name beside the buttons: the buttons drop under it. */}
+          <span className="flex-1 min-w-[10rem] text-left">
+            <span className="block font-semibold text-[14.5px] text-default break-words">{it.title}</span>
+            <span className="block text-[12.5px] break-words" style={{ color: 'var(--color-warning, #f59e0b)' }}>{it.line}</span>
           </span>
-          <span className="flex gap-2 shrink-0">{it.actions}</span>
-          {onPutAway && (
-            <V2MoreMenu
-              small
-              label={`Put away ${it.title}`}
-              icon={<XMarkIcon className="w-4 h-4" />}
-              items={[
-                { label: 'Dismiss this one', onClick: () => onPutAway(it, 'dismiss') },
-                { label: 'Snooze for a week', onClick: () => onPutAway(it, 'snooze') },
-                { label: 'Don’t show this kind again', onClick: () => onPutAway(it, 'kind') },
-              ]}
-              menuLabel="Bring it back from Settings → Notifications, or while arranging this page."
-            />
-          )}
+          {/* The buttons and the × move as one, so the × never sits on a line alone. */}
+          <span className="flex items-center gap-3 shrink-0 ml-auto">
+            <span className="flex gap-2">{it.actions}</span>
+            {onPutAway && (
+              <V2MoreMenu
+                small
+                label={`Put away ${it.title}`}
+                icon={<XMarkIcon className="w-4 h-4" />}
+                items={[
+                  { label: 'Dismiss this one', onClick: () => onPutAway(it, 'dismiss') },
+                  { label: 'Snooze for a week', onClick: () => onPutAway(it, 'snooze') },
+                  { label: 'Don’t show this kind again', onClick: () => onPutAway(it, 'kind') },
+                ]}
+                menuLabel="Bring it back from Settings → Notifications, or while arranging this page."
+              />
+            )}
+          </span>
         </div>
       ))}
       {stretch && <StretchHandle arrange={stretch.arrange} id={stretch.id} label="Needs you" />}
@@ -172,8 +176,8 @@ export function PersonRow({ href, avatar, children, when, extra }: {
     <div className="v2-row">
       {lead}
       <div className="flex-1 min-w-0">
-        <div className="text-[14px] truncate">{children}</div>
-        {when && <div className="text-muted text-[12px] truncate">{when}</div>}
+        <div className="text-[14px] break-words">{children}</div>
+        {when && <div className="text-muted text-[12px] break-words">{when}</div>}
       </div>
       {extra}
     </div>
@@ -191,8 +195,8 @@ export function StatusRow({ tone, words, title, line, actions }: {
   return (
     <div className="v2-row">
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-[14.5px] truncate">{title}</div>
-        {line && <div className="text-muted text-[12.5px] truncate">{line}</div>}
+        <div className="font-semibold text-[14.5px] break-words">{title}</div>
+        {line && <div className="text-muted text-[12.5px] break-words">{line}</div>}
       </div>
       <V2Status tone={tone}>{words}</V2Status>
       {actions}

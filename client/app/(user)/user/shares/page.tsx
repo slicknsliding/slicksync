@@ -421,7 +421,7 @@ export default function UserSharesPage() {
 
         {/* The title, and what it is, under the poster */}
         <div className="px-2 pt-2 pb-1.5 text-center min-w-0">
-          <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }} title={share.itemName}>{share.itemName}</p>
+          <p className="text-xs font-semibold break-words" style={{ color: 'var(--color-text)' }} title={share.itemName}>{share.itemName}</p>
           <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{share.itemType === 'series' ? 'Series' : 'Movie'}</p>
         </div>
 
@@ -467,7 +467,7 @@ export default function UserSharesPage() {
 
         {/* Info */}
         <div className="p-2 text-center">
-          <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-xs break-words" style={{ color: 'var(--color-text-muted)' }}>
             {type === 'received' ? share.fromUsername : share.toUsername}
           </p>
           <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>

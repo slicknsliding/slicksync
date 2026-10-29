@@ -938,7 +938,7 @@ function VaultPageContent() {
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="font-semibold truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
+            <h3 className="font-semibold break-words" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
               {CATEGORY_LABELS[entry.category]}{entry.provider ? ` • ${entry.provider}` : ''}
             </p>

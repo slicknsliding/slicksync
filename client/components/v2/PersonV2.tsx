@@ -72,8 +72,8 @@ export function TitleRows({ rows, empty }: {
             {r.poster ? <img src={r.poster} alt="" className="w-full h-full object-cover" /> : <span className="text-subtle text-xs">{r.type === 'movie' ? 'Film' : 'Show'}</span>}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-default truncate">{r.name}</div>
-            <div className="text-muted text-[12.5px] truncate">{r.line}</div>
+            <div className="font-medium text-default break-words">{r.name}</div>
+            <div className="text-muted text-[12.5px] break-words">{r.line}</div>
           </div>
           {r.live && <span className="v2-chip" style={{ color: 'var(--color-success, #22c55e)' }}>Live</span>}
         </div>

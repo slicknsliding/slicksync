@@ -102,7 +102,7 @@ export function MeSharesV2({
     <div key={s.id} className="v2-tool" style={{ cursor: selecting ? 'pointer' : 'default', padding: 10, ...ring(s) }} onClick={pick(s)}>
       {poster(s, 'w-[52px] h-[76px]')}
       <span className="flex-1 min-w-0 text-left">
-        <span className="flex items-center gap-2 flex-wrap"><b className="text-[14.5px] text-default truncate">{s.itemName}</b>{state(s, type)}</span>
+        <span className="flex items-center gap-2 flex-wrap"><b className="text-[14.5px] text-default break-words">{s.itemName}</b>{state(s, type)}</span>
         <span className="block text-muted text-[12.5px] mt-0.5">{who(s, type)} · {when(s.createdAt)}</span>
         <span className="block text-muted text-[12px] mt-0.5">{s.itemType === 'series' ? 'Show' : 'Movie'}{inLibrary(s.itemId) ? ' · In your library' : ''}</span>
       </span>
@@ -117,8 +117,8 @@ export function MeSharesV2({
     <div key={s.id} className="v2-row" style={ring(s)} onClick={pick(s)}>
       {poster(s, 'w-10 h-14')}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2"><b className="text-[14.5px] text-default truncate">{s.itemName}</b>{state(s, type)}</div>
-        <div className="text-muted text-[12.5px] truncate">{who(s, type)} · {when(s.createdAt)}</div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><b className="text-[14.5px] text-default break-words">{s.itemName}</b>{state(s, type)}</div>
+        <div className="text-muted text-[12.5px] break-words">{who(s, type)} · {when(s.createdAt)}</div>
       </div>
       <span className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
         {open(s)}

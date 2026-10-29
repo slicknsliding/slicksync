@@ -145,7 +145,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
       <div className="mt-2 space-y-0.5 text-center">
         {/* Content title */}
         <h4 
-          className="font-semibold text-sm leading-tight line-clamp-2"
+          className="font-semibold text-sm leading-tight line-clamp-3 break-words"
           style={{ color: 'var(--color-text-muted)' }}
           title={item.name}
         >

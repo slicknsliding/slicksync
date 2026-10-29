@@ -501,7 +501,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           onClick={() => onFilterByContent?.(session.itemName)}
           className="block w-full"
         >
-          <h4 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>
+          <h4 className="font-semibold text-sm leading-tight line-clamp-3 break-words" style={{ color: 'var(--color-text-muted)' }}>
             {session.itemName}
           </h4>
         </button>

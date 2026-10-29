@@ -103,7 +103,7 @@ function AddonTile({ addon, onRemove }: { addon: Addon; onRemove: (id: string) =
             : <PuzzlePieceIcon className="w-[18px] h-[18px]" />}
         </span>
         <span className="flex-1 min-w-0">
-          <b className="block text-default truncate">{addon.name || 'Unnamed addon'}</b>
+          <b className="block text-default break-words">{addon.name || 'Unnamed addon'}</b>
           <span className="block text-muted text-[12.5px] truncate">{kindOf(addon)}</span>
         </span>
       </Link>

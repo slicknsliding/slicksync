@@ -30,7 +30,7 @@ export function MeHead({ title, sub, actions, more }: {
         <style>{PAGE_HEADER_CSS}</style>
         {compact ? (
           <div className="min-w-[8rem] flex-1">
-            <h1 className="text-xl md:text-2xl font-bold leading-tight text-default line-clamp-2 break-words">{title}</h1>
+            <h1 className="text-xl md:text-2xl font-bold leading-tight text-default line-clamp-3 break-words">{title}</h1>
             {sub && <div className="text-muted text-xs md:text-[13.5px] leading-snug mt-0.5 line-clamp-2">{sub}</div>}
           </div>
         ) : (
@@ -134,7 +134,7 @@ export function MePoster({ poster, name, type, line, progress, selected, selecti
   const body = (
     <>
       {art}
-      <span className="block text-[13px] font-semibold mt-1.5 line-clamp-2 leading-tight text-default">{name}</span>
+      <span className="block text-[13px] font-semibold mt-1.5 line-clamp-3 break-words leading-tight text-default">{name}</span>
       {line && <span className="block text-muted text-[12px] mt-0.5 truncate">{line}</span>}
     </>
   );

@@ -888,7 +888,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           onClick={() => onFilterByContent?.(activity.contentName)}
           className="block w-full"
         >
-          <h4 className="font-semibold text-sm text-slate-500 leading-tight line-clamp-2">
+          <h4 className="font-semibold text-sm text-slate-500 leading-tight line-clamp-3 break-words">
             {activity.contentName}
           </h4>
         </button>

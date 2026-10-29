@@ -136,12 +136,13 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
               <ArrangeSection key={id} arrange={arrange} id={id} title="Members" meta={String(members.length)}>
                 <V2Box>
                   {isLoading ? <Empty>Loading…</Empty> : members.length === 0 ? <Empty>No watch activity in this period.</Empty> : (
-                    <div>
+                    // One grid for every row: names show in full and the bars still line up.
+                    <div className="grid grid-cols-[auto_fit-content(55%)_minmax(3rem,1fr)_auto] gap-x-3">
                       {members.map((m) => (
-                        <div key={m.id} className="flex items-center gap-3 py-2" title={`${m.movies} movies · ${m.series} shows`}>
+                        <div key={m.id} className="grid grid-cols-subgrid col-span-4 items-center py-2" title={`${m.movies} movies · ${m.series} shows`}>
                           {avatar({ id: m.id, username: m.name, email: m.email, avatarUrl: m.avatarUrl, useGravatar: m.useGravatar })}
-                          <b className="w-[84px] sm:w-[110px] truncate text-[14px]">{m.name}</b>
-                          <div className="flex-1 min-w-0 h-2.5 rounded-full bg-surface-hover">
+                          <b className="min-w-[84px] sm:min-w-[110px] break-words text-[14px]">{m.name}</b>
+                          <div className="min-w-0 h-2.5 rounded-full bg-surface-hover">
                             <div className="h-full rounded-full" style={{ width: `${Math.max(3, Math.round((m.watchTime / top) * 100))}%`, background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }} />
                           </div>
                           <span className="text-muted text-[13px] text-right shrink-0 sm:w-[170px]">
@@ -173,7 +174,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                         <div className="flex items-center gap-3">
                           {avatar(p.user, 'md')}
                           <div className="min-w-0">
-                            <p className="font-semibold text-default truncate">{p.user.username}</p>
+                            <p className="font-semibold text-default break-words">{p.user.username}</p>
                             <p className="text-xs text-muted">{metricsWatched(mins)} · {p.movieCount} movies · {p.seriesCount} shows</p>
                           </div>
                         </div>
@@ -192,7 +193,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
                                 </div>
-                                <p className="text-[10px] text-muted mt-1 truncate">{t.name}</p>
+                                <p className="text-[10px] text-muted mt-1 break-words">{t.name}</p>
                               </div>
                             ))}
                           </ScrollRow>
@@ -201,7 +202,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                           <div className="flex items-center gap-2 pt-2 border-t border-default mt-auto">
                             <span className="text-xs text-muted">Closest match</span>
                             {avatar(p.tasteTwin.user, 'xs')}
-                            <span className="text-xs font-medium text-default truncate">{p.tasteTwin.user.username}</span>
+                            <span className="text-xs font-medium text-default break-words min-w-0">{p.tasteTwin.user.username}</span>
                             <Badge variant="primary" size="sm">{p.tasteTwin.similarity}%</Badge>
                           </div>
                         )}
@@ -220,9 +221,9 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                     <V2Box key={`${pair.userA.id}-${pair.userB.id}`}>
                       <div className="flex items-center gap-3 mb-3 flex-wrap">
                         {avatar(pair.userA)}
-                        <span className="text-sm font-medium text-default truncate">{pair.userA.username}</span>
+                        <span className="text-sm font-medium text-default break-words min-w-0">{pair.userA.username}</span>
                         <Badge variant="primary">{pair.similarity}% overlap</Badge>
-                        <span className="text-sm font-medium text-default truncate">{pair.userB.username}</span>
+                        <span className="text-sm font-medium text-default break-words min-w-0">{pair.userB.username}</span>
                         {avatar(pair.userB)}
                       </div>
                       <ScrollRow className="flex gap-2 pb-1">
@@ -232,7 +233,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               {item.poster && <img src={item.poster} alt={item.name || ''} className="w-full h-full object-cover" />}
                             </div>
-                            <p className="text-xs text-muted mt-1 truncate">{item.name}</p>
+                            <p className="text-xs text-muted mt-1 break-words">{item.name}</p>
                           </div>
                         ))}
                       </ScrollRow>
@@ -398,8 +399,8 @@ export function MetricsAdminV2({ arrange, isLoading, data, joinsChart, joinsTota
                       <div key={u.id} className="v2-row">
                         <UserAvatar userId={u.id} name={u.username} email={u.email} size="md" />
                         <div className="flex-1 min-w-0">
-                          <b className="text-default truncate block">{u.username}</b>
-                          <div className="text-muted text-[12.5px] sm:truncate">{u.lastActivity ? `last watched ${new Date(u.lastActivity).toLocaleDateString()}` : u.email}</div>
+                          <b className="text-default break-words block">{u.username}</b>
+                          <div className="text-muted text-[12.5px] break-words">{u.lastActivity ? `last watched ${new Date(u.lastActivity).toLocaleDateString()}` : u.email}</div>
                           {/* On a phone the status sits under the name, so the date isn't cut off. */}
                           <div className="sm:hidden mt-1"><V2Status tone={st.tone}>{st.words}</V2Status></div>
                         </div>
@@ -510,7 +511,7 @@ export function MetricsHealthV2({ health, parts, refreshing, onRefresh, timeAgo,
               <div key={e.id} className="v2-row">
                 <V2Status tone={e.status === 'up' ? 'ok' : 'bad'}>{e.status === 'up' ? 'Fixed' : 'Down'}</V2Status>
                 <div className="flex-1 min-w-0">
-                  <b className="text-default block truncate">{e.title}</b>
+                  <b className="text-default block break-words">{e.title}</b>
                   {e.detail && <div className="text-muted text-[12.5px] break-words">{e.detail}</div>}
                 </div>
                 <span className="text-muted text-[12.5px] shrink-0 capitalize">{e.source}</span>

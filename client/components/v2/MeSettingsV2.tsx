@@ -174,7 +174,7 @@ export function MeSettingsV2(p: SettingsV2Props) {
               <MeRow title="Your API key" line="For your metrics and for scrobbling from other apps" stack>
                 <div className="flex gap-2 w-full flex-wrap">
                   <div className="flex-1 min-w-[200px] flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--color-surface-elevated)', border: '1px solid var(--color-surface-border)' }}>
-                    <code className="flex-1 text-sm font-mono truncate text-muted">{p.apiKey.masked}</code>
+                    <code className="flex-1 text-sm font-mono break-all min-w-0 text-muted">{p.apiKey.masked}</code>
                     <button type="button" className="p-1 rounded text-muted" title={p.apiKey.visible ? 'Hide' : 'Show'} aria-label={p.apiKey.visible ? 'Hide key' : 'Show key'} onClick={p.apiKey.toggleVisible}>
                       {p.apiKey.visible ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                     </button>

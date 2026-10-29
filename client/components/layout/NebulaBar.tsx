@@ -281,9 +281,11 @@ export function NebulaBar({
           the top row specifically on mobile to dodge a content-overlap bug
           on short pages, but that traded away the "always there" behavior
           this is for - reverted. dropdownPosition="up" (the default) is
-          correct since this sits at the BOTTOM of the screen. */}
+          correct since this sits at the BOTTOM of the screen. On phones it
+          rests half off the left edge so it stops covering headings, and
+          slides fully in while it has focus or its menu is open. */}
       {placement === 'float' && (
-      <div data-account-float className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2 transition-[opacity,transform] duration-200 ${floatAway ? 'opacity-0 translate-y-3 pointer-events-none' : ''}`}>
+      <div data-account-float className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2 transition-[opacity,transform,translate] duration-200 max-md:-translate-x-[calc(64%+1rem)] max-md:focus-within:translate-x-0 max-md:has-[[aria-expanded=true]]:translate-x-0 ${floatAway ? 'opacity-0 translate-y-3 pointer-events-none' : ''}`}>
         {/* A bar pinned to the bottom of the screen (Library's Select bar) sets
             data-bottom-bar on the body; the picture steps aside while it's up. */}
         <style>{'body[data-bottom-bar] [data-account-float]{opacity:0;pointer-events:none}'}</style>

@@ -917,7 +917,7 @@ function GroupCard({
           />
           <Link
             href={`/groups/${group.id}`}
-            className="flex-1 min-w-0 font-semibold truncate transition-colors hover:text-primary text-default"
+            className="flex-1 min-w-0 font-semibold break-words transition-colors hover:text-primary text-default"
             onClick={(e) => e.stopPropagation()}
           >
             {group.name}

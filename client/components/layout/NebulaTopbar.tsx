@@ -193,7 +193,7 @@ export function NebulaPageHeading({
           {compact ? (
             <div className="min-w-[8rem] flex-1">
               <h1 className="text-xl md:text-2xl font-bold font-display leading-tight text-default line-clamp-2 break-words">{title}</h1>
-              {subtitle && <p className="text-xs md:text-sm text-muted leading-snug mt-0.5 line-clamp-2">{subtitle}</p>}
+              {subtitle && <p className="text-xs md:text-sm text-muted leading-snug mt-0.5 line-clamp-3 break-words">{subtitle}</p>}
             </div>
           ) : (
             <h1 className="sr-only">{title}</h1>
@@ -421,7 +421,7 @@ export function NebulaCompactStatCard({
               {icon}
             </div>
           )}
-          <p className="text-lg font-bold font-display text-default leading-none truncate">{value}</p>
+          <p className="text-lg font-bold font-display text-default leading-none">{value}</p>
         </div>
         <p className="text-[11px] leading-tight text-muted">{label}</p>
       </div>

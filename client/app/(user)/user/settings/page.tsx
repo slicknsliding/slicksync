@@ -1072,7 +1072,7 @@ export default function UserSettingsPage() {
                 }}
               >
                 <code 
-                  className="flex-1 text-sm font-mono truncate"
+                  className="flex-1 text-sm font-mono break-all"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
                   {maskedApiKey}

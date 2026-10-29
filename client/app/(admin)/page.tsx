@@ -100,8 +100,8 @@ const RecentAddonItem = memo(function RecentAddonItem({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <p className="font-semibold text-sm text-default truncate group-hover:text-primary transition-colors">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+            <p className="font-semibold text-sm text-default break-words group-hover:text-primary transition-colors">
               {addon.name}
             </p>
             {addon.version && <VersionBadge version={addon.version} size="sm" />}
@@ -341,15 +341,15 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         </div>
         {wide ? (
           <div className="pt-1.5 min-w-0">
-            <p className="text-[13.5px] font-semibold text-default truncate">{item.showName}</p>
+            <p className="text-[13.5px] font-semibold text-default break-words">{item.showName}</p>
             {under ? (
               <>
-                <p className="text-xs text-muted truncate">
+                <p className="text-xs text-muted break-words">
                   {item.contentType === 'series' && item.nextEpisode
                     ? `S${item.nextEpisode.season} E${item.nextEpisode.episode}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
                     : 'Movie'}
                 </p>
-                <p className="text-xs text-muted truncate">
+                <p className="text-xs text-muted break-words">
                   {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
                   {' · '}
                   {item.resume
@@ -358,7 +358,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
                 </p>
               </>
             ) : (
-              <p className="text-xs text-muted truncate">
+              <p className="text-xs text-muted break-words">
                 {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
                 {item.contentType === 'series' && item.nextEpisode ? ` · S${item.nextEpisode.season} E${item.nextEpisode.episode}` : ''}
               </p>
@@ -366,14 +366,14 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           </div>
         ) : (
         <div className="p-2">
-          <p className="text-xs font-medium text-default truncate">{item.showName}</p>
-          <p className="text-[11px] text-muted truncate">
+          <p className="text-xs font-medium text-default break-words">{item.showName}</p>
+          <p className="text-[11px] text-muted break-words">
             {item.nextEpisode
               ? `${item.resume ? 'Resume ' : ''}S${String(item.nextEpisode.season).padStart(2, '0')}E${String(item.nextEpisode.episode).padStart(2, '0')}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
               : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
           </p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <p className="text-[10px] text-subtle truncate">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 mt-0.5">
+            <p className="text-[10px] text-subtle break-words">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
             {item.providerType && (
               <Badge variant={providerBadgeVariant(item)} size="sm" className="shrink-0">
                 {providerTypeLabel(item.providerType)}
@@ -1524,7 +1524,7 @@ export default function DashboardPage() {
                                 <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
                               </TVLink>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm truncate text-muted">
+                                  <p className="text-sm break-words text-muted">
                                     <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
                                       {np.user.username.split(' ')[0]}
                                     </span>{' '}
@@ -1888,7 +1888,7 @@ export default function DashboardPage() {
                                 <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="sm" />
                               </Link>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm truncate text-muted">
+                                <p className="text-sm break-words text-muted">
                                   <span className="font-medium text-default">
                                     {np.user.username.split(' ')[0]}
                                   </span>{' '}

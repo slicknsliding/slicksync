@@ -196,7 +196,7 @@ const GroupWatchTimeChart = memo(function GroupWatchTimeChart({
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: USER_COLORS[index % USER_COLORS.length] }}
             />
-            <span className="text-sm text-muted truncate" style={{ maxWidth: '120px' }}>
+            <span className="text-sm text-muted break-words">
               {user.username || user.name || 'Unknown'}
             </span>
           </div>
@@ -1232,10 +1232,10 @@ export default function GroupDetailPage() {
                         <UserAvatar userId={user.id} name={displayName} email={user.email} src={user.avatarUrl ?? undefined} useGravatar={user.useGravatar} colorIndex={user.colorIndex} size="md" />
 
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <Link
                               href={`/users/${user.id}`}
-                              className="font-medium text-default hover:text-primary transition-colors truncate"
+                              className="font-medium text-default hover:text-primary transition-colors break-words"
                             >
                               {displayName}
                             </Link>
@@ -1247,7 +1247,7 @@ export default function GroupDetailPage() {
                               size="sm" 
                             />
                           </div>
-                          <p className="text-sm text-muted truncate">{displayEmail(user.email)}</p>
+                          <p className="text-sm text-muted break-words">{displayEmail(user.email)}</p>
                         </div>
 
                         <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -1368,8 +1368,8 @@ export default function GroupDetailPage() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-semibold text-default truncate text-base flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                                <h4 className="font-semibold text-default break-words text-base flex-1 min-w-[10rem]">
                                   {addon.name || 'Unnamed Addon'}
                                 </h4>
                                 {addon.version && (
@@ -1701,8 +1701,8 @@ function AddMemberForm({ groupId, existingUserIds, onClose, onUsersChanged }: {
               />
               <UserAvatar userId={user.id} name={displayName} email={user.email} src={user.avatarUrl ?? undefined} useGravatar={user.useGravatar} colorIndex={user.colorIndex} size="sm" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-default truncate">{displayName}</p>
-                <p className="text-sm text-muted truncate">{displayEmail(user.email)}</p>
+                <p className="font-medium text-default break-words">{displayName}</p>
+                <p className="text-sm text-muted break-words">{displayEmail(user.email)}</p>
               </div>
             </motion.div>
           );
@@ -1809,7 +1809,7 @@ function AddAddonForm({ availableAddons, onAdd, onClose }: AddAddonFormProps) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <p className="font-medium text-default truncate">{addon.name}</p>
+                <p className="font-medium text-default break-words">{addon.name}</p>
                 {addon.version && <VersionBadge version={addon.version} size="sm" />}
               </div>
               {addon.description && (

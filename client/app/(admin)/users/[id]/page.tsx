@@ -1401,8 +1401,8 @@ export default function UserDetailPage() {
                                   )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <h4 className={`font-medium truncate flex-1 min-w-0 ${isExcluded ? 'text-muted line-through' : 'text-default'}`}>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                                    <h4 className={`font-medium break-words flex-1 min-w-[10rem] ${isExcluded ? 'text-muted line-through' : 'text-default'}`}>
                                       {addon.name}
                                     </h4>
                                     {addon.version && <VersionBadge version={addon.version} size="sm" />}
@@ -1515,8 +1515,8 @@ export default function UserDetailPage() {
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium text-default truncate flex-1 min-w-0">{name}</h4>
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                                  <h4 className="font-medium text-default break-words flex-1 min-w-[10rem]">{name}</h4>
                                   {version && <VersionBadge version={version} size="sm" />}
                                   {isProtected && (
                                     <Badge variant="success" size="sm">
@@ -2509,7 +2509,7 @@ export default function UserDetailPage() {
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-default truncate group-hover:text-primary transition-colors">
+                        <p className="font-medium text-default break-words group-hover:text-primary transition-colors">
                           {item.name}
                         </p>
                         <p className="text-sm text-muted">
@@ -2572,8 +2572,8 @@ export default function UserDetailPage() {
 
                             {/* Info */}
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <p className="font-medium text-default truncate group-hover:text-primary transition-colors">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-0.5">
+                                <p className="font-medium text-default break-words group-hover:text-primary transition-colors">
                                   {s.item.name}
                                 </p>
                                 {s.isActive && (
