@@ -80,6 +80,9 @@ async function deleteUserCascade(prisma, userId) {
     throw err
   }
 
+  // Their household's own rows come off their AIOStreams while it can still be reached.
+  await require('./aioProfileVariants').forgetOwnRows(prisma, require('./encryption').decrypt, userId)
+
   // Group membership lives as a JSON-string userIds array on Group, not a
   // relational FK - strip this user out of every group in their account
   // before deleting them, so no group is left pointing at a dangling id.

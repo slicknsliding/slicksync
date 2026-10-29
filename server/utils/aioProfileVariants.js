@@ -486,6 +486,34 @@ async function healOwnRows(prisma, decrypt) {
   }
 }
 
+/**
+ * Someone with a household is being deleted: their household users lose the
+ * rows SlickSync set up in their AIOStreams, and the choices go too. Called
+ * before the person is removed, while their configuration can still be read.
+ * Never stops the deletion.
+ */
+async function forgetOwnRows(prisma, decrypt, ownerId) {
+  try {
+    const owner = await prisma.user.findFirst({
+      where: { id: ownerId, providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' },
+      select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true },
+    })
+    if (!owner) return
+    const accountId = owner.accountId || 'default'
+    const choices = await ownRowsChoices(prisma, accountId)
+    const profiles = await prisma.jellyfinProfile.findMany({ where: { ownerUserId: ownerId }, select: { id: true, name: true, ownerUserId: true, jellyfinUserId: true, skip: true } })
+    for (const profile of profiles.filter((p) => choices[p.id] === true)) {
+      if (owner.aioConfigId && owner.aioConfigPassword) {
+        await setOwnRowsVariant(prisma, decrypt, owner, profile, false)
+          .catch((e) => console.warn(`[AioProfileVariants] ${profile.name}'s own rows not taken away:`, e?.message))
+      }
+      await saveOwnRowsChoice(prisma, accountId, profile.id, false).catch(() => {})
+    }
+  } catch (e) {
+    console.warn('[AioProfileVariants] own rows of a deleted person not cleared:', e?.message)
+  }
+}
+
 /** What the owner's configuration holds that matters here, read once a minute at most: { several, noPreset, names }. */
 async function configFacts(decrypt, owner) {
   const hit = configSeen.get(owner.id)
@@ -536,5 +564,5 @@ async function describeOwnRows(prisma, decrypt, owner, rows) {
 module.exports = {
   setProfileVariant, healProfileVariants, variantIdFor, slickTraxPreset, profileManifestUrl, VARIANT_PREFIX,
   aiometadataPreset, aiometadataVariantId, viewerManifestUrl, aiometadataSupport, aiometadataNameKnown,
-  setOwnRowsVariant, syncOwnRows, saveOwnRowsChoice, ownRowsChoices, healOwnRows, describeOwnRows, forgetOwnRowsChecks, AIOM_PREFIX,
+  setOwnRowsVariant, syncOwnRows, saveOwnRowsChoice, ownRowsChoices, healOwnRows, describeOwnRows, forgetOwnRowsChecks, forgetOwnRows, AIOM_PREFIX,
 }

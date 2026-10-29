@@ -409,6 +409,21 @@ test('healer: an untracked profile loses the variant, a deleted one loses the ch
   assert.ok(variantOf(w.config))
 })
 
+test('a deleted owner: their household loses its rows in AIOStreams, and the choices go', async () => {
+  const sync = { aioAiometadataOwn: { prof_kid: true } }
+  const { prisma, state } = fakePrisma({ sync })
+  const w = fakeWorld(baseConfig(), { version: '3.9.0' })
+  await rows.healOwnRows(prisma, decrypt)
+  assert.ok(variantOf(w.config))
+  await rows.forgetOwnRows(prisma, decrypt, 'u1')
+  assert.equal(variantOf(w.config), undefined)
+  assert.ok(!(personaOf(w.config, 'kid').variants || []).includes(KID_VARIANT))
+  assert.equal(state.sync.aioAiometadataOwn?.prof_kid, undefined)
+  // Never throws, even with AIOStreams out of reach.
+  global.fetch = async () => { throw new Error('connection refused') }
+  await rows.forgetOwnRows(prisma, decrypt, 'u1')
+})
+
 test('the 30-minute profile check (healProfileVariants) also looks after these', async () => {
   const { prisma } = fakePrisma({ sync: { aioAiometadataOwn: { prof_kid: true } } })
   const w = fakeWorld(baseConfig(), { version: '3.9.0' })
