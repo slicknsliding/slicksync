@@ -284,7 +284,9 @@ function SectionDropdown({ tabs, active, onSelect }: {
         aria-expanded={open}
         onClick={() => (open ? close() : replace())}
         className="w-full flex items-center gap-2.5 rounded-xl px-3 h-11 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        style={{ ...surface, boxShadow: '0 10px 24px -10px rgba(0,0,0,0.7)', ...(open ? { borderColor: 'var(--color-primary)' } : {}) }}
+        // The colour is always set: dropping it after the menu closed left the border
+        // its text colour (white), because `border` above is a shorthand.
+        style={{ ...surface, boxShadow: '0 10px 24px -10px rgba(0,0,0,0.7)', borderColor: open ? 'var(--color-primary)' : 'var(--color-surface-border)' }}
       >
         <CurrentIcon className="w-4 h-4 shrink-0 text-muted" />
         <span className="flex-1 min-w-0 text-sm font-semibold text-default truncate">{current.label}</span>
