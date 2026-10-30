@@ -589,7 +589,8 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
   // hasn't said (an estimate, shown only - see utils/nowPlayingEstimate.js).
   // After the merge, so nothing above mistakes an estimate for a checkpoint.
   try {
-    const { addEstimate } = require('./nowPlayingEstimate')
+    const { addEstimate, prepareEstimates } = require('./nowPlayingEstimate')
+    await prepareEstimates(nowPlaying)
     for (const np of nowPlaying) addEstimate(np, np.watchedAtTimestamp)
   } catch (error) {
     console.warn('[MetricsBuilder] Failed to add Now Playing estimates:', error.message)

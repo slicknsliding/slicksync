@@ -5,8 +5,9 @@
 // watch history and watch time still come from what the apps report.
 //
 // Runtime comes from the metadata lookups notify.js already caches. Building
-// Now Playing never waits for one: a title not looked up yet starts a lookup
-// in the background and gets its runtime on the next refresh (8 s later).
+// Now Playing waits a second at most for a title not looked up yet
+// (prepareEstimates), so the bar shows on the first refresh; a slower lookup
+// carries on and the next refresh (8 s later) has it.
 
 const { minutesOf } = require('./discoverFacets')
 
@@ -17,7 +18,7 @@ const MISSING_TTL_MS = 10 * 60 * 1000
 const STOP_RATIO = 0.97
 
 const found = new Map() // key -> { at, runtimeMs, episodeTitle }
-const looking = new Set()
+const looking = new Map() // key -> the lookup under way
 
 const keyOf = (item, videoId) => `${item.id}|${item.type || ''}|${videoId || ''}`
 
@@ -27,9 +28,8 @@ function lookUp(item, videoId, fetchMetadata) {
   const fresh = hit && (Date.now() - hit.at) < (hit.runtimeMs || hit.episodeTitle ? FOUND_TTL_MS : MISSING_TTL_MS)
   if (fresh) return hit
   if (!looking.has(key)) {
-    looking.add(key)
     const type = item.type === 'movie' ? 'movie' : 'series'
-    Promise.resolve()
+    const lookup = Promise.resolve()
       .then(() => fetchMetadata(item.id, type, videoId || (item.season && item.episode ? `${String(item.id).split(':')[0]}:${item.season}:${item.episode}` : null)))
       .then((meta) => {
         const minutes = minutesOf({ runtime: meta?.runtime })
@@ -37,8 +37,31 @@ function lookUp(item, videoId, fetchMetadata) {
       })
       .catch(() => found.set(key, { at: Date.now(), runtimeMs: null, episodeTitle: null }))
       .finally(() => looking.delete(key))
+    looking.set(key, lookup)
   }
   return hit || null
+}
+
+/**
+ * Starts the lookups the rows still need and waits for them, `waitMs` at most,
+ * all at once - so a title someone just started has its bar straight away.
+ */
+async function prepareEstimates(rows, waitMs = 1000, fetchMetadata = require('./notify').fetchMetadata) {
+  const pending = []
+  for (const row of rows || []) {
+    const item = row?.item
+    if (!item?.id || item.titlePending) continue
+    if (lookUp(item, row.videoId, fetchMetadata)) continue
+    const lookup = looking.get(keyOf(item, row.videoId))
+    if (lookup) pending.push(lookup)
+  }
+  if (!pending.length) return
+  let timer
+  await Promise.race([
+    Promise.allSettled(pending),
+    new Promise((resolve) => { timer = setTimeout(resolve, waitMs) }),
+  ])
+  clearTimeout(timer)
 }
 
 /**
@@ -75,4 +98,4 @@ function addEstimate(row, startedAt, now = Date.now(), fetchMetadata = require('
   return row
 }
 
-module.exports = { addEstimate, _forget: () => { found.clear(); looking.clear() } }
+module.exports = { addEstimate, prepareEstimates, _forget: () => { found.clear(); looking.clear() } }

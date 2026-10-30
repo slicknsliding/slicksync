@@ -31,11 +31,17 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
       onClose();
     };
 
-    window.addEventListener('click', handleClick);
-    window.addEventListener('contextmenu', handleClick); // Close if right-clicking elsewhere
-    window.addEventListener('scroll', handleScroll, true);
+    // From the next tick: a menu opened by a click (a button, not a
+    // right-click) is drawn while that click is still on its way up to the
+    // window, which would count it as a click outside and close it at once.
+    const t = setTimeout(() => {
+      window.addEventListener('click', handleClick);
+      window.addEventListener('contextmenu', handleClick); // Close if right-clicking elsewhere
+      window.addEventListener('scroll', handleScroll, true);
+    }, 0);
 
     return () => {
+      clearTimeout(t);
       window.removeEventListener('click', handleClick);
       window.removeEventListener('contextmenu', handleClick);
       window.removeEventListener('scroll', handleScroll, true);
