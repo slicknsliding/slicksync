@@ -25,6 +25,29 @@ test('the first build only starts the lookup; the next one has the runtime', asy
   assert.equal(second.durationEstimated, true)
 })
 
+test('prepared first, a title just started has its bar on the very first build', async () => {
+  est._forget()
+  const now = 1_000_000_000
+  const fetch = async () => { await new Promise((r) => setTimeout(r, 30)); return { runtime: '100 min' } }
+  const rows = [row()]
+  await est.prepareEstimates(rows, 1000, fetch)
+  const first = est.addEstimate(rows[0], now - 30 * MIN, now, fetch)
+  assert.equal(first.totalDuration, 100 * MIN)
+  assert.equal(first.positionEstimated, true)
+})
+
+test('a slow lookup holds Now Playing up for the wait at most, and still lands for the next build', async () => {
+  est._forget()
+  const now = 1_000_000_000
+  const fetch = async () => { await new Promise((r) => setTimeout(r, 300)); return { runtime: '100 min' } }
+  const started = Date.now()
+  await est.prepareEstimates([row()], 50, fetch)
+  assert.ok(Date.now() - started < 250, 'waited no longer than asked')
+  assert.equal(est.addEstimate(row(), now - 30 * MIN, now, fetch).totalDuration, null)
+  await new Promise((r) => setTimeout(r, 350))
+  assert.equal(est.addEstimate(row(), now - 30 * MIN, now, fetch).totalDuration, 100 * MIN)
+})
+
 test('a real position and length always win', async () => {
   est._forget()
   const now = 2_000_000_000

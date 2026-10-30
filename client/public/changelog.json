@@ -38,7 +38,9 @@
       "Settings: the section picker no longer stays outlined in white after you pick a section.",
       "Arrange: Undo or Cancel that brings back a tab (Discover's lenses, Activity's tabs) switches back to it.",
       "Catalogs no longer scrolls sideways on a phone; a catalog, Keep in step and Nuvio profiles keep working when a reply comes back incomplete.",
-      "The Vault opens a card with Enter, Add a person has a close button, and the menu logo's Small size is really smaller on a phone."
+      "The Vault opens a card with Enter, Add a person has a close button, and the menu logo's Small size is really smaller on a phone.",
+      "On a title's details, the arrow beside Open in AIOStreams (or your other app) opens the list of apps again.",
+      "Now Playing shows its progress bar straight away for something just started, instead of on the next refresh."
     ]
   },
   {
