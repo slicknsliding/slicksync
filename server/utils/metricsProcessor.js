@@ -160,9 +160,12 @@ function isActuallyWatched(item) {
 // native's poll notices a new row, playback may already be well underway or
 // finished, so "started" would be misleading here in a way it isn't for the
 // proxy's real-time signal.
-async function notifyNativeWatchDetected(prisma, accountId, { title, poster, itemType, season, episode, userId, users = [] }) {
+async function notifyNativeWatchDetected(prisma, accountId, { title, poster, itemType, season, episode, userId, users = [], itemId = null }) {
   try {
     const accountIdValue = accountId || 'default'
+    // Stremio's own player events (stremioAddonEvents.js) already announced
+    // this viewing starting; "watched" a minute later would be the same news twice.
+    if (itemId && require('./startNotifyDedupe').hasClaim(accountIdValue, userId, itemId)) return
     const account = await prisma.appAccount.findUnique({ where: { id: accountIdValue }, select: { sync: true } })
     let cfg = account?.sync
     if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
@@ -392,7 +395,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     // on watchedAt being recent - see NOTIFY_RECENCY_WINDOW_MS's comment.
     if (!existing && !session && (Date.now() - watchedAt.getTime()) <= NOTIFY_RECENCY_WINDOW_MS) {
       notifyNativeWatchDetected(prisma, accountIdValue, {
-        title: showName, poster, itemType: 'series', season, episode, userId, users,
+        title: showName, poster, itemType: 'series', season, episode, userId, users, itemId: showId,
       })
     }
 
@@ -548,7 +551,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
     // comment.
     if (!existing && !session && (Date.now() - watchedAt.getTime()) <= NOTIFY_RECENCY_WINDOW_MS) {
       notifyNativeWatchDetected(prisma, accountIdValue, {
-        title: itemName, poster, itemType: 'movie', season: null, episode: null, userId, users,
+        title: itemName, poster, itemType: 'movie', season: null, episode: null, userId, users, itemId,
       })
     }
 
@@ -1198,7 +1201,7 @@ async function processUserLibrary(prisma, accountId, userId, library, today = ne
 /**
  * Process metrics for all users in an account
  */
-async function processAccountMetrics(prisma, accountId, users, getLibraryForUser, today = new Date()) {
+async function processAccountMetrics(prisma, accountId, users, getLibraryForUser, today = new Date(), onlyUserIds = null) {
   const accountIdValue = accountId || 'default'
   let totalProcessed = 0
   let totalErrors = 0
@@ -1208,6 +1211,8 @@ async function processAccountMetrics(prisma, accountId, users, getLibraryForUser
   console.log(`[MetricsProcessor] Processing metrics for account ${accountIdValue}, ${users.length} users`)
 
   for (const user of users) {
+    // A read asked for by one person (activityMonitor.checkActivityForUser).
+    if (onlyUserIds && !onlyUserIds.has(user.__recordAs || user.id)) continue
     try {
       const library = await getLibraryForUser(user)
       if (library && Array.isArray(library) && library.length > 0) {

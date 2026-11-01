@@ -20,6 +20,18 @@ function claimStart(accountId, userId, itemId) {
 }
 
 /**
+ * Has a live pipeline already announced this viewing? Looks without claiming.
+ * The library poller's "watched" message asks, so a viewing Stremio's own
+ * player events announced as started is not announced a second time once the
+ * poll finds it.
+ */
+function hasClaim(accountId, userId, itemId) {
+  if (!userId || !itemId) return false
+  const expiresAt = claims.get(`${accountId || 'default'}:${userId}:${itemId}`)
+  return expiresAt !== undefined && expiresAt > Date.now()
+}
+
+/**
  * The "started watching" for a viewing a live pipeline saw begin: Discord,
  * phone push and the watch.started automation trigger, once per viewing.
  * `viewing` names the title already: { itemId, itemType, videoId, season,
@@ -75,4 +87,4 @@ async function announceViewingStart(prisma, user, viewing) {
   }).catch(() => {})
 }
 
-module.exports = { claimStart, announceViewingStart, WINDOW_MS }
+module.exports = { claimStart, hasClaim, announceViewingStart, WINDOW_MS, forgetClaimsForTests: () => claims.clear() }

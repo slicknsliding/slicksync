@@ -49,7 +49,36 @@ function clearActivityMonitor() {
   }
 }
 
-async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId) {
+// One read of an account at a time. The minute tick and a read asked for by
+// one person (checkActivityForUser) both end in the same recording step, and
+// two of them overlapping could record the same watch time twice.
+const accountRuns = new Map() // accountId -> the run in flight (or queued last)
+
+function checkActivityForAccount(prisma, accountId, decrypt, getAccountId, onlyUserId = null) {
+  const run = () => readAccountActivity(prisma, accountId, decrypt, getAccountId, onlyUserId)
+  const queued = (accountRuns.get(accountId) || Promise.resolve()).then(run, run)
+  accountRuns.set(accountId, queued)
+  const release = () => { if (accountRuns.get(accountId) === queued) accountRuns.delete(accountId) }
+  queued.then(release, release)
+  return queued
+}
+
+// The dependencies of the running monitor, kept for reads asked for between
+// ticks (checkActivityForUser).
+let monitorDeps = null
+
+/**
+ * Read one person's library now instead of waiting for the next tick, through
+ * exactly the recording the tick does. Resolves false when the monitor is not
+ * running (nothing to read with).
+ */
+async function checkActivityForUser(accountId, userId) {
+  if (!monitorDeps) return false
+  await checkActivityForAccount(monitorDeps.prisma, accountId || 'default', monitorDeps.decrypt, monitorDeps.getAccountId, userId)
+  return true
+}
+
+async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onlyUserId = null) {
   heartbeat('checkActivityForAccount:start', { accountId })
   try {
     // Nothing to do for an account that is not there.
@@ -93,6 +122,12 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
     if (users.length === 0) return
 
     heartbeat('checkActivityForAccount:users_found', { count: users.length })
+
+    // A read asked for by one person covers only them; everyone else waits
+    // for the tick as usual. `users` stays the whole account for what is
+    // matched against it (attribution among the household).
+    const targets = onlyUserId ? users.filter((u) => u.id === onlyUserId) : users
+    if (targets.length === 0) return
 
     // Process metrics for all users
     // This runs every 5 minutes to compute accurate watch time deltas
@@ -279,14 +314,14 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       // Process metrics for all users
       console.log(`[ActivityMonitor] Starting metrics processing for account ${accountId}, ${users.length} users`)
       heartbeat('processAccountMetrics:before')
-      await processAccountMetrics(prisma, accountId, [...users, ...absorbedLogins], getLibraryForUser, new Date())
+      await processAccountMetrics(prisma, accountId, [...users, ...absorbedLogins], getLibraryForUser, new Date(), onlyUserId ? new Set([onlyUserId]) : null)
       heartbeat('processAccountMetrics:after')
       console.log(`[ActivityMonitor] Completed metrics processing for account ${accountId}`)
 
       // Process watch sessions (track start/end times)
       try {
         heartbeat('processAccountSessions:before')
-        await processAccountSessions(prisma, accountId, users, getSessionLibrary, new Date())
+        await processAccountSessions(prisma, accountId, targets, getSessionLibrary, new Date())
         heartbeat('processAccountSessions:after')
       } catch (sessionError) {
         heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })
@@ -296,8 +331,8 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       // Viewings a Jellyfin server's sessions list showed starting during the
       // library reads above - see utils/jellyfinLive.js.
       try {
-        await require('./jellyfinLive').announceStarts(prisma, accountId, users)
-        await require('./jellyfinLive').noteDevices(prisma, accountId, users)
+        await require('./jellyfinLive').announceStarts(prisma, accountId, targets)
+        await require('./jellyfinLive').noteDevices(prisma, accountId, targets)
       } catch (liveError) {
         console.warn(`[ActivityMonitor] Error announcing Jellyfin viewings:`, liveError.message)
       }
@@ -308,8 +343,10 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       // it compares against the freshest native watch state. Self-contained /
       // best-effort - never disturbs the metrics work around it.
       try {
-        const { checkWatchSyncMismatch } = require('./watchSyncMismatch')
-        await checkWatchSyncMismatch(prisma, accountId, users)
+        if (!onlyUserId) {
+          const { checkWatchSyncMismatch } = require('./watchSyncMismatch')
+          await checkWatchSyncMismatch(prisma, accountId, users)
+        }
       } catch (mismatchError) {
         console.warn(`[ActivityMonitor] Error checking watch-sync mismatch:`, mismatchError.message)
       }
@@ -322,7 +359,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       // using the app. Nothing waits on this cache: /users/metrics builds on
       // demand when it misses, and live events refresh open pages.
       const lastPrecompute = metricsPrecomputeAt.get(accountId) || 0
-      if (Date.now() - lastPrecompute >= METRICS_PRECOMPUTE_INTERVAL_MS) try {
+      if (!onlyUserId && Date.now() - lastPrecompute >= METRICS_PRECOMPUTE_INTERVAL_MS) try {
         metricsPrecomputeAt.set(accountId, Date.now())
         const { setCachedMetrics, recentlyRequestedPeriods } = require('./metricsCache')
         const { buildMetricsForAccount } = require('./metricsBuilder')
@@ -431,6 +468,7 @@ const METRICS_PRECOMPUTE_INTERVAL_MS = 5 * 60 * 1000
 
 function scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
   heartbeat('scheduleActivityMonitor:init', { INSTANCE_TYPE })
+  monitorDeps = { prisma, decrypt, getAccountId }
   clearActivityMonitor()
 
   // Run immediately on startup to update library database
@@ -451,5 +489,6 @@ module.exports = {
   scheduleActivityMonitor,
   clearActivityMonitor,
   sendShareNotification,
+  checkActivityForUser,
   CHECK_INTERVAL_MS
 }

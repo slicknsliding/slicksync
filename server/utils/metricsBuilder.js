@@ -479,6 +479,19 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
     })
   }
 
+  // Stremio's own player events (utils/stremioAddonEvents.js) are a live
+  // signal for what the library only learns at a checkpoint: a title Stremio
+  // said it stopped is not playing, whatever the library still holds active.
+  // Only titles those events named are touched.
+  try {
+    const { stremioMark } = require('./stremioAddonEvents')
+    for (let i = nowPlaying.length - 1; i >= 0; i--) {
+      if (stremioMark(nowPlaying[i].user.id, nowPlaying[i].item.id) === 'ended') nowPlaying.splice(i, 1)
+    }
+  } catch (error) {
+    console.warn('[MetricsBuilder] Failed to apply Stremio stops:', error.message)
+  }
+
   // AIOStreams' own apps (Odin, Infuse, Swiftfin, its desktop app) report
   // playback through Watch State, which none of the above can see - see
   // utils/watchState.js liveViewings(). Added before the proxy merge, so a
@@ -486,13 +499,23 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
   //
   // A Jellyfin server's own sessions list does the same for people signed in
   // to one - see utils/jellyfinLive.js.
+  //
+  // So do Stremio's own player events, with the player's real position, which
+  // replaces the library's checkpoint for the same title (the library stays
+  // the record; this is only what is on screen).
   try {
     const { liveViewings } = require('./watchState')
+    const { stremioMark } = require('./stremioAddonEvents')
     const jellyfinViewings = require('./jellyfinLive').liveViewings(activeUsers.map((u) => u.id)).map((v) => ({ ...v, source: 'jellyfin' }))
     for (const v of [...await liveViewings(prisma, accountIdValue || 'default'), ...jellyfinViewings]) {
       const user = userMap.get(v.userId)
       if (!user) continue
-      if (nowPlaying.some((np) => np.user.id === v.userId && np.item.id === v.itemId)) continue
+      const fromStremio = v.source !== 'jellyfin' && stremioMark(v.userId, v.itemId) === 'live'
+      const shown = nowPlaying.findIndex((np) => np.user.id === v.userId && np.item.id === v.itemId)
+      if (shown >= 0) {
+        if (!fromStremio) continue
+        nowPlaying.splice(shown, 1)
+      }
       nowPlaying.push({
         user: {
           id: user.id,
@@ -516,7 +539,7 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
         watchedAtTimestamp: v.startedAt.getTime(),
         lastPosition: v.positionMs,
         totalDuration: v.durationMs,
-        source: v.source || 'aiostreams',
+        source: v.source || (fromStremio ? 'stremio' : 'aiostreams'),
         // When the player was last heard from, and whether it said paused -
         // only what the player itself reported, for the cards' freshness line.
         ...(typeof v.observedAt === 'number' || v.observedAt instanceof Date

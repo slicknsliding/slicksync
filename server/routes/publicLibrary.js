@@ -2941,15 +2941,29 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // or on a Jellyfin server they sign in to (utils/jellyfinLive.js).
       try {
         const { liveViewings } = require('../utils/watchState');
+        // Stremio's own player events (utils/stremioAddonEvents.js): a title it
+        // said stopped is not playing whatever the library still holds active,
+        // and while it plays its real position replaces the library's checkpoint.
+        const { stremioMark } = require('../utils/stremioAddonEvents');
+        for (let i = nowPlaying.length - 1; i >= 0; i--) {
+          if (stremioMark(userId, nowPlaying[i].item.id) === 'ended') nowPlaying.splice(i, 1);
+        }
         const jellyfinViewings = require('../utils/jellyfinLive').liveViewings([userId]).map(v => ({ ...v, source: 'jellyfin' }));
         for (const v of [...await liveViewings(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [userId]), ...jellyfinViewings]) {
-          if (nowPlaying.some(np => np.item.id === v.itemId)) continue;
+          const fromStremio = v.source !== 'jellyfin' && stremioMark(userId, v.itemId) === 'live';
+          const shown = nowPlaying.findIndex(np => np.item.id === v.itemId);
+          if (shown >= 0) {
+            if (!fromStremio) continue;
+            nowPlaying.splice(shown, 1);
+          }
           nowPlaying.push({
             item: { id: v.itemId, name: v.itemName || v.itemId, type: v.itemType, poster: v.poster, season: v.season, episode: v.episode },
             startTime: v.startedAt,
             videoId: v.videoId,
             // For the cards' "Live / Paused / Last seen" line.
-            source: v.source || 'aiostreams',
+            source: v.source || (fromStremio ? 'stremio' : 'aiostreams'),
+            // The player's own position and the video's length.
+            ...(fromStremio ? { lastPosition: v.positionMs ?? null, totalDuration: v.durationMs ?? null } : {}),
             ...(v.observedAt != null ? { reportedAtTimestamp: new Date(v.observedAt).getTime() } : {}),
             ...(v.paused === true ? { paused: true } : {}),
             ...(typeof v.playingUntil === 'number' ? { playingUntilTimestamp: v.playingUntil } : {})
