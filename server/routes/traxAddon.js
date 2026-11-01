@@ -526,7 +526,8 @@ module.exports = ({ prisma }) => {
     noStore(res)
     try {
       const user = await resolveUser(req.params.token)
-      if (!user) return res.status(404).json({ error: 'Not found' })
+      // Someone switched off in SlickSync isn't tracked, whatever their addon says.
+      if (!user || user.isActive === false) return res.status(404).json({ error: 'Not found' })
       const events = require('../utils/stremioAddonEvents')
       await events.applyPlayerEvent(prisma, user, req.params.type, req.params.videoId, req.params.extra)
       res.json({})
@@ -540,7 +541,8 @@ module.exports = ({ prisma }) => {
     noStore(res)
     try {
       const user = await resolveUser(req.params.token)
-      if (!user) return res.status(404).json({ error: 'Not found' })
+      // Someone switched off in SlickSync isn't tracked, whatever their addon says.
+      if (!user || user.isActive === false) return res.status(404).json({ error: 'Not found' })
       const events = require('../utils/stremioAddonEvents')
       // Nothing is recorded from the event itself: the person's library is
       // read soon, once, and that read is the record.

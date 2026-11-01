@@ -214,6 +214,7 @@ test('an unknown token is a 404 on both routes, and so is a person whose SlickTr
   const { prisma, cursors } = fakeWorld({ users: [
     { id: 'u1', accountId: ACCOUNT, username: 'Mia', traxToken: TOKEN, traxAddonEnabled: true },
     { id: 'u2', accountId: ACCOUNT, username: 'Leo', traxToken: 'cd'.repeat(16), traxAddonEnabled: false },
+    { id: 'u3', accountId: ACCOUNT, username: 'Ava', traxToken: '12'.repeat(16), traxAddonEnabled: true, isActive: false },
   ] })
   const get = await serve(t, prisma)
   const other = (path) => path.replace(TOKEN, 'ef'.repeat(16))
@@ -221,6 +222,10 @@ test('an unknown token is a 404 on both routes, and so is a person whose SlickTr
   assert.equal((await get(other(library('movie', heat, 'action=watched')))).status, 404)
   const off = (path) => path.replace(TOKEN, 'cd'.repeat(16))
   assert.equal((await get(off(player('movie', heat, 'start', 0, 1)))).status, 404)
+  // Switched off in SlickSync: not tracked either.
+  const inactive = (path) => path.replace(TOKEN, '12'.repeat(16))
+  assert.equal((await get(inactive(player('movie', heat, 'start', 0, 1)))).status, 404)
+  assert.equal((await get(inactive(library('movie', heat, 'action=watched')))).status, 404)
   assert.equal(cursors.size, 0)
 })
 
