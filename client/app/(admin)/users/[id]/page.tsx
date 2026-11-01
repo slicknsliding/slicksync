@@ -2057,9 +2057,9 @@ export default function UserDetailPage() {
                             size="sm"
                           />
                           {streaks?.currentStreak > 0 ? (
-                            <Badge variant="warning" size="sm" className="hidden sm:inline-flex">
+                            <Badge variant="warning" size="sm">
                               <FireIcon className="w-3 h-3 mr-1" />
-                              {streaks.currentStreak}
+                              {streaks.currentStreak}-day streak
                             </Badge>
                           ) : null}
                         </span>
