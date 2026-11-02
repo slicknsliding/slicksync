@@ -1,0 +1,43 @@
+name: Dependency Audit
+
+# Looks at what the image actually ships, once a week. High and below land in
+# the run's summary; a critical fails the run, which is what sends the email.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ['.', 'client']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.dir }}
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Summary
+        working-directory: ${{ matrix.dir }}
+        run: |
+          {
+            echo '### Production packages in `${{ matrix.dir }}`'
+            echo '```'
+            bun audit --prod || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on a critical
+        working-directory: ${{ matrix.dir }}
+        run: bun audit --prod --audit-level=critical
