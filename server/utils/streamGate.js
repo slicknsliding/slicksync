@@ -21,14 +21,6 @@
 // a merged Nuvio profile's own stream addons, and the stream source of
 // someone on AIOMetadata with an age limit.
 //
-// It is also how Stremio's playback events reach SlickSync without SlickTrax:
-// Stremio only tells addons installed on the account what is playing, so
-// someone on Stremio without SlickTrax has one stream addon go through here
-// with the `player` and `library` resources added to its manifest. Those are
-// answered here and never sent on (utils/stremioAddonEvents.js). No addon is
-// added to their list. It is one addon rather than all of them because each
-// one that goes through here stops answering if SlickSync is down.
-//
 // The hash segment is the real address's fingerprint: when the addon's
 // address changes, theirs does too, because Nuvio keeps an addon's manifest
 // for as long as its address stays the same.
@@ -167,39 +159,12 @@ async function gateFor(prisma, accountId, user) {
     traxToken = row.traxToken
   }
   if (providerType === 'jellyfin') return null
-  let { traxAddonEnabled } = user
-  if (providerType === 'stremio' && traxAddonEnabled === undefined) {
-    traxAddonEnabled = (await prisma.user.findUnique({ where: { id: user.id }, select: { traxAddonEnabled: true } }))?.traxAddonEnabled
-  }
   const { readSync } = require('./screenTime')
   const { cfg } = await readSync(prisma, accountId)
-  const limits = wantsGateFor(cfg, user.id)
-  const events = takesLiveEvents({ providerType, traxAddonEnabled })
-  if (!limits && !events) return null
+  if (!wantsGateFor(cfg, user.id)) return null
   const usable = await gateUsable(prisma, accountId)
   if (!usable.ok) return null
-  // events: their gated addon declares Stremio's events. firstStreamOnly: that
-  // is the only reason they are here, so one addon is enough.
-  return { base: usable.base, token: await tokenOf(prisma, user.id, traxToken), events, firstStreamOnly: !limits }
-}
-
-/** Stremio tells addons what is playing; SlickTrax already hears it for those who have it. */
-function takesLiveEvents(person) {
-  return person?.providerType === 'stremio' && !person.traxAddonEnabled
-}
-
-/** A manifest that also declares Stremio's playback and library events. */
-function withLiveEvents(manifest) {
-  const { EVENT_RESOURCES } = require('./stremioAddonEvents')
-  const resources = Array.isArray(manifest?.resources) ? manifest.resources : []
-  const has = (name) => resources.some((r) => (typeof r === 'string' ? r : r?.name) === name)
-  return { ...manifest, resources: [...resources, ...EVENT_RESOURCES.filter((r) => !has(r.name))] }
-}
-
-/** The person behind a gate address when this gate is how their app's events reach SlickSync, else null. */
-async function liveEventsPerson(prisma, found) {
-  const person = await prisma.user.findUnique({ where: { id: found.subjectId } })
-  return takesLiveEvents(person) ? person : null
+  return { base: usable.base, token: await tokenOf(prisma, user.id, traxToken) }
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +394,6 @@ async function streamVerdict(prisma, found, resourcePath, deps = {}) {
 
 module.exports = {
   GATE_PATH, PING_REPLY, wantsGate, wantsGateFor, publicBase, gateUrl, parseGateUrl, gateFor, gateUsable, deviceReachable, gateProblem,
-  wrapProfile, gateAiom, wrapFor, resolveGate, streamVerdict, withLiveEvents, liveEventsPerson,
+  wrapProfile, gateAiom, wrapFor, resolveGate, streamVerdict,
   forgetResolvedForTests: () => resolved.clear(),
 }

@@ -43,7 +43,9 @@ const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling 
 const COLLECTIONS_CATALOG = 'slicksync-collections'
 const COLLECTION_PREFIX = 'slicksync.catalog.'
 
-const STREMIO_EVENT_RESOURCES = require('../utils/stremioAddonEvents').EVENT_RESOURCES
+// Full resource objects (not bare names) so they carry their own types and
+// id prefixes: Stremio only asks an addon about a type and id it declares.
+const STREMIO_EVENT_RESOURCES = ['player', 'library'].map((name) => ({ name, types: ['movie', 'series'], idPrefixes: ['tt'] }))
 
 function metaPreview(id, type, name, poster) {
   return { id, type, name: name || id, poster: poster || undefined }
@@ -269,8 +271,7 @@ module.exports = ({ prisma }) => {
   })
 
   // The gate stream addons go through for anyone with a pause set up or an
-  // age limit, and one for Stremio people without SlickTrax so their app's
-  // events reach SlickSync (utils/streamGate.js): the manifest from here, streams empty
+  // age limit (utils/streamGate.js): the manifest from here, streams empty
   // while they're paused or for a title above their age limit, everything
   // else redirected to the real addon. Never cached - a remembered redirect
   // would carry on past the start of a pause.
@@ -283,23 +284,11 @@ module.exports = ({ prisma }) => {
       if (!found) return res.status(404).json({ error: 'Not found' })
       const rest = req.path.replace(/^\/+/, '')
       if (!rest || rest === 'manifest.json') {
-        if (found.manifest) {
-          // Sync installs this one with Stremio's events declared; the same here when the app reads it again.
-          const live = await gate.liveEventsPerson(prisma, found)
-          return res.json(live ? gate.withLiveEvents(found.manifest) : found.manifest)
-        }
+        if (found.manifest) return res.json(found.manifest)
         // A wrapped addon's own manifest (cached by fetchManifest).
         const manifest = await require('../utils/nuvioHomeLayout').fetchManifest(found.manifestUrl).catch(() => null)
         if (!manifest) return res.status(502).json({ error: 'The addon did not answer' })
         return res.json(manifest)
-      }
-      // Stremio's playback and library events: told to SlickSync, not the addon.
-      if (rest.startsWith('player/') || rest.startsWith('library/')) {
-        const live = await gate.liveEventsPerson(prisma, found)
-        if (live) {
-          if (live.isActive !== false) await require('../utils/stremioAddonEvents').applyEventPath(prisma, live, rest)
-          return res.json({})
-        }
       }
       if (rest.startsWith('stream/') && (await gate.streamVerdict(prisma, found, rest)) !== 'pass') {
         return res.json({ streams: [] })
