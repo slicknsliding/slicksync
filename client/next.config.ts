@@ -73,6 +73,11 @@ const nextConfig: NextConfig = {
   // backend request rather than the other way round.
   experimental: {
     proxyTimeout: 60_000,
+    // Next hands the backend only the first 10 MB of a request by default, so
+    // a bigger upload hung or came back as a bare 500 before the backend could
+    // answer. Just above the largest upload it accepts (50 MB), so it is the
+    // backend that says a file is too big.
+    proxyClientMaxBodySize: '55mb',
   },
   env: {
     NEXT_PUBLIC_INSTANCE_TYPE: process.env.INSTANCE || 'private',
