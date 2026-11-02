@@ -31,6 +31,10 @@
 
 const watchState = require('./watchState')
 
+// Full resource objects (not bare names) so they carry their own types and id
+// prefixes: Stremio only asks an addon about a type and id it declares.
+const EVENT_RESOURCES = ['player', 'library'].map((name) => ({ name, types: ['movie', 'series'], idPrefixes: ['tt'] }))
+
 // Playback events.
 const PLAYER_ACTIONS = new Set(['start', 'pause', 'stop'])
 // Library events.
@@ -224,7 +228,24 @@ function scheduleLibraryRead(user, opts = {}) {
   return true
 }
 
+/**
+ * The same events arriving at the stream gate (utils/streamGate.js), where
+ * `resourcePath` is still as sent: `player/series/tt1%3A2%3A3/action=start...json`.
+ */
+async function applyEventPath(prisma, user, resourcePath) {
+  let parts
+  try { parts = String(resourcePath).split('/').map(decodeURIComponent) } catch { return null }
+  if (parts.length !== 4 || !parts[3].endsWith('.json')) return null
+  const [resource, type, id] = parts
+  const extra = parts[3].slice(0, -'.json'.length)
+  if (resource === 'player') return applyPlayerEvent(prisma, user, type, id, extra)
+  if (resource === 'library' && parseLibraryAction(extra)) scheduleLibraryRead(user)
+  return null
+}
+
 module.exports = {
+  EVENT_RESOURCES,
+  applyEventPath,
   PLAYER_ACTIONS,
   LIBRARY_ACTIONS,
   LIBRARY_READ_DELAY_MS,

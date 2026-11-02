@@ -291,7 +291,7 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     // can't be used (no public address) are the addons taken off instead.
     const { isStreamingPaused, servesStreams } = require('./screenTime')
     const paused = await isStreamingPaused(prisma, getAccountId(req), user.id).catch(() => false)
-    const { gateFor, gateUrl } = require('./streamGate')
+    const { gateFor, gateUrl, withLiveEvents } = require('./streamGate')
     const gate = await gateFor(prisma, getAccountId(req), user).catch(() => null)
 
     const groupAddonsFiltered = groupAddons.filter(groupAddon => {
@@ -300,9 +300,15 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
       return !isExcluded && !(paused && !gate && servesStreams(groupAddon))
     })
 
+    let gatedOne = false
     const cleanGroupAddons = groupAddonsFiltered.map((addon) => {
       const clean = presentGroupAddon(addon, useCustomFields)
-      if (gate && addon?.id && servesStreams(addon)) clean.transportUrl = gateUrl(gate, addon.id, addon.transportUrl)
+      if (gate && addon?.id && servesStreams(addon) && !(gate.firstStreamOnly && gatedOne)) {
+        gatedOne = true
+        clean.transportUrl = gateUrl(gate, addon.id, addon.transportUrl)
+        // What Stremio is told to do comes from the manifest on the account.
+        if (gate.events) clean.manifest = withLiveEvents(clean.manifest)
+      }
       return clean
     })
 
