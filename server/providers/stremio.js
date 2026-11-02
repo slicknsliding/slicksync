@@ -74,6 +74,11 @@ function createStremioProvider({ authKey }) {
       return items
     },
 
+    // Just these titles, for reading a viewing more often than a whole library.
+    async getLibraryItems(ids) {
+      return client.request('datastoreGet', { collection: 'libraryItem', ids, all: false })
+    },
+
     // Capability flag: Stremio supports library writes via datastorePut
     supportsLibraryWrite: true,
 

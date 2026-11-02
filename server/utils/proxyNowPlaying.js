@@ -389,6 +389,11 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // position and its pause outrank a stream the proxy can only see is open.
     // That row stays as it is, in the loop below.
     if (existing?.source === 'stremio') continue
+    // Its saves to the account say the same, a little later (stremioSaves.js).
+    if (existing?.source === 'stremio-saves') {
+      existing.carriedByProxy = true
+      continue
+    }
     const existingTitleMatches = !!existing
 
     result.push({
@@ -525,7 +530,9 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // Superseded when the proxy is currently carrying this title (the proxy
     // entry above replaces it), or recently finished carrying it (stale echo).
     const matches = (streams) => !!streams && streams.some((d) => pairMatches(d, np.item))
-    const isSuperseded = np.source !== 'stremio' && (matches(active) || matches(ended))
+    const isSuperseded = np.source === 'stremio-saves'
+      ? matches(ended) && !matches(active)
+      : np.source !== 'stremio' && (matches(active) || matches(ended))
     if (!isSuperseded) result.push(np)
   }
 

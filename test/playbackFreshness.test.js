@@ -116,3 +116,9 @@ test('a Stremio player row counts as playing until its runtime, and shows its pa
   assert.equal(lib.playbackFreshness({ source: 'stremio', reportedAtTimestamp: ago(MIN), paused: true }, NOW).state, 'paused')
   assert.equal(lib.playbackFreshness({ source: 'stremio', reportedAtTimestamp: ago(MIN), playingUntilTimestamp: ago(1) }, NOW).state, 'seen')
 })
+
+test('a row from Stremio saves is live while they are being read, and shows its pause', opts, () => {
+  assert.equal(lib.playbackFreshness({ source: 'stremio-saves', reportedAtTimestamp: ago(20 * 1000) }, NOW).state, 'live')
+  assert.equal(lib.playbackFreshness({ source: 'stremio-saves', reportedAtTimestamp: ago(MIN), paused: true }, NOW).state, 'paused')
+  assert.equal(lib.playbackFreshness({ source: 'stremio-saves', reportedAtTimestamp: ago(5 * MIN) }, NOW).state, 'seen')
+})

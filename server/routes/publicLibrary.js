@@ -2912,8 +2912,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         const at = Date.parse(item?.state?.lastWatched || '');
         return Number.isFinite(at) ? at : (s.updatedAt ? s.updatedAt.getTime() : null);
       };
+      const { stremioSaveFields } = require('../utils/metricsBuilder');
       const nowPlaying = (user.providerType === 'jellyfin' ? [] : activeSessions)
         .filter(s => !hasReachedEnd(s.lastPosition, s.totalDuration))
+        .filter(s => !stremioSaveFields(user, s, Date.now())?.stremioEnded)
         .filter(s => !(Number(s.totalDuration) > 0 && Number(s.lastPosition) >= Number(s.totalDuration) * 0.92))
         .map(s => ({
         item: {
@@ -2934,7 +2936,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           nuvioAppUrl: buildNuvioAppUrl(s.itemType === 'series' ? 'series' : 'movie', s.itemId),
         } : {}),
         ...(nuvioSave(s) !== undefined ? { nuvioSavedAt: nuvioSave(s), ...(nuvioSave(s) != null ? { reportedAtTimestamp: nuvioSave(s) } : {}) }
-          : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
+          : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {}),
+        ...(stremioSaveFields(user, s, Date.now()) || {})
       }));
 
       // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings() -
@@ -3006,15 +3009,17 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {}),
           ...(m.stremioAppUrl ? { stremioAppUrl: m.stremioAppUrl } : {}),
           ...(m.nuvioAppUrl ? { nuvioAppUrl: m.nuvioAppUrl } : {}),
-          ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {})
+          ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {}),
+          ...(typeof m.stremioSavedAt === 'number' ? { stremioSavedAt: m.stremioSavedAt } : {}),
+          ...(m.carriedByProxy ? { carriedByProxy: true } : {})
         })));
       } catch (error) {
         console.warn('[PublicLibrary] Failed to merge proxy now playing:', error.message);
       }
       {
         // A card only Nuvio's own saves stand behind: 5 minutes, newest only.
-        const { nuvioOnlyCards } = require('../utils/metricsBuilder');
-        const keep = nuvioOnlyCards(nowPlaying, Date.now());
+        const { nuvioOnlyCards, stremioSaveCards } = require('../utils/metricsBuilder');
+        const keep = stremioSaveCards(nuvioOnlyCards(nowPlaying, Date.now()), Date.now());
         nowPlaying.length = 0;
         nowPlaying.push(...keep);
       }

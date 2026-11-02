@@ -1,6 +1,7 @@
 // Activity monitor - reads every connected person's library once a minute and
 // feeds metrics and sessions. Watch notifications are sent by sessionTracker.js.
 const { setCachedLibrary } = require('./libraryCache')
+const stremioSaves = require('./stremioSaves')
 const { processAccountSessions } = require('./sessionTracker')
 const { sendShareNotification: notifySendShareNotification } = require('./notify')
 
@@ -46,6 +47,51 @@ function clearActivityMonitor() {
   if (activityTimer) {
     clearInterval(activityTimer)
     activityTimer = null
+  }
+  if (stremioViewingTimer) {
+    clearInterval(stremioViewingTimer)
+    stremioViewingTimer = null
+  }
+}
+
+// While a Stremio session is open its title alone is read every 20 seconds, so a
+// pause or a press of play reaches the card sooner than the minute's whole
+// library read. Only what stremioSaves.js remembers changes here: sessions and
+// watch time stay with the minute's read.
+const STREMIO_VIEWING_READ_MS = 20 * 1000
+let stremioViewingTimer = null
+let readingStremioViewings = false
+
+async function readOpenStremioViewings(prisma, decrypt, now = Date.now) {
+  if (readingStremioViewings) return
+  readingStremioViewings = true
+  try {
+    const sessions = await prisma.watchSession.findMany({ where: { isActive: true }, select: { userId: true, itemId: true } })
+    if (!sessions.length) return
+    const { makeCreateProvider } = require('../providers')
+    const { encrypt } = require('./encryption')
+    const users = await prisma.user.findMany({ where: { id: { in: [...new Set(sessions.map((s) => s.userId))] }, providerType: 'stremio' } })
+    for (const user of users) {
+      try {
+        const mockReq = { appAccountId: user.accountId }
+        const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId: () => user.accountId })
+        const provider = createProvider(user, { decrypt: (t) => decrypt(t, mockReq), req: mockReq })
+        if (!provider?.getLibraryItems) continue
+        const ids = sessions.filter((s) => s.userId === user.id).map((s) => s.itemId)
+        const items = await provider.getLibraryItems(ids)
+        let changed = false
+        for (const item of Array.isArray(items) ? items : []) {
+          if (stremioSaves.observe(user.id, item._id || item.id, item, now())) changed = true
+        }
+        if (changed) require('./liveEvents').emitLive(user.accountId, 'nowplaying')
+      } catch (error) {
+        heartbeat('readOpenStremioViewings:failed', { userId: user.id, message: error.message })
+      }
+    }
+  } catch (error) {
+    heartbeat('readOpenStremioViewings:failed', { message: error.message })
+  } finally {
+    readingStremioViewings = false
   }
 }
 
@@ -478,6 +524,9 @@ function scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
   activityTimer = setInterval(() => {
     checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE)
   }, CHECK_INTERVAL_MS)
+
+  stremioViewingTimer = setInterval(() => readOpenStremioViewings(prisma, decrypt), STREMIO_VIEWING_READ_MS)
+  if (typeof stremioViewingTimer.unref === 'function') stremioViewingTimer.unref()
 }
 
 // Send share notification to a user's Discord webhook
@@ -490,5 +539,6 @@ module.exports = {
   clearActivityMonitor,
   sendShareNotification,
   checkActivityForUser,
+  readOpenStremioViewings,
   CHECK_INTERVAL_MS
 }

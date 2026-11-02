@@ -69,6 +69,7 @@ Rules that keep falling out of this, each fixing a real reported bug:
   time (AIOStreams keeps stale connections alive for hours; a 5-minute view once recorded as 22h, then accumulated
   across replays and inflated Watch Time Today to 54h). Native's `overallTimeWatched` deltas are the only real
   duration source.
+- **Stremio's `state.lastWatched` stays at the moment a title was opened** (measured 2026-11-02); only `_mtime` and the position move. `stremioSaves.js` reads pause, play and the end of a video from those saves, and keeps a session open from its last real save. A change of position is what counts as a save: `_mtime` alone also moves on library edits, and it never feeds watch time.
 - **Native must never be the sole basis for Now Playing.** Its freshness window kept an already-exited stream
   showing as playing for ~18 minutes (widened from 15min on 2026-07-20, see `isActivelyWatching()` in
   `sessionTracker.js` for the tuning history) — and a single pause is enough to (re)start that window, confirmed
@@ -93,7 +94,7 @@ Rules that keep falling out of this, each fixing a real reported bug:
   first-observed value.** `sessionTracker.js`'s session-create path now seeds `durationSeconds` from
   `state.timeOffset` (capped against `state.duration` as a safety net) precisely because that field doesn't have
   the same risk — added 2026-07-17 to fix single-sitting, no-pause watches (Nuvio/Stremio only checkpoint at
-  pause/stop, so a straight-through watch produces exactly one checkpoint, and the position-delta computed
+  pause/stop - true of Nuvio; Stremio also saves on a timer, see `stremioSaves.js` - so a straight-through watch produces exactly one checkpoint, and the position-delta computed
   elsewhere in this file needs a second one to produce anything at all otherwise). Do **not** extend this same
   seeding to anything that reads `overallTimeWatched` directly (including `metricsProcessor.js`'s WatchActivity
   delta computation) — that field genuinely needs two observations to diff safely.

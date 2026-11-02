@@ -1,0 +1,249 @@
+// Reading pause and play from Stremio's saves to the account, with no addon.
+// The times and positions in the first tests are a real viewing, read every
+// 15 seconds on 2026-11-02 (server/utils/stremioSaves.js).
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const saves = require('../server/utils/stremioSaves')
+const { stremioSaveFields, stremioSaveCards } = require('../server/utils/metricsBuilder')
+const { processUserSessions } = require('../server/utils/sessionTracker')
+const { mergeProxyNowPlaying } = require('../server/utils/proxyNowPlaying')
+
+const DURATION = 1395000 // 23:15
+const VIDEO = 'tt0096697:1:1'
+const OPENED = '2026-11-02T21:43:55.843Z'
+const at = (iso) => Date.parse(iso)
+const item = (mtime, timeOffset, extra = {}) => ({
+  _id: 'tt0096697', name: 'The Simpsons', type: 'series', _mtime: mtime,
+  state: { timeOffset, duration: DURATION, video_id: VIDEO, lastWatched: OPENED, ...extra },
+})
+const read = (mtime, offset, secondsLater = 8) => saves.observe('u1', 'tt0096697', item(mtime, offset), at(mtime) + secondsLater * 1000)
+const now = (mtime, secondsLater = 8) => saves.viewing('u1', 'tt0096697', VIDEO, at(mtime) + secondsLater * 1000)
+
+test('the measured viewing: pause, play, the timer, then the end', () => {
+  saves.forget()
+  assert.equal(read('2026-11-02T22:48:23.126Z', 1195027), false, 'a first sight is not a save')
+  assert.equal(now('2026-11-02T22:48:23.126Z'), null, 'and says nothing yet')
+
+  assert.equal(read('2026-11-02T22:52:43.287Z', 1195194), true)
+  assert.equal(now('2026-11-02T22:52:43.287Z').paused, false, 'pressing play')
+
+  read('2026-11-02T22:54:13.288Z', 1284658)
+  assert.equal(now('2026-11-02T22:54:13.288Z').paused, false, 'the timer')
+  read('2026-11-02T22:55:43.289Z', 1374623)
+  const playing = now('2026-11-02T22:55:43.289Z')
+  assert.equal(playing.paused, false)
+  assert.equal(playing.positionMs, 1374623)
+
+  read('2026-11-02T22:56:03.928Z', 0)
+  assert.equal(now('2026-11-02T22:56:03.928Z').ended, true, 'back to 0 from the end')
+})
+
+test('a save sooner than the timer, with the position moving as normal, is a pause', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 795211)
+  read('2026-11-02T21:46:30.000Z', 885211)
+  read('2026-11-02T21:47:00.000Z', 915300)
+  const paused = now('2026-11-02T21:47:00.000Z')
+  assert.equal(paused.paused, true)
+  assert.equal(paused.positionMs, 915300, 'at the exact spot')
+
+  read('2026-11-02T21:49:00.000Z', 915700)
+  assert.equal(now('2026-11-02T21:49:00.000Z').paused, false, 'pressing play moves it under a second')
+})
+
+test('a slower timer is not a pause, and going quiet past it is', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  read('2026-11-02T21:48:00.000Z', 280000)
+  read('2026-11-02T21:51:00.000Z', 460000)
+  assert.equal(now('2026-11-02T21:51:00.000Z', 150).paused, false, 'inside the timer')
+
+  // Read again later, nothing new.
+  saves.observe('u1', 'tt0096697', item('2026-11-02T21:51:00.000Z', 460000), at('2026-11-02T21:51:00.000Z') + 210000)
+  assert.equal(now('2026-11-02T21:51:00.000Z', 210).paused, true, 'quiet past any timer')
+})
+
+test('an app with a shorter timer learns it after one wrong pause', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  read('2026-11-02T21:45:30.000Z', 130000)
+  assert.equal(now('2026-11-02T21:45:30.000Z').paused, true)
+  read('2026-11-02T21:46:00.000Z', 160000)
+  assert.equal(now('2026-11-02T21:46:00.000Z').paused, false, 'it played on with no press of play')
+  read('2026-11-02T21:46:30.000Z', 190000)
+  assert.equal(now('2026-11-02T21:46:30.000Z').paused, false, 'so that is its timer')
+})
+
+test('an app that never showed a timer is not called paused for going quiet', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  read('2026-11-02T21:45:05.000Z', 100300)
+  saves.observe('u1', 'tt0096697', item('2026-11-02T21:45:05.000Z', 100300), at('2026-11-02T21:45:05.000Z') + 600000)
+  assert.equal(now('2026-11-02T21:45:05.000Z', 600).paused, false)
+})
+
+test('a library edit moves _mtime but is not a save', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  assert.equal(read('2026-11-02T21:45:30.000Z', 100000), false)
+  assert.equal(saves.lastSaveAt('u1', 'tt0096697', at('2026-11-02T21:46:00.000Z')), null)
+})
+
+test('a rewind to 0 from early on is not the end of the video', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  read('2026-11-02T21:45:30.000Z', 0)
+  assert.equal(now('2026-11-02T21:45:30.000Z').ended, false)
+})
+
+test('the next episode starts fresh, and the old episode is not described', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  saves.observe('u1', 'tt0096697', item('2026-11-02T21:45:30.000Z', 1000, { video_id: 'tt0096697:1:2' }), at('2026-11-02T21:45:38.000Z'))
+  const when = at('2026-11-02T21:45:40.000Z')
+  assert.equal(saves.viewing('u1', 'tt0096697', VIDEO, when), null)
+  assert.equal(saves.viewing('u1', 'tt0096697', 'tt0096697:1:2', when).paused, false)
+})
+
+test('an episode that ends moves on to the next at 0, and nobody is watching that yet', () => {
+  saves.forget()
+  const next = 'tt0096697:1:2'
+  read('2026-11-02T22:54:13.288Z', 1284658)
+  read('2026-11-02T22:55:43.289Z', 1374623)
+  saves.observe('u1', 'tt0096697', item('2026-11-02T22:56:03.928Z', 0), at('2026-11-02T22:56:10.000Z'))
+  saves.observe('u1', 'tt0096697', item('2026-11-02T22:56:13.978Z', 0, { video_id: next }), at('2026-11-02T22:56:25.000Z'))
+  assert.equal(saves.viewing('u1', 'tt0096697', next, at('2026-11-02T22:56:30.000Z')).ended, true)
+
+  saves.observe('u1', 'tt0096697', item('2026-11-02T22:56:40.000Z', 20000, { video_id: next }), at('2026-11-02T22:56:45.000Z'))
+  const playing = saves.viewing('u1', 'tt0096697', next, at('2026-11-02T22:56:50.000Z'))
+  assert.equal(playing.ended, false, 'until it really plays')
+  assert.equal(playing.paused, false)
+})
+
+test('a device clock that is far off is not used for times', () => {
+  saves.forget()
+  read('2026-11-02T21:45:00.000Z', 100000)
+  saves.observe('u1', 'tt0096697', item('2026-11-02T18:00:00.000Z', 190000), at('2026-11-02T21:46:30.000Z'))
+  assert.equal(saves.lastSaveAt('u1', 'tt0096697', at('2026-11-02T21:46:40.000Z')), at('2026-11-02T21:46:30.000Z'))
+})
+
+test('whole libraries of old titles are not remembered', () => {
+  saves.forget()
+  saves.observe('u1', 'old', { _mtime: '2020-01-01T00:00:00.000Z', state: { timeOffset: 5 } }, at('2026-11-02T21:45:00.000Z'))
+  saves.observe('u1', 'old', { _mtime: '2026-11-02T21:45:30.000Z', state: { timeOffset: 900 } }, at('2026-11-02T21:45:38.000Z'))
+  assert.equal(saves.lastSaveAt('u1', 'old', at('2026-11-02T21:45:40.000Z')), null, 'that was its first sight')
+})
+
+test('a card: playing counts on from the save, paused stands still', () => {
+  saves.forget()
+  const user = { id: 'u1', providerType: 'stremio' }
+  const session = { itemId: 'tt0096697', videoId: VIDEO }
+  read('2026-11-02T21:45:00.000Z', 100000)
+  read('2026-11-02T21:46:30.000Z', 190000)
+  const playing = stremioSaveFields(user, session, at('2026-11-02T21:46:40.000Z'))
+  assert.equal(playing.source, 'stremio-saves')
+  assert.equal(playing.positionAt, at('2026-11-02T21:46:30.000Z'))
+  assert.equal(playing.paused, undefined)
+
+  read('2026-11-02T21:47:00.000Z', 220000)
+  const paused = stremioSaveFields(user, session, at('2026-11-02T21:47:10.000Z'))
+  assert.equal(paused.paused, true)
+  assert.equal(paused.positionAt, undefined)
+  assert.equal(paused.lastPosition, 220000)
+
+  assert.equal(stremioSaveFields({ id: 'u1', providerType: 'nuvio' }, session, at('2026-11-02T21:47:10.000Z')), null, 'Stremio only')
+})
+
+test('a paused card goes after 5 minutes, or 20 while the proxy has the stream', () => {
+  const t = at('2026-11-02T22:00:00.000Z')
+  const card = (minutesAgo, extra = {}) => ({ source: 'stremio-saves', paused: true, stremioSavedAt: t - minutesAgo * 60000, ...extra })
+  assert.equal(stremioSaveCards([card(4)], t).length, 1)
+  assert.equal(stremioSaveCards([card(5)], t).length, 0)
+  assert.equal(stremioSaveCards([card(19, { carriedByProxy: true })], t).length, 1)
+  assert.equal(stremioSaveCards([card(20, { carriedByProxy: true })], t).length, 0)
+  const playing = { source: 'stremio-saves', stremioSavedAt: t - 60 * 60000 }
+  const other = { source: 'aiostreams-proxy' }
+  assert.equal(stremioSaveCards([playing, other], t).length, 2, 'only paused save cards are touched')
+})
+
+// --- Sessions ---
+
+function fakePrisma(rows = []) {
+  return {
+    rows,
+    user: { findUnique: async () => ({ id: 'u1', username: 'TEST', email: null, colorIndex: 0, discordWebhookUrl: null, providerType: 'stremio' }) },
+    watchSession: {
+      findMany: async ({ where }) => rows.filter((r) => r.isActive === where.isActive),
+      findUnique: async () => rows[0] || null,
+      update: async ({ where, data }) => Object.assign(rows.find((r) => r.id === where.id), data),
+      upsert: async ({ create, update }) => {
+        if (rows[0]) return Object.assign(rows[0], update)
+        const row = { id: 's1', ...create }
+        rows.push(row)
+        return row
+      },
+    },
+  }
+}
+
+test('a Stremio viewing longer than 18 minutes stays open while it saves', async () => {
+  saves.forget()
+  const prisma = fakePrisma([{
+    id: 's1', accountId: 'a', userId: 'u1', itemId: 'tt0096697', videoId: VIDEO, itemName: 'The Simpsons', itemType: 'series',
+    startTime: new Date(OPENED), startPosition: 0, lastPosition: 0, durationSeconds: 0, isActive: true, endTime: null, totalDuration: DURATION,
+  }])
+  const poll = (mtime, offset) => processUserSessions(prisma, 'a', 'u1', [item(mtime, offset)], new Date(at(mtime) + 8000))
+  await poll('2026-11-02T21:58:00.000Z', 100000)
+  await poll('2026-11-02T22:10:00.000Z', 800000) // 26 minutes after opening
+  assert.equal(prisma.rows[0].isActive, true)
+  assert.equal(prisma.rows[0].lastPosition, 800000)
+
+  // Stops saving: closes one window after the last save, at that save.
+  await processUserSessions(prisma, 'a', 'u1', [item('2026-11-02T22:10:00.000Z', 800000)], new Date(at('2026-11-02T22:29:00.000Z')))
+  assert.equal(prisma.rows[0].isActive, false)
+  assert.equal(prisma.rows[0].endTime.toISOString(), '2026-11-02T22:10:00.000Z')
+})
+
+test('a Nuvio library is not read for saves', async () => {
+  saves.forget()
+  const prisma = fakePrisma([])
+  prisma.user.findUnique = async () => ({ id: 'u1', username: 'TEST', providerType: 'nuvio' })
+  await processUserSessions(prisma, 'a', 'u1', [item('2026-11-02T22:10:00.000Z', 800000)], new Date(at('2026-11-02T22:10:08.000Z')))
+  await processUserSessions(prisma, 'a', 'u1', [item('2026-11-02T22:11:30.000Z', 890000)], new Date(at('2026-11-02T22:11:38.000Z')))
+  assert.equal(saves.lastSaveAt('u1', 'tt0096697', at('2026-11-02T22:11:40.000Z')), null)
+})
+
+// --- With the proxy ---
+
+function proxyPrisma(active, closed = []) {
+  return {
+    proxyStreamSession: { findMany: async ({ where }) => (where.isActive ? active : closed) },
+    proxyUserIpAffinity: { findMany: async () => [] },
+    proxyDeviceClaim: { findMany: async () => [] },
+  }
+}
+const stream = (extra = {}) => ({
+  aiostreamsUser: 'slick', displayName: 'The Simpsons', metadataItemId: 'tt0096697', metadataName: 'The Simpsons', metadataItemType: 'series',
+  url: 'u', clientIp: null, requestCount: 9, startTime: new Date(Date.now() - 600000), lastSeenAt: new Date(), updatedAt: new Date(), endTime: null, ...extra,
+})
+const saveRow = () => ({ user: { id: 'u1', username: 'slick' }, item: { id: 'tt0096697', name: 'The Simpsons' }, source: 'stremio-saves', paused: true, lastPosition: 5, stremioSavedAt: Date.now() })
+const users = [{ id: 'u1', username: 'slick' }]
+
+test('the proxy does not replace a card its saves stand behind, and marks it as still open', async () => {
+  const rows = await mergeProxyNowPlaying(proxyPrisma([stream()]), 'a', users, [saveRow()], { isConfirming: () => true })
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].source, 'stremio-saves')
+  assert.equal(rows[0].paused, true)
+  assert.equal(rows[0].carriedByProxy, true)
+})
+
+test('the card goes when the proxy sees the stream close', async () => {
+  const closed = stream({ endTime: new Date() })
+  const rows = await mergeProxyNowPlaying(proxyPrisma([], [closed]), 'a', users, [saveRow()], { isConfirming: () => true })
+  assert.equal(rows.length, 0)
+})
+
+test('a seek leaving an old connection closed does not take the card away', async () => {
+  const rows = await mergeProxyNowPlaying(proxyPrisma([stream()], [stream({ endTime: new Date() })]), 'a', users, [saveRow()], { isConfirming: () => true })
+  assert.equal(rows.length, 1)
+})

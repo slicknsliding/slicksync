@@ -379,6 +379,36 @@ function nuvioOnlyCards(rows, now) {
   })
 }
 
+// A paused Stremio card that only its saves stand behind goes after this long
+// (a stop looks the same as a pause), or after the longer time while the proxy
+// still has the stream open, since AIOStreams can hold one open for hours.
+const STREMIO_PAUSED_MS = 5 * 60 * 1000
+const STREMIO_PAUSED_WITH_STREAM_MS = 20 * 60 * 1000
+
+/** A card's fields from Stremio's saves (stremioSaves.js), or null when they say nothing. */
+function stremioSaveFields(user, session, now) {
+  if ((user.providerType || 'stremio') !== 'stremio') return null
+  const seen = require('./stremioSaves').viewing(user.id, session.itemId, session.videoId, now)
+  if (!seen) return null
+  if (seen.ended) return { stremioEnded: true }
+  return {
+    source: 'stremio-saves',
+    lastPosition: seen.positionMs,
+    stremioSavedAt: seen.savedAt,
+    ...(seen.paused
+      ? { paused: true, reportedAtTimestamp: seen.savedAt }
+      : { positionAt: seen.savedAt, reportedAtTimestamp: seen.checkedAt }),
+  }
+}
+
+/** Drops paused Stremio cards past their time. Everything else passes. */
+function stremioSaveCards(rows, now) {
+  return rows.filter((r) => {
+    if (r.source !== 'stremio-saves' || r.paused !== true) return true
+    return now - r.stremioSavedAt < (r.carriedByProxy ? STREMIO_PAUSED_WITH_STREAM_MS : STREMIO_PAUSED_MS)
+  })
+}
+
 /**
  * Who is watching what right now, for one account. Built from live state
  * every time it is asked for - it is deliberately NOT part of the cached
@@ -435,6 +465,8 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
     // finished viewing on screen long after it stopped.
     if (user.providerType === 'jellyfin') continue
     const nuvioSavedAt = user.providerType === 'nuvio' ? (nuvioCheckpointAt(accountIdValue, user, session, libraries) ?? session.updatedAt?.getTime() ?? null) : null
+    const fromSaves = stremioSaveFields(user, session, Date.now())
+    if (fromSaves?.stremioEnded) continue
 
     nowPlaying.push({
       user: {
@@ -469,6 +501,7 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
       // background refresh of the session row can't move forward.
       ...(nuvioSavedAt != null ? { reportedAtTimestamp: nuvioSavedAt, nuvioSavedAt }
         : session.updatedAt ? { reportedAtTimestamp: session.updatedAt.getTime() } : {}),
+      ...(fromSaves || {}),
       // Same episode-aware deep-link builder Continue Watching already uses
       // (server/utils/appLinks.js) - not the plain client-side one, which
       // has no season/episode parameter at all for series.
@@ -583,7 +616,7 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
   // in the merge above): Nuvio saves when someone pauses, stops or leaves the
   // app, so the card means "paused or stopped a moment ago". It shows for
   // 5 minutes after that save, and only the newest save per person shows.
-  const keep = nuvioOnlyCards(nowPlaying, Date.now())
+  const keep = stremioSaveCards(nuvioOnlyCards(nowPlaying, Date.now()), Date.now())
   nowPlaying.length = 0
   nowPlaying.push(...keep)
 
@@ -1917,6 +1950,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
 module.exports = {
   nuvioOnlyCards,
+  stremioSaveFields,
+  stremioSaveCards,
   buildNowPlaying,
   liveNowPlaying,
   invalidateLiveNowPlaying,

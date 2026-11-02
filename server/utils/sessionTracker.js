@@ -14,6 +14,7 @@ const { resolveAccountTimezone, getAccountDayNumber } = require('./dateUtils')
 const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { resolveSinglePoster } = require('./libraryHelpers')
+const stremioSaves = require('./stremioSaves')
 
 // Shares the same debug log file as activityMonitor.js's heartbeat() - one
 // combined trace of the whole pipeline from library fetch through gating.
@@ -341,8 +342,9 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
   // at the session-create site below).
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, username: true, email: true, colorIndex: true, discordWebhookUrl: true }
+    select: { id: true, username: true, email: true, colorIndex: true, discordWebhookUrl: true, providerType: true }
   })
+  const readsStremioSaves = (user?.providerType || 'stremio') === 'stremio'
 
   // Get all active sessions for this user
   const activeSessions = await prisma.watchSession.findMany({
@@ -461,6 +463,19 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     if (watchDate) {
       lastActivityByItemId.set(itemId, watchDate)
     }
+    // Stremio's lastWatched stays at the moment a title was opened, so it says
+    // nothing about a viewing that is still going. Its saves do (stremioSaves.js):
+    // the same window, counted from the last real save.
+    let savedRecently = false
+    if (readsStremioSaves) {
+      stremioSaves.observe(userId, itemId, item, nowMs)
+      const lastSave = stremioSaves.lastSaveAt(userId, itemId, nowMs)
+      savedRecently = lastSave != null && (nowMs - lastSave) < (CHECK_INTERVAL_MS * 3.6)
+        && !stremioSaves.viewing(userId, itemId, null, nowMs)?.ended
+      if (lastSave != null && (!watchDate || lastSave > watchDate.getTime())) {
+        lastActivityByItemId.set(itemId, new Date(lastSave))
+      }
+    }
     // state.timeOffset only, never state.overallTimeWatched here - the latter
     // is a lifetime-cumulative counter that can run to absurd values (see the
     // CLAUDE.md note this file already documents elsewhere), unsafe to treat
@@ -473,7 +488,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       lastPositionByItemId.set(itemId, currentPositionForItem)
     }
 
-    const isActive = isActivelyWatching(item, userId, nowMs)
+    const isActive = isActivelyWatching(item, userId, nowMs) || savedRecently
     // Playback that ran to the end still gets its session created or
     // updated below, so the duration and the History row are recorded as
     // for any other checkpoint - it just is not kept open afterwards: it

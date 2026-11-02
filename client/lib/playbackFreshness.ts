@@ -9,7 +9,7 @@
 
 export interface FreshnessRow {
   source?: string;
-  /** Set only when the player itself said paused. */
+  /** Set only when the player said paused, or Stremio's saves show it. */
   paused?: boolean;
   /** The proxy has stopped reconfirming the stream. */
   elapsedFrozen?: boolean;
@@ -35,8 +35,9 @@ export interface Freshness {
 }
 
 /** Sources that keep confirming a viewing while it plays (the server's own
- *  passes: the proxy poll every ~30 s, Jellyfin's sessions every minute). */
-const HEARTBEAT_SOURCES = new Set(['aiostreams-proxy', 'jellyfin']);
+ *  passes: the proxy poll every ~30 s, Jellyfin's sessions every minute, Stremio's
+ *  saves read every 20 s). */
+const HEARTBEAT_SOURCES = new Set(['aiostreams-proxy', 'jellyfin', 'stremio-saves']);
 
 /** Past this without a reconfirmation a row is no longer called live - the
  *  server drops a Jellyfin viewing after the same 150 s. */
