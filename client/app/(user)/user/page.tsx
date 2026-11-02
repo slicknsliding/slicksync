@@ -92,6 +92,17 @@ export default function UserHomePage() {
     fetchData();
   }, [userId, authKey, isReady]);
 
+  // While they're watching, the card follows along without a reload.
+  const watchingNow = !!activityData?.nowPlaying?.[0];
+  useEffect(() => {
+    if (!watchingNow || !isReady || !userId) return;
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      userActivity.getActivity(userId, authKey || undefined).then(setActivityData).catch(() => {});
+    }, 20000);
+    return () => clearInterval(id);
+  }, [watchingNow, userId, authKey, isReady]);
+
   // Handle sync
   const handleSync = async () => {
     if (!userId || syncing) return;

@@ -315,3 +315,27 @@ test('mergeProxyNowPlaying: an identifiable stream title is unchanged by the opa
   assert.notEqual(card.item.titlePending, true)
   assert.ok(result.some((r) => r.item.name === 'Unrelated'))
 })
+
+test('mergeProxyNowPlaying: the Stremio player events outrank an open proxy stream of the same title', async () => {
+  const users = [{ id: 'user-1', username: 'alice', email: 'alice@example.com' }]
+  const stremioRow = {
+    user: { id: 'user-1', username: 'alice' },
+    item: { id: 'tt0117500', name: 'The Rock', type: 'movie', year: '1996' },
+    videoId: 'tt0117500',
+    source: 'stremio',
+    paused: true,
+    lastPosition: 159000,
+    totalDuration: 1395000,
+  }
+  const open = { proxyStreamSession: { findMany: async ({ where }) => (where.isActive ? [makeProxyRow({ metadataItemId: 'tt0117500', metadataName: 'The Rock' })] : []) } }
+  const playing = await mergeProxyNowPlaying(open, 'acct-1', users, [stremioRow], { isConfirming: () => true })
+  assert.equal(playing.length, 1, 'one card, not one each')
+  assert.equal(playing[0].source, 'stremio')
+  assert.equal(playing[0].paused, true)
+  assert.equal(playing[0].lastPosition, 159000)
+
+  // A pause long enough for the proxy to drop the connection doesn't take it off Now Playing either.
+  const closed = { proxyStreamSession: { findMany: async ({ where }) => (where.isActive ? [] : [makeProxyRow({ metadataItemId: 'tt0117500', metadataName: 'The Rock', isActive: false })]) } }
+  const afterClose = await mergeProxyNowPlaying(closed, 'acct-1', users, [stremioRow], { isConfirming: () => true })
+  assert.deepEqual(afterClose.map((r) => r.source), ['stremio'])
+})

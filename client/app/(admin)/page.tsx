@@ -698,6 +698,17 @@ export default function DashboardPage() {
     return () => { stopPoll(); if (liveTimer) clearTimeout(liveTimer); window.removeEventListener('slicksync:live-nowplaying', onLive); };
   }, [refreshData]);
 
+  // A pause isn't always pushed (a stream the proxy carries has no such event)
+  // and the card counts on by itself, so while someone is watching it asks
+  // again often enough not to run far ahead of what the server knows.
+  useEffect(() => {
+    if (!hasLivePlayback) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshData(true);
+    }, 20000);
+    return () => clearInterval(id);
+  }, [hasLivePlayback, refreshData]);
+
   // Derived stats with fallbacks
   const stats = useMemo(() => {
     return {

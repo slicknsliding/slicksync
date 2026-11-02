@@ -72,7 +72,7 @@ export function playbackFreshness(row: FreshnessRow | null | undefined, now: num
     const when = formatAge(age, true);
     return { state: 'live', live: true, pulse: true, text: `Live · ${when === 'just now' ? 'updated just now' : `updated ${when}`}` };
   }
-  if (row.source === 'aiostreams' && typeof row.playingUntilTimestamp === 'number' && Number.isFinite(row.playingUntilTimestamp) && now <= row.playingUntilTimestamp) {
+  if ((row.source === 'aiostreams' || row.source === 'stremio') && typeof row.playingUntilTimestamp === 'number' && Number.isFinite(row.playingUntilTimestamp) && now <= row.playingUntilTimestamp) {
     return { state: 'playing-estimated', live: false, pulse: true, text: `Playing · started ${formatAge(age, false)}` };
   }
   return { state: 'seen', live: false, pulse: false, text: `Last seen ${formatAge(age, false)}` };

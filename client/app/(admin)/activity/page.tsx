@@ -1935,6 +1935,15 @@ function ActivityPageContent() {
     }, 15000);
     return () => clearInterval(id);
   }, [hasLivePlayback]);
+  // Same as the dashboard: while someone is watching, Now Playing asks again
+  // often enough not to count far past what the server knows.
+  useEffect(() => {
+    if (!hasLivePlayback) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') api.getMetrics('all').then(setMetricsData).catch(() => {});
+    }, 20000);
+    return () => clearInterval(id);
+  }, [hasLivePlayback]);
 
   // Transform API data to activity items
   // Activity feed shows ALL history - Now Playing is handled separately by the backend
