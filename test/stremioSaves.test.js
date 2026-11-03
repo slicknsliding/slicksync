@@ -89,11 +89,19 @@ test('a library edit moves _mtime but is not a save', () => {
   assert.equal(saves.lastSaveAt('u1', 'tt0096697', at('2026-11-02T21:46:00.000Z')), null)
 })
 
-test('a rewind to 0 from early on is not the end of the video', () => {
+test('back to 0 is the end even when the last save was short of the credits', () => {
+  // 2026-11-03: S1E2 saved at 17:11, closed past the credits a little over
+  // three minutes later, and the last save before that was at about 84%.
   saves.forget()
-  read('2026-11-02T21:45:00.000Z', 100000)
-  read('2026-11-02T21:45:30.000Z', 0)
-  assert.equal(now('2026-11-02T21:45:30.000Z').ended, false)
+  read('2026-11-03T00:20:49.000Z', 1031948)
+  read('2026-11-03T00:22:19.000Z', 1121948)
+  read('2026-11-03T00:24:05.938Z', 0)
+  const ended = now('2026-11-03T00:24:05.938Z')
+  assert.equal(ended.ended, true)
+  assert.equal(ended.paused, false)
+
+  read('2026-11-03T03:00:00.000Z', 90000)
+  assert.equal(now('2026-11-03T03:00:00.000Z').ended, false, 'playing it again')
 })
 
 test('the next episode starts fresh, and the old episode is not described', () => {

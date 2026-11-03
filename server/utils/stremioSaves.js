@@ -7,7 +7,9 @@
 //  - pausing saves at once, within about a second of the player's clock;
 //  - pressing play saves at once, under half a second past the pause;
 //  - nothing saves while paused (about 15 minutes watched);
-//  - a video that ends goes back to position 0;
+//  - closing a video past 90% of it (stremio-core's CREDITS_THRESHOLD_COEF) puts
+//    the position back to 0, and so does marking it watched - nothing else does,
+//    so 0 is always the end, however far in the save before it was;
 //  - state.lastWatched stays at the moment the title was opened, through all of
 //    the above. Only _mtime moves, and it is the exact save time.
 //
@@ -32,8 +34,6 @@ const PLAYED_SLACK_MS = 10 * 1000
 const SILENT_MS = 200 * 1000
 // A device clock this far from ours is not used to time anything shown.
 const CLOCK_TRUST_MS = 2 * 60 * 1000
-// Back to 0 from this far in is the end of the video, not someone rewinding.
-const ENDED_FROM_RATIO = 0.9
 const REMEMBER_MS = 24 * 60 * 60 * 1000
 
 const records = new Map() // `${userId}:${itemId}` -> record
@@ -44,18 +44,14 @@ function readItem(item) {
   const offset = Number(item?.state?.timeOffset ?? NaN)
   const mtime = Date.parse(item?._mtime || '')
   if (!Number.isFinite(offset) || !Number.isFinite(mtime)) return null
-  const duration = Number(item?.state?.duration ?? NaN)
-  return { offset, mtime, duration: Number.isFinite(duration) && duration > 0 ? duration : null, videoId: item?.state?.video_id || null }
+  return { offset, mtime, videoId: item?.state?.video_id || null }
 }
 
 /** Pause or play, from a save and the one before it. Pure. */
 function classify(prev, cur) {
   const gap = cur.mtime - prev.mtime
   const moved = cur.offset - prev.offset
-  if (cur.offset <= 0) {
-    const fromEnd = prev.offset > 0 && (!cur.duration || prev.offset >= cur.duration * ENDED_FROM_RATIO)
-    return { paused: false, ended: fromEnd, timerMs: prev.timerMs, timerSeen: prev.timerSeen }
-  }
+  if (cur.offset <= 1) return { paused: false, ended: true, timerMs: prev.timerMs, timerSeen: prev.timerSeen }
   const played = Math.abs(moved - gap) <= PLAYED_SLACK_MS
   if (Math.abs(moved) < RESUME_MOVED_MS) return { paused: false, ended: false, timerMs: prev.timerMs, timerSeen: prev.timerSeen }
   if (gap >= TIMER_MIN_GAP_MS) return { paused: false, ended: false, timerMs: prev.timerMs, timerSeen: prev.timerSeen || played }
