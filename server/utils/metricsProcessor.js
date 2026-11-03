@@ -587,7 +587,9 @@ function firstSightingSeconds(state, lastWatched) {
   const playedAt = lastWatched instanceof Date ? lastWatched.getTime() : NaN
   if (!Number.isFinite(playedAt) || Math.abs(Date.now() - playedAt) > FIRST_SIGHTING_WINDOW_MS) return 0
   const runtimeMs = Number(state?.duration ?? NaN)
-  const overallMs = Number(state?.overallTimeWatched ?? NaN)
+  // Stremio's lifetime figure stays at 0 through a title's first video, so
+  // the time played in this video stands in for it.
+  const overallMs = Math.max(Number(state?.overallTimeWatched) || 0, Number(state?.timeWatched) || 0)
   if (!(runtimeMs > 0) || !(overallMs > 0)) return 0
   const positionMs = Number(state?.timeOffset ?? NaN)
   const bounds = [overallMs, runtimeMs]
@@ -711,7 +713,10 @@ async function getPreviousSnapshot(prisma, accountId, userId, itemId, today, tim
  * accepted tradeoff consistent with this app's existing "one History row
  * per title, a rewatch moves the card rather than duplicating it" design.
  */
-async function getMaxOverallTimeWatched(prisma, accountId, userId, itemId, videoId = null) {
+//
+// The same goes for timeWatched, Stremio's time played in one video, which is
+// kept per video the same way.
+async function getMaxSeen(prisma, accountId, userId, itemId, videoId = null) {
   try {
     const snapshots = await prisma.watchSnapshot.findMany({
       // Scoped to the same episode (videoId) when known - a series' overallTimeWatched
@@ -720,21 +725,27 @@ async function getMaxOverallTimeWatched(prisma, accountId, userId, itemId, video
       // the exact bug this function was built to prevent, just from the other
       // direction). videoId is null for movies, where this scoping is a no-op.
       where: { accountId: accountId || 'default', userId, itemId, videoId },
-      select: { overallTimeWatched: true }
+      select: { overallTimeWatched: true, timeWatched: true }
     })
-    let max = null
+    let overall = null
+    let timeWatched = null
     for (const s of snapshots) {
-      if (!s.overallTimeWatched) continue
-      const value = BigInt(s.overallTimeWatched)
-      if (max === null || value > max) max = value
+      if (s.overallTimeWatched) {
+        const value = BigInt(s.overallTimeWatched)
+        if (overall === null || value > overall) overall = value
+      }
+      if (s.timeWatched) {
+        const value = BigInt(s.timeWatched)
+        if (timeWatched === null || value > timeWatched) timeWatched = value
+      }
     }
-    return max
+    return { overall, timeWatched }
   } catch (error) {
     console.warn(
       `[MetricsProcessor] Error fetching max snapshot for ${userId}/${itemId}:`,
       error.message
     )
-    return null
+    return { overall: null, timeWatched: null }
   }
 }
 
@@ -786,6 +797,12 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     const current = {
       overallTimeWatched: item.state?.overallTimeWatched ? String(item.state.overallTimeWatched) : null,
       timeOffset: item.state?.timeOffset ? String(item.state.timeOffset) : null,
+      // Stremio's time played in this video. Its overallTimeWatched only takes
+      // in a video's time once the title moves on to the next one (measured
+      // 2026-11-02: it stayed at 0 through a whole first episode and did not
+      // move again through the second), so this is what shows watching as it
+      // happens. Nuvio and Jellyfin leave it at 0.
+      timeWatched: Number(item.state?.timeWatched) > 0 ? String(Math.floor(Number(item.state.timeWatched))) : null,
       // Which episode this poll's overallTimeWatched/timeOffset actually
       // describes. For a series, item is one row per SHOW (itemId stays
       // constant across episodes) - video_id is what actually changes.
@@ -835,7 +852,11 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // Check if current library value differs from latest snapshot
     const snapshotChanged = !latestSnapshot ||
       !latestSnapshot.overallTimeWatched ||
-      BigInt(latestSnapshot.overallTimeWatched) !== BigInt(current.overallTimeWatched || '0')
+      BigInt(latestSnapshot.overallTimeWatched) !== BigInt(current.overallTimeWatched || '0') ||
+      (!!current.timeWatched && (!latestSnapshot.timeWatched || BigInt(latestSnapshot.timeWatched) !== BigInt(current.timeWatched)))
+    const hasProgress = !!(current.overallTimeWatched || current.timeWatched)
+    // A snapshot from before, holding either counter.
+    const seenBefore = !!(oldSnapshotValue || latestSnapshot?.timeWatched)
 
     // Decide whether to record an activity delta - this part is pure
     // decision-making (reads only), the actual writes happen atomically
@@ -844,29 +865,47 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // days - the monotonic high-water-mark. Computed once and reused for BOTH
     // the delta baseline below AND clamping the snapshot write further down, so
     // the snapshot can never regress it (see the clamp comment at the write).
-    // Scoped to the current episode (videoId) - see getMaxOverallTimeWatched's
+    // Scoped to the current episode (videoId) - see getMaxSeen's
     // own comment for why mixing episodes here would reintroduce this same
     // class of bug from the other direction.
     let maxSeenBig = null
-    if (current.overallTimeWatched) {
-      try { maxSeenBig = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId, current.videoId) } catch {}
+    let maxTimeWatchedBig = null
+    if (hasProgress) {
+      try {
+        const maxSeen = await getMaxSeen(prisma, accountIdValue, userId, itemId, current.videoId)
+        maxSeenBig = maxSeen.overall
+        maxTimeWatchedBig = maxSeen.timeWatched
+      } catch {}
     }
 
     let activityDeltaSeconds = null
     // Progress seen on this pass that was too little to record on its own.
     let unrecordedDeltaSeconds = 0
-    if (current.overallTimeWatched && snapshotChanged) {
+    if (hasProgress && snapshotChanged) {
       let totalDeltaSeconds = 0
 
-      if (oldSnapshotValue && !episodeChanged) {
+      if (seenBefore && !episodeChanged) {
         // Existing item: calculate delta from the highest overallTimeWatched
         // ever recorded for this item, not just the single most recent
-        // snapshot - see getMaxOverallTimeWatched's comment for why. Falls
+        // snapshot - see getMaxSeen's comment for why. Falls
         // back to the plain prior-snapshot comparison only in the
         // practically-unreachable case where the max lookup itself fails.
-        const deltaBaseline = maxSeenBig !== null ? maxSeenBig : BigInt(oldSnapshotValue)
-        const currOverall = BigInt(current.overallTimeWatched)
-        const totalDeltaMs = currOverall - deltaBaseline
+        const deltaBaseline = maxSeenBig !== null ? maxSeenBig : (oldSnapshotValue ? BigInt(oldSnapshotValue) : null)
+        const overallDeltaMs = (current.overallTimeWatched && deltaBaseline !== null)
+          ? BigInt(current.overallTimeWatched) - deltaBaseline
+          : 0n
+        // Stremio's time played in this video, against the most it was ever
+        // seen at for this same video - so a stale copy of the library written
+        // back by another device, or a replay that starts the counter over,
+        // adds nothing until it passes what was already counted. No baseline
+        // for this video yet (its first sighting) adds nothing either.
+        const timeWatchedDeltaMs = (current.timeWatched && maxTimeWatchedBig !== null)
+          ? BigInt(current.timeWatched) - maxTimeWatchedBig
+          : 0n
+        // An app whose lifetime figure does grow while playing moves both
+        // counters for the same minutes, so the larger of the two counts, never
+        // their sum.
+        const totalDeltaMs = overallDeltaMs > timeWatchedDeltaMs ? overallDeltaMs : timeWatchedDeltaMs
 
         // Only create activity if delta is significant (> 60 seconds) and positive
         if (totalDeltaMs > 0) {
@@ -910,7 +949,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // nothing. Not for a new episode of a known show (flipping between
         // two episodes would count each again), and not for providers whose
         // position can jump without anyone watching.
-        if (!oldSnapshotValue && !item.state?.wallClockCapped) {
+        if (!seenBefore && !item.state?.wallClockCapped) {
           totalDeltaSeconds = firstSightingSeconds(item.state, current.lastWatched)
         }
       }
@@ -982,7 +1021,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       const movedAt = (current.lastWatched || current.mtime)?.getTime()
       holdBaseline = Number.isFinite(movedAt) && Math.abs(Date.now() - movedAt) <= HOLD_BASELINE_WINDOW_MS
     }
-    const writeSnapshot = snapshotChanged && !!current.overallTimeWatched && !holdBaseline
+    const writeSnapshot = snapshotChanged && hasProgress && !holdBaseline
 
     // Record the activity delta (if any) and advance the snapshot baseline
     // together in one transaction. These used to be two separate writes -
@@ -1028,7 +1067,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // is always a data artifact - specifically Nuvio's multi-profile merge
         // transiently dropping a profile's progress (documented in CLAUDE.md).
         // Before this clamp, that drop overwrote the snapshot LOWER, which erased
-        // the high-water-mark getMaxOverallTimeWatched relies on - so when the
+        // the high-water-mark getMaxSeen relies on - so when the
         // value recovered, the recovery re-registered as a fresh delta, over and
         // over (confirmed real case 2026-07-30: the identical 19104-second delta
         // recorded 8x in one day for one series, inflating Watch Time Today by
@@ -1038,10 +1077,15 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // snapshot exists yet for the new episode) and stores the new value as
         //-is. timeOffset / lastWatched / mtime still reflect current (those
         // legitimately move).
-        const currOverallBig = BigInt(current.overallTimeWatched)
-        const overallToStore = (maxSeenBig !== null && maxSeenBig > currOverallBig)
+        const currOverallBig = current.overallTimeWatched ? BigInt(current.overallTimeWatched) : null
+        const overallToStore = (maxSeenBig !== null && (currOverallBig === null || maxSeenBig > currOverallBig))
           ? maxSeenBig.toString()
           : current.overallTimeWatched
+        // Same rule for Stremio's per-video counter.
+        const currTimeWatchedBig = current.timeWatched ? BigInt(current.timeWatched) : null
+        const timeWatchedToStore = (maxTimeWatchedBig !== null && (currTimeWatchedBig === null || maxTimeWatchedBig > currTimeWatchedBig))
+          ? maxTimeWatchedBig.toString()
+          : current.timeWatched
         ops.push(prisma.watchSnapshot.upsert({
           where: {
             accountId_userId_itemId_date: {
@@ -1058,6 +1102,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             date: new Date(todayDate),
             overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
+            timeWatched: timeWatchedToStore,
             videoId: current.videoId,
             lastWatched: current.lastWatched,
             mtime: current.mtime
@@ -1065,6 +1110,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
           update: {
             overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
+            timeWatched: timeWatchedToStore,
             videoId: current.videoId,
             lastWatched: current.lastWatched,
             mtime: current.mtime
@@ -1078,7 +1124,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         if (writeSnapshot) {
           snapshotCreated = true
           // Debug: Log snapshot updates for items with significant changes
-          if (latestSnapshot && latestSnapshot.overallTimeWatched) {
+          if (latestSnapshot && latestSnapshot.overallTimeWatched && current.overallTimeWatched) {
             const deltaMs = BigInt(current.overallTimeWatched) - BigInt(latestSnapshot.overallTimeWatched)
             const deltaSeconds = Number(deltaMs / 1000n)
             if (deltaSeconds >= 60) {

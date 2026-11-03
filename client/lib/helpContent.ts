@@ -1839,6 +1839,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Timezone is auto-detected from your browser on first visit then stored explicitly, precisely because scheduled jobs cannot re-check it later. Travelling or moving without updating it will skew daily figures.',
       'Resuming something days later used to re-stamp the entire accumulated watch time as freshly watched today; now only genuinely new progress counts toward today and the rest stays on the day it actually happened.',
       'Proxy connection lifetime is deliberately not treated as watch time - a long-open connection is not the same as a long watch, and conflating them once produced wildly inflated totals.',
+      'Stremio watch time counts the time each video really played, a minute or two at a time while it plays. Some Stremio apps only add a video to their running total once the next one starts, so before this some Stremio viewing showed as no time at all; that earlier time can not be added back.',
     ],
     tips: [
       'Same-email Stremio/Nuvio pairs are deduped in leaderboards and totals, so one person never counts as two - but only once they are actually recognised as the same person.',

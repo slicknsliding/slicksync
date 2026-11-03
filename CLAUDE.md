@@ -105,11 +105,16 @@ Rules that keep falling out of this, each fixing a real reported bug:
   become the only available data for that item, then self-correct next poll. Comparing against only the prior
   snapshot treated that recovery as new watching (confirmed real case: a snapshot dropped 6543120→909494 across
   profile-fetch failures, then "recovered" to 6389553 — a value already recorded six days earlier — producing a
-  bogus 5480-second/91-minute entry that inflated "Watch Time Today"). `getMaxOverallTimeWatched()` fixes this by
+  bogus 5480-second/91-minute entry that inflated "Watch Time Today"). `getMaxSeen()` fixes this by
   construction: recovering to a previously-seen value can never register as progress. Added 2026-07-18; a rewatch
   that resets progress to near-zero and climbs back up is also suppressed under this rule, an accepted tradeoff
   consistent with the "one History row per title" design. `scripts/reconcile-stale-snapshot-spikes.js` flags
   already-written oversized rows from before this fix, for review.
+- **Stremio watch time is read from `state.timeWatched`, not only `overallTimeWatched`.** On the Stremio app measured
+  2026-11-02, `overallTimeWatched` stayed at 0 through a whole first episode and only took in a video's time when the
+  title moved on to the next, so it recorded nothing. `timeWatched` (time played in the current video) grows while
+  playing; `WatchSnapshot.timeWatched` keeps its per-video high-water mark, and a pass counts the larger of the two
+  deltas, never their sum. First sighting of a video's counter, an episode change and a drop all add nothing.
 - **A checkpoint at the end of the runtime is the one that means "stopped".** The freshness window exists
   because a checkpoint cannot tell a pause from a stop, but a position in the last 2% of `state.duration`
   (`hasReachedEnd()` in `sessionTracker.js`) is playback that ended. Such a session is still created or updated

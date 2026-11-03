@@ -5696,7 +5696,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           ...s,
           accountId: undefined,
           overallTimeWatched: s.overallTimeWatched !== null && s.overallTimeWatched !== undefined ? String(s.overallTimeWatched) : undefined,
-          timeOffset: s.timeOffset !== null && s.timeOffset !== undefined ? String(s.timeOffset) : undefined
+          timeOffset: s.timeOffset !== null && s.timeOffset !== undefined ? String(s.timeOffset) : undefined,
+          timeWatched: s.timeWatched !== null && s.timeWatched !== undefined ? String(s.timeWatched) : undefined
         })),
         counts: {
           watchSessions: watchSessions.length,

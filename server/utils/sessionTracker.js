@@ -722,7 +722,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // the end on the FIRST-ever observation is far more likely to mean
           // "this was finished at some earlier, untracked time and we're only
           // just now seeing that state" than "watched start-to-finish in the
-          // instant between polls" - same principle as getMaxOverallTimeWatched
+          // instant between polls" - same principle as getMaxSeen
           // (metricsProcessor.js): recovering to/starting at an already-complete
           // value must never register as fresh progress. Don't seed in that case;
           // let it accrue from here via the normal incremental delta instead.
