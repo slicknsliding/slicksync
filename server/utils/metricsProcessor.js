@@ -850,10 +850,16 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     let activityCreated = false
 
     // Check if current library value differs from latest snapshot
+    // Within one video only a higher timeWatched is news: the snapshot keeps the
+    // most seen, so a lower reading would otherwise be rewritten on every pass.
+    const timeWatchedMoved = !!current.timeWatched && !!latestSnapshot && (
+      !latestSnapshot.timeWatched ||
+      latestSnapshot.videoId !== current.videoId ||
+      BigInt(current.timeWatched) > BigInt(latestSnapshot.timeWatched)
+    )
     const snapshotChanged = !latestSnapshot ||
-      !latestSnapshot.overallTimeWatched ||
-      BigInt(latestSnapshot.overallTimeWatched) !== BigInt(current.overallTimeWatched || '0') ||
-      (!!current.timeWatched && (!latestSnapshot.timeWatched || BigInt(latestSnapshot.timeWatched) !== BigInt(current.timeWatched)))
+      BigInt(latestSnapshot.overallTimeWatched || '0') !== BigInt(current.overallTimeWatched || '0') ||
+      timeWatchedMoved
     const hasProgress = !!(current.overallTimeWatched || current.timeWatched)
     // A snapshot from before, holding either counter.
     const seenBefore = !!(oldSnapshotValue || latestSnapshot?.timeWatched)

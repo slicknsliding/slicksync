@@ -21,7 +21,7 @@ function makeDb() {
       findFirst: async ({ where }) => {
         const rows = snapshots.filter((s) => s.userId === where.userId && s.itemId === where.itemId)
         if (where.date && typeof where.date === 'object' && 'lte' in where.date) {
-          return rows.filter((s) => new Date(s.date) <= where.date).sort((a, b) => b.date - a.date)[0] || null
+          return rows.filter((s) => new Date(s.date) <= where.date.lte).sort((a, b) => b.date - a.date)[0] || null
         }
         return rows.find((s) => sameDay(s.date, where.date)) || null
       },
@@ -116,6 +116,35 @@ test('a new title played today counts what was played in its first video, up to 
   const db = makeDb()
   await pass(db, item({ timeWatched: 700000, offset: 650000 }))
   assert.equal(db.seconds(), 650, 'bounded by the position, as the first-sighting rule always was')
+})
+
+test('a title nobody is playing is not written again, on later passes or later days', async () => {
+  const opened = new Date(Date.now() - 3 * 24 * 3600 * 1000)
+  for (const overall of [0, 5000000]) {
+    const db = makeDb()
+    const still = () => item({ timeWatched: 100000, overall, lastWatched: opened })
+    await pass(db, still())
+    assert.equal(db.snapshots.length, 1)
+    const row = db.snapshots[0]
+    row.marker = 'untouched'
+    Object.defineProperty(row, 'mtime', { set() { row.marker = 'rewritten' }, get() { return null } })
+
+    await pass(db, still())
+    assert.equal(row.marker, 'untouched', 'the next pass writes nothing')
+    const tomorrow = new Date(Date.now() + 24 * 3600 * 1000)
+    await processLibraryItem(db.prisma, 'acct', 'u1', still(), tomorrow)
+    assert.equal(db.snapshots.length, 1, 'a new day adds no row')
+  }
+})
+
+test('a lower reading of the same video is not written again and again', async () => {
+  const db = makeDb()
+  const opened = new Date(Date.now() - 3 * 24 * 3600 * 1000)
+  await pass(db, item({ timeWatched: 600000, lastWatched: opened }))
+  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000)
+  await processLibraryItem(db.prisma, 'acct', 'u1', item({ timeWatched: 300000, lastWatched: opened }), tomorrow)
+  assert.equal(db.snapshots.length, 1)
+  assert.equal(db.snapshots[0].timeWatched, '600000')
 })
 
 test('two advances under a minute are held and counted together while still playing', async () => {
