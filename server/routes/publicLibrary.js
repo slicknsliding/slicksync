@@ -295,6 +295,43 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     return decoded?.provider === 'jellyfin' && decoded?.sub === expectedUserId
   }
 
+  // Stremio portal sessions work the same way. The person's Stremio key is
+  // checked once, at sign-in, and stays on the server; the browser keeps only
+  // this token, which works nowhere but here and runs out. A browser still
+  // holding the Stremio key itself (signed in before this) swaps it for a
+  // token on its next visit, and the key keeps working until it does.
+  function issueStremioSessionToken(userId) {
+    return jwt.sign({ sub: userId, provider: 'stremio' }, JWT_SECRET, { expiresIn: NUVIO_SESSION_TTL })
+  }
+  function stremioSessionUserId(token) {
+    if (typeof token !== 'string' || token.split('.').length !== 3) return null
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET)
+      return decoded?.provider === 'stremio' && typeof decoded.sub === 'string' ? decoded.sub : null
+    } catch (e) {
+      return null
+    }
+  }
+  // The same checks getPublicUser makes, for someone already signed in.
+  async function getPublicUserBySession(token, targetId = null) {
+    const userId = stremioSessionUserId(token)
+    if (!userId || (targetId && targetId !== userId)) throw new Error('Authentication required')
+    const user = await prisma.user.findFirst({
+      where: { id: userId, providerType: 'stremio' },
+      select: { id: true, username: true, email: true, accountId: true, stremioAuthKey: true, isActive: true, protectedAddons: true }
+    })
+    if (!user) throw new Error('USER_NOT_FOUND')
+    if (!user.isActive) throw new Error('USER_NOT_ACTIVE')
+    const groups = await prisma.group.findMany({ where: { isActive: true }, select: { userIds: true } })
+    const inGroup = groups.some((g) => { try { const ids = JSON.parse(g.userIds || '[]'); return Array.isArray(ids) && ids.includes(user.id) } catch { return false } })
+    if (!inGroup) throw new Error('USER_NOT_IN_GROUP')
+    return user
+  }
+  // A token or, from a browser signed in before tokens, the Stremio key.
+  function getStremioCaller(authKey, req, targetId = null) {
+    return stremioSessionUserId(authKey) ? getPublicUserBySession(authKey, targetId) : getPublicUser(authKey, req, targetId)
+  }
+
   // The person a Jellyfin sign-in belongs to: the same server user, active,
   // and in a group - the same rules getPublicUserNuvio applies. A fresh token
   // from the sign-in replaces the stored one (the server retires the old
@@ -425,7 +462,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     // someone who merely shares their email; only this person's row counts.
     let who;
     try {
-      who = await getPublicUser(authKey, req, user.id);
+      who = await getStremioCaller(authKey, req, user.id);
     } catch (e) {
       throw new Error('Invalid auth key');
     }
@@ -583,7 +620,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(400).json({ error: 'Auth key is required' });
       }
 
-      const user = await getPublicUser(authKey, req);
+      const user = await getStremioCaller(authKey, req);
       
       // Fetch full user details including createdAt and expiresAt
       const fullUser = await prisma.user.findUnique({
@@ -601,6 +638,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // Return user info (without sensitive data)
       res.json({
         success: true,
+        sessionToken: issueStremioSessionToken(fullUser.id),
         user: {
           id: fullUser.id,
           username: fullUser.username,
@@ -658,7 +696,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const authKeyToValidate = authKey;
 
       // Validate using getPublicUser which checks existence, active status, and group membership
-      const user = await getPublicUser(authKeyToValidate, req, userId || null);
+      const user = await getStremioCaller(authKeyToValidate, req, userId || null);
       if (userId && user.id !== userId) {
         return res.status(403).json({ error: 'Session mismatch', message: 'This Stremio session does not match this account' });
       }
@@ -666,6 +704,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       res.json({
         success: true,
         valid: true,
+        sessionToken: issueStremioSessionToken(user.id),
         user: {
           id: user.id,
           username: user.username,
@@ -1067,7 +1106,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       } else if (authKey) {
         // Legacy fallback for a caller with only a Stremio authKey and no
         // userId at all.
-        const publicUser = await getPublicUser(authKey, req);
+        const publicUser = await getStremioCaller(authKey, req);
         const fullUser = await prisma.user.findUnique({
           where: { id: publicUser.id },
           select: {
@@ -3220,7 +3259,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         }
         let validated
         try {
-          validated = await getPublicUser(authKey, req, userId)
+          validated = await getStremioCaller(authKey, req, userId)
         } catch {
           return res.status(401).json({ error: 'Invalid or expired Stremio session', message: 'Invalid or expired Stremio session - please sign in again before deleting your account' })
         }

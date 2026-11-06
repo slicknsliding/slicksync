@@ -197,12 +197,14 @@ export const userAuth = {
     success: boolean;
     userId: string;
     userInfo: UserInfo;
+    sessionToken?: string;
     isNewUser?: boolean;
     error?: string;
     errorCode?: string;
   }> {
     const response = await request<{
       success: boolean;
+      sessionToken?: string;
       user?: {
         id: string;
         username: string;
@@ -238,6 +240,7 @@ export const userAuth = {
           createdAt: response.user.createdAt || new Date().toISOString(),
           expiresAt: response.user.expiresAt,
         },
+        sessionToken: response.sessionToken,
         isNewUser: response.isNewUser,
       };
     }
@@ -265,6 +268,7 @@ export const userAuth = {
       valid?: boolean;
       success?: boolean;
       userId?: string;
+      sessionToken?: string;
       error?: string;
       errorCode?: string;
     }>('/public-library/validate', {
@@ -275,6 +279,7 @@ export const userAuth = {
     return {
       valid: response.valid ?? response.success ?? false,
       userId: response.userId,
+      sessionToken: response.sessionToken,
       error: response.error,
       errorCode: response.errorCode,
     };
