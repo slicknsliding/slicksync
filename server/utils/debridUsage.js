@@ -92,6 +92,13 @@ async function fetchDebridUsage(testType, apiKey) {
 //  - TorBox: download_finished === true means finished; TorBox's API has no
 //    separate "finished at" field, so `updated_at` is used as the best
 //    available proxy (a finished torrent generally stops being touched).
+// Never fewer than one whole day: a 0 (or junk) here would make every
+// finished torrent eligible immediately, including ones just downloaded.
+function wholeDays(afterDays) {
+  const n = Math.floor(Number(afterDays))
+  return Number.isFinite(n) && n >= 1 ? n : 7
+}
+
 async function listEligibleRealDebridTorrents(apiKey, afterDays) {
   const { signal, cancel } = timeoutSignal(15000)
   try {
@@ -99,7 +106,7 @@ async function listEligibleRealDebridTorrents(apiKey, afterDays) {
     cancel()
     if (!res.ok) return []
     const torrents = await res.json()
-    const cutoffMs = Date.now() - afterDays * 24 * 60 * 60 * 1000
+    const cutoffMs = Date.now() - wholeDays(afterDays) * 24 * 60 * 60 * 1000
     return (Array.isArray(torrents) ? torrents : [])
       .filter((t) => t?.status === 'downloaded' && t?.ended && new Date(t.ended).getTime() < cutoffMs)
       .map((t) => ({ id: t.id, name: t.filename }))
@@ -117,7 +124,7 @@ async function listEligibleTorBoxTorrents(apiKey, afterDays) {
     if (!res.ok) return []
     const body = await res.json()
     const torrents = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : [])
-    const cutoffMs = Date.now() - afterDays * 24 * 60 * 60 * 1000
+    const cutoffMs = Date.now() - wholeDays(afterDays) * 24 * 60 * 60 * 1000
     return torrents
       .filter((t) => t?.download_finished === true && t?.updated_at && new Date(t.updated_at).getTime() < cutoffMs)
       .map((t) => ({ id: t.id, name: t.name }))
@@ -183,4 +190,5 @@ module.exports = {
   fetchTorBoxUsage,
   listEligibleTorrents,
   deleteTorrent,
+  wholeDays,
 }

@@ -32,7 +32,7 @@ const crypto = require('crypto')
 const net = require('net')
 const dns = require('dns').promises
 const { readBounded } = require('./boundedBody')
-const { getEncoder, sniffFormat, sourceDimensions } = require('./imageEncoder')
+const { getEncoder, sniffFormat, sourceDimensions, decodableSize } = require('./imageEncoder')
 const pool = require('./imageEncodePool')
 
 // Only these output widths exist. A fixed menu keeps one origin image from
@@ -281,6 +281,7 @@ function produce(src, { w, wantsWebp, localFile = null, followRedirects = true, 
   const work = (async () => {
     const buf = await readSource(src, localFile, followRedirects)
     if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) throw new Error('bad size')
+    if (!decodableSize(buf)) throw new Error('bad dimensions')
 
     const fmt = sniffFormat(buf)
     const dims = sourceDimensions(buf)

@@ -11,6 +11,7 @@ const NOW = Date.parse('2026-10-05T12:00:00Z')
 
 function world({ users, activity = [], rules }) {
   const runs = []
+  const store = { sync: '{}' }
   const table = (rows, field) => ({
     groupBy: async ({ where }) => {
       const m = new Map()
@@ -23,8 +24,12 @@ function world({ users, activity = [], rules }) {
   })
   const prisma = {
     automationRule: { findMany: async () => rules },
-    automationRun: {
-      findFirst: async ({ where }) => runs.find((r) => r.ruleId === where.ruleId && where.AND.every((c) => r.payload.includes(c.payload.contains))) || null,
+    // The "already fired" marker lives in the account's settings, not in the
+    // (pruned) run log - the log is deliberately never read here.
+    automationRun: { findFirst: async () => { throw new Error('the run log must not be consulted') } },
+    appAccount: {
+      findUnique: async () => ({ sync: store.sync }),
+      update: async ({ data }) => { store.sync = data.sync },
     },
     user: { findMany: async () => users },
     watchActivity: table(activity, 'createdAt'),
@@ -39,7 +44,7 @@ function world({ users, activity = [], rules }) {
     runs.push({ ruleId: opts.ruleId, payload: JSON.stringify(payload) })
     return { fired: 1 }
   }
-  return { prisma, fired, emit }
+  return { prisma, fired, emit, runs, store }
 }
 
 const rule = { id: 'r1', accountId: 'acc', triggerType: 'user.inactive', enabled: true, triggerConfig: JSON.stringify({ days: 30 }) }
@@ -57,6 +62,14 @@ test('fires once per quiet stretch, and again only after they come back and go q
   activity.push({ accountId: 'acc', userId: 'ann', createdAt: new Date(NOW + 2 * DAY) })
   assert.equal(await runInactivityCheck(w.prisma, { now: NOW + 10 * DAY, emit: w.emit }), 0, 'active again')
   assert.equal(await runInactivityCheck(w.prisma, { now: NOW + 33 * DAY, emit: w.emit }), 1)
+})
+
+test('pruning the run log does not make a quiet stretch fire again', async () => {
+  const activity = [{ accountId: 'acc', userId: 'ann', createdAt: new Date(NOW - 45 * DAY) }]
+  const w = world({ users: [person('ann')], activity, rules: [rule] })
+  assert.equal(await runInactivityCheck(w.prisma, { now: NOW, emit: w.emit }), 1)
+  w.runs.length = 0 // dbMaintenance pruned every run
+  assert.equal(await runInactivityCheck(w.prisma, { now: NOW + 3600e3, emit: w.emit }), 0)
 })
 
 test('skips the recently active, a future end date, and counts never-watched from when they were added', async () => {

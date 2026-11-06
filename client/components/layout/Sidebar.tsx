@@ -271,6 +271,7 @@ export function SidebarFrame({ sections, homeHref, isOpen = false, onClose, isIt
           <span className="text-sm font-medium text-muted">Menu</span>
           <button
             onClick={onClose}
+            aria-label="Close menu"
             className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
           >
             <XMarkIcon className="w-5 h-5 text-muted" />

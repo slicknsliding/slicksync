@@ -5,7 +5,7 @@ const express = require('express');
 // each account's device subscriptions separate.
 module.exports = ({ prisma, getAccountId }) => {
   const router = express.Router();
-  const { getPublicKey, isPushEnabled } = require('../utils/pushNotifications');
+  const { getPublicKey, isPushEnabled, isAllowedPushEndpoint } = require('../utils/pushNotifications');
 
   // GET /api/push/vapid-key - the public key the browser needs to subscribe,
   // plus whether push is available at all on this server.
@@ -22,10 +22,18 @@ module.exports = ({ prisma, getAccountId }) => {
       if (!endpoint || !keys?.p256dh || !keys?.auth) {
         return res.status(400).json({ error: 'Invalid subscription' });
       }
+      if (!isAllowedPushEndpoint(endpoint)) {
+        return res.status(400).json({ error: 'Unsupported push service' });
+      }
+      // An endpoint is one browser's; another account may not take it over.
+      const existing = await prisma.pushSubscription.findUnique({ where: { endpoint }, select: { accountId: true } });
+      if (existing && existing.accountId !== accountId) {
+        return res.status(409).json({ error: 'This device is already registered to another account' });
+      }
       await prisma.pushSubscription.upsert({
         where: { endpoint },
         create: { accountId, endpoint, p256dh: keys.p256dh, auth: keys.auth, userAgent: userAgent || null },
-        update: { accountId, p256dh: keys.p256dh, auth: keys.auth, userAgent: userAgent || null },
+        update: { p256dh: keys.p256dh, auth: keys.auth, userAgent: userAgent || null },
       });
       res.json({ success: true });
     } catch (error) {
@@ -37,9 +45,10 @@ module.exports = ({ prisma, getAccountId }) => {
   // POST /api/push/unsubscribe - remove a subscription by endpoint.
   router.post('/unsubscribe', async (req, res) => {
     try {
+      const accountId = getAccountId(req) || 'default';
       const { endpoint } = req.body || {};
       if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
-      await prisma.pushSubscription.deleteMany({ where: { endpoint } });
+      await prisma.pushSubscription.deleteMany({ where: { endpoint, accountId } });
       res.json({ success: true });
     } catch (error) {
       console.error('Error removing push subscription:', error);

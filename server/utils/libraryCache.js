@@ -68,6 +68,30 @@ function getLegacyEmailCachePath(accountId, user) {
   return path.join(getAccountCacheDir(accountId), `library-${safeEmail}.json`)
 }
 
+// Parsed libraries kept in memory so a repeat read of an unchanged file skips
+// the read and JSON.parse of several MB. Keyed by path and checked against the
+// file's mtime and size on every hit, so a write from anywhere is seen. A few
+// entries only: libraries are large.
+const PARSED_MAX = 4
+const parsedCache = new Map() // path -> { mtimeMs, size, parsed } (Map order = LRU)
+
+// Callers get their own array and their own item and state objects, so
+// editing a returned library never reaches the next reader.
+function copyLibrary(parsed) {
+  return parsed.map((item) => {
+    if (!item || typeof item !== 'object') return item
+    const copy = { ...item }
+    if (copy.state && typeof copy.state === 'object' && !Array.isArray(copy.state)) copy.state = { ...copy.state }
+    return copy
+  })
+}
+
+function rememberParsed(cachePath, st, parsed) {
+  parsedCache.delete(cachePath)
+  parsedCache.set(cachePath, { mtimeMs: st.mtimeMs, size: st.size, parsed })
+  while (parsedCache.size > PARSED_MAX) parsedCache.delete(parsedCache.keys().next().value)
+}
+
 /**
  * Read cached library data for a user
  * Cache files are stored as plain arrays (compatible with stremthru restore format)
@@ -96,12 +120,22 @@ function getCachedLibrary(accountId, user, { allowLegacyEmailFile = false } = {}
       return null
     }
 
+    const st = fs.statSync(cachePath)
+    const hit = parsedCache.get(cachePath)
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+      parsedCache.delete(cachePath)
+      parsedCache.set(cachePath, hit)
+      return copyLibrary(hit.parsed)
+    }
+    parsedCache.delete(cachePath)
+
     const data = fs.readFileSync(cachePath, 'utf8')
     const parsed = JSON.parse(data)
 
     // Handle new format: plain array
     if (Array.isArray(parsed)) {
-      return parsed
+      rememberParsed(cachePath, st, parsed)
+      return copyLibrary(parsed)
     }
 
     // Handle old format: {timestamp, library: [...]} - migrate on read
@@ -136,6 +170,7 @@ let writeSeq = 0
 function setCachedLibrary(accountId, user, library) {
   try {
     const cachePath = getCacheFilePath(accountId, user)
+    parsedCache.delete(cachePath)
 
     // Store as plain array (compatible with stremthru restore format).
     // Compact, not pretty-printed - a third of the size for the same data.
@@ -177,6 +212,7 @@ function setCachedLibrary(accountId, user, library) {
 function clearCache(accountId, user) {
   try {
     const cachePath = getCacheFilePath(accountId, user)
+    parsedCache.delete(cachePath)
     if (fs.existsSync(cachePath)) {
       fs.unlinkSync(cachePath)
     }
@@ -198,6 +234,7 @@ function clearCache(accountId, user) {
  * @param {string} accountId - Account ID (optional, if not provided clears all accounts)
  */
 function clearAllCaches(accountId) {
+  parsedCache.clear()
   try {
     ensureCacheDir()
     if (accountId) {

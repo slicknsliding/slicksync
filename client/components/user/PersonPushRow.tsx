@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { ToggleSwitch } from '@/components/ui';
+import { setPushHint } from '@/lib/pushHint';
 import { toast } from '@/components/ui/Toast';
 import { userPush } from '@/lib/user-api';
 import { urlBase64ToUint8Array } from '@/components/ui/PushNotificationToggle';
@@ -38,6 +39,8 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
         const status = await userPush.status(userId, authKey, sub?.endpoint);
         setAvailable(status.enabled && !!status.publicKey);
         setOn(status.subscribed && Notification.permission === 'granted');
+        // Keep the service worker's note current for devices turned on before it existed.
+        if (status.subscribed && status.publicKey) setPushHint({ kind: 'person', publicKey: status.publicKey, userId, authKey });
       } catch {
         setAvailable(false);
       }
@@ -56,6 +59,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
       const sub = (await reg.pushManager.getSubscription())
         || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(status.publicKey) });
       await userPush.subscribe(userId, authKey, sub.toJSON());
+      setPushHint({ kind: 'person', publicKey: status.publicKey, userId, authKey });
       setOn(true);
       setDevicesVersion((v) => v + 1);
       toast.success('Notifications are on for this device');
@@ -73,6 +77,7 @@ export function PersonPushRow({ userId, authKey }: { userId: string | null; auth
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = await reg?.pushManager.getSubscription();
       if (sub) await userPush.unsubscribe(userId, authKey, sub.endpoint);
+      setPushHint(null);
       setOn(false);
       setDevicesVersion((v) => v + 1);
       toast.success('Notifications are off for this device');

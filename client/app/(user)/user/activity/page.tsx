@@ -16,17 +16,7 @@ import { userActivity, WatchSession, UserActivityData } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { Avatar, ViewModeToggle, Card } from '@/components/ui';
 import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { providerTypeLabel } from '@/lib/providers';
 import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
@@ -34,6 +24,10 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeActivityV2 } from '@/components/v2/MeActivityV2';
 import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
+
+// recharts is large: it loads after the page, inside the chart's fixed-height box.
+const WatchTimeChartBody = dynamic(() => import('@/components/user/ActivityCharts').then((m) => m.WatchTimeChartBody), { ssr: false, loading: () => null });
+const ContentBreakdownChartBody = dynamic(() => import('@/components/user/ActivityCharts').then((m) => m.ContentBreakdownChartBody), { ssr: false, loading: () => null });
 
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
@@ -184,50 +178,7 @@ const WatchTimeChart = memo(function WatchTimeChart({
       </div>
 
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-primary)"
-                  stopOpacity={0.4}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-primary)"
-                  stopOpacity={0}
-                />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-            <YAxis
-              stroke="#64748b"
-              fontSize={12}
-              tickFormatter={(value) => {
-                if (value === 0) return '0m';
-                const h = Math.floor(value / 60);
-                const m = value % 60;
-                if (h === 0) return `${m}m`;
-                return m === 0 ? `${h}h` : `${h}h${m}m`;
-              }}
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              labelStyle={TOOLTIP_LABEL_STYLE}
-              formatter={(value: any) => [formatDuration(value * 60), 'Watch Time']}
-            />
-            <Area
-              type="monotone"
-              dataKey="minutes"
-              stroke="var(--color-primary)"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#colorMinutes)"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <WatchTimeChartBody data={data} formatDuration={formatDuration} />
       </div>
     </motion.div>
   );
@@ -260,19 +211,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({
       </div>
 
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-            <YAxis stroke="#64748b" fontSize={12} allowDecimals={false} />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              labelStyle={TOOLTIP_LABEL_STYLE}
-            />
-            <Bar dataKey="movies" fill="var(--color-primary)" radius={[4, 4, 0, 0]} name="Movies" />
-            <Bar dataKey="series" fill="var(--color-secondary)" radius={[4, 4, 0, 0]} name="Series" />
-          </BarChart>
-        </ResponsiveContainer>
+        <ContentBreakdownChartBody data={data} />
       </div>
 
       {/* Legend */}

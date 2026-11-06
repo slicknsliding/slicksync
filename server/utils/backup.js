@@ -9,6 +9,12 @@ const BACKUP_CFG = path.join(BACKUP_DIR, 'schedule.json')
 let backupTimer = null
 
 const DAY_MS = 24 * 60 * 60 * 1000
+// setTimeout holds at most 2^31-1 ms (about 24.8 days) and fires at once for
+// anything longer, which made "Every month" back up in a tight loop. Long waits
+// are slept in pieces of this size instead, like syncScheduler.js.
+const MAX_SLEEP_MS = 6 * 60 * 60 * 1000
+// Bumped by every (re)schedule, so a run in progress can't start a second chain.
+let scheduleGeneration = 0
 
 // Sidecar filename for a backup's validation result, so the Tasks page can
 // show it without re-parsing the (potentially large) backup itself.
@@ -43,10 +49,13 @@ async function getBackupNotifyTarget(prisma, accountId) {
  * iteration is needed here.
  */
 async function notifyBackupValidationFailed(prisma, filename, result) {
+  const message = result.issues.slice(0, 5).join('; ') + (result.issues.length > 5 ? `; +${result.issues.length - 5} more` : '')
+  await notifyBackupProblem(prisma, `⚠️ Backup failed validation: ${filename}`, message)
+}
+
+async function notifyBackupProblem(prisma, title, message) {
   try {
     const accountId = 'default'
-    const title = `⚠️ Backup failed validation: ${filename}`
-    const message = result.issues.slice(0, 5).join('; ') + (result.issues.length > 5 ? `; +${result.issues.length - 5} more` : '')
 
     const { notifyPushForType } = require('./pushNotifications')
     await notifyPushForType(prisma, accountId, 'notifyOnBackup', {
@@ -104,8 +113,39 @@ function readBackupFrequencyDays() {
 function writeBackupFrequencyDays(days) {
   ensureBackupDir()
   try { 
-    fs.writeFileSync(BACKUP_CFG, JSON.stringify({ days }), 'utf8') 
+    fs.writeFileSync(BACKUP_CFG, JSON.stringify({ ...readBackupCfg(), days }), 'utf8') 
   } catch {}
+}
+
+function readBackupCfg() {
+  try { return JSON.parse(fs.readFileSync(BACKUP_CFG, 'utf8')) || {} } catch { return {} }
+}
+
+// When a scheduled backup last worked, kept beside the frequency: counted from
+// boot, a weekly backup never ran on an instance restarted more often than that.
+function readLastScheduledRun() {
+  const at = Date.parse(readBackupCfg().lastRunAt || '')
+  return Number.isFinite(at) ? at : null
+}
+
+function writeLastScheduledRun(at) {
+  ensureBackupDir()
+  try {
+    fs.writeFileSync(BACKUP_CFG, JSON.stringify({ ...readBackupCfg(), lastRunAt: new Date(at).toISOString() }), 'utf8')
+  } catch {}
+}
+
+/**
+ * The midnight the next scheduled backup is due: `days` after the day of the
+ * last one that worked. Overdue, or never run, means the coming midnight.
+ */
+function nextBackupAt(days, lastRunAt, now = Date.now()) {
+  const soonest = nextMidnight(now)
+  if (days <= 1 || !lastRunAt) return soonest
+  const due = new Date(lastRunAt)
+  due.setHours(0, 0, 0, 0)
+  due.setDate(due.getDate() + days)
+  return Math.max(due.getTime(), soonest)
 }
 
 // Write one export payload to disk + its validation sidecar, notifying on
@@ -140,7 +180,10 @@ async function writeBackupFile(prisma, data, labelSuffix = '') {
   // successfully-written local backup into a failed backup run.
   try {
     const { uploadBackup, pruneLocalBackups } = require('./backupTargets')
-    await uploadBackup(filename, prisma)
+    const uploaded = await uploadBackup(filename, prisma)
+    if (uploaded?.ok === false && prisma) {
+      await notifyBackupProblem(prisma, `⚠️ Off-site backup failed: ${path.basename(filename)}`, 'The copy on this server is fine. Check the remote settings under Tasks.')
+    }
     pruneLocalBackups(BACKUP_DIR)
   } catch (targetErr) {
     if (!QUIET) console.warn('Backup target step failed:', targetErr?.message || targetErr)
@@ -190,7 +233,7 @@ async function performBackupOnce(prisma, opts = {}) {
         }
       }
       if (!QUIET) console.log(`📦 Public-mode backup: ${ok}/${accounts.length} accounts backed up`)
-      return
+      return ok > 0 || accounts.length === 0
     }
 
     // Private mode (or no builder provided): single global backup. Prefer the
@@ -215,9 +258,28 @@ async function performBackupOnce(prisma, opts = {}) {
     }
     if (!data) throw new Error('No export data available')
     await writeBackupFile(prisma, data, '')
+    return true
   } catch (e) {
     if (!QUIET) console.warn('Backup failed:', e?.message || e)
+    if (prisma && INSTANCE_TYPE !== 'public') {
+      await notifyBackupProblem(prisma, '⚠️ Backup failed', 'No new backup was written. See the server logs.')
+    }
+    return false
   }
+}
+
+/**
+ * A local copy taken just before something replaces the account's data. It
+ * shows in the Tasks list like any other backup, but isn't sent off-site or
+ * counted as a scheduled run.
+ */
+function writeSafetyCopy(data, labelSuffix = '') {
+  ensureBackupDir()
+  const stamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0]
+  const filename = path.join(BACKUP_DIR, `config-backup${labelSuffix}-${stamp}.json`)
+  fs.writeFileSync(filename, JSON.stringify(data, null, 2), 'utf8')
+  fs.writeFileSync(validationPathFor(filename), JSON.stringify(validateBackupData(data), null, 2), 'utf8')
+  return path.basename(filename)
 }
 
 /**
@@ -237,29 +299,23 @@ function clearBackupSchedule() {
 function scheduleBackups(days, prisma, opts = {}) {
   clearBackupSchedule()
   if (!days || days <= 0) return
+  const generation = ++scheduleGeneration
 
   const scheduleNext = () => {
-    const now = Date.now()
+    const nextRun = nextBackupAt(days, readLastScheduledRun())
 
-    let nextRun
-    if (days === 1) {
-      // Every day: next midnight
-      nextRun = nextMidnight(now)
-    } else {
-      // Multi-day (7d, 15d, 30d): schedule at next midnight, then add (days - 1) more days
-      // This ensures it runs at midnight every N days
-      const nextMidnightTime = nextMidnight(now)
-      nextRun = nextMidnightTime + (days - 1) * DAY_MS
+    const wait = async () => {
+      const remaining = nextRun - Date.now()
+      if (remaining > 0) {
+        backupTimer = setTimeout(wait, Math.min(MAX_SLEEP_MS, remaining))
+        return
+      }
+      const worked = await performBackupOnce(prisma, opts) // opts carries INSTANCE_TYPE + the per-account payload builder in public mode
+      // One that failed stays due, so the coming midnight tries again.
+      if (worked) writeLastScheduledRun(Date.now())
+      if (generation === scheduleGeneration) scheduleNext()
     }
-
-    const delay = Math.max(0, nextRun - now)
-
-    // Schedule the backup
-    backupTimer = setTimeout(async () => {
-      await performBackupOnce(prisma, opts) // opts carries INSTANCE_TYPE + the per-account payload builder in public mode
-      // Schedule the next run
-      scheduleNext()
-    }, delay)
+    wait()
   }
 
   // Start scheduling
@@ -267,6 +323,8 @@ function scheduleBackups(days, prisma, opts = {}) {
 }
 
 module.exports = {
+  nextBackupAt,
+  writeSafetyCopy,
   BACKUP_DIR,
   ensureBackupDir,
   readBackupFrequencyDays,

@@ -36,7 +36,20 @@ const SILENT_MS = 200 * 1000
 const CLOCK_TRUST_MS = 2 * 60 * 1000
 const REMEMBER_MS = 24 * 60 * 60 * 1000
 
+const ownWrites = require('./ownWrites')
+
 const records = new Map() // `${userId}:${itemId}` -> record
+
+// Nothing else removes a record, so one not looked at for REMEMBER_MS goes.
+const SWEEP_EVERY_MS = 10 * 60 * 1000
+let lastSweep = 0
+function sweep(now) {
+  if (now - lastSweep < SWEEP_EVERY_MS) return
+  lastSweep = now
+  for (const [key, record] of records) {
+    if (now - record.checkedAt > REMEMBER_MS) records.delete(key)
+  }
+}
 
 const keyOf = (userId, itemId) => `${userId}:${itemId}`
 
@@ -69,6 +82,7 @@ function classify(prev, cur) {
 
 /** Takes in a library item as it was just read. True when it holds a new save. */
 function observe(userId, itemId, item, now = Date.now()) {
+  sweep(now)
   const cur = readItem(item)
   if (!cur) return false
   const key = keyOf(userId, itemId)
@@ -82,6 +96,12 @@ function observe(userId, itemId, item, now = Date.now()) {
     return false
   }
   prev.checkedAt = now
+  // SlickSync's own write (a copy) is not a save: the baseline moves to it so
+  // the next real save is measured from there, and nothing is seen.
+  if (ownWrites.isOwn(userId, itemId, item)) {
+    records.set(key, { ...prev, ...cur, checkedAt: now })
+    return false
+  }
   if (cur.mtime === prev.mtime || (cur.offset === prev.offset && cur.videoId === prev.videoId)) return false
   // An episode that ends moves the title on to the next one at position 0 or 1,
   // whether or not anyone plays it, so that says nothing until the position moves.
@@ -123,6 +143,6 @@ function viewing(userId, itemId, videoId, now = Date.now()) {
   }
 }
 
-function forget() { records.clear() }
+function forget() { records.clear(); lastSweep = 0 }
 
 module.exports = { observe, viewing, lastSaveAt, classify, forget, SILENT_MS }

@@ -1191,7 +1191,9 @@ const lastProcessed = new Map() // `${accountId}:${userId}` -> Map(itemId -> { f
 
 function itemFingerprint(item, todayDate) {
   try {
-    return todayDate + '|' + JSON.stringify(item, (key, value) => (key === '_mtime' || key === '_ctime') ? undefined : value)
+    // Hashed: only compared for equality, and the full JSON per item was held forever.
+    const json = todayDate + '|' + JSON.stringify(item, (key, value) => (key === '_mtime' || key === '_ctime') ? undefined : value)
+    return require('crypto').createHash('md5').update(json).digest('hex')
   } catch {
     return null
   }

@@ -20,7 +20,7 @@ let vaultBackupTimer = null
 
 function ensureBackupDir() {
   try {
-    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true })
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 })
   } catch {}
 }
 
@@ -35,6 +35,13 @@ function pruneOldBackups() {
       try { fs.unlinkSync(path.join(BACKUP_DIR, file.name)) } catch {}
     }
   } catch {}
+}
+
+// Hours between nightly backups: the env value when it is a positive number,
+// otherwise the default (NaN, zero and negatives would make setInterval spin).
+function parseIntervalHours(raw, fallback = 24) {
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
 async function performVaultBackupOnce({ prisma, decrypt }) {
@@ -71,12 +78,12 @@ async function performVaultBackupOnce({ prisma, decrypt }) {
 
     const stamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0]
     const filename = path.join(BACKUP_DIR, `vault-backup-${stamp}.json`)
-    fs.writeFileSync(filename, JSON.stringify({ exportedAt: new Date().toISOString(), entries: allEntries }, null, 2), 'utf8')
+    fs.writeFileSync(filename, JSON.stringify({ exportedAt: new Date().toISOString(), entries: allEntries }, null, 2), { encoding: 'utf8', mode: 0o600 }) // mode at creation: the plaintext is never briefly readable by others
     fs.chmodSync(filename, 0o600) // owner-read-write only — this file contains plaintext secrets
 
     // Convenience symlink-like copy so external pull scripts can always grab a fixed filename
     const latestPath = path.join(BACKUP_DIR, 'latest.json')
-    fs.writeFileSync(latestPath, JSON.stringify({ exportedAt: new Date().toISOString(), entries: allEntries }, null, 2), 'utf8')
+    fs.writeFileSync(latestPath, JSON.stringify({ exportedAt: new Date().toISOString(), entries: allEntries }, null, 2), { encoding: 'utf8', mode: 0o600 })
     fs.chmodSync(latestPath, 0o600)
 
     pruneOldBackups()
@@ -91,6 +98,7 @@ function scheduleVaultBackups({ prisma, decrypt, intervalHours = 24 }) {
     clearInterval(vaultBackupTimer)
     vaultBackupTimer = null
   }
+  intervalHours = parseIntervalHours(intervalHours)
   const intervalMs = intervalHours * 60 * 60 * 1000
 
   // Run once shortly after boot, then on the interval
@@ -99,4 +107,4 @@ function scheduleVaultBackups({ prisma, decrypt, intervalHours = 24 }) {
   console.log(`[VaultBackup] Scheduled every ${intervalHours}h, writing to ${BACKUP_DIR}`)
 }
 
-module.exports = { scheduleVaultBackups, performVaultBackupOnce, BACKUP_DIR }
+module.exports = { scheduleVaultBackups, performVaultBackupOnce, parseIntervalHours, BACKUP_DIR }

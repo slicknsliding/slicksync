@@ -36,6 +36,10 @@ const PAGES_CACHE = 'slicksync-pages-v2';
 const IMAGE_CACHE = 'slicksync-images-v1';
 const IMAGE_CACHE_MAX = 900;
 let imagePutsSinceTrim = 0;
+// Hashed assets from every build this install has seen stay cached until
+// dropped; past this many, the oldest go first (a few builds' worth).
+const STATIC_CACHE_MAX = 800;
+let staticPutsSinceTrim = 0;
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -69,7 +73,18 @@ self.addEventListener('fetch', (event) => {
       const hit = await cache.match(req);
       if (hit) return hit;
       const res = await fetch(req);
-      if (res.ok) cache.put(req, res.clone());
+      if (res.ok) {
+        cache.put(req, res.clone()).then(() => {
+          staticPutsSinceTrim += 1;
+          if (staticPutsSinceTrim < 25) return;
+          staticPutsSinceTrim = 0;
+          return cache.keys().then((keys) => {
+            if (keys.length <= STATIC_CACHE_MAX) return;
+            // Cache keys come back in insertion order: drop the oldest.
+            return Promise.all(keys.slice(0, keys.length - STATIC_CACHE_MAX + 100).map((k) => cache.delete(k)));
+          });
+        }).catch(() => {});
+      }
       // A hashed asset that the server no longer has means this page came
       // from a build that is gone - the one way a cached shell can leave
       // someone stuck. Drop the cached pages so the next navigation is
@@ -153,20 +168,96 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// Which kind of device this is, so a re-subscribe can reach the right route.
+// The page writes the hint (lib/pushHint.ts) when push is turned on and
+// clears it when it is turned off; without a hint nothing is re-sent, so a
+// browser holding both an admin session and a person's device can never file
+// a new endpoint under the wrong one.
+function readPushHint() {
+  return new Promise((resolve) => {
+    try {
+      const open = indexedDB.open('slicksync-push', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('kv');
+      open.onerror = () => resolve(null);
+      open.onsuccess = () => {
+        try {
+          const get = open.result.transaction('kv').objectStore('kv').get('hint');
+          get.onsuccess = () => resolve(get.result || null);
+          get.onerror = () => resolve(null);
+        } catch { resolve(null); }
+      };
+    } catch { resolve(null); }
+  });
+}
+
+function keyFromBase64Url(s) {
+  const raw = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+// The browser rotated or dropped the push subscription: the server would keep
+// pushing to a dead endpoint. Best effort - subscribe again with the same key
+// and hand the new endpoint to the same route the page used.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    try {
+      const hint = await readPushHint();
+      if (!hint || !hint.publicKey) return;
+      const oldKey = event.oldSubscription && event.oldSubscription.options && event.oldSubscription.options.applicationServerKey;
+      const sub = event.newSubscription || await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: oldKey || keyFromBase64Url(hint.publicKey),
+      });
+      const userAgent = self.navigator ? self.navigator.userAgent : undefined;
+      const post = (path, body, headers) => fetch('/api' + path, {
+        method: 'POST',
+        credentials: 'include',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}),
+        body: JSON.stringify(body),
+      });
+      const person = hint.kind === 'person' && hint.userId && hint.authKey;
+      const headers = person ? { 'x-stremio-auth': hint.authKey } : undefined;
+      if (person) {
+        await post('/public-library/push/subscribe', { userId: hint.userId, subscription: sub.toJSON(), userAgent }, headers);
+      } else if (hint.kind === 'admin') {
+        await post('/push/subscribe', Object.assign({}, sub.toJSON(), { userAgent }));
+      } else {
+        return;
+      }
+      const oldEndpoint = event.oldSubscription && event.oldSubscription.endpoint;
+      if (oldEndpoint && oldEndpoint !== sub.endpoint) {
+        await (person
+          ? post('/public-library/push/unsubscribe', { userId: hint.userId, endpoint: oldEndpoint }, headers)
+          : post('/push/unsubscribe', { endpoint: oldEndpoint })).catch(() => {});
+      }
+    } catch {}
+  })());
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const target = (event.notification.data && event.notification.data.url) || '/';
+  const targetHref = new URL(target, self.location.origin).href.split('#')[0];
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus an existing SlickSync tab and navigate it, rather than opening
-      // a duplicate, when one is already open.
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.navigate(target).catch(() => {});
-          return client.focus();
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      const open = () => (self.clients.openWindow ? self.clients.openWindow(target) : undefined);
+      // A window already on the target just gets focus.
+      const onTarget = clientList.find((c) => 'focus' in c && c.url.split('#')[0] === targetHref);
+      if (onTarget) return onTarget.focus();
+      // Otherwise reuse a window the person is not looking at. A focused one
+      // may be mid-typing, so it is never navigated out from under them.
+      const idle = clientList.find((c) => 'focus' in c && 'navigate' in c && !c.focused);
+      if (idle) {
+        try {
+          const moved = await idle.navigate(target);
+          return (moved || idle).focus();
+        } catch {
+          return open();
         }
       }
-      if (self.clients.openWindow) return self.clients.openWindow(target);
+      return open();
     })
   );
 });

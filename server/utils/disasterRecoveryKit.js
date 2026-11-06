@@ -147,6 +147,7 @@ async function restoreKit(prisma, accountId, passphrase, kit, req, { encrypt }) 
     try {
       const { secret, ...rest } = entry;
       if (!secret) continue;
+      require('./vaultFields').sanitizeRestoredEntry(rest);
       await prisma.vaultEntry.create({
         data: { ...rest, accountId, encryptedSecret: encrypt(secret, req) },
       });

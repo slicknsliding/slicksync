@@ -20,6 +20,33 @@
 
 const { TRIGGERS, OPERATORS, ACTIONS } = require('./registry')
 
+// Size limits on a rule, and how often one may run off events.
+const MAX_ACTIONS_PER_RULE = 10
+const MAX_CONDITIONS_PER_RULE = 10
+const MAX_RULES_PER_ACCOUNT = 50
+// Event-driven runs only (a rule the scheduler targets by id is exempt - it
+// decided the rule is due, and inactivity legitimately fires one rule for
+// many people in a row). The same event arriving again within the window is
+// a repeat and is dropped; any rule is also capped on how many runs a minute
+// can hold, which stops an action that re-triggers its own rule from looping.
+const REPEAT_WINDOW_MS = 10 * 1000
+const MAX_RUNS_PER_MINUTE = 30
+const recentRuns = new Map() // ruleId -> [{ at, sig }]
+
+function allowEventRun(ruleId, payload, now = Date.now()) {
+  let sig
+  try { sig = JSON.stringify(payload || {}) } catch { sig = '' }
+  const list = (recentRuns.get(ruleId) || []).filter((r) => now - r.at < 60 * 1000)
+  const repeat = list.some((r) => now - r.at < REPEAT_WINDOW_MS && r.sig === sig)
+  if (repeat || list.length >= MAX_RUNS_PER_MINUTE) {
+    recentRuns.set(ruleId, list)
+    return false
+  }
+  list.push({ at: now, sig })
+  recentRuns.set(ruleId, list)
+  return true
+}
+
 /**
  * ALL conditions must pass (AND). An empty/absent list means "always run" -
  * that's the common case for rules like "when an addon goes offline, tell me."
@@ -110,6 +137,10 @@ async function emitAutomationEvent(prisma, accountId, triggerType, payload = {},
     for (const rule of rules) {
       try {
         if (!evaluateConditions(parseJson(rule.conditions, []), payload)) continue
+        if (!options.ruleId && !allowEventRun(rule.id, payload)) {
+          console.warn(`[Automation] Rule "${rule?.name}" (${rule?.id}) skipped: it ran for this same event moments ago, or too often`)
+          continue
+        }
 
         const results = await runActions(prisma, accountId, rule, payload)
         fired++
@@ -179,6 +210,7 @@ function validateRule(body) {
   }
 
   const conditions = Array.isArray(body?.conditions) ? body.conditions : []
+  if (conditions.length > MAX_CONDITIONS_PER_RULE) return { ok: false, error: `A rule can have at most ${MAX_CONDITIONS_PER_RULE} conditions` }
   const validFields = new Set(TRIGGERS[triggerType].fields.map((f) => f.name))
   for (const c of conditions) {
     if (!validFields.has(c?.field)) return { ok: false, error: `"${c?.field}" isn't a field on this trigger` }
@@ -190,6 +222,7 @@ function validateRule(body) {
 
   const actions = Array.isArray(body?.actions) ? body.actions : []
   if (actions.length === 0) return { ok: false, error: 'A rule needs at least one action' }
+  if (actions.length > MAX_ACTIONS_PER_RULE) return { ok: false, error: `A rule can have at most ${MAX_ACTIONS_PER_RULE} actions` }
   for (const a of actions) {
     const definition = ACTIONS[a?.type]
     if (!definition) return { ok: false, error: `Unknown action "${a?.type}"` }
@@ -232,4 +265,4 @@ function samplePayloadFor(triggerType) {
   return sample
 }
 
-module.exports = { emitAutomationEvent, evaluateConditions, runActions, validateRule, samplePayloadFor, parseJson }
+module.exports = { emitAutomationEvent, evaluateConditions, runActions, validateRule, samplePayloadFor, parseJson, allowEventRun, MAX_RULES_PER_ACCOUNT, MAX_ACTIONS_PER_RULE, MAX_CONDITIONS_PER_RULE }

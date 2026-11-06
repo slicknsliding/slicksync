@@ -168,6 +168,21 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Nothing legitimately frames the app (it only embeds, never is embedded),
+  // so no page may be shown inside another site.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ];
+  },
   // The Guides section used to live at /help. Keep the old paths working
   // rather than 404ing anyone with a bookmark, an open tab from before the
   // rename, or a link shared in Discord.

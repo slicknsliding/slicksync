@@ -75,6 +75,7 @@ module.exports = ({ imageUpload, prisma }) => {
       }
       const mimetype = MIME_BY_FORMAT[require('../utils/imageEncoder').sniffFormat(req.file.buffer)];
       if (!mimetype) return res.status(400).json({ error: 'That isn’t a JPEG, PNG, GIF or WEBP picture' });
+      if (!require('../utils/imageEncoder').decodableSize(req.file.buffer)) return res.status(400).json({ error: 'That picture’s dimensions are too large' });
       if (!uploadAllowed(req.appAccountId || 'default')) return res.status(429).json({ error: 'That’s a lot of pictures - try again in a while' });
 
       res.status(201).json({ url: saveAvatarFile(req.file.buffer, mimetype) });

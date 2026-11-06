@@ -13,6 +13,32 @@ if (!fs.existsSync(LOG_DIR)) {
 // Max log file size (10MB)
 const MAX_LOG_SIZE = 10 * 1024 * 1024;
 
+// Rotated proxy.log.<ts> files kept; older ones are deleted
+const KEEP_ROTATED = 3;
+
+/**
+ * Reduce an upstream address to what is safe to keep in a shared log: origin plus path,
+ * never the query string or credentials. AIOStreams-style addresses carry the encrypted
+ * config (and vault-resolved keys) as a path segment, so long key-looking segments are
+ * replaced. Anything that does not parse is dropped rather than logged raw.
+ */
+function redactUpstreamUrl(value) {
+  if (!value || typeof value !== 'string') return null;
+  let u;
+  try {
+    u = new URL(value);
+  } catch (e) {
+    return null;
+  }
+  const segments = u.pathname.split('/').map((seg) => {
+    if (seg.length >= 20 && /^[A-Za-z0-9._~%=+-]+$/.test(seg) && (seg.length >= 32 || /\d/.test(seg))) {
+      return ':redacted';
+    }
+    return seg;
+  });
+  return `${u.origin}${segments.join('/')}`;
+}
+
 /**
  * Log a proxy request to file
  */
@@ -26,7 +52,7 @@ function logProxyRequest({ addon, accountId, path: requestPath, url, upstreamUrl
     proxyUuid: addon?.proxyUuid,
     path: requestPath,
     url: url || null,
-    upstreamUrl: upstreamUrl || null,
+    upstreamUrl: redactUpstreamUrl(upstreamUrl),
     method,
     ip: ip || null,
     userAgent: userAgent ? userAgent.substring(0, 200) : null, // Truncate long UA strings
@@ -59,9 +85,27 @@ async function rotateLogIfNeeded() {
       const rotatedFile = `${PROXY_LOG_FILE}.${Date.now()}`;
       await fs.promises.rename(PROXY_LOG_FILE, rotatedFile);
       console.log(`Rotated proxy log to ${rotatedFile}`);
+      await pruneRotatedLogs();
     }
   } catch (e) {
     // File doesn't exist yet, ignore
+  }
+}
+
+/**
+ * Delete all but the newest KEEP_ROTATED rotated logs
+ */
+async function pruneRotatedLogs() {
+  try {
+    const prefix = `${path.basename(PROXY_LOG_FILE)}.`;
+    const rotated = (await fs.promises.readdir(path.dirname(PROXY_LOG_FILE)))
+      .filter((name) => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)))
+      .sort((a, b) => Number(b.slice(prefix.length)) - Number(a.slice(prefix.length)));
+    for (const name of rotated.slice(KEEP_ROTATED)) {
+      await fs.promises.unlink(path.join(path.dirname(PROXY_LOG_FILE), name)).catch(() => {});
+    }
+  } catch (e) {
+    // Best effort
   }
 }
 
@@ -106,6 +150,7 @@ async function readProxyLogs(options = {}) {
         }
       })
       .filter(Boolean)
+      .map((log) => (log.upstreamUrl ? { ...log, upstreamUrl: redactUpstreamUrl(log.upstreamUrl) } : log))
       .reverse();
 
     // Apply filters
@@ -179,5 +224,7 @@ module.exports = {
   logProxyRequest,
   readProxyLogs,
   getLogStats,
+  redactUpstreamUrl,
+  pruneRotatedLogs,
   PROXY_LOG_FILE
 };

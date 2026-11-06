@@ -134,6 +134,9 @@ const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId: getAc
 // client spoof X-Forwarded-For and bypass IP-based rate limiting entirely, and
 // express-rate-limit refuses to start with that setting for exactly this reason.
 app.set('trust proxy', 1);
+// Behind Cloudflare, the hop above only ever sees Cloudflare's own servers;
+// this reads the visitor's address from Cloudflare when TRUST_CLOUDFLARE=true.
+app.use(require('./utils/clientIp').cloudflareClientIp());
 
 // Use helper-provided getAccountId (account scoping rules centralized)
 const getAccountId = getAccountIdHelper
@@ -160,10 +163,18 @@ app.use(compression({
   },
 }));
 
-// Parse JSON bodies - once, here. A second express.json further down with
-// a bigger limit never ran: this one had already read (and capped) the body
-// at the 100kb default, so large config imports failed with 413.
-app.use(express.json({ limit: '10mb' }));
+// Parse JSON bodies. A request nobody has signed in for gets 1 MB here, before
+// any check, because parsing is synchronous and open to anyone. Everything else
+// is parsed by largeJson straight after the auth gate below, so 10 MB - which
+// large config imports need - is only ever spent on someone signed in.
+const smallJson = express.json({ limit: '1mb' });
+const largeJson = express.json({ limit: '10mb' });
+// A person's own history file comes in through their portal, with no session.
+const LARGE_PORTAL_BODY = /^\/api\/public-library\/history-import(\/|$)/;
+app.use((req, res, next) => {
+  if (!pathIsAllowlisted(req.path)) return next();
+  return (LARGE_PORTAL_BODY.test(req.path) ? largeJson : smallJson)(req, res, next);
+});
 
 // A body that is not valid JSON, or is literally `null`, is a mistake in the
 // request - it should say so rather than reading as a server failure. The
@@ -171,20 +182,22 @@ app.use(express.json({ limit: '10mb' }));
 // generic handler at the bottom of this file and came back as 500 Internal
 // server error, which is the wrong thing to tell someone whose script sent a
 // stray comma.
-app.use((err, req, res, next) => {
+const badJsonBody = (err, req, res, next) => {
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError) && 'body' in err) {
     return res.status(400).json({ message: 'Request body is not valid JSON' });
   }
   return next(err);
-});
+};
+app.use(badJsonBody);
 
 // Express passes a literal `null` body straight through, and routes that
 // destructure it throw on the spot. An absent body is an empty object
 // everywhere else, so make that one consistent too.
-app.use((req, res, next) => {
+const emptyBodyIsAnObject = (req, res, next) => {
   if (req.body === null || req.body === undefined) req.body = {};
   next();
-});
+};
+app.use(emptyBodyIsAnObject);
 
 // Security middleware
 app.use(helmet({
@@ -403,6 +416,11 @@ app.get('/health', async (req, res) => {
 const { createAuthGate, createCsrfGuard } = require('./middleware/auth')
 app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, prisma, DEFAULT_ACCOUNT_ID }))
 app.use(createCsrfGuard({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, pathIsAllowlisted, parseCookies, cookieName }))
+
+// Past the gate: see smallJson above.
+app.use(largeJson);
+app.use(badJsonBody);
+app.use(emptyBodyIsAnObject);
 
 if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) {
   // No login of SlickSync's own: whoever reaches this address manages
@@ -973,12 +991,25 @@ async function bootstrap() {
 
     // Schedule vault backup export (decrypted JSON snapshot to data/backup/vault/,
     // nightly by default — set VAULT_BACKUP_INTERVAL_HOURS to change)
+    // Skipped on public: the export holds every tenant's decrypted secrets.
     try {
-      const { scheduleVaultBackups } = require('./utils/vaultBackup')
-      const intervalHours = parseInt(process.env.VAULT_BACKUP_INTERVAL_HOURS || '24', 10)
-      scheduleVaultBackups({ prisma, decrypt, intervalHours })
+      if (INSTANCE_TYPE !== 'public') {
+        const { scheduleVaultBackups, parseIntervalHours } = require('./utils/vaultBackup')
+        const intervalHours = parseIntervalHours(process.env.VAULT_BACKUP_INTERVAL_HOURS)
+        scheduleVaultBackups({ prisma, decrypt, intervalHours })
+      }
     } catch (err) {
       console.error('⚠️ Failed to initialize vault backup scheduler:', err)
+    }
+
+    // Move anything still sealed under the old public default key onto the
+    // current one (utils/legacyKeySweep.js). Idempotent; a failed write leaves
+    // the old value in place.
+    try {
+      const { sweepLegacyKey } = require('./utils/legacyKeySweep')
+      setTimeout(() => { sweepLegacyKey(prisma).catch((err) => console.error('[keyManager] legacy key sweep failed:', err?.message)) }, 45 * 1000)
+    } catch (err) {
+      console.error('⚠️ Failed to schedule legacy key sweep:', err)
     }
 
     // Drop Trash items past their retention window. Runs at boot and daily -

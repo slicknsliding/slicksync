@@ -113,6 +113,33 @@ async function upsertPact(prisma, accountId, { showId, showName, userIds }) {
   })
 }
 
+/**
+ * A deleted person comes out of every pact they were in, so a pact is not left
+ * naming someone who no longer exists. A pact down to fewer than two people is
+ * no longer "together" and is removed.
+ */
+async function removeUserFromPacts(prisma, accountId, userId) {
+  const accountIdValue = accountId || 'default'
+  try {
+    const pacts = await prisma.watchTogetherShow.findMany({ where: { accountId: accountIdValue } })
+    for (const pact of pacts) {
+      const ids = parseUserIds(pact.userIds)
+      if (!ids.includes(userId)) continue
+      const next = ids.filter((id) => id !== userId)
+      if (next.length < 2) {
+        await prisma.watchTogetherShow.deleteMany({ where: { accountId: accountIdValue, showId: pact.showId } })
+      } else {
+        await prisma.watchTogetherShow.update({
+          where: { accountId_showId: { accountId: accountIdValue, showId: pact.showId } },
+          data: { userIds: JSON.stringify(next) },
+        })
+      }
+    }
+  } catch (e) {
+    console.warn('[WatchTogether] could not clean pacts for a deleted user:', e?.message)
+  }
+}
+
 async function deletePact(prisma, accountId, showId) {
   await prisma.watchTogetherShow.deleteMany({ where: { accountId: accountId || 'default', showId } })
 }
@@ -143,9 +170,18 @@ async function checkWatchAhead(prisma, accountId, { userId, showId, showName, se
     if (cfg && cfg.enableWatchTogether === false) return null
   } catch {}
 
-  const userIds = parseUserIds(pact.userIds)
-  if (!userIds.includes(userId)) return null
-  const others = userIds.filter((id) => id !== userId)
+  const pactIds = parseUserIds(pact.userIds)
+  if (!pactIds.includes(userId)) return null
+  // Only people who still exist on THIS account and are active count: a
+  // deleted or switched-off member would otherwise stay "behind" for ever and
+  // alert on every episode.
+  const live = await prisma.user.findMany({
+    where: { id: { in: pactIds }, accountId: accountIdValue, isActive: true },
+    select: { id: true },
+  })
+  const liveIds = new Set(live.map((u) => u.id))
+  if (!liveIds.has(userId)) return null
+  const others = pactIds.filter((id) => id !== userId && liveIds.has(id))
   if (others.length === 0) return null
 
   const progress = await furthestByUser(prisma, accountIdValue, showId, others)
@@ -153,7 +189,7 @@ async function checkWatchAhead(prisma, accountId, { userId, showId, showName, se
   if (behindIds.length === 0) return null
 
   const users = await prisma.user.findMany({
-    where: { id: { in: [userId, ...behindIds] } },
+    where: { id: { in: [userId, ...behindIds] }, accountId: accountIdValue },
     select: { id: true, username: true },
   })
   const nameOf = (id) => users.find((u) => u.id === id)?.username || 'Someone'
@@ -166,6 +202,18 @@ async function checkWatchAhead(prisma, accountId, { userId, showId, showName, se
   const title = `${watcherName} is watching ahead on ${pact.showName || showName}`
   const body = `S${season}E${episode} just started - ${behindList} ${behindNames.length === 1 ? 'has' : 'have'} not seen it yet. You said you were watching this together.`
 
+  // Same watcher + episode already alerted (a re-recorded watch, a restart):
+  // the bell row is there, so push and automation have gone out too - don't
+  // send them a second time.
+  const dedupeKey = `watchahead-${userId}-${videoId || `${season}x${episode}`}`
+  try {
+    const already = await prisma.notification.findUnique({
+      where: { accountId_dedupeKey: { accountId: accountIdValue, dedupeKey } },
+      select: { id: true },
+    })
+    if (already) return null
+  } catch { /* lookup is an optimisation; the upsert below still dedupes the bell */ }
+
   try {
     const { createNotification } = require('./notificationStore')
     await createNotification(prisma, accountIdValue, {
@@ -175,7 +223,7 @@ async function checkWatchAhead(prisma, accountId, { userId, showId, showName, se
       url: '/activity',
       // One alert per watcher per episode - a pause/resume of the same
       // episode must not nag twice, and dedupe survives restarts.
-      dedupeKey: `watchahead-${userId}-${videoId || `${season}x${episode}`}`,
+      dedupeKey,
     })
   } catch (e) {
     console.warn('[WatchTogether] bell dispatch failed:', e?.message)
@@ -204,4 +252,4 @@ async function checkWatchAhead(prisma, accountId, { userId, showId, showName, se
   return { behind: behindNames }
 }
 
-module.exports = { listPacts, upsertPact, deletePact, checkWatchAhead, furthestByUser, epNum }
+module.exports = { listPacts, upsertPact, deletePact, removeUserFromPacts, checkWatchAhead, furthestByUser, epNum }

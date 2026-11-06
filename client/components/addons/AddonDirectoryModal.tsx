@@ -309,7 +309,7 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
                     variant="secondary"
                     size="sm"
                     leftIcon={<ArrowTopRightOnSquareIcon className="w-4 h-4" />}
-                    onClick={() => window.open(a.configureUrl!, '_blank', 'noopener,noreferrer')}
+                    onClick={() => { if (/^https?:\/\//i.test(a.configureUrl!)) window.open(a.configureUrl!, '_blank', 'noopener,noreferrer'); }}
                     title="This addon needs setting up on its own site first - install the URL it gives you afterwards"
                   >
                     Configure first

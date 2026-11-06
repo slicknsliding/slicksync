@@ -4,6 +4,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const saves = require('../server/utils/stremioSaves')
+const ownWrites = require('../server/utils/ownWrites')
 const { stremioSaveFields, stremioSaveCards } = require('../server/utils/metricsBuilder')
 const { processUserSessions } = require('../server/utils/sessionTracker')
 const { mergeProxyNowPlaying } = require('../server/utils/proxyNowPlaying')
@@ -254,4 +255,62 @@ test('the card goes when the proxy sees the stream close', async () => {
 test('a seek leaving an old connection closed does not take the card away', async () => {
   const rows = await mergeProxyNowPlaying(proxyPrisma([stream()], [stream({ endTime: new Date() })]), 'a', users, [saveRow()], { isConfirming: () => true })
   assert.equal(rows.length, 1)
+})
+
+test('records not looked at for a day are swept', () => {
+  const s = require('../server/utils/stremioSaves')
+  s.forget()
+  const DAY = 24 * 60 * 60 * 1000
+  const t0 = Date.now()
+  const item = { _mtime: new Date(t0).toISOString(), state: { timeOffset: 1000, video_id: 'v' } }
+  s.observe('u-sweep', 'tt1', item, t0)
+  assert.equal(s.viewing('u-sweep', 'tt1', null, t0), null) // first sight is no save, but is held
+  s.observe('u-other', 'tt2', item, t0 + DAY + 11 * 60 * 1000) // later pass sweeps the old record
+  s.observe('u-sweep', 'tt1', { ...item, _mtime: new Date(t0 + 1000).toISOString(), state: { timeOffset: 5000, video_id: 'v' } }, t0 + DAY + 12 * 60 * 1000)
+  // the swept record is gone, so this reads as a first sight again: no save seen
+  assert.equal(s.viewing('u-sweep', 'tt1', null, t0 + DAY + 12 * 60 * 1000), null)
+  s.forget()
+})
+
+// --- Copies SlickSync wrote ---
+
+test('a copy SlickSync wrote is not a viewing, and real playback after it still is', async () => {
+  saves.forget()
+  ownWrites.forget()
+  const prisma = fakePrisma([])
+  const T0 = '2026-11-02T20:00:00.000Z'
+  const COPY = '2026-11-02T22:00:00.000Z'
+  const recent = '2026-11-02T21:58:00.000Z' // the source's real watch, minutes before the copy
+  // The item was touched earlier today, so its saves are being remembered.
+  await processUserSessions(prisma, 'a', 'u1', [item(T0, 100000, { lastWatched: '2026-11-01T10:00:00.000Z' })], new Date(at(T0) + 8000))
+  // Keep in step writes a further-along position with the source's recent date.
+  ownWrites.note('u1', [{ id: 'tt0096697', mtime: COPY }], at(COPY))
+  const copied = item(COPY, 700000, { lastWatched: recent })
+  assert.equal(saves.observe('u1', 'tt0096697', copied, at(COPY) + 5000), false, 'not a save')
+  await processUserSessions(prisma, 'a', 'u1', [copied], new Date(at(COPY) + 60000))
+  assert.equal(prisma.rows.length, 0, 'no session seeded from the copied position')
+  assert.equal(saves.lastSaveAt('u1', 'tt0096697', at(COPY) + 60000), null)
+
+  // Someone presses play: the next save moves _mtime and the position.
+  const REAL = '2026-11-02T22:05:00.000Z'
+  const played = item(REAL, 705000, { lastWatched: recent })
+  assert.equal(saves.observe('u1', 'tt0096697', played, at(REAL) + 5000), true, 'a real save is seen')
+  await processUserSessions(prisma, 'a', 'u1', [played], new Date(at(REAL) + 8000))
+  assert.equal(prisma.rows.length, 1, 'real playback opens a session')
+  assert.equal(prisma.rows[0].isActive, true)
+})
+
+test('a Nuvio copy stays out of Now Playing until the position or date moves', async () => {
+  saves.forget()
+  ownWrites.forget()
+  const prisma = fakePrisma([])
+  prisma.user.findUnique = async () => ({ id: 'u1', username: 'TEST', providerType: 'nuvio' })
+  const WHEN = '2026-11-02T22:00:00.000Z'
+  ownWrites.note('u1', [{ id: 'tt0096697', lastWatched: WHEN, position: 700000 }], at(WHEN))
+  const copied = item(WHEN, 700000, { lastWatched: WHEN })
+  await processUserSessions(prisma, 'a', 'u1', [copied], new Date(at(WHEN) + 60000))
+  assert.equal(prisma.rows.length, 0)
+  const played = item(WHEN, 760000, { lastWatched: '2026-11-02T22:02:00.000Z' })
+  await processUserSessions(prisma, 'a', 'u1', [played], new Date(at(WHEN) + 150000))
+  assert.equal(prisma.rows.length, 1, 'real playback is never held back')
 })

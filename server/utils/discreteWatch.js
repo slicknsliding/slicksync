@@ -125,6 +125,20 @@ async function recordDiscreteWatch(prisma, w) {
       },
     })
   }
+
+  // Watch-ahead protection sees a hand-marked episode the same way it sees a
+  // played one: on the first record of it for this person. Best-effort.
+  if (isSeries && !existing) {
+    try {
+      const { checkWatchAhead } = require('./watchTogether')
+      await checkWatchAhead(prisma, accountId, {
+        userId: w.userId, showId: w.itemId, showName: described.title,
+        season: w.season ?? null, episode: w.episode ?? null, videoId,
+      })
+    } catch (e) {
+      console.warn('[WatchTogether] check failed:', e?.message)
+    }
+  }
   return { ok: true, created: !existing }
 }
 

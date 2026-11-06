@@ -1331,7 +1331,7 @@ export default function AddonDetailPage() {
           onClick={() => {
             const configUrl = getConfigureUrl(addon);
             if (configUrl) {
-              window.open(configUrl, '_blank', 'noopener,noreferrer');
+              if (/^https?:\/\//i.test(configUrl)) window.open(configUrl, '_blank', 'noopener,noreferrer');
             }
           }}
         >
@@ -1455,7 +1455,7 @@ export default function AddonDetailPage() {
         <>
           <ArrangeButton arrange={addonArrange} />
           {getConfigureUrl(addon) && (
-            <V2Button onClick={() => { const u = getConfigureUrl(addon); if (u) window.open(u, '_blank', 'noopener,noreferrer'); }}>Configure</V2Button>
+            <V2Button onClick={() => { const u = getConfigureUrl(addon); if (u && /^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); }}>Configure</V2Button>
           )}
           <V2Button primary onClick={handleReload} disabled={isReloading} icon={<ArrowPathIcon className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />}>
             {isReloading ? 'Reloading...' : 'Reload'}
@@ -1694,7 +1694,7 @@ export default function AddonDetailPage() {
                         onClick={() => {
                           const configUrl = getConfigureUrl(addon);
                           if (configUrl) {
-                            window.open(configUrl, '_blank', 'noopener,noreferrer');
+                            if (/^https?:\/\//i.test(configUrl)) window.open(configUrl, '_blank', 'noopener,noreferrer');
                           }
                         }}
                         className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"

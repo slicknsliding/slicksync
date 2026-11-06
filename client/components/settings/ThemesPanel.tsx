@@ -10,7 +10,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, ConfirmModal } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import {
-  useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme,
+  useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, loadOptionalFonts, FontId, CustomTheme, SavedCustomTheme,
   RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId,
   THEME_REAL_COLORS, encodeThemeShareCode, decodeThemeShareCode,
 } from '@/lib/theme';
@@ -638,6 +638,8 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
     previewCustom, cancelPreview,
   } = useTheme();
   const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
+  // The font choices preview in their own typefaces.
+  useEffect(() => { loadOptionalFonts(); }, []);
   const { viewMode, setViewMode } = useDefaultViewMode({ global: true });
   // The v2 page design draws Settings → Themes as arrangeable sections.
   const { design } = usePageDesign();

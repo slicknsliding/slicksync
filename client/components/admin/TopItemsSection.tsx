@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge, Avatar, UserAvatar } from '@/components/ui';
 import { PlayIcon, ClockIcon, FilmIcon, TvIcon, UsersIcon, XMarkIcon } from '@heroicons/react/24/outline';
@@ -33,6 +33,23 @@ interface TopItemsSectionProps {
 
 export const TopItemsSection = memo(function TopItemsSection({ movies, series }: TopItemsSectionProps) {
   const [selectedItem, setSelectedItem] = useState<TopItem | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const isDialogOpen = selectedItem !== null;
+
+  // Dialog a11y: Escape closes, focus moves in on open and back on close.
+  useEffect(() => {
+    if (!isDialogOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedItem(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [isDialogOpen]);
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -120,10 +137,15 @@ export const TopItemsSection = memo(function TopItemsSection({ movies, series }:
             onClick={() => setSelectedItem(null)}
           >
             <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={selectedItem.name}
+              tabIndex={-1}
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-surface rounded-xl p-6 w-full max-h-[80vh] overflow-y-auto"
+              className="bg-surface rounded-xl p-6 w-full max-h-[80vh] overflow-y-auto outline-none"
               style={{ maxWidth: '448px' }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -131,6 +153,7 @@ export const TopItemsSection = memo(function TopItemsSection({ movies, series }:
                 <h3 className="text-lg font-semibold">{selectedItem.name}</h3>
                 <button 
                   onClick={() => setSelectedItem(null)}
+                  aria-label="Close"
                   className="p-1 rounded-lg hover:bg-surface-hover"
                 >
                   <XMarkIcon className="w-5 h-5" />

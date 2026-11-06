@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { motion } from 'framer-motion';
 import {
   ClockIcon,
@@ -42,8 +43,8 @@ export default function UserHomePage() {
     let stopped = false;
     const look = () => getOwnScreenTime(userId, authKey).then((r) => { if (!stopped) setPaused(r.paused); }).catch(() => {});
     look();
-    const timer = setInterval(look, 60 * 1000);
-    return () => { stopped = true; clearInterval(timer); };
+    const stopPoll = startAdaptivePoll(look, 60 * 1000, 60 * 1000);
+    return () => { stopped = true; stopPoll(); };
   }, [userId, authKey, isReady]);
   
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);

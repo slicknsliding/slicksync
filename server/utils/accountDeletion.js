@@ -112,6 +112,7 @@ async function deleteUserCascade(prisma, userId) {
   ])
   })
   await require('./jellyfinProfiles').forgetPersonHousehold(prisma, userId)
+  await require('./watchTogether').removeUserFromPacts(prisma, existing.accountId, userId)
   return existing
 }
 

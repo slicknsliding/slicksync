@@ -898,6 +898,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         if (account) {
           const validation = await validateUserStremioAuth(account.id, email, req)
           if (reallyUnlinked(validation)) {
+            // Only an account that was linked through Stremio can be released
+            // by a Stremio sign-in; one held through another provider keeps
+            // its email.
+            if (account.linkedProvider !== 'stremio') {
+              return res.status(409).json({
+                message: 'This email is already linked to another SlickSync account',
+                error: 'EMAIL_ALREADY_LINKED'
+              })
+            }
             await prisma.appAccount.update({
               where: { id: account.id },
               data: { email: null, linkedProvider: null }
@@ -1203,6 +1212,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         if (account) {
           const validation = await validateUserNuvioAuth(account.id, email, req)
           if (reallyUnlinked(validation)) {
+            // Only an account that was linked through Nuvio can be released
+            // by a Nuvio sign-in; one held through another provider keeps
+            // its email.
+            if (account.linkedProvider !== 'nuvio') {
+              return res.status(409).json({
+                message: 'This email is already linked to another SlickSync account',
+                error: 'EMAIL_ALREADY_LINKED'
+              })
+            }
             await prisma.appAccount.update({
               where: { id: account.id },
               data: { email: null, linkedProvider: null }
@@ -1305,7 +1323,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         return res.status(400).json({ message: 'Server sign-in is only available in public auth mode' })
       }
       const { signInFromBody, jellyfinFields, rememberSignIn } = require('../utils/jellyfinConnect')
-      const { identityEmail } = require('../providers/jellyfinAuth')
+      const { identityEmail, legacyIdentityEmail } = require('../providers/jellyfinAuth')
       let signedIn
       try {
         signedIn = await signInFromBody(req.body)
@@ -1333,13 +1351,31 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         } catch { /* not signed in */ }
       }
 
+      // Identities made before port and path counted were host-only. An
+      // account under that form is this server user's only when a person on it
+      // holds this very address; then its identity is upgraded. A same-named
+      // host on another port or path never matches.
+      const legacyEmail = legacyIdentityEmail(probe.serverUrl, login.userId)
+      const upgradeLegacy = async (legacy) => {
+        const holds = await prisma.user.findFirst({ where: { accountId: legacy.id, providerType: 'jellyfin', jellyfinUserId: login.userId, jellyfinServerUrl: probe.serverUrl } })
+        if (!holds) return null
+        await prisma.user.updateMany({ where: { accountId: legacy.id, providerType: 'jellyfin', email: legacyEmail }, data: { email } })
+        return prisma.appAccount.update({ where: { id: legacy.id }, data: { email } })
+      }
       let account = await prisma.appAccount.findUnique({ where: { email } })
+      if (!account && legacyEmail !== email) {
+        const legacy = await prisma.appAccount.findUnique({ where: { email: legacyEmail } })
+        if (legacy) account = await upgradeLegacy(legacy)
+      }
       let isNewAccount = false
       if (currentAccountId) {
         if (account && account.id !== currentAccountId) {
           return res.status(409).json({ message: 'This server login is already linked to another SlickSync account', error: 'EMAIL_ALREADY_LINKED' })
         }
-        const current = await prisma.appAccount.findUnique({ where: { id: currentAccountId } })
+        let current = await prisma.appAccount.findUnique({ where: { id: currentAccountId } })
+        if (!account && legacyEmail !== email && current.email === legacyEmail) {
+          current = (await upgradeLegacy(current)) || current
+        }
         if (current.email && current.email !== email) {
           return res.status(409).json({ message: 'Your account is already linked to a different login', error: 'ACCOUNT_ALREADY_LINKED' })
         }
@@ -2079,7 +2115,6 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         return responseUtils.badRequest(res, `Not a recognised config export - expected "users" and/or "addons" arrays (Syncio-family format). This file is ${shape}.`);
       }
 
-      const { users, groups, addons, sync: importedSync } = configData;
       const accountId = req.appAccountId || 'default';
 
       // Who is here right now, by name - so a file exported before people
@@ -2089,6 +2124,19 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           .filter((u) => u.username).map((u) => [u.username, u.id])
       );
 
+      // Everything below replaces the account's data, so what's here now is
+      // written out first. No copy, no restore.
+      let currentData;
+      let safetyCopy;
+      try {
+        currentData = await buildConfigExportPayload(req);
+        safetyCopy = require('../utils/backup').writeSafetyCopy(currentData, INSTANCE_TYPE === 'public' ? `-${accountId}` : '');
+      } catch (safetyError) {
+        console.error('Config import: could not save the current setup first:', safetyError);
+        return res.status(500).json({ message: 'Could not save your current setup first, so nothing was changed.' });
+      }
+
+      const applyConfig = async ({ users, groups, addons, sync: importedSync }) => {
       // Reset existing data for this account using shared function
       await resetAccountData(accountId);
 
@@ -2645,7 +2693,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
       }
 
-      res.json({
+      return {
         message: 'Configuration imported successfully',
         imported: {
           users: importedUsers.length,
@@ -2657,7 +2705,23 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         addons: { created: importedAddons.length, reused: 0 },
         users: { created: importedUsers.length, keptHistory: keptIds },
         groups: { created: importedGroups.length }
-      });
+      };
+      };
+
+      try {
+        res.json(await applyConfig(configData));
+      } catch (importError) {
+        // The file failed partway, after the wipe: the account goes back to
+        // what it was rather than staying half-empty.
+        console.error('Config import failed, putting the previous setup back:', importError);
+        try {
+          await applyConfig(currentData);
+          res.status(500).json({ message: 'That file could not be restored. Your previous setup has been put back.', safetyCopy });
+        } catch (putBackError) {
+          console.error('Config import: putting the previous setup back also failed:', putBackError);
+          res.status(500).json({ message: `That file could not be restored and your previous setup could not be put back automatically. It is saved as ${safetyCopy}.`, safetyCopy });
+        }
+      }
     } catch (error) {
       console.error('Config import error:', error);
       res.status(500).json({ message: 'Failed to import config' });

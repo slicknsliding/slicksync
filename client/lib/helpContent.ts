@@ -617,6 +617,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Connection problems is on from the start: you hear when someone\'s Stremio, Nuvio or Jellyfin sign-in stops working (straight away if it needs reconnecting, after 15 minutes if their server is just unreachable) and again when it is back. One alert per outage, not one every few minutes. When a whole Jellyfin, AIOStreams or AIOMetadata server is down for everyone on it, that is one alert for the server - and one when it is back - not one for each person.',
       'Push and the in-app bell are the primary channels and always work with zero Discord setup. A webhook only adds Discord delivery on top - nothing requires it.',
       'VAPID keys for push self-generate on first boot, so there is no key setup to do.',
+      'Push goes through the standard browser push services (Chrome, Edge, Firefox, Safari and Windows). Self-hosted push relays are not supported.',
       'Individual users can opt out of their own notifications or set a personal Discord webhook that overrides the account-wide one.',
     ],
     tips: [
@@ -789,7 +790,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'A household user with a PIN cannot be signed in without it. The household card shows them with a key; pick them and enter the configuration password and their PIN once. Neither is stored - only the sign-in it gives SlickSync.',
       'A main user with a PIN (AIOStreams, and AIOMetadata once its release supports it) is added the way they sign in on a device: the password, a slash and the PIN, like password/1234. SlickSync keeps only the part before the slash as the configuration password.',
       'The household card shows the configuration’s main user first, marked Main - the person who signed in with the configuration itself. Everyone else on it is a household user, counted as that person until separated.',
-      'Household users added on AIOStreams’ or AIOMetadata’s own page show up on the household card by themselves - within about 20 seconds, or as soon as the card is opened.',
+      'Household users added on AIOStreams’ or AIOMetadata’s own page show up on the household card by themselves - within about a minute, or as soon as the card is opened.',
       'Their own rows: on an AIOStreams that has AIOMetadata in it, pick a household user on the household card and turn on Their own rows, and they see their own AIOMetadata Recommendations and lists in Jellyfin apps instead of the main user’s. It only shows when AIOMetadata supports it, and it’s off for everyone until you turn it on. AIOMetadata has to know the name first: add it under Also known as (AIOStreams) in AIOMetadata, or the switch says so. It follows that person only while they’re signed in on AIOStreams’ Jellyfin side, and SlickSync keeps it right, or takes it away if AIOMetadata stops supporting it.',
       'An AIOStreams with its own sign-in page switched on only saves changes made while signed in there. If it’s the AIOStreams your SlickSync already signs in to for Now Playing, SlickSync uses that sign-in and everything works as usual. For any other, the household card’s Add, Change PIN and Own sign-in address open AIOStreams’ configure page instead (Users, trackers and playback), and what you do there shows up here by itself.',
       'For someone added with their AIOStreams or AIOMetadata configuration password, the household card can also add a household user - a name and an optional PIN, plus on AIOStreams their own history or one shared with the main user - who is tracked straight away, and change or remove anyone’s PIN (pick them, then Change PIN), for example when it’s forgotten. On AIOStreams a new household user can also be kept separate, with an address of their own (see Keeping a household user separate). The main user’s own PIN is changed in the app itself. AIOMetadata has PINs from its first release after 3.4.1; until then the card adds people without one.',
@@ -1910,6 +1911,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     ],
     tips: [
       'If you set ENCRYPTION_KEY in .env, keep it stable. Removing it later makes the app generate a new one and silently split your data again.',
+      'Make ENCRYPTION_KEY at least 32 characters - openssl rand -base64 32 gives one. A shorter key works but logs a warning at every start.',
     ],
     related: ['updating-slicksync', 'backup-restore', 'vault-add-credential'],
   },

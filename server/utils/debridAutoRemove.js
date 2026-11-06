@@ -10,7 +10,7 @@ const INTERVAL_HOURS = 24
 
 async function runDebridAutoRemove(prisma, decrypt) {
   try {
-    const { listEligibleTorrents, deleteTorrent } = require('./debridUsage')
+    const { listEligibleTorrents, deleteTorrent, wholeDays } = require('./debridUsage')
     const entries = await prisma.vaultEntry.findMany({
       where: {
         autoRemoveEnabled: true,
@@ -19,6 +19,7 @@ async function runDebridAutoRemove(prisma, decrypt) {
       },
     })
 
+    const removedByAccount = new Map() // accountId -> [{ name, count }]
     let removedTotal = 0
     for (const entry of entries) {
       try {
@@ -36,7 +37,8 @@ async function runDebridAutoRemove(prisma, decrypt) {
         const apiKey = decrypt(entry.encryptedSecret, { appAccountId: entry.accountId })
         if (!apiKey) continue
 
-        const eligible = await listEligibleTorrents(entry.testType, apiKey, entry.autoRemoveAfterDays)
+        const days = wholeDays(entry.autoRemoveAfterDays)
+        const eligible = await listEligibleTorrents(entry.testType, apiKey, days)
         let removedForEntry = 0
         for (const torrent of eligible) {
           const ok = await deleteTorrent(entry.testType, apiKey, torrent.id)
@@ -45,12 +47,37 @@ async function runDebridAutoRemove(prisma, decrypt) {
 
         if (removedForEntry > 0) {
           removedTotal += removedForEntry
-          console.log(`[DebridAutoRemove] "${entry.name}": removed ${removedForEntry} finished torrent(s) idle past ${entry.autoRemoveAfterDays}d`)
+          const list = removedByAccount.get(entry.accountId) || []
+          list.push({ name: entry.name, count: removedForEntry, days })
+          removedByAccount.set(entry.accountId, list)
+          console.log(`[DebridAutoRemove] "${entry.name}": removed ${removedForEntry} finished torrent(s) idle past ${days}d`)
         }
         await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastAutoRemoveAt: new Date() } }).catch(() => {})
       } catch (err) {
         console.warn(`[DebridAutoRemove] Failed for entry ${entry.id} (${entry.name}):`, err?.message || err)
       }
+    }
+    // Deleting from someone's debrid account is not reversible, so say what
+    // was removed. Bell + push are the primary channels (type 'vault' follows
+    // the account's Vault notification toggle for the push half).
+    for (const [accountId, list] of removedByAccount) {
+      try {
+        const total = list.reduce((n, l) => n + l.count, 0)
+        const body = list.map((l) => `${l.name}: ${l.count} finished torrent${l.count === 1 ? '' : 's'} idle for over ${l.days} day${l.days === 1 ? '' : 's'}`).join('; ')
+        const title = `Auto-remove cleared ${total} torrent${total === 1 ? '' : 's'}`
+        const { createNotification } = require('./notificationStore')
+        await createNotification(prisma, accountId, { type: 'vault', title, body: `${body}.`, url: '/vault' })
+        // Phone push follows the account's Vault notification toggle. The bell
+        // row above is written regardless, so it is never notifyPushForType
+        // (which would add a second bell row when the toggle is on).
+        const push = require('./pushNotifications')
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        let cfg = acc?.sync
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+        if (cfg && cfg.notifyOnVault === true && push.isPushEnabled()) {
+          await push.sendPushToAccount(prisma, accountId, { title, body, icon: '/android-chrome-192x192.png', url: '/vault' })
+        }
+      } catch (e) { console.warn('[DebridAutoRemove] could not send summary:', e?.message) }
     }
     if (removedTotal > 0) console.log(`[DebridAutoRemove] ${removedTotal} torrent(s) removed across ${entries.length} opted-in entr${entries.length === 1 ? 'y' : 'ies'}`)
   } catch (err) {

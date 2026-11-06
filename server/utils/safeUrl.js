@@ -244,8 +244,12 @@ function pinnedRequest(urlString, options, allowPrivate) {
  * `vet`, when given, is asked about every address (the first and each hop)
  * instead of the default check, for a caller that holds redirects to a rule of
  * its own. It returns or throws like assertSafeUrl.
+ *
+ * `dropHeadersCrossOrigin`, when given, names more headers (beyond the
+ * credential ones always removed) that must not follow a redirect to another
+ * origin - for a caller whose headers are free text written by someone else.
  */
-async function safeFetch(raw, init = {}, { allowPrivate = false, maxRedirects = 5, vet } = {}) {
+async function safeFetch(raw, init = {}, { allowPrivate = false, maxRedirects = 5, vet, dropHeadersCrossOrigin } = {}) {
   let current = String(raw)
   let options = { ...init, redirect: 'manual' }
   for (let hop = 0; ; hop++) {
@@ -267,7 +271,7 @@ async function safeFetch(raw, init = {}, { allowPrivate = false, maxRedirects = 
     // Credentials meant for the first host do not travel to another one.
     if (next.origin !== new URL(current).origin && options.headers) {
       const headers = new Headers(options.headers)
-      for (const name of ['authorization', 'cookie', 'proxy-authorization']) headers.delete(name)
+      for (const name of ['authorization', 'cookie', 'proxy-authorization', ...(dropHeadersCrossOrigin || [])]) headers.delete(name)
       options = { ...options, headers }
     }
     current = next.toString()

@@ -77,19 +77,13 @@ import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { DraggableList } from '@/components/ui/DragSortable';
 import { format } from 'date-fns';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
+
+// recharts is large: it loads after the page, inside the chart's fixed-height box.
+const WatchTimeChartBody = dynamic(() => import('@/components/admin/UserWatchCharts').then((m) => m.WatchTimeChartBody), { ssr: false, loading: () => null });
+const ContentBreakdownChartBody = dynamic(() => import('@/components/admin/UserWatchCharts').then((m) => m.ContentBreakdownChartBody), { ssr: false, loading: () => null });
 
 // Watch time data type
 interface WatchTimeDataPoint {
@@ -158,44 +152,7 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: WatchTimeD
       </div>
 
       <div className="h-40 md:h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--color-chart-1)" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-            <YAxis 
-              stroke="#64748b" 
-              fontSize={12} 
-              ticks={ticks}
-              tickFormatter={(value) => {
-                if (value === 0) return '0m';
-                const h = Math.floor(value / 60);
-                const m = value % 60;
-                if (h === 0) return `${m}m`;
-                return m === 0 ? `${h}h` : `${h}h${m}m`;
-              }}
-            />
-            <Tooltip 
-              contentStyle={TOOLTIP_STYLE} 
-              labelStyle={TOOLTIP_LABEL_STYLE}
-              formatter={(value: any) => [formatMinutes(value), 'Watch Time']}
-            />
-            <Area
-              type="monotone"
-              dataKey="minutes"
-              stroke="var(--color-chart-1)"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#colorMinutes)"
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <WatchTimeChartBody data={data} ticks={ticks} formatMinutes={formatMinutes} />
       </div>
 
       {/* Legend */}
@@ -217,16 +174,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
       </div>
 
       <div className="h-40 md:h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
-            <YAxis stroke="#64748b" fontSize={12} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} />
-            <Bar dataKey="movies" fill="var(--color-chart-1)" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="series" fill="var(--color-chart-2)" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <ContentBreakdownChartBody data={data} />
       </div>
 
       {/* Legend */}
@@ -830,9 +778,11 @@ export default function UserDetailPage() {
       toast.success('User color updated');
     } catch (err: any) {
       toast.error(err.message || 'Failed to update user color');
-      // Refresh to revert
-      const userData = await api.getUser(params.id as string);
-      setUser(userData);
+      // Refresh to revert; if that fails too, the optimistic colour stays
+      try {
+        const userData = await api.getUser(params.id as string);
+        setUser(userData);
+      } catch { /* leave as is */ }
     }
   }, [params.id]);
 
@@ -957,13 +907,14 @@ export default function UserDetailPage() {
       await api.updateUserExcludedAddons(params.id as string, Array.from(newExcluded));
       toast.success(wasExcluded ? 'Addon included' : 'Addon excluded');
     } catch (err: any) {
-      // Revert on error
+      // Revert on error - a new Set, so React sees the change
+      const reverted = new Set(newExcluded);
       if (wasExcluded) {
-        newExcluded.add(addonId);
+        reverted.add(addonId);
       } else {
-        newExcluded.delete(addonId);
+        reverted.delete(addonId);
       }
-      setExcludedAddonIds(newExcluded);
+      setExcludedAddonIds(reverted);
       toast.error(err.message || 'Failed to update addon');
     }
   }, [params.id, excludedAddonIds]);

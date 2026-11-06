@@ -2570,7 +2570,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           accountId: user.accountId || DEFAULT_ACCOUNT_ID
         },
         orderBy: { date: 'desc' },
-        take: parseInt(limit) || 100
+        take: Math.min(Math.max(parseInt(limit) || 100, 1), 500)
       });
       console.log('Watch activities found:', watchActivities.length);
 
@@ -2625,7 +2625,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           accountId: user.accountId || DEFAULT_ACCOUNT_ID
         },
         orderBy: { watchedAt: 'desc' },
-        take: parseInt(limit) || 100
+        take: Math.min(Math.max(parseInt(limit) || 100, 1), 500)
       });
 
       // Transform watch activity into activity items (like old slicksync)
@@ -3502,7 +3502,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     try {
       const user = await personAsking(req, req.body?.userId);
       const { endpoint, keys } = req.body?.subscription || {};
-      if (!endpoint || !keys?.p256dh || !keys?.auth || !/^https:\/\//i.test(String(endpoint))) {
+      if (!endpoint || !keys?.p256dh || !keys?.auth || !require('../utils/pushNotifications').isAllowedPushEndpoint(endpoint)) {
         return res.status(400).json({ error: 'Invalid subscription' });
       }
       const userAgent = req.body?.userAgent ? String(req.body.userAgent).slice(0, 300) : null;
@@ -3637,6 +3637,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         if (!req.file) return res.status(400).json({ error: 'Choose a picture first', message: 'Choose a picture first' });
         const kind = pictureKind(req.file.buffer);
         if (!kind) return res.status(400).json({ error: 'That isn’t a JPEG, PNG, GIF or WEBP picture', message: 'That isn’t a JPEG, PNG, GIF or WEBP picture' });
+        if (!require('../utils/imageEncoder').decodableSize(req.file.buffer)) {
+          const message = 'That picture’s dimensions are too large';
+          return res.status(400).json({ error: message, message });
+        }
         const current = await prisma.user.findUnique({ where: { id: user.id }, select: { avatarUrl: true } });
         const url = saveAvatarFile(req.file.buffer, kind);
         try {

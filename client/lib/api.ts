@@ -3042,6 +3042,10 @@ class ApiClient {
     const deep = opts.deep ? '&deep=1' : '';
     return this.fetch<MetricsData>(`/users/metrics?period=${period}${deep}`);
   }
+  // Only who is watching now, plus the stamp of the cached feed build it goes with.
+  async getNowPlaying(period: string = 'all') {
+    return this.fetch<{ nowPlaying: MetricsData['nowPlaying']; buildStamp: number | null }>(`/users/metrics/now-playing?period=${period}`);
+  }
   async getYearInReview(year?: number) {
     const q = year ? `?year=${year}` : '';
     return this.fetch<YearInReview>(`/users/year-in-review${q}`);
@@ -5632,6 +5636,8 @@ export interface MetricsData {
   }>;
   /** True when the feed was capped and older history can still be asked for. */
   activityTruncated?: boolean;
+  /** When the server built the cached feed this came from; changes only when the feed does. */
+  buildStamp?: number | null;
   recentActivity?: Array<{
     user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean; providerType?: 'stremio' | 'nuvio' | 'jellyfin' };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };

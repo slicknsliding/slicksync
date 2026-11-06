@@ -1,6 +1,14 @@
 // Vault entry "active" checkers. Each returns { ok: boolean, message: string, expiresAt?: Date }
 // testConfig is a parsed JSON object stored per-entry; shape varies by testType.
 
+const { readBounded } = require('./boundedBody')
+
+// A check only needs the start of a response; reading it whole would let a
+// hostile or broken endpoint hold the process's memory or the check open.
+async function readText(res, maxBytes = 1024 * 1024) {
+  try { return (await readBounded(res, { maxBytes, timeoutMs: 15000 })).toString('utf8') } catch { return '' }
+}
+
 const net = require('net')
 const dns = require('dns').promises
 const { assertSafeUrl, safeFetch, instancePolicy, isPrivateIp, isLinkLocalIp } = require('./safeUrl')
@@ -114,7 +122,7 @@ async function checkGenericHttp(secret, config = {}) {
 
   try {
     const res = await fetchWithRetry(finalUrl, { method, headers }, { checked: true })
-    const text = await res.text().catch(() => '')
+    const text = await readText(res)
     const statusOk = Array.isArray(expectStatus) ? expectStatus.includes(res.status) : res.status === expectStatus
     if (!statusOk) return { ok: false, message: `Unexpected status ${res.status}` }
     if (bodyContains && !text.includes(bodyContains)) return { ok: false, message: 'Response did not match expected content' }
@@ -205,7 +213,7 @@ async function checkNewznabCaps(secret, config = {}) {
       return { ok: false, message: 'Indexer returned 403 - likely blocking this server\'s IP (common for private indexers/Usenet providers toward cloud/VPS hosting ranges), not necessarily the API key' }
     }
     if (!res.ok) return { ok: false, message: `Indexer returned ${res.status}` }
-    const text = await res.text()
+    const text = await readText(res)
     if (/error/i.test(text) && /apikey|api key|invalid/i.test(text)) {
       return { ok: false, message: 'API key rejected' }
     }
@@ -338,8 +346,9 @@ async function checkStremioAuth(secret, config = {}) {
 
     logDebug({
       event: 'stremio_raw_login_response',
-      identifier,
-      rawResult,
+      // Never the response itself: a successful one carries the sign-in key.
+      gotAuthKey: !!rawResult?.authKey,
+      rawError: rawResult?.error || rawResult?.message,
       rawErrMessage: rawErr?.message,
       rawErrStatus: rawErr?.status || rawErr?.statusCode,
       rawErrBody: rawErr?.body || rawErr?.response
@@ -360,8 +369,8 @@ async function checkStremioAuth(secret, config = {}) {
     if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
     if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
     if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: false, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
-    logDebug({ event: 'stremio_auth_threw', identifier, message: err?.message, stack: err?.stack })
-    console.warn('[VaultCheck] Stremio auth threw for', identifier, err)
+    logDebug({ event: 'stremio_auth_threw', message: err?.message, stack: err?.stack })
+    console.warn('[VaultCheck] Stremio auth threw:', err?.message)
     return { ok: false, message: err?.message || 'Stremio login failed' }
   }
 }

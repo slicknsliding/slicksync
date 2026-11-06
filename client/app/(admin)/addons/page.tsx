@@ -884,7 +884,7 @@ export default function AddonsPage() {
           })()}
         />
 
-        <BeginnerHint guideId="addons-overview">Addons are the sources your users stream from. Add one here, then assign it to a user or a group - assigning is what actually pushes it to their Stremio or Nuvio account.</BeginnerHint>
+        <BeginnerHint guideId="sync-mode-basics">Addons are the sources your users stream from. Add one here, then assign it to a user or a group - assigning is what actually pushes it to their Stremio or Nuvio account.</BeginnerHint>
 
         {/* Custom tag pills — drag an addon card onto one to tag it (or click
             to filter by it). Own row below the built-in filter tabs since
@@ -1198,6 +1198,7 @@ export default function AddonsPage() {
 
               <button
                 onClick={deselectAll}
+                aria-label="Clear selection"
                 className="p-2 rounded-lg text-muted hover:bg-surface-hover transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />
@@ -1555,7 +1556,7 @@ function AddonCard({
     e.stopPropagation();
     const configUrl = getConfigureUrl(addon);
     if (configUrl) {
-      window.open(configUrl, '_blank', 'noopener,noreferrer');
+      if (/^https?:\/\//i.test(configUrl)) window.open(configUrl, '_blank', 'noopener,noreferrer');
     }
   };
 

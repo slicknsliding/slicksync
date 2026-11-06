@@ -32,8 +32,8 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         <div className="mt-5 flex items-center justify-center gap-2">
           <button
             onClick={reset}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ background: 'var(--color-primary-solid)' }}
+            className="px-4 py-2 rounded-lg text-sm font-medium"
+            style={{ background: 'var(--color-primary-solid)', color: 'var(--color-on-primary-solid, #fff)' }}
           >
             Try again
           </button>

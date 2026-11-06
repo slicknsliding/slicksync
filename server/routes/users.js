@@ -1999,7 +1999,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // handed the small, fast payload it was built for.
       const deepActivity = req.query.deep === '1' || req.query.deep === 'true'
 
-      const { getCachedMetrics, setCachedMetrics, buildOnce } = require('../utils/metricsCache')
+      const { getCachedMetrics, setCachedMetrics, buildOnce, getMetricsStamp } = require('../utils/metricsCache')
       const { buildMetricsForAccount } = require('../utils/metricsBuilder')
 
       // Try in-memory metrics cache first (populated by activityMonitor every 5 minutes)
@@ -2012,7 +2012,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         let answer = cached
         try {
           const { liveNowPlaying } = require('../utils/metricsBuilder')
-          answer = { ...cached, nowPlaying: await liveNowPlaying(prisma, accountId) }
+          answer = { ...cached, nowPlaying: await liveNowPlaying(prisma, accountId), buildStamp: getMetricsStamp(accountId, period) }
         } catch (e) {
           console.warn('[API] Live Now Playing failed, sending the cached list:', e?.message)
         }
@@ -2030,11 +2030,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       console.log(`[API] Metrics built. Sessions: ${metrics.watchSessions?.length}, Episodes: ${metrics.recentEpisodes?.length}`)
 
       if (!deepActivity) setCachedMetrics(accountId, period, metrics)
-      res.json(metrics)
+      res.json(deepActivity ? metrics : { ...metrics, buildStamp: getMetricsStamp(accountId, period) })
       warmActivityPosters(metrics)
     } catch (error) {
       console.error('Error fetching metrics:', error)
       res.status(500).json({ error: 'Failed to fetch metrics' })
+    }
+  })
+
+  // GET /users/metrics/now-playing - only who is watching right now, plus the
+  // stamp of the cached feed build it goes with, so a page that already holds
+  // the feed can tell whether the feed itself has changed without fetching it.
+  router.get('/metrics/now-playing', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const period = req.query.period || '30d'
+      const { getMetricsStamp } = require('../utils/metricsCache')
+      const { liveNowPlaying } = require('../utils/metricsBuilder')
+      res.json({ nowPlaying: await liveNowPlaying(prisma, accountId), buildStamp: getMetricsStamp(accountId, period) })
+    } catch (error) {
+      console.error('Error fetching now playing:', error)
+      res.status(500).json({ error: 'Failed to fetch now playing' })
     }
   })
 
@@ -3408,6 +3427,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         })
       ])
       await require('../utils/jellyfinProfiles').forgetPersonHousehold(prisma, id)
+      await require('../utils/watchTogether').removeUserFromPacts(prisma, getAccountId(req), id)
 
       res.json({ message: 'User deleted successfully' });
     } catch (error) {

@@ -8,6 +8,15 @@ const { assertSafeUrl, safeFetch, instancePolicy } = require('../utils/safeUrl')
 // (as opposed to the host being slow or down).
 const REFUSED_ADDRESS = new Set(['blocked host', 'unsupported protocol', 'invalid url']);
 
+// Debrid links carry the token in the path or query, so console output keeps the host only.
+function safeOrigin(value) {
+  try {
+    return new URL(value).origin;
+  } catch (e) {
+    return '(unparseable)';
+  }
+}
+
 /**
  * Set CORS headers for Stremio/streaming compatibility
  */
@@ -195,13 +204,13 @@ async function processStreamResponse(data, serverKey, proxyBaseUrl) {
         // Encrypt the URL field if present
         if (stream.url && typeof stream.url === 'string') {
           try {
-            console.log(`[StreamProxy] Resolving redirect for URL: ${stream.url.substring(0, 100)}...`);
+            console.log(`[StreamProxy] Resolving redirect for URL on: ${safeOrigin(stream.url)}`);
             // Resolve the final URL (follow redirects)
             const resolvedUrl = await getRedirectedUrl(stream.url);
             // An address this install will not fetch keeps the link the addon
             // gave, so the player can still try it from its own network.
             if (resolvedUrl) {
-              console.log(`[StreamProxy] Resolved to: ${resolvedUrl.substring(0, 100)}...`);
+              console.log(`[StreamProxy] Resolved to: ${safeOrigin(resolvedUrl)}`);
 
               const encryptedUrl = encryptStreamUrl(resolvedUrl, serverKey);
               stream.url = `${proxyBaseUrl}/stream/${encryptedUrl}`;
@@ -297,7 +306,7 @@ module.exports = ({ getServerKey }) => {
       // Decrypt the target URL
       try {
         targetUrl = decryptStreamUrl(encryptedUrl, serverKey);
-        console.log(`[StreamProxy] Decrypted URL: ${targetUrl.substring(0, 100)}...`);
+        console.log(`[StreamProxy] Decrypted URL on: ${safeOrigin(targetUrl)}`);
       } catch (e) {
         errorMessage = 'Invalid or expired stream URL';
         console.error('[StreamProxy] Error decrypting stream URL:', e.message);
@@ -305,7 +314,7 @@ module.exports = ({ getServerKey }) => {
       }
 
       // Proxy the request to the target URL
-      console.log(`[StreamProxy] Proxying content from: ${targetUrl.substring(0, 100)}...`);
+      console.log(`[StreamProxy] Proxying content from: ${safeOrigin(targetUrl)}`);
 
       const fetchHeaders = {
         'User-Agent': req.get('User-Agent') || 'SlickSync-Proxy/1.0',
@@ -347,7 +356,7 @@ module.exports = ({ getServerKey }) => {
         // Capture the final URL (after redirects)
         resolvedUrl = upstreamResponse.url;
         if (resolvedUrl !== targetUrl) {
-           console.log(`[StreamProxy] Redirected to: ${resolvedUrl.substring(0, 100)}...`);
+           console.log(`[StreamProxy] Redirected to: ${safeOrigin(resolvedUrl)}`);
         }
 
         // Forward status code

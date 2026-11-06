@@ -71,6 +71,12 @@ function setCachedMetrics(accountId, period, data) {
   })
 }
 
+/** When the cached build was made, or null. Changes only when the feed is rebuilt. */
+function getMetricsStamp(accountId, period) {
+  const entry = metricsCache.get(makeKey(accountId, period))
+  return entry && Date.now() - entry.updatedAt <= METRICS_TTL_MS ? entry.updatedAt : null
+}
+
 // Builds already under way, so several tabs opening the dashboard at once
 // share one build instead of running one each.
 const building = new Map()
@@ -98,6 +104,7 @@ module.exports = {
   getCachedMetrics,
   setCachedMetrics,
   buildOnce,
+  getMetricsStamp,
   clearMetricsForAccount,
   noteRequested,
   recentlyRequestedPeriods

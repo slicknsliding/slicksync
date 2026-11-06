@@ -1298,6 +1298,7 @@ export default function ListDetailPage() {
               </Button>
               <button
                 onClick={exitSelectMode}
+                aria-label="Exit selection"
                 className="p-2 rounded-lg text-muted hover:bg-surface-hover transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />

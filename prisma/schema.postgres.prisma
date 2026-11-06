@@ -727,6 +727,7 @@ model WatchSession {
   @@index([accountId, startTime]) // account-wide windows: stats, Now/Recently watched
   @@index([accountId, userId, isActive])
   @@index([accountId, isActive])
+  @@index([isActive]) // the open-viewings read spans accounts
   @@map("watch_sessions")
 }
 

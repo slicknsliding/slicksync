@@ -174,7 +174,7 @@ async function readSide(prisma, deps, accountId, userId, side) {
     }
     throw e
   }
-  return { kind, profile, provider, read }
+  return { kind, profile, provider, read, signInId: rows[kind].id }
 }
 
 function options(body = {}, fromKind, toKind) {
@@ -281,6 +281,7 @@ async function run(prisma, deps, accountId, userId, body = {}) {
   job.total = items.length
   const work = (async () => {
     const result = await ADAPTERS[to.kind].write(to.provider, to.read, items, { ...deps, index: presence?.index || null })
+    require('../ownWrites').note(to.signInId, result.own)
     job.done = result.written
     job.failed = result.failed.length
     const data = {
@@ -326,8 +327,13 @@ async function undo(prisma, deps, accountId, userId, runId, now = Date.now()) {
   const { rows } = await personWithSignIns(prisma, accountId, personId)
   if (!rows[kind]) throw fail('They no longer have that sign-in', 409)
   const result = await ADAPTERS[record.kind].undo(makeProvider(deps, rows[kind]), record, deps)
+  if (result?.failed) {
+    // Not undone: keep the run and only what is left, so Undo can be tried again.
+    await prisma.watchCopyRun.update({ where: { id: row.id }, data: { undo: JSON.stringify({ ...record, ...result.remaining }) } })
+    throw fail(`${result.failed} title${result.failed === 1 ? '' : 's'} couldn’t be undone - try Undo again`, 502)
+  }
   await prisma.watchCopyRun.update({ where: { id: row.id }, data: { state: 'undone' } })
-  return result
+  return { restored: result.restored, kept: result.kept }
 }
 
 // "Pick the match": titles Cinemeta knows by that name.

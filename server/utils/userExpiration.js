@@ -170,6 +170,7 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
           // stops accumulating on its own; the check remains for history
           // orphaned by anything else.
           await require('./aioProfileVariants').forgetOwnRows(prisma, decrypt, user.id)
+          await require('./watchTogether').removeUserFromPacts(prisma, accountId, user.id)
           await prisma.user.delete({
             where: { id: user.id }
           })

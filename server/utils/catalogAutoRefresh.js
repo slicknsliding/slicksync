@@ -14,6 +14,17 @@ let refreshTimer = null
 const INTERVAL_HOURS = 24
 const WEEKLY_MIN_GAP_MS = 7 * 24 * 60 * 60 * 1000
 
+// An unattended refresh must not wipe or gut a catalog because the source (or
+// a lookup in front of it) had a bad day: an empty result, or one more than
+// 30% smaller than what the catalog holds now, is left for a person to look
+// at via the manual Refresh, which shows the diff first.
+const MAX_AUTO_SHRINK = 0.3
+function shouldApplyRefresh(currentCount, freshCount) {
+  if (freshCount <= 0) return false
+  if (currentCount > 0 && freshCount < currentCount * (1 - MAX_AUTO_SHRINK)) return false
+  return true
+}
+
 async function runCatalogAutoRefresh(prisma) {
   try {
     const { refreshListFromSourceForAccount } = require('./listImport')
@@ -47,6 +58,13 @@ async function runCatalogAutoRefresh(prisma) {
           continue
         }
         const { items } = await refreshListFromSourceForAccount(prisma, list.accountId, list)
+        let currentCount = 0
+        try { const cur = JSON.parse(list.itemsJson || '[]'); currentCount = Array.isArray(cur) ? cur.length : 0 } catch {}
+        if (!shouldApplyRefresh(currentCount, items.length)) {
+          console.warn(`[CatalogAutoRefresh] Not applying refresh for list ${list.id} (${list.name}): ${items.length} items from the source vs ${currentCount} now`)
+          skipped++
+          continue
+        }
         await prisma.customList.update({
           where: { id: list.id },
           data: { itemsJson: JSON.stringify(items), lastAutoRefreshAt: new Date() },
@@ -75,4 +93,4 @@ function scheduleCatalogAutoRefresh(prisma) {
   console.log(`[CatalogAutoRefresh] Scheduled every ${INTERVAL_HOURS}h`)
 }
 
-module.exports = { scheduleCatalogAutoRefresh, runCatalogAutoRefresh }
+module.exports = { scheduleCatalogAutoRefresh, runCatalogAutoRefresh, shouldApplyRefresh }

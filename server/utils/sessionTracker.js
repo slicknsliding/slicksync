@@ -15,6 +15,7 @@ const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { resolveSinglePoster } = require('./libraryHelpers')
 const stremioSaves = require('./stremioSaves')
+const ownWrites = require('./ownWrites')
 
 // Shares the same debug log file as activityMonitor.js's heartbeat() - one
 // combined trace of the whole pipeline from library fetch through gating.
@@ -488,7 +489,10 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       lastPositionByItemId.set(itemId, currentPositionForItem)
     }
 
-    const isActive = isActivelyWatching(item, userId, nowMs) || savedRecently
+    // A copy SlickSync made (Copy watch history, Keep in step) carries the
+    // source's real date and a new position, but nobody is playing it here.
+    // Only while the item is still exactly as written: real playback changes it.
+    const isActive = !ownWrites.isOwn(userId, itemId, item) && (isActivelyWatching(item, userId, nowMs) || savedRecently)
     // Playback that ran to the end still gets its session created or
     // updated below, so the duration and the History row are recorded as
     // for any other checkpoint - it just is not kept open afterwards: it

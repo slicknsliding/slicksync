@@ -24,6 +24,7 @@ import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { useUserAuth } from '@/lib/hooks/useUserAuth';
 import { providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
 import { cachedImageUrl } from '@/lib/posterUrl';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { availableApps, linksFor, rememberApp, rememberedApp, rememberedShortcut, type OpenTargets, type OpenWithAppId } from '@/lib/openWith';
 import { userContinueWatching, userOpenTargets, type ContinueWatchingCardData } from '@/lib/user-api';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
@@ -221,8 +222,8 @@ export function ContinueWatchingRow({ view = 'grid' }: { view?: 'grid' | 'list' 
       .then((r) => { if (!stale) setLoaded({ forUser: userId, items: r.items }); })
       .catch(() => {});
     void look();
-    const timer = setInterval(look, REFRESH_MS);
-    return () => { stale = true; clearInterval(timer); };
+    const stopPoll = startAdaptivePoll(() => { void look(); }, REFRESH_MS, REFRESH_MS);
+    return () => { stale = true; stopPoll(); };
   }, [userId, authKey]);
 
   const openCard = menuFor || pickerFor;

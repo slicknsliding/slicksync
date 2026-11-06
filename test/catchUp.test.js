@@ -239,3 +239,55 @@ test("on AIOMetadata the server's filler and recap marks are read too; a plain J
   assert.equal(asked, false, "Cinemeta's list is enough there")
   assert.ok(jf.episodes.every((e) => !e.kind))
 })
+
+test('two starts at once give one run, and Undo covers its rows', async () => {
+  catchUp.forgetForTests()
+  const w = world()
+  const p = fakeProvider()
+  const deps = { fetchMeta: meta, createProvider: p.createProvider, now: NOW, wait: true }
+  const [a, b] = await Promise.allSettled([
+    catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, deps),
+    catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, deps),
+  ])
+  assert.equal(a.status, 'fulfilled')
+  assert.equal(b.status, 'rejected')
+  assert.match(b.reason.message, /Already marking/)
+  assert.equal(w.episodes.length, 3, 'one run, no duplicate rows')
+  const after = await catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', { createProvider: p.createProvider, wait: true })
+  assert.equal(after.state, 'undone')
+  assert.equal(w.episodes.length, 0, 'Undo covers every row the run added')
+})
+
+test('a start that fails early frees the slot', async () => {
+  catchUp.forgetForTests()
+  const w = world()
+  const p = fakeProvider()
+  await assert.rejects(catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, { fetchMeta: async () => null, createProvider: () => ({ listEpisodes: async () => null }), now: NOW }), /couldn’t find/)
+  assert.equal(catchUp.status('mia'), null)
+  const ok = await catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, { fetchMeta: meta, createProvider: p.createProvider, now: NOW, wait: true })
+  assert.equal(ok.state, 'done')
+})
+
+test('Undo that fails on the server keeps the record so it can be retried', async () => {
+  catchUp.forgetForTests()
+  const w = world()
+  const p = fakeProvider()
+  const calls = []
+  let broken = true
+  const createProvider = () => ({ ...p.createProvider(), setPlayed: async (id, played) => {
+    if (!played && broken && id === 'e3') throw new Error('refused')
+    calls.push([id, played])
+  } })
+  const deps = { fetchMeta: meta, createProvider, now: NOW, wait: true }
+  await catchUp.start(w.prisma, () => 'tok', 'acc', 'mia', { showId: 'tt1', season: 1, episode: 3 }, deps)
+  const first = await catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', deps)
+  assert.notEqual(first.state, 'undone')
+  assert.equal(first.canUndo, true)
+  assert.match(first.error, /1 couldn’t be undone/)
+  assert.equal(w.episodes.length, 0, 'what could be undone was')
+  broken = false
+  calls.length = 0
+  const second = await catchUp.undo(w.prisma, () => 'tok', 'acc', 'mia', deps)
+  assert.equal(second.state, 'undone')
+  assert.deepEqual(calls, [['e3', false]], 'only the failed one is retried')
+})

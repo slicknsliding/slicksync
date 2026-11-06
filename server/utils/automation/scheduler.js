@@ -9,6 +9,7 @@ const { getAccountDateString, resolveAccountTimezone } = require('../dateUtils')
 const { emitAutomationEvent } = require('./engine')
 
 let tickTimer = null
+const DUE_GRACE_MINUTES = 10
 const TICK_MS = 60 * 1000 // 1min - matches the minute-level precision "at HH:MM" needs
 // Index = the value stored in triggerConfig.days, matching JS getDay()
 // (0 = Sunday). Order must line up with Intl's 'short' weekday names.
@@ -52,7 +53,12 @@ async function runAutomationScheduler(prisma) {
         }).formatToParts(now)
         const currentHour = Number(parts.find((p) => p.type === 'hour')?.value)
         const currentMinute = Number(parts.find((p) => p.type === 'minute')?.value)
-        if (currentHour !== hour || currentMinute !== minute) continue
+        // Due from the scheduled minute until DUE_GRACE_MINUTES later, so a
+        // slow or restarted process that misses the exact minute still runs
+        // it (the once-a-day check below stops a repeat). Same-day only: a
+        // rule due late in the evening does not carry past midnight.
+        const lateBy = (currentHour * 60 + currentMinute) - (hour * 60 + minute)
+        if (lateBy < 0 || lateBy > DUE_GRACE_MINUTES) continue
 
         // Day-of-week filter. An absent or empty list means every day, which
         // is what every rule saved before this option existed has stored, so
@@ -74,6 +80,16 @@ async function runAutomationScheduler(prisma) {
         const todayStr = getAccountDateString(now, timezone)
         const lastRunStr = rule.lastRunAt ? getAccountDateString(rule.lastRunAt, timezone) : null
         if (lastRunStr === todayStr) continue
+
+        // Claim the day BEFORE running: a compare-and-set on lastRunAt, so a
+        // tick that overlaps this one (or a second process) finds the rule
+        // already taken and moves on instead of running the actions twice.
+        // The engine stamps lastRunAt again once the rule has actually run.
+        const claim = await prisma.automationRule.updateMany({
+          where: { id: rule.id, lastRunAt: rule.lastRunAt ?? null },
+          data: { lastRunAt: now },
+        })
+        if (!claim.count) continue
 
         // Targeted at THIS rule: the tick has already decided this specific
           // rule is due, and a broadcast would run every other scheduled rule

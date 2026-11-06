@@ -100,6 +100,20 @@ function configureWebPush() {
   }
 }
 
+// The push services browsers hand out endpoints for: Chrome/Android (FCM),
+// Firefox, Safari/iOS and Edge (WNS). A subscription pointing anywhere else is
+// not a browser's, and sending to it would make this server call that address.
+const PUSH_HOSTS = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com']
+const PUSH_HOST_SUFFIXES = ['.push.services.mozilla.com', '.notify.windows.com']
+
+function isAllowedPushEndpoint(endpoint) {
+  let url
+  try { url = new URL(String(endpoint)) } catch { return false }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return false
+  const host = url.hostname.toLowerCase()
+  return PUSH_HOSTS.includes(host) || PUSH_HOST_SUFFIXES.some((s) => host.endsWith(s) && host.length > s.length)
+}
+
 /**
  * Sends one payload to every stored subscription for an account, pruning any
  * that the push service reports as gone (404/410). Best-effort: a failure to
@@ -121,6 +135,12 @@ async function sendPushToAccount(prisma, accountId, payload) {
   let sent = 0
   let pruned = 0
   for (const sub of subs) {
+    // A row saved before the endpoint check: not a push service, so it is
+    // dropped rather than sent to.
+    if (!isAllowedPushEndpoint(sub.endpoint)) {
+      try { await prisma.pushSubscription.delete({ where: { id: sub.id } }); pruned++ } catch {}
+      continue
+    }
     const subscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }
     try {
       await webpush.sendNotification(subscription, body)
@@ -206,6 +226,10 @@ async function sendPushToPerson(prisma, accountId, userId, payload) {
   let sent = 0
   let pruned = 0
   for (const sub of subs) {
+    if (!isAllowedPushEndpoint(sub.endpoint)) {
+      try { await prisma.personPushSubscription.delete({ where: { id: sub.id } }); pruned++ } catch {}
+      continue
+    }
     try {
       await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, body)
       sent++
@@ -223,4 +247,4 @@ async function sendPushToPerson(prisma, accountId, userId, payload) {
   return { sent, pruned }
 }
 
-module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType, sendPushToPerson }
+module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType, sendPushToPerson, isAllowedPushEndpoint }

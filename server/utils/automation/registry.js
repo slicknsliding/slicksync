@@ -317,6 +317,22 @@ const WEBHOOK_REFUSALS = {
   'invalid url': 'Webhook redirected to an invalid address',
 }
 
+const { setAccountSyncKeys } = require('../accountSync')
+const { updateAccountSyncKey } = require('../accountSyncKey')
+
+// A promotion swaps two keys, so running it twice undoes it. Two events from
+// one failure can both reach the action; a swap this recent stands.
+const PROMOTE_DEBOUNCE_MS = 5 * 60 * 1000
+async function promotedRecently(prisma, accountId, syncKey, id) {
+  try {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') cfg = JSON.parse(cfg)
+    const at = cfg && cfg[syncKey] && cfg[syncKey][id] && cfg[syncKey][id].at
+    return !!at && Date.now() - new Date(at).getTime() < PROMOTE_DEBOUNCE_MS
+  } catch { return false }
+}
+
 const ACTIONS = {
   notify: {
     label: 'Send a notification',
@@ -377,18 +393,23 @@ const ACTIONS = {
         if (!HEADER_NAME.test(key) || /[\r\n\0]/.test(value)) throw new Error(`Invalid header "${key.slice(0, 40)}"`)
         headers[key] = value
       }
+      // Rule-written headers (API keys, tokens) belong to the URL the rule
+      // names; a redirect to another origin must not carry them along.
+      const customHeaderNames = Object.keys(headers).filter((h) => h.toLowerCase() !== 'content-type')
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
       try {
         let res
         try {
-          res = await safeFetch(url, { method: 'POST', headers, body: JSON.stringify(payload || {}), signal: controller.signal }, policy)
+          res = await safeFetch(url, { method: 'POST', headers, body: JSON.stringify(payload || {}), signal: controller.signal }, { ...policy, dropHeadersCrossOrigin: customHeaderNames })
         } catch (e) {
           const refused = WEBHOOK_REFUSALS[e?.message]
           if (refused) throw new Error(typeof refused === 'function' ? refused(policy) : refused)
           throw e
         }
+        // Only the status matters; don't leave the response body open.
+        try { await res.body?.cancel() } catch {}
         if (!res.ok) throw new Error(`Webhook returned ${res.status}`)
         return `Called webhook (${res.status})${ignored.length ? `; not sent: ${ignored.join(', ')}` : ''}`
       } finally {
@@ -477,6 +498,13 @@ const ACTIONS = {
         const backup = await prisma.vaultEntry.findFirst({ where: { id: backupId, accountId } })
         if (!backup) throw new Error('The backup credential no longer exists')
 
+        // Two events for one failure (check_failed and failover_activated)
+        // can both run this action. A second swap would put the dead key
+        // back as primary, so a promotion made moments ago stands.
+        if (await promotedRecently(prisma, accountId, 'vaultPromotions', entry.id)) {
+          return `"${entry.name}" was already promoted a moment ago - nothing to do`
+        }
+
         let oldSecret = null, newSecret = null
         try { oldSecret = decrypt(entry.encryptedSecret, reqLike) } catch {}
         try { newSecret = decrypt(backup.encryptedSecret, reqLike) } catch {}
@@ -494,12 +522,10 @@ const ACTIONS = {
         // trip: when the demoted key (now sitting in the backup entry)
         // passes a check again, the secrets swap back automatically.
         try {
-          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-          let cfg2 = acc?.sync
-          if (typeof cfg2 === 'string') { try { cfg2 = JSON.parse(cfg2) } catch { cfg2 = {} } }
-          if (!cfg2 || typeof cfg2 !== 'object') cfg2 = {}
-          cfg2.vaultPromotions = { ...(cfg2.vaultPromotions || {}), [entry.id]: { backupId: backup.id, at: new Date().toISOString() } }
-          await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg2) } })
+          // Fresh read, one key: nothing else in the settings is ours to write.
+          await updateAccountSyncKey(prisma, accountId, 'vaultPromotions', (cur) => ({
+            ...(cur || {}), [entry.id]: { backupId: backup.id, at: new Date().toISOString() },
+          }))
         } catch (e) { console.warn('[Automation] promotion stamp failed:', e?.message) }
 
         let rotated = 0
@@ -528,16 +554,30 @@ const ACTIONS = {
       const backupKey = typeof cfg[`${field}Backup`] === 'string' ? cfg[`${field}Backup`].trim() : ''
       if (!backupKey) throw new Error(`No backup ${payload?.providerLabel || provider} key is configured to promote`)
 
-      cfg[field] = backupKey
-      cfg[`${field}Backup`] = primary // the dead key becomes the backup - kept, not discarded
+      // Same double-run guard as the Vault path: a second swap right after
+      // the first would put the failed key back as primary.
+      const stamp = cfg.promotedKeys && cfg.promotedKeys[provider] && cfg.promotedKeys[provider].at
+      if (stamp && Date.now() - new Date(stamp).getTime() < PROMOTE_DEBOUNCE_MS) {
+        return `The ${payload?.providerLabel || provider} key was already promoted a moment ago - nothing to do`
+      }
+
       // Stamped so the daily key check can swap back automatically the
-      // moment the demoted original passes a check again.
-      cfg.promotedKeys = { ...(cfg.promotedKeys || {}), [provider]: { at: new Date().toISOString() } }
+      // moment the demoted original passes a check again. Only the keys this
+      // action owns are written (on a fresh read - see accountSync.js).
+      const keys = {
+        [field]: backupKey,
+        [`${field}Backup`]: primary, // the dead key becomes the backup - kept, not discarded
+        promotedKeys: { ...(cfg.promotedKeys || {}), [provider]: { at: new Date().toISOString() } },
+      }
       // Reset this provider's health so lookups stop routing around a
       // "failed primary" that is now the working key, and the next check
       // records the truth fresh.
-      if (cfg.keyHealth && cfg.keyHealth[provider]) delete cfg.keyHealth[provider]
-      await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg) } })
+      if (cfg.keyHealth && cfg.keyHealth[provider]) {
+        const health = { ...cfg.keyHealth }
+        delete health[provider]
+        keys.keyHealth = health
+      }
+      await setAccountSyncKeys(prisma, accountId, keys)
 
       let rotated = 0
       if (primary && primary !== backupKey) {
