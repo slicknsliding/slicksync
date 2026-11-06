@@ -295,6 +295,14 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     return decoded?.provider === 'jellyfin' && decoded?.sub === expectedUserId
   }
 
+  function setPortalImageCookie(req, res, user) {
+    try {
+      const { portalImageCookie, PORTAL_IMAGE_COOKIE } = require('../utils/portalImageCookie')
+      const value = portalImageCookie.sign(user.id, user.accountId || DEFAULT_ACCOUNT_ID, JWT_SECRET)
+      res.cookie(PORTAL_IMAGE_COOKIE, value, { httpOnly: true, sameSite: 'lax', secure: !!req.secure, path: '/api', maxAge: 30 * 24 * 60 * 60 * 1000 })
+    } catch { /* pictures fall back to failing; the page itself still works */ }
+  }
+
   // Stremio portal sessions work the same way. The person's Stremio key is
   // checked once, at sign-in, and stays on the server; the browser keeps only
   // this token, which works nowhere but here and runs out. A browser still
@@ -1131,6 +1139,12 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         }
         user = fullUser;
       }
+
+      // Posters and profile pictures load through /api/img and /api/poster,
+      // as plain <img> requests that cannot carry the portal's token. This
+      // cookie lets those two - and nothing else - through the sign-in gate
+      // for someone whose identity was just checked above.
+      setPortalImageCookie(req, res, user);
 
       // The groups they are in, by name, for their Settings page.
       const theirGroups = await prisma.group.findMany({
