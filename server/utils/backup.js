@@ -157,7 +157,7 @@ async function writeBackupFile(prisma, data, labelSuffix = '') {
   const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
   const stamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0]
   const filename = path.join(BACKUP_DIR, `config-backup${labelSuffix}-${stamp}.json`)
-  fs.writeFileSync(filename, JSON.stringify(data, null, 2), 'utf8')
+  fs.writeFileSync(filename, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 })
   if (!QUIET) console.log(`📦 Backup written: ${filename}`)
   try {
     const result = validateBackupData(data)
@@ -184,7 +184,10 @@ async function writeBackupFile(prisma, data, labelSuffix = '') {
     if (uploaded?.ok === false && prisma) {
       await notifyBackupProblem(prisma, `⚠️ Off-site backup failed: ${path.basename(filename)}`, 'The copy on this server is fine. Check the remote settings under Tasks.')
     }
-    pruneLocalBackups(BACKUP_DIR)
+    // One account's backups on an instance serving many: keep only that
+    // account's newest, never trimming anyone else's.
+    if (labelSuffix) pruneAccountBackups(labelSuffix.replace(/^-/, ''))
+    else pruneLocalBackups(BACKUP_DIR)
   } catch (targetErr) {
     if (!QUIET) console.warn('Backup target step failed:', targetErr?.message || targetErr)
   }
@@ -277,9 +280,45 @@ function writeSafetyCopy(data, labelSuffix = '') {
   ensureBackupDir()
   const stamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0]
   const filename = path.join(BACKUP_DIR, `config-backup${labelSuffix}-${stamp}.json`)
-  fs.writeFileSync(filename, JSON.stringify(data, null, 2), 'utf8')
+  fs.writeFileSync(filename, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 })
   fs.writeFileSync(validationPathFor(filename), JSON.stringify(validateBackupData(data), null, 2), 'utf8')
   return path.basename(filename)
+}
+
+// Backups of one account on a public instance, newest first. Their names are
+// config-backup-<accountId>-<YYYY-MM-DDTHH-MM-SS>.json (plus a sidecar).
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function accountBackupFiles(accountId) {
+  if (!accountId) return []
+  const own = new RegExp(`^config-backup-${escapeRe(accountId)}-\\d{4}-\\d{2}-\\d{2}T[\\d-]+\\.json$`)
+  try {
+    return fs.readdirSync(BACKUP_DIR)
+      .filter((f) => own.test(f))
+      .map((f) => ({ full: path.join(BACKUP_DIR, f), mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+  } catch {
+    return []
+  }
+}
+function removeBackupFile(full) {
+  try { fs.unlinkSync(full) } catch { /* already gone */ }
+  try { fs.unlinkSync(validationPathFor(full)) } catch { /* no sidecar */ }
+}
+// These copies hold the account's sign-ins in readable form, so they are
+// kept to a bounded number: the operator's "keep" setting, or 14.
+const ACCOUNT_BACKUPS_KEPT = 14
+function pruneAccountBackups(accountId) {
+  let keep = ACCOUNT_BACKUPS_KEPT
+  try { keep = require('./backupTargets').getSettings().keepLocal || ACCOUNT_BACKUPS_KEPT } catch { /* default */ }
+  const files = accountBackupFiles(accountId)
+  for (const file of files.slice(keep)) removeBackupFile(file.full)
+  return Math.max(0, files.length - keep)
+}
+/** Every backup of an account that is being deleted. */
+function removeAccountBackups(accountId) {
+  const files = accountBackupFiles(accountId)
+  for (const file of files) removeBackupFile(file.full)
+  return files.length
 }
 
 /**
@@ -326,6 +365,8 @@ module.exports = {
   nextBackupAt,
   writeSafetyCopy,
   BACKUP_DIR,
+  pruneAccountBackups,
+  removeAccountBackups,
   ensureBackupDir,
   readBackupFrequencyDays,
   writeBackupFrequencyDays,

@@ -180,6 +180,22 @@ async function getRedirectedUrl(url) {
   }
 }
 
+// A reply can list thousands of streams; their links are followed a few at
+// a time, in order, instead of all at once.
+const STREAM_LOOKUPS_AT_ONCE = 8;
+async function mapLimited(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 /**
  * Process a stream response to encrypt stream URLs
  * This transforms the streams array to use encrypted proxy URLs
@@ -196,7 +212,7 @@ async function processStreamResponse(data, serverKey, proxyBaseUrl) {
     // Handle streams array
     if (Array.isArray(json.streams)) {
       // Process streams in parallel
-      json.streams = await Promise.all(json.streams.map(async (stream) => {
+      json.streams = await mapLimited(json.streams, STREAM_LOOKUPS_AT_ONCE, async (stream) => {
         if (!stream || typeof stream !== 'object') {
           return stream;
         }
@@ -238,7 +254,7 @@ async function processStreamResponse(data, serverKey, proxyBaseUrl) {
         }
         
         return stream;
-      }));
+      });
     }
     
     return JSON.stringify(json);

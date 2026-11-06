@@ -15,7 +15,7 @@ const net = require('net')
 const http = require('http')
 const https = require('https')
 const zlib = require('zlib')
-const { Readable, PassThrough, pipeline } = require('stream')
+const { Readable, PassThrough, Transform, pipeline } = require('stream')
 
 // Taken now so a test that swaps global.fetch for a stand-in is still
 // answered by it; nothing in production ever replaces it.
@@ -179,6 +179,18 @@ function toRequestBody(body) {
  * TLS still checks the certificate against the real hostname. Redirects are
  * not followed: safeFetch does that, hop by hop.
  */
+const MAX_UNPACKED_BYTES = Number(process.env.MAX_UNPACKED_BYTES) || 100 * 1024 * 1024
+function inflateCap(maxBytes) {
+  let seen = 0
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      seen += chunk.length
+      if (seen > maxBytes) return cb(new Error('response too large'))
+      cb(null, chunk)
+    },
+  })
+}
+
 function pinnedRequest(urlString, options, allowPrivate) {
   const url = new URL(urlString)
   const secure = url.protocol === 'https:'
@@ -215,7 +227,10 @@ function pinnedRequest(urlString, options, allowPrivate) {
       const encoding = String(incoming.headers['content-encoding'] || '').toLowerCase()
       const unpack = { gzip: zlib.createGunzip, 'x-gzip': zlib.createGunzip, deflate: zlib.createInflate, br: zlib.createBrotliDecompress }[encoding]
       if (unpack) {
-        stream = pipeline(incoming, unpack(), new PassThrough(), () => {})
+        // A compressed reply is unpacked with a ceiling: a few kilobytes can
+        // unpack to gigabytes. Video is never sent compressed, so playback
+        // is not affected.
+        stream = pipeline(incoming, unpack(), inflateCap(MAX_UNPACKED_BYTES), new PassThrough(), () => {})
         responseHeaders.delete('content-encoding')
         responseHeaders.delete('content-length')
       }

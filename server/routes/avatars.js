@@ -99,7 +99,8 @@ module.exports = ({ imageUpload, prisma }) => {
         const address = `/uploads/avatars/${filename}`;
         const others = { avatarUrl: address, NOT: { accountId: req.appAccountId || 'default' } };
         const inUse = (await prisma.user.count({ where: others })) + (await prisma.group.count({ where: others }))
-          + (await prisma.appAccount.count({ where: { avatarUrl: address, NOT: { id: req.appAccountId || 'default' } } }));
+          + (await prisma.appAccount.count({ where: { avatarUrl: address, NOT: { id: req.appAccountId || 'default' } } }))
+          + (prisma.jellyfinProfile ? await prisma.jellyfinProfile.count({ where: others }) : 0);
         if (inUse) return res.status(403).json({ error: 'That picture is not yours to remove' });
       }
       const filepath = path.join(AVATAR_DIR, filename);
