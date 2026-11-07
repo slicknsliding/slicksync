@@ -64,6 +64,8 @@ type PillAlign = 'left' | 'center' | 'right';
 type PillRowId = 'left' | 'right' | 'above' | 'below';
 const JUSTIFY: Record<PillAlign, string> = { left: 'justify-start', center: 'justify-center', right: 'justify-end' };
 const SPOT_ALIGNS: PillAlign[] = ['left', 'center', 'right'];
+/** A stacked row lines its pills up the same way, one under the other. */
+const ITEMS: Record<PillAlign, string> = { left: 'items-start', center: 'items-center', right: 'items-end' };
 const SPOT_LABEL: Record<PillAlign, string> = { left: 'Left', center: 'Center', right: 'Right' };
 
 /** One place a dragged pill can land; it lights up while the pill is over it. */
@@ -77,10 +79,14 @@ function PillSpot({ row, align }: { row: PillRowId; align: PillAlign }) {
  * spots to drop on (Left, Center, Right); otherwise just the pills, lined up
  * the way the last drop said. An empty row only shows while dragging.
  */
-function PillRow({ row, align, dragging, wide, empty, children }: {
+function PillRow({ row, align, dragging, wide, empty, stacked, onStack, children }: {
   row: PillRowId;
   align: PillAlign;
   dragging: boolean;
+  /** One pill under the other instead of side by side. */
+  stacked: boolean;
+  /** Set while arranging a row of two or more pills: shows the Side by side / One under the other switch. */
+  onStack?: (stacked: boolean) => void;
   /** A row of its own (left of the title, or a phone): it spans the width, so alignment shows. */
   wide: boolean;
   empty: boolean;
@@ -91,7 +97,19 @@ function PillRow({ row, align, dragging, wide, empty, children }: {
   const width = wide ? 'w-full' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
   return (
     <div data-ph-keep className={`collection-pills flex flex-col gap-2 ${width}`}>
-      {!empty && <div className={`flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
+      {!empty && <div className={stacked ? `flex flex-col gap-3 ${ITEMS[align]}` : `flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
+      {onStack && !dragging && (
+        <div role="group" aria-label="How the pills sit" className={`flex ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+          <div className="inline-flex p-[3px] rounded-full border" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+            {([[false, '⇆ Side by side'], [true, '⇅ One under the other']] as const).map(([value, label]) => (
+              <button key={label} type="button" aria-pressed={stacked === value} onClick={() => onStack(value)}
+                className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${stacked === value ? 'seg-on' : 'seg-off'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {dragging && <div className="grid grid-cols-3 gap-2 w-full">{SPOT_ALIGNS.map((a) => <PillSpot key={a} row={row} align={a} />)}</div>}
     </div>
   );
@@ -457,6 +475,9 @@ export default function ListsPage() {
     : collectionArrange.sideOf(key));
   const alignDefault = (row: PillRowId): PillAlign => (row === 'right' || row === 'below' ? 'right' : 'left');
   const alignOf = (row: PillRowId) => collectionArrange.placeOf<PillAlign>(`${phone ? 'phone-' : ''}align-${row}`, alignDefault(row));
+  // Side by side unless the row was set to one under the other (phone and wider screens saved apart).
+  const stackKey = (row: PillRowId) => `${phone ? 'phone-' : ''}stack-${row}`;
+  const stackedOf = (row: PillRowId) => collectionArrange.placeOf<'side' | 'stack'>(stackKey(row), 'side') === 'stack';
   // While a pill is being dragged, every row shows where it can land.
   const [pillDragging, setPillDragging] = useState(false);
   const pillPrefix = collectionArrange.sort.prefix;
@@ -530,6 +551,10 @@ export default function ListsPage() {
       key={row}
       row={row}
       align={alignOf(row)}
+      stacked={stackedOf(row)}
+      onStack={collectionArrange.arranging && collectionArrange.shown.filter((k) => rowOf(k) === row).length >= 2
+        ? (on) => collectionArrange.setPlace(stackKey(row), on ? 'stack' : 'side', 'side')
+        : undefined}
       dragging={pillDragging && collectionArrange.arranging}
       wide={phone || row === 'left'}
       empty={!collectionArrange.shown.some((k) => rowOf(k) === row)}
