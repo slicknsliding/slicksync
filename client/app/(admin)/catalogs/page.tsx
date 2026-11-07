@@ -100,7 +100,7 @@ function PillRow({ row, align, dragging, wide, empty, stacked, onStack, children
       {!empty && <div className={stacked ? `flex flex-col gap-3 ${ITEMS[align]}` : `flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
       {onStack && !dragging && (
         <div role="group" aria-label="How the pills sit" className={`flex ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
-          <div className="inline-flex p-[3px] rounded-full border" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+          <div className="inline-flex p-[3px] rounded-full border" style={{ borderColor: 'var(--color-surface-border)', background: 'var(--color-surface)' }}>
             {([[false, '⇆ Side by side'], [true, '⇅ One under the other']] as const).map(([value, label]) => (
               <button key={label} type="button" aria-pressed={stacked === value} onClick={() => onStack(value)}
                 className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${stacked === value ? 'seg-on' : 'seg-off'}`}>
