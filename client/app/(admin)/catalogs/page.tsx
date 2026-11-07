@@ -93,8 +93,8 @@ function PillRow({ row, align, dragging, wide, empty, stacked, onStack, children
   children: React.ReactNode;
 }) {
   if (empty && !dragging) return null;
-  // Beside the bell (right of the title on a wide screen) the row only spans more than its pills when it isn't pushed right.
-  const width = wide ? 'w-full' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
+  // On a computer the rows sit under the title, left row taking the spare width and the right row at the end.
+  const width = wide ? 'w-full' : row === 'left' ? 'flex-1 min-w-0' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
   return (
     <div data-ph-keep className={`collection-pills flex flex-col gap-2 ${width}`}>
       {!empty && <div className={stacked ? `flex flex-col gap-3 ${ITEMS[align]}` : `flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
@@ -556,20 +556,24 @@ export default function ListsPage() {
         ? (on) => collectionArrange.setPlace(stackKey(row), on ? 'stack' : 'side', 'side')
         : undefined}
       dragging={pillDragging && collectionArrange.arranging}
-      wide={phone || row === 'left'}
+      wide={phone}
       empty={!collectionArrange.shown.some((k) => rowOf(k) === row)}
     >
       {collectionArrange.shown.filter((k) => rowOf(k) === row).map(pillItem)}
     </PillRow>
   ));
   const anyIn = (row: PillRowId) => collectionArrange.shown.some((k) => rowOf(k) === row) || (pillDragging && collectionArrange.arranging);
-  const collectionsButtons = !isTV ? (anyIn(phone ? 'above' : 'left') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
+  // A computer keeps the title where every other page has it: the pills get their own line under it.
+  const pillsUnderTitle = !isTV && !phone && (anyIn('left') || anyIn('right'))
+    ? <div className="flex flex-wrap items-start gap-4 mb-5">{rowsOf(['left', 'right'])}</div>
+    : undefined;
+  const collectionsButtons = !isTV ? (phone && anyIn('above') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
       {onTV(nuvioCollectionsButton, () => router.push('/catalogs/nuvio-collections'))}
       {onTV(aiostreamsCollectionsButton, () => router.push('/catalogs/aiostreams-collections'))}
     </div>
   );
-  const rightPills = !isTV && anyIn(phone ? 'below' : 'right') ? rowsOf([phone ? 'below' : 'right'])[0] : undefined;
+  const rightPills = !isTV && phone && anyIn('below') ? rowsOf(['below'])[0] : undefined;
 
   return (
     <Wrapper>
@@ -583,11 +587,12 @@ export default function ListsPage() {
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} trailing={phone ? undefined : rightPills} />}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} />}
         {layoutMode === 'nebula' && phone && rightPills && <div className="-mt-2 mb-5">{rightPills}</div>}
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>
+          {pillsUnderTitle}
           {/* Wraps on a phone: the three buttons are wider than one line there. */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-2 shrink-0">
