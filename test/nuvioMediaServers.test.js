@@ -17,7 +17,7 @@ function loadWith(calls, { quickConnectUserId = 'jfuser1' } = {}) {
       if (path === '/System/Info/Public') return { Id: 'server-abc', ServerName: 'Home Jellyfin' }
       if (path.startsWith('/QuickConnect/Authorize')) return true
       if (path.startsWith('/Users/') && path.endsWith('/Views')) {
-        return { Items: [{ Id: 'lib-m', Name: 'Movies', CollectionType: 'movies' }, { Id: 'lib-s', Name: 'Shows', CollectionType: 'tvshows' }] }
+        return { Items: [{ Id: 'lib-m', Name: 'Movies', CollectionType: 'movies' }, { Id: 'lib-s', Name: 'Shows', CollectionType: 'tvshows' }, { Id: 'lib-tv', Name: 'Live TV', CollectionType: 'livetv' }, { Id: 'lib-p', Name: 'Playlists', CollectionType: 'playlists', Type: 'ManualPlaylistsFolder' }] }
       }
       if (path === '/Users/Me') {
         if (opts.token === 'dead-token') throw Object.assign(new Error('nope'), { status: 401 })
@@ -171,4 +171,13 @@ test('library kinds map to the ones Nuvio takes', () => {
   assert.equal(mod.libraryKind('boxsets'), 'collection')
   assert.equal(mod.libraryKind('music'), 'mixed')
   assert.equal(mod.libraryKind(undefined), 'mixed')
+})
+
+test('Live TV and the Playlists folder stay out of Nuvio', () => {
+  const mod = loadWith([])
+  assert.equal(mod.skipsLibrary({ CollectionType: 'livetv' }), true)
+  assert.equal(mod.skipsLibrary({ CollectionType: 'playlists' }), true)
+  assert.equal(mod.skipsLibrary({ Type: 'ManualPlaylistsFolder' }), true)
+  assert.equal(mod.skipsLibrary({ CollectionType: 'movies' }), false)
+  assert.equal(mod.skipsLibrary({ CollectionType: 'homevideos' }), false)
 })

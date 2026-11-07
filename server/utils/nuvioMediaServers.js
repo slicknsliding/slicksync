@@ -45,6 +45,14 @@ function libraryKind(collectionType) {
   return 'mixed'
 }
 
+// Live TV and the Playlists folder are not libraries Nuvio can browse: passed
+// through as "mixed" they show up there as a broken library, so they stay out.
+function skipsLibrary(item) {
+  const t = String(item?.CollectionType || '').toLowerCase()
+  const type = String(item?.Type || '').toLowerCase()
+  return t === 'livetv' || t === 'playlists' || type === 'manualplaylistsfolder' || type === 'playlistsfolder'
+}
+
 /**
  * The person's two sign-ins, as rows createProvider takes: the Nuvio one and
  * the Jellyfin-compatible one, each either their own or the one a merge gave
@@ -162,7 +170,7 @@ async function librariesFor(jellyfin, token) {
   const out = []
   for (const item of items) {
     const id = String(item?.Id || '').trim()
-    if (!id || seen.has(id) || out.length >= 500) continue
+    if (!id || seen.has(id) || out.length >= 500 || skipsLibrary(item)) continue
     seen.add(id)
     out.push({ id: id.slice(0, 256), name: String(item?.Name || '').slice(0, 256), kind: libraryKind(item?.CollectionType), selected: true })
   }
@@ -252,4 +260,4 @@ async function setEnabled(prisma, { createProvider, decrypt, req }, userId, enab
   return { added: name }
 }
 
-module.exports = { describe, setEnabled, signInsFor, entryId, libraryKind, isOurs, OUR_PREFIX, NUVIO_DEVICE_NAME }
+module.exports = { describe, setEnabled, signInsFor, entryId, libraryKind, skipsLibrary, isOurs, OUR_PREFIX, NUVIO_DEVICE_NAME }
