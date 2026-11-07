@@ -14,6 +14,8 @@ interface TVLinkProps extends NextLinkProps {
    *  specific size (w-full, h-full, flex-1, etc.), since TVFocusable adds
    *  one extra div between this Link and its parent on TV. */
   focusWrapperClassName?: string;
+  /** A link inside a line of text (a <p>): its TV stop is a span, not a div. */
+  inline?: boolean;
 }
 
 // Drop-in replacement for next/link's <Link> - D-pad focusable and scrolls
@@ -22,7 +24,7 @@ interface TVLinkProps extends NextLinkProps {
 // rest of the app - the "isTV ? <TVFocusable onEnterPress={...}><Link>...
 // </Link></TVFocusable> : <Link>...</Link>" ternary was getting repeated at
 // every single nav-link call site.
-export function TVLink({ href, children, className, style, focusWrapperClassName, ...rest }: TVLinkProps) {
+export function TVLink({ href, children, className, style, focusWrapperClassName, inline, ...rest }: TVLinkProps) {
   const isTV = useIsTV();
   const router = useRouter();
 
@@ -36,6 +38,7 @@ export function TVLink({ href, children, className, style, focusWrapperClassName
 
   return (
     <TVFocusable
+      inline={inline}
       className={focusWrapperClassName}
       onEnterPress={() => {
         if (typeof href === 'string') router.push(href);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShareIcon,
@@ -32,6 +32,8 @@ import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeSharesV2, SHARE_SECTIONS } from '@/components/v2/MeSharesV2';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 type TabType = 'received' | 'sent';
 type ViewMode = 'grid' | 'list';
@@ -64,6 +66,12 @@ export default function UserSharesPage() {
   const v2 = design === 'v2' && !isTV;
   const v2Arrange = usePageArrangement('shares', [...SHARE_SECTIONS]);
   const [selecting, setSelecting] = useState(false);
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  const focusSearch = () => document.getElementById('shares-search')?.focus();
+  // On a TV the remote reaches a button or tile only through TVFocusable; OK runs
+  // the same handler a click would. Anywhere else the node is returned as it is.
+  const tv = (node: ReactNode, onEnter: () => void, className?: string, key?: string) =>
+    isTV ? <TVFocusable key={key} className={className} onEnterPress={onEnter}>{node}</TVFocusable> : node;
 
   // Load view mode from localStorage
   useEffect(() => {
@@ -368,7 +376,7 @@ export default function UserSharesPage() {
         }}
       >
         {/* Poster */}
-        <div className="aspect-[2/3] relative overflow-hidden">
+        {tv(<div className="aspect-[2/3] relative overflow-hidden">
           {/* Selection indicator */}
           {isSelected && (
             <div
@@ -417,7 +425,7 @@ export default function UserSharesPage() {
               New
             </div>
           )}
-        </div>
+        </div>, () => handleToggleSelect(share.id))}
 
         {/* The title, and what it is, under the poster */}
         <div className="px-2 pt-2 pb-1.5 text-center min-w-0">
@@ -431,7 +439,7 @@ export default function UserSharesPage() {
           style={{ borderColor: 'var(--color-surface-border)' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
+          {tv(<button
             onClick={() => handleAddToLibrary(share)}
             disabled={actionLoading === share.id}
             className={`flex-1 py-2 flex items-center justify-center transition-colors hover:bg-surface-hover ${inLibrary ? 'text-primary' : 'text-muted'}`}
@@ -442,9 +450,9 @@ export default function UserSharesPage() {
             ) : (
               <BookmarkIcon className="w-4 h-4" />
             )}
-          </button>
+          </button>, () => handleAddToLibrary(share), 'flex-1 flex')}
           {type === 'received' && !share.viewedAt && (
-            <button
+            tv(<button
               onClick={() => handleMarkViewed(share.id)}
               disabled={actionLoading === share.id}
               className="flex-1 py-2 flex items-center justify-center transition-colors hover:bg-surface-hover"
@@ -452,9 +460,9 @@ export default function UserSharesPage() {
               style={{ color: 'var(--color-success)' }}
             >
               <CheckIcon className="w-4 h-4" />
-            </button>
+            </button>, () => handleMarkViewed(share.id), 'flex-1 flex')
           )}
-          <button
+          {tv(<button
             onClick={() => handleRemoveShare(share.id, type)}
             disabled={actionLoading === share.id}
             className="flex-1 py-2 flex items-center justify-center transition-colors hover:bg-surface-hover"
@@ -462,7 +470,7 @@ export default function UserSharesPage() {
             style={{ color: 'var(--color-error)' }}
           >
             <TrashIcon className="w-4 h-4" />
-          </button>
+          </button>, () => handleRemoveShare(share.id, type), 'flex-1 flex')}
         </div>
 
         {/* Info */}
@@ -525,7 +533,7 @@ export default function UserSharesPage() {
         </div>
 
         {/* Info */}
-        <div className="flex-1 min-w-0">
+        {tv(<div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
               {type === 'received' ? 'From' : 'To'}
@@ -565,11 +573,11 @@ export default function UserSharesPage() {
               {formatRelativeTime(share.createdAt)}
             </span>
           </div>
-        </div>
+        </div>, () => handleToggleSelect(share.id), 'flex-1 min-w-0')}
 
         {/* Actions */}
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
+          {tv(<button
             onClick={() => handleAddToLibrary(share)}
             disabled={actionLoading === share.id}
             className={`p-2 rounded-lg transition-colors ${inLibrary ? 'text-primary' : 'text-muted'}`}
@@ -583,9 +591,9 @@ export default function UserSharesPage() {
             ) : (
               <BookmarkIcon className="w-5 h-5" />
             )}
-          </button>
+          </button>, () => handleAddToLibrary(share))}
           {type === 'received' && !share.viewedAt && (
-            <button
+            tv(<button
               onClick={() => handleMarkViewed(share.id)}
               disabled={actionLoading === share.id}
               className="p-2 rounded-lg transition-colors"
@@ -593,9 +601,9 @@ export default function UserSharesPage() {
               title="Mark as viewed"
             >
               <CheckIcon className="w-5 h-5" />
-            </button>
+            </button>, () => handleMarkViewed(share.id))
           )}
-          <button
+          {tv(<button
             onClick={() => handleRemoveShare(share.id, type)}
             disabled={actionLoading === share.id}
             className="p-2 rounded-lg transition-colors"
@@ -603,7 +611,7 @@ export default function UserSharesPage() {
             title="Remove"
           >
             <TrashIcon className="w-5 h-5" />
-          </button>
+          </button>, () => handleRemoveShare(share.id, type))}
         </div>
 
         {/* Selection indicator */}
@@ -624,12 +632,13 @@ export default function UserSharesPage() {
   const searchAndFilter = (
     <>
         {/* Search */}
-        <div 
+        {tv(<div 
           className="flex items-center gap-2 px-3 py-2 rounded-lg flex-1 min-w-48"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
         >
           <MagnifyingGlassIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
           <input
+            id="shares-search"
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -637,12 +646,12 @@ export default function UserSharesPage() {
             className="flex-1 bg-transparent text-sm outline-none"
             style={{ color: 'var(--color-text)' }}
           />
-        </div>
+        </div>, focusSearch, 'flex-1 min-w-48')}
 
         {/* User Filter */}
         {filterUsers.length > 0 && (
           <div className="relative">
-            <button
+            {tv(<button
               onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
@@ -650,7 +659,7 @@ export default function UserSharesPage() {
               <FunnelIcon className="w-4 h-4" />
               {userFilter === 'all' ? 'All Users' : userFilter}
               <ChevronDownIcon className="w-4 h-4" />
-            </button>
+            </button>, () => setIsFilterDropdownOpen(!isFilterDropdownOpen))}
             {isFilterDropdownOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsFilterDropdownOpen(false)} />
@@ -658,22 +667,22 @@ export default function UserSharesPage() {
                   className="absolute top-full right-0 mt-1 py-1 rounded-lg shadow-lg z-20 min-w-40"
                   style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
                 >
-                  <button
+                  {tv(<button
                     onClick={() => { setUserFilter('all'); setIsFilterDropdownOpen(false); }}
                     className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
                     style={{ color: userFilter === 'all' ? 'var(--color-primary)' : 'var(--color-text)' }}
                   >
                     All Users
-                  </button>
+                  </button>, () => { setUserFilter('all'); setIsFilterDropdownOpen(false); })}
                   {filterUsers.map((user) => (
-                    <button
+                    tv(<button
                       key={user.username}
                       onClick={() => { setUserFilter(user.username); setIsFilterDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
                       style={{ color: userFilter === user.username ? 'var(--color-primary)' : 'var(--color-text)' }}
                     >
                       {user.username}
-                    </button>
+                    </button>, () => { setUserFilter(user.username); setIsFilterDropdownOpen(false); }, undefined, user.username)
                   ))}
                 </div>
               </>
@@ -697,23 +706,23 @@ export default function UserSharesPage() {
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
             {selectedShares.size} selected
           </span>
-          <button
+          {tv(<button
             onClick={handleSelectAll}
             className="text-sm underline"
             style={{ color: 'var(--color-primary)' }}
           >
             Select All
-          </button>
-          <button
+          </button>, handleSelectAll)}
+          {tv(<button
             onClick={handleDeselectAll}
             className="text-sm underline"
             style={{ color: 'var(--color-text-muted)' }}
           >
             Deselect All
-          </button>
+          </button>, handleDeselectAll)}
           <div className="flex-1" />
           {activeTab === 'received' && (
-            <button
+            tv(<button
               onClick={handleBulkAddToLibrary}
               disabled={actionLoading === 'bulk'}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium"
@@ -721,9 +730,9 @@ export default function UserSharesPage() {
             >
               <BookmarkIcon className="w-4 h-4" />
               Add to Library
-            </button>
+            </button>, handleBulkAddToLibrary)
           )}
-          <button
+          {tv(<button
             onClick={handleBulkDelete}
             disabled={actionLoading === 'bulk'}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium"
@@ -731,7 +740,7 @@ export default function UserSharesPage() {
           >
             <TrashIcon className="w-4 h-4" />
             Delete
-          </button>
+          </button>, handleBulkDelete)}
         </motion.div>
       )}
 
@@ -847,6 +856,7 @@ export default function UserSharesPage() {
   }
 
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       <UserPageHeader
         title="Shares"
@@ -864,7 +874,7 @@ export default function UserSharesPage() {
           className="flex p-1 rounded-xl"
           style={{ background: 'var(--color-surface)' }}
         >
-          <button
+          {tv(<button
             onClick={() => { setActiveTab('received'); setSelectedShares(new Set()); }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'received' ? 'seg-on' : 'seg-off'}`}
           >
@@ -877,23 +887,26 @@ export default function UserSharesPage() {
                 {unviewedCount}
               </span>
             )}
-          </button>
-          <button
+          </button>, () => { setActiveTab('received'); setSelectedShares(new Set()); })}
+          {tv(<button
             onClick={() => { setActiveTab('sent'); setSelectedShares(new Set()); }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'sent' ? 'seg-on' : 'seg-off'}`}
           >
             <PaperAirplaneIcon className="w-4 h-4" />
             Sent ({sentShares.length})
-          </button>
+          </button>, () => { setActiveTab('sent'); setSelectedShares(new Set()); })}
         </div>
 
         {searchAndFilter}
 
         {/* View Mode Toggle */}
-        <ViewModeToggle
-          mode={viewMode}
-          onChange={(mode) => setViewMode(mode)}
-        />
+        {tv(
+          <ViewModeToggle
+            mode={viewMode}
+            onChange={(mode) => setViewMode(mode)}
+          />,
+          () => setViewMode(viewMode === 'grid' ? 'list' : 'grid'),
+        )}
       </motion.div>
 
       {bulkBar}
@@ -917,12 +930,16 @@ export default function UserSharesPage() {
           style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}
         >
           {error}
-          <button
-            onClick={() => setError(null)}
-            className="ml-2 underline hover:no-underline"
-          >
-            Dismiss
-          </button>
+          {tv(
+            <button
+              onClick={() => setError(null)}
+              className="ml-2 underline hover:no-underline"
+            >
+              Dismiss
+            </button>,
+            () => setError(null),
+            'inline-block',
+          )}
         </motion.div>
       )}
 
@@ -979,5 +996,6 @@ export default function UserSharesPage() {
 
       {membersBox}
     </div>
+    </Wrapper>
   );
 }

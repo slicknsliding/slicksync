@@ -84,6 +84,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Optionally add conditions - these narrow when the rule actually fires. Each condition row has its own remove button on the right if you add one by mistake.',
       'Choose an action: send a notification (push/bell/Discord), sync users, enable or disable an addon, move someone in or out of a group, or POST to a webhook URL.',
       'Save. The rule runs from that point on - it does not retroactively fire for things that already happened.',
+      'To try it, press Test on the rule. A small window lists what it will do and asks first; press Run test to go ahead, or Cancel.',
     ],
     details: [
       'Automation runs on the same background engine that already drives notifications and health checks, so it keeps working whether or not a browser is open.',
@@ -91,6 +92,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "The Sync users action runs the same sync as the Sync button, and can target the user from the trigger, one specific user, everyone in a group, or every active user. Paired with a scheduled trigger, that is how you get an unattended weekly sync.",
       "Times use your account timezone (Settings -> Privacy & Display) rather than the server clock, so a rule set for Sunday just after midnight lands on the day you meant.",
       "Each scheduled rule runs on its own time - a rule set for 9am is not affected by another set for 3am.",
+      "Test does the real thing: it skips the \"when\" part and runs every action now, with made-up details - notices really go out and changes really happen. Anything that changes something (a key, an addon, a group, someone's access, a sync) is marked in amber. It asks every time, and each test shows in Run history as a Test run.",
     ],
     tips: [
       'A rule with no conditions fires every time its trigger does - that\'s usually what you want for a daily schedule, and rarely what you want for a per-user event.',
@@ -1687,6 +1689,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Users',
   },
   {
+    id: 'remove-from-your-library',
+    title: 'Taking a title out of your own Library',
+    category: 'Watching & Discover',
+    keywords: ['delete from library', 'remove from library', 'remove title', 'delete title', 'clean up library', 'my library'],
+    answer: 'On your own Library page, press the ⋯ on a poster and pick Delete from library. A small question opens right there: Keep it leaves the title alone, Delete takes it out. To take out several, pick them (Select), press Delete, and answer the same question.',
+    steps: [
+      'Open your Library.',
+      'Press the ⋯ on the poster (in the list view, the bin on the row).',
+      'Pick Delete from library, then press Delete in the question that opens.',
+    ],
+    details: [
+      'For Stremio it comes out of your library in the Stremio app too. For Jellyfin it comes off your favourites and Continue Watching on your Jellyfin server.',
+      'Nuvio libraries can\'t be changed from SlickSync, so there is no Delete for a Nuvio sign-in.',
+      'The ⋯ always shows, on a phone, a computer and a TV. On a TV, Right from a poster lands on its ⋯, and the question opens on Keep it, so pressing OK twice by accident deletes nothing.',
+    ],
+    href: '/user/library',
+    linkLabel: 'Open your Library',
+  },
+  {
     id: 'config-import-export-reset',
     title: 'Importing, exporting, or resetting your Configuration',
     category: 'Health & maintenance',
@@ -1948,6 +1969,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'On iOS, push notifications genuinely do not work from a normal Safari tab - the Home Screen install is required. That is an Apple restriction that applies to every web app, not something specific to SlickSync.',
       'Each installed device is managed separately under Settings → Notifications, so you can rename or revoke one without touching the others.',
       'Once installed, long-press the app icon (or right-click it on desktop) for shortcuts straight to Activity, Discover, or System Health without opening the Dashboard first. If the shortcuts do not appear right away, they show up after the OS re-reads the app manifest - usually the next launch or two.',
+      "If the app opens with no connection and nothing saved on the device yet, it shows a short \"You're offline\" page instead of the browser's error. Press Try again, or just wait: it opens by itself once you are back online.",
       'On Android and desktop, the installed app is also a share target: share a link or title from any other app (IMDb, TMDb, a trailer someone sent) straight to SlickSync and it opens Discover with that title already searched. iPhones do not support web-app share targets at all - that is an iOS platform limitation, not a SlickSync one, so the option simply will not appear in an iPhone share sheet.',
     ],
     related: ['notifications-setup', 'tv-mode'],

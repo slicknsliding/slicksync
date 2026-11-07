@@ -45,7 +45,7 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
     const at = place();
     if (at) setAnchor(at);
   };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
   // The change alert links here with ?aioHistory=1.
   useEffect(() => {

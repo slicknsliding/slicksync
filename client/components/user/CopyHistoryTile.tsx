@@ -5,7 +5,7 @@
 // with a sign-in - with a single one they copy to or from someone else's.
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { TVLink } from '@/components/tv/TVLink';
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
 import { api, type WatchCopySide } from '@/lib/api';
 
@@ -50,7 +50,7 @@ export function CopyHistoryTile({ userId, name }: { userId: string; name: string
   );
   const chip = <span className="text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: 'color-mix(in srgb, var(--color-success) 18%, transparent)', color: 'var(--color-success)' }}>Keep in step: on</span>;
   return (
-    <Link
+    <TVLink
       href={`/users/${encodeURIComponent(userId)}/copy-history`}
       className="mt-3.5 w-full flex items-center gap-3.5 p-3.5 rounded-2xl border transition-colors hover:border-primary"
       style={{ borderColor: 'color-mix(in srgb, var(--color-primary) 45%, var(--color-surface-border))', background: 'color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))' }}
@@ -63,6 +63,6 @@ export function CopyHistoryTile({ userId, name }: { userId: string; name: string
       </span>
       {inStep && <span className="hidden sm:inline">{chip}</span>}
       <ChevronRightIcon className="w-[18px] h-[18px] text-muted shrink-0" />
-    </Link>
+    </TVLink>
   );
 }

@@ -945,7 +945,7 @@ export default function MetricsPage() {
                                       {p.topTitles.map((t) => (
                                         <div key={t.key} title={t.name} className="w-14 shrink-0">
                                           <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface border border-default">
-                                            {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
+                                            {t.poster && <img src={t.poster} alt={t.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />}
                                           </div>
                                           <p className="text-[10px] text-muted mt-1 break-words">{t.name}</p>
                                         </div>
@@ -1003,7 +1003,7 @@ export default function MetricsPage() {
                                     <div key={item.key} title={item.name || undefined} className="w-16 shrink-0">
                                       <div className="w-16 h-24 rounded-lg overflow-hidden bg-surface border border-default">
                                         {item.poster && (
-                                          <img src={item.poster} alt={item.name || ''} className="w-full h-full object-cover" />
+                                          <img src={item.poster} alt={item.name || ''} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                         )}
                                       </div>
                                       <p className="text-xs text-muted mt-1 truncate">{item.name}</p>

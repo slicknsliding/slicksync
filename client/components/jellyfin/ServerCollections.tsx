@@ -12,6 +12,8 @@ import { Card, Button, Badge } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { usePageArrangement } from '@/lib/arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { V2DetailHead, V2Tiles } from '@/components/v2/V2Detail';
 import { V2Button, V2Status } from '@/components/v2/V2Bits';
@@ -31,11 +33,20 @@ function ago(iso: string | null) {
 
 type CatalogRow = JellyfinCollectionsView['catalogs'][number];
 
+// TV: one D-pad stop around a button; OK calls the same handler the click
+// does. Renders its children untouched (no wrapper) off TV.
+function TV({ onEnter, className, off, children }: { onEnter: () => void; className?: string; off?: boolean; children: ReactNode }) {
+  const isTV = useIsTV();
+  if (!isTV || off) return <>{children}</>;
+  return <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable>;
+}
+
 function CatalogTile({ c, busy, disabled, onToggle }: { c: CatalogRow; busy: boolean; disabled: boolean; onToggle: () => void }) {
   const { rpdbEnabled } = usePersonalFeatures();
   const src = c.coverTitleId ? posterUrl({ id: c.coverTitleId, poster: c.cover }, rpdbEnabled) : cachedImageUrl(c.cover, 342);
   const here = c.onServer;
   return (
+    <TV onEnter={onToggle} off={busy || disabled} className="[&>button]:w-full">
     <button
       type="button"
       onClick={onToggle}
@@ -72,6 +83,7 @@ function CatalogTile({ c, busy, disabled, onToggle }: { c: CatalogRow; busy: boo
         </p>
       </div>
     </button>
+    </TV>
   );
 }
 
@@ -230,6 +242,7 @@ export function ServerCollections({ server, canSwitch, onSwitch, v2 = false, swi
     <>
       <Card padding="lg" className="mb-6">
         <div className="flex flex-wrap gap-x-6 gap-y-3 items-center justify-between">
+          <TV onEnter={onSwitch} off={!canSwitch}>
           <button
             type="button"
             onClick={() => (canSwitch ? onSwitch() : undefined)}
@@ -246,14 +259,17 @@ export function ServerCollections({ server, canSwitch, onSwitch, v2 = false, swi
               {canSwitch && <p className="text-xs text-primary">Switch server</p>}
             </div>
           </button>
+          </TV>
           {view?.actor && (
             <div className="flex items-center gap-3">
               <p className="text-xs text-muted">
                 {onCount > 0 && view.lastSyncAt ? `Synced ${ago(view.lastSyncAt)}` : 'Kept in step every 30 minutes'}
               </p>
-              <Button variant="ghost" size="sm" leftIcon={<ArrowPathIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />} onClick={syncNow} disabled={syncing || onCount === 0}>
-                Sync now
-              </Button>
+              <TV onEnter={syncNow} off={syncing || onCount === 0}>
+                <Button variant="ghost" size="sm" leftIcon={<ArrowPathIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />} onClick={syncNow} disabled={syncing || onCount === 0}>
+                  Sync now
+                </Button>
+              </TV>
             </div>
           )}
         </div>

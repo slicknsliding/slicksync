@@ -149,7 +149,8 @@ export function NotificationsPanelV2({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-[12.5px] text-muted px-4 py-3 border-t shrink-0" style={{ borderColor: 'var(--color-surface-border)' }}>
+      {/* On a phone this foot is the bottom of a sheet: the extra padding keeps it above an iPhone's home bar. */}
+      <div className="flex items-center justify-between gap-3 text-[12.5px] text-muted px-4 py-3 max-sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t shrink-0" style={{ borderColor: 'var(--color-surface-border)' }}>
         <button type="button" className="hover:text-default" onClick={onSettings}>Notification settings</button>
         <button type="button" className="hover:text-default" onClick={onActivity}>See everything in Activity →</button>
       </div>

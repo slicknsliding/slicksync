@@ -12,6 +12,39 @@ const { calculateTopItemsWithUsers, calculateWatchVelocity, calculateInteresting
 const { buildStremioLinks, buildNuvioAppUrl } = require('./appLinks')
 const { hasReachedEnd } = require('./sessionTracker')
 
+// The big reads below come back in pages of this many rows. Prisma turns a
+// query's whole answer into objects in one go, and for 100,000-200,000 rows
+// that held the server for over a second at a time - every other request
+// waited. Page by page, it gets a turn in between.
+const READ_PAGE = 10000
+
+/**
+ * findMany({ where, select, orderBy: { [field]: dir }, take }) read in pages,
+ * continuing past the last page's time. Rows sharing a page's last time are
+ * read as one group, so none is skipped or repeated. Order among rows with the
+ * same time is whatever the database gives, as with a single read.
+ */
+async function findManyInPages(model, { where, select, field, dir = 'desc', take = Infinity }) {
+  const out = []
+  const ms = (v) => new Date(v).getTime()
+  let edge = null
+  while (out.length < take) {
+    const want = Math.min(READ_PAGE, take - out.length)
+    const pageWhere = edge == null ? where : { AND: [where, { [field]: { [dir === 'desc' ? 'lt' : 'gt']: edge } }] }
+    let rows = await model.findMany({ where: pageWhere, ...(select ? { select } : {}), orderBy: { [field]: dir }, take: want })
+    if (rows.length < want || out.length + rows.length >= take) {
+      out.push(...rows)
+      break
+    }
+    edge = rows[rows.length - 1][field]
+    rows = rows.filter((r) => ms(r[field]) !== ms(edge))
+    const ties = await model.findMany({ where: { AND: [where, { [field]: edge }] }, ...(select ? { select } : {}) })
+    for (const r of rows) out.push(r)
+    for (const r of ties) out.push(r)
+  }
+  return out.length > take ? out.slice(0, take) : out
+}
+
 // Helper function to extract base item ID (for series, strip season/episode info)
 function getBaseItemId(itemId, itemType) {
   if (itemType === 'series') {
@@ -350,6 +383,19 @@ function generateAlerts(userLifecycle, topContent, engagement, period) {
 // rather than no limit, so no account can ask for an unbounded response.
 const ACTIVITY_TAKE = 5000
 const ACTIVITY_TAKE_DEEP = 100000
+// The deep read comes in steps, each reaching further back than the last, so
+// one scroll past the end never asks for the whole ceiling at once: a
+// 100,000-row build sent ~110MB and held the server for seconds at a time.
+// Each step is another 20,000 rows - far more than anyone scrolls through
+// before the next one is needed.
+const ACTIVITY_DEEP_STEP = 20000
+
+/** How many rows a deep read takes: step 1, 2, 3... (true counts as step 1). */
+function deepActivityTake(step) {
+  const n = step === true ? 1 : Math.floor(Number(step))
+  if (!Number.isFinite(n) || n < 1) return ACTIVITY_TAKE
+  return Math.min(ACTIVITY_TAKE + n * ACTIVITY_DEEP_STEP, ACTIVITY_TAKE_DEEP)
+}
 
 // Now Playing for Nuvio when only Nuvio's own saves are known (see buildNowPlaying).
 const NUVIO_RECENT_MS = 5 * 60 * 1000
@@ -436,13 +482,16 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
 
   let activeSessionsFromDb = []
   try {
-    activeSessionsFromDb = await prisma.watchSession.findMany({
+    // Sorted here rather than in SQL: with ORDER BY startTime, SQLite walks
+    // the (accountId, startTime) index through every session the account
+    // ever had to find the few open ones - 1.3 s on 200,000 rows. Without
+    // it, the (accountId, isActive) index answers directly.
+    activeSessionsFromDb = (await prisma.watchSession.findMany({
       where: {
         accountId: accountIdValue || 'default',
         isActive: true
-      },
-      orderBy: { startTime: 'desc' }
-    })
+      }
+    })).sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
   } catch (error) {
     console.warn('[MetricsBuilder] Failed to fetch active sessions from database:', error.message)
   }
@@ -688,7 +737,7 @@ function liveNowPlaying(prisma, accountId) {
 }
 
 async function buildMetricsForAccount({ prisma, accountId, period = '30d', decrypt, deepActivity = false }) {
-  const activityTake = deepActivity ? ACTIVITY_TAKE_DEEP : ACTIVITY_TAKE
+  const activityTake = deepActivity ? deepActivityTake(deepActivity) : ACTIVITY_TAKE
   if (!accountId) {
     throw new Error('accountId is required to build metrics')
   }
@@ -849,7 +898,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       }
     }
 
-    watchActivities = await prisma.watchActivity.findMany({
+    watchActivities = await findManyInPages(prisma.watchActivity, {
       where: whereClause,
       select: {
         userId: true,
@@ -860,7 +909,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         itemType: true,
         profileLabel: true
       },
-      orderBy: { date: 'asc' }
+      field: 'date',
+      dir: 'asc'
     })
 
     // Same same-email phantom-duplicate problem dedupWatchActivityBySharedEmail
@@ -893,6 +943,16 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     const userItemSet = new Set() // Track unique user+item combinations for counting
     const userItemByDay = new Map() // Track unique items per day per user
     const userMap = new Map(allUsers.map(u => [u.id, u]))
+    // Worked out once, not once per row: a long history is 200,000 rows and
+    // only a few hundred distinct days.
+    const earliestDayStr = earliestWatchActivityDate ? earliestWatchActivityDate.toISOString().split('T')[0] : null
+    const dayStrings = new Map()
+    const dayStringOf = (d) => {
+      const ms = d.getTime()
+      let str = dayStrings.get(ms)
+      if (str === undefined) { str = d.toISOString().split('T')[0]; dayStrings.set(ms, str) }
+      return str
+    }
 
     for (const activity of watchActivities) {
       const userId = activity.userId
@@ -902,7 +962,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       if (!dbUser) continue
 
       const itemId = activity.itemId
-      const date = activity.date.toISOString().split('T')[0]
+      const date = dayStringOf(activity.date)
       let watchTime = activity.watchTimeSeconds || 0
       const itemType = activity.itemType
 
@@ -948,7 +1008,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
       // Only count items and watch time if the date is on or after the earliest tracking date
       const activityDateStr = date
-      const shouldCount = !earliestWatchActivityDate || activityDateStr >= earliestWatchActivityDate.toISOString().split('T')[0]
+      const shouldCount = !earliestDayStr || activityDateStr >= earliestDayStr
 
       if (shouldCount) {
         watchActivityByUser[userId].dates.add(date)
@@ -1290,14 +1350,14 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   let activityTruncated = false
   try {
     const [episodeHistoryRaw, movieHistoryRaw] = await Promise.all([
-      prisma.episodeWatchHistory.findMany({
+      findManyInPages(prisma.episodeWatchHistory, {
         where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
-        orderBy: { watchedAt: 'desc' },
+        field: 'watchedAt',
         take: activityTake // Activity page needs deep history (UI lazily renders)
       }),
-      prisma.movieWatchHistory.findMany({
+      findManyInPages(prisma.movieWatchHistory, {
         where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
-        orderBy: { watchedAt: 'desc' },
+        field: 'watchedAt',
         take: activityTake
       })
     ])
@@ -1448,7 +1508,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // rows simply do not match any entry below and are skipped.
     let extraDayEntries = []
     try {
-      const activityRaw = await prisma.watchActivity.findMany({
+      const activityRaw = await findManyInPages(prisma.watchActivity, {
         where: { accountId: accountIdValue, date: { gte: startDate } },
         select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true, profileLabel: true },
         // Bounded like the two history reads above it, which this one was
@@ -1458,7 +1518,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         // has to receive and parse before the page appears. Newest first, so
         // what a cap would ever drop is the oldest end of a feed nobody
         // scrolls to.
-        orderBy: { date: 'desc' },
+        field: 'date',
         take: activityTake,
       })
         if (activityRaw.length >= activityTake) activityTruncated = true
@@ -1494,9 +1554,19 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       const keyOf = (userId, itemId, videoId, day) =>
         `${userId}\u0000${itemId}\u0000${videoId || ''}\u0000${day}`
       const secondsByKey = new Map()
+      // The same totals grouped by (user, item, episode), so each entry
+      // below reads only its own days. Scanning every key for every entry
+      // was entries x keys - on a deep read that is billions of string
+      // compares and never finished.
+      const daysByPrefix = new Map()
       for (const row of activity) {
-        const k = keyOf(row.userId, row.itemId, row.videoId, new Date(row.date).toISOString().slice(0, 10))
+        const day = new Date(row.date).toISOString().slice(0, 10)
+        const k = keyOf(row.userId, row.itemId, row.videoId, day)
         secondsByKey.set(k, (secondsByKey.get(k) || 0) + (row.watchTimeSeconds || 0))
+        const prefix = keyOf(row.userId, row.itemId, row.videoId, '')
+        let days = daysByPrefix.get(prefix)
+        if (!days) { days = new Map(); daysByPrefix.set(prefix, days) }
+        days.set(day, secondsByKey.get(k))
       }
 
       for (const entry of [...movieEntries, ...episodeEntries]) {
@@ -1520,9 +1590,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           entry.durationSeconds = ownDaySeconds
         }
 
-        for (const [key, seconds] of secondsByKey) {
-          if (!key.startsWith(prefix)) continue
-          const day = key.slice(prefix.length)
+        for (const [day, seconds] of daysByPrefix.get(prefix) || []) {
           // Its own day is handled above - it keeps the real clock time from
           // the History row rather than becoming a second, date-only card.
           if (day === ownDay) continue
@@ -1567,16 +1635,14 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   // This provides start time, end time, and duration for each viewing session
   let watchSessions = []
   try {
-    const sessions = await prisma.watchSession.findMany({
+    const sessions = await findManyInPages(prisma.watchSession, {
       where: {
         accountId: accountIdValue,
         startTime: {
           gte: startDate
         }
       },
-      orderBy: {
-        startTime: 'desc'
-      },
+      field: 'startTime',
       take: activityTake // Activity page needs deep history (UI lazily renders)
     })
 
@@ -1689,9 +1755,46 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       return day
     }
 
+    // Each person's sessions sorted by updatedAtTimestamp, so an entry only
+    // looks at the sessions that could match it at all (within a day either
+    // side) instead of every session in the list - entries x sessions was
+    // billions of checks on a deep read. The match is still the first one in
+    // the list's own order, as before.
+    const byUser = new Map()
+    watchSessionsList.forEach((session, index) => {
+      const uid = session.user.id
+      if (!byUser.has(uid)) byUser.set(uid, { timed: [], untimed: [] })
+      const bucket = byUser.get(uid)
+      if (Number.isFinite(session.updatedAtTimestamp)) bucket.timed.push({ session, index, at: session.updatedAtTimestamp })
+      else bucket.untimed.push({ session, index })
+    })
+    for (const bucket of byUser.values()) bucket.timed.sort((a, b) => a.at - b.at)
+    const firstAtOrAfter = (list, at) => {
+      let lo = 0
+      let hi = list.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (list[mid].at < at) lo = mid + 1
+        else hi = mid
+      }
+      return lo
+    }
+    const candidatesFor = (activity) => {
+      const bucket = byUser.get(activity.user.id)
+      if (!bucket) return []
+      const at = activity.watchedAtTimestamp
+      // Without a usable time every session of theirs is in reach, as before.
+      if (!Number.isFinite(at)) return [...bucket.timed, ...bucket.untimed].sort((a, b) => a.index - b.index).map((c) => c.session)
+      const found = [...bucket.untimed]
+      for (let i = firstAtOrAfter(bucket.timed, at - SAME_DAY_REACH_MS); i < bucket.timed.length && bucket.timed[i].at <= at + SAME_DAY_REACH_MS; i++) {
+        found.push(bucket.timed[i])
+      }
+      return found.sort((a, b) => a.index - b.index).map((c) => c.session)
+    }
+
     for (const activity of recentActivityList) {
       let activityDay
-      const match = watchSessionsList.find((session) => {
+      const match = candidatesFor(activity).find((session) => {
         if (consumedSessionIds.has(session.id)) return false
         if (session.user.id !== activity.user.id) return false
         // updatedAtTimestamp, not startTimeTimestamp: a WatchSession row is
@@ -1758,6 +1861,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
       for (let j = i + 1; j < sorted.length; j++) {
         const b = sorted[j]
+        // Sorted by start, so every later session is further away still.
+        if (b.startTimeTimestamp - a.startTimeTimestamp > MERGE_WINDOW_MS) break
         if (removedIds.has(b.id)) continue
         if (a.user.id !== b.user.id) continue
         if (Math.abs(a.startTimeTimestamp - b.startTimeTimestamp) > MERGE_WINDOW_MS) continue
@@ -1931,6 +2036,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     startedPlaying,
     recentActivity,
     activityTruncated,
+    // True once a deep read has reached the ceiling: asking for a further
+    // step would return the same rows.
+    ...(deepActivity ? { activityDeepLast: activityTake >= ACTIVITY_TAKE_DEEP } : {}),
     recentEpisodes,
     watchSessions,
     period,
@@ -1955,7 +2063,9 @@ module.exports = {
   buildNowPlaying,
   liveNowPlaying,
   invalidateLiveNowPlaying,
-  buildMetricsForAccount
+  buildMetricsForAccount,
+  deepActivityTake,
+  findManyInPages
 }
 
 

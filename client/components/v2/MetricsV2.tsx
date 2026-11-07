@@ -191,7 +191,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                               <div key={t.key} title={t.name} className="w-14 shrink-0">
                                 <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface-hover border border-default">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
+                                  {t.poster && <img src={t.poster} alt={t.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />}
                                 </div>
                                 <p className="text-[10px] text-muted mt-1 break-words">{t.name}</p>
                               </div>
@@ -231,7 +231,7 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
                           <div key={item.key} title={item.name || undefined} className="w-16 shrink-0">
                             <div className="w-16 h-24 rounded-lg overflow-hidden bg-surface-hover border border-default">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              {item.poster && <img src={item.poster} alt={item.name || ''} className="w-full h-full object-cover" />}
+                              {item.poster && <img src={item.poster} alt={item.name || ''} loading="lazy" decoding="async" className="w-full h-full object-cover" />}
                             </div>
                             <p className="text-xs text-muted mt-1 break-words">{item.name}</p>
                           </div>

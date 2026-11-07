@@ -132,7 +132,7 @@ export function MeAddonsV2({
                     line={a.manifest.description}
                     status={official ? 'Official' : kept ? 'Kept' : 'Not kept'}
                     tone={official || kept ? 'ok' : 'off'}
-                    button={!kept && !official ? <V2Button disabled={busy === name} onClick={() => onRemove(name)}>Remove</V2Button> : undefined}
+                    button={!kept && !official ? <span data-remove-addon={name} className="inline-flex"><V2Button disabled={busy === name} onClick={() => onRemove(name)}>Remove</V2Button></span> : undefined}
                     menu={(
                       <V2MoreMenu
                         label={`More for ${name}`}

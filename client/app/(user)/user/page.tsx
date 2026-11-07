@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { motion } from 'framer-motion';
 import {
@@ -23,6 +23,9 @@ import { RecentAndMost } from '@/components/user/home/RecentAndMost';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePageArrangement } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // The names the Arrange tray uses for hidden sections.
 const HOME_LABELS: Record<string, string> = {
@@ -32,6 +35,8 @@ const HOME_LABELS: Record<string, string> = {
 export default function UserHomePage() {
   const { userId, userInfo, provider } = useUserAuth();
   const providerLabel = providerTypeLabel(provider);
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const { authKey, isReady } = useUserAuthHeaders();
   // Grid or list, as picked under Themes (phones are always grid).
   const { viewMode } = useDefaultViewMode();
@@ -164,7 +169,29 @@ export default function UserHomePage() {
     ? ['nowPlaying', 'continue', 'upcoming', 'numbers', 'recent']
     : ['continue', 'upcoming', 'numbers', 'recent']);
 
+  const syncBtn = (
+    <button
+      onClick={handleSync}
+      disabled={syncing}
+      className="flex items-center gap-2 px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
+      style={{ background: 'var(--color-primary)', color: 'white' }}
+    >
+      <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+      <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
+    </button>
+  );
+  const retryBtn = (
+    <button
+      onClick={() => window.location.reload()}
+      className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
+      style={{ background: 'var(--color-primary)', color: 'white' }}
+    >
+      Try Again
+    </button>
+  );
+
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       {/* Hello, their picture, health, group and Sync Now. */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-4 mb-6">
@@ -186,16 +213,8 @@ export default function UserHomePage() {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <div className="flex items-center gap-2">
-          <ArrangeButton arrange={homeArrange} />
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
-            style={{ background: 'var(--color-primary)', color: 'white' }}
-          >
-            <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
-          </button>
+          {!isTV && <ArrangeButton arrange={homeArrange} />}
+          {isTV ? <TVFocusable onEnterPress={handleSync}>{syncBtn}</TVFocusable> : syncBtn}
           </div>
           {syncMessage && (
             <p className={`text-xs ${syncMessage.includes('completed') ? 'text-success' : 'text-error'}`}>{syncMessage}</p>
@@ -271,13 +290,7 @@ export default function UserHomePage() {
           <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-error)' }} />
           <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-error)' }}>Failed to load activity data</h3>
           <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
-            style={{ background: 'var(--color-primary)', color: 'white' }}
-          >
-            Try Again
-          </button>
+          {isTV ? <TVFocusable className="inline-block" onEnterPress={() => window.location.reload()}>{retryBtn}</TVFocusable> : retryBtn}
         </div>
       )}
 
@@ -289,5 +302,6 @@ export default function UserHomePage() {
         </div>
       )}
     </div>
+    </Wrapper>
   );
 }

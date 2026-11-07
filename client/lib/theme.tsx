@@ -686,6 +686,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  // The browser bar (Android Chrome, an installed app's title bar) takes the
+  // page's theme-color: keep it on the active theme's own background, so a
+  // light theme gets a light bar. Watches <html> itself, which covers built-in
+  // themes (its class), custom ones and live previews (its inline colours).
+  useEffect(() => {
+    const root = document.documentElement;
+    let last = '';
+    const sync = () => {
+      const bg = getComputedStyle(root).getPropertyValue('--color-bg').trim();
+      if (!bg || bg === last) return;
+      last = bg;
+      let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        document.head.appendChild(meta);
+      }
+      meta.content = bg;
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    return () => observer.disconnect();
+  }, []);
+
   const setTheme = (id: string) => {
     if (isBuiltInThemeId(id) || savedCustomThemes.some((t) => t.id === id)) {
       // Apply straight to the DOM here, not just via setThemeIdState below.

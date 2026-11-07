@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense, Fragment, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -14,11 +14,21 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { useUserAuth, UserAuthProvider } from '@/lib/hooks/useUserAuth';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import {
   PubFrame, PubLogo, PubCard, PubSeg, PubTile, PubButton, PubLink, PubBack, PubHeading,
   PubField, PubOr, PubError, PubWaiting, PubCode, PubQr, pubInputStyle,
 } from '@/components/v2/PublicV2';
 import JellyfinSignIn, { type JellyfinCredentials, type JellyfinSignInApi } from '@/components/jellyfin/JellyfinSignIn';
+
+// A stop on the TV remote: OK does what a click does. Anywhere else it renders
+// its children as they are.
+function TVStop({ onEnter, className, children }: { onEnter: () => void; className?: string; children: ReactNode }) {
+  const isTV = useIsTV();
+  return isTV ? <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable> : <>{children}</>;
+}
 
 type LoginMode = 'user' | 'admin';
 
@@ -74,6 +84,14 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { login: userLogin, loginNuvio, loginJellyfin, isAuthenticated } = useUserAuth();
+
+  // TV remote: the page has no top bar, so the first thing in the page is where
+  // focus lands. OK on a field focuses it (which opens the TV keyboard); OK on a
+  // button does what a click does.
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  const focusField = (id: string) => () => document.getElementById(id)?.focus();
+  const submitForm = (id: string) => () => (document.getElementById(id) as HTMLFormElement | null)?.requestSubmit();
 
   // Mode state
   const initialMode = (searchParams.get('mode') as LoginMode) || 'user';
@@ -804,26 +822,30 @@ function LoginContent() {
         {err && <PubError>{err}</PubError>}
         {waiting && <PubWaiting tone="var(--color-success)">Waiting for you to approve it…</PubWaiting>}
         <div className="grid gap-2">
-          <PubButton
-            primary
-            onClick={isNuvio ? openNuvioLink : openOAuthLink}
-            disabled={disabled}
-            icon={authenticating || generating
-              ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              : <ArrowTopRightOnSquareIcon className="w-5 h-5" />}
-          >
-            {authenticating
-              ? (mode === 'admin' ? 'Verifying...' : 'Signing in...')
-              : generating ? 'Generating Link...' : `Open ${name}`}
-          </PubButton>
-          <PubLink
-            onClick={isNuvio ? handleStartNuvioOAuth : generateOAuthLink}
-            disabled={generating}
-            icon={<ArrowPathIcon className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />}
-            className="py-2"
-          >
-            {isNuvio ? 'New code' : 'Refresh'}
-          </PubLink>
+          <TVStop onEnter={() => { if (!disabled) (isNuvio ? openNuvioLink : openOAuthLink)(); }}>
+            <PubButton
+                          primary
+                          onClick={isNuvio ? openNuvioLink : openOAuthLink}
+                          disabled={disabled}
+                          icon={authenticating || generating
+                            ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            : <ArrowTopRightOnSquareIcon className="w-5 h-5" />}
+                        >
+                          {authenticating
+                            ? (mode === 'admin' ? 'Verifying...' : 'Signing in...')
+                            : generating ? 'Generating Link...' : `Open ${name}`}
+                        </PubButton>
+          </TVStop>
+          <TVStop onEnter={isNuvio ? handleStartNuvioOAuth : generateOAuthLink} className="flex justify-center">
+            <PubLink
+                          onClick={isNuvio ? handleStartNuvioOAuth : generateOAuthLink}
+                          disabled={generating}
+                          icon={<ArrowPathIcon className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />}
+                          className="py-2"
+                        >
+                          {isNuvio ? 'New code' : 'Refresh'}
+                        </PubLink>
+          </TVStop>
         </div>
       </div>
     );
@@ -847,33 +869,39 @@ function LoginContent() {
   );
 
   const renderTwoFactor = () => (
-    <form onSubmit={handleVerify2fa} className="space-y-4">
+    <form id="two-factor-form" onSubmit={handleVerify2fa} className="space-y-4">
       <PubHeading title="Two-step sign-in" line="Enter the 6-digit code from your authenticator app, or one of your backup codes." />
       <PubField label="Code" htmlFor="twoFactorCode">
-        <input
-          id="twoFactorCode"
-          type="text"
-          inputMode="numeric"
-          autoFocus
-          value={twoFactorCode}
-          onChange={(e) => setTwoFactorCode(e.target.value.replace(/\s+/g, ''))}
-          className="w-full px-4 py-3.5 rounded-xl text-2xl font-mono font-bold tracking-[0.35em] text-center transition-all"
-          style={pubInputStyle}
-          placeholder="123456"
-          autoComplete="one-time-code"
-        />
+        <TVStop onEnter={focusField('twoFactorCode')}>
+          <input
+                      id="twoFactorCode"
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus
+                      value={twoFactorCode}
+                      onChange={(e) => setTwoFactorCode(e.target.value.replace(/\s+/g, ''))}
+                      className="w-full px-4 py-3.5 rounded-xl text-2xl font-mono font-bold tracking-[0.35em] text-center transition-all"
+                      style={pubInputStyle}
+                      placeholder="123456"
+                      autoComplete="one-time-code"
+                    />
+        </TVStop>
       </PubField>
       {adminError && <PubError>{adminError}</PubError>}
-      <PubButton
-        primary
-        type="submit"
-        disabled={twoFactorVerifying || twoFactorCode.trim().length < 6}
-        icon={twoFactorVerifying ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
-      >
-        {twoFactorVerifying ? 'Verifying...' : 'Continue'}
-      </PubButton>
+      <TVStop onEnter={() => { if (!twoFactorVerifying && twoFactorCode.trim().length >= 6) submitForm('two-factor-form')(); }}>
+        <PubButton
+                  primary
+                  type="submit"
+                  disabled={twoFactorVerifying || twoFactorCode.trim().length < 6}
+                  icon={twoFactorVerifying ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
+                >
+                  {twoFactorVerifying ? 'Verifying...' : 'Continue'}
+                </PubButton>
+      </TVStop>
       <div className="text-center">
-        <PubLink onClick={() => { setTwoFactorPendingToken(null); setTwoFactorCode(''); setAdminError(null); }}>Back</PubLink>
+        <TVStop onEnter={() => { setTwoFactorPendingToken(null); setTwoFactorCode(''); setAdminError(null); }} className="inline-block">
+          <PubLink onClick={() => { setTwoFactorPendingToken(null); setTwoFactorCode(''); setAdminError(null); }}>Back</PubLink>
+        </TVStop>
       </div>
     </form>
   );
@@ -882,64 +910,76 @@ function LoginContent() {
     const isPublic = INSTANCE_TYPE === 'public';
     const hasOthers = isPublic || passkeyAvailable || oidcConfigured;
     return (
-      <form onSubmit={handleAdminLogin} className="space-y-4">
+      <form id="admin-login-form" onSubmit={handleAdminLogin} className="space-y-4">
         <PubField label={isPublic ? 'Account ID' : 'Username'} htmlFor="username">
-          <input
-            id="username"
-            type="text"
-            value={adminUsername}
-            onChange={(e) => setAdminUsername(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl text-sm transition-all"
-            style={pubInputStyle}
-            placeholder={isPublic ? 'Your account ID' : 'admin'}
-            autoComplete={isPublic ? 'off' : 'username'}
-          />
+          <TVStop onEnter={focusField('username')}>
+            <input
+                          id="username"
+                          type="text"
+                          value={adminUsername}
+                          onChange={(e) => setAdminUsername(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl text-sm transition-all"
+                          style={pubInputStyle}
+                          placeholder={isPublic ? 'Your account ID' : 'admin'}
+                          autoComplete={isPublic ? 'off' : 'username'}
+                        />
+          </TVStop>
         </PubField>
 
         <PubField label="Password" htmlFor="password">
-          <div className="relative">
-            <input
-              id="password"
-              type={adminPasswordVisible ? 'text' : 'password'}
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
-              style={pubInputStyle}
-              placeholder="********"
-              autoComplete="current-password"
-            />
-            <PasswordToggleButton visible={adminPasswordVisible} onToggle={() => setAdminPasswordVisible((v) => !v)} />
-          </div>
+          <TVStop onEnter={focusField('password')}>
+            <div className="relative">
+                          <input
+                            id="password"
+                            type={adminPasswordVisible ? 'text' : 'password'}
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+                            style={pubInputStyle}
+                            placeholder="********"
+                            autoComplete="current-password"
+                          />
+                          <PasswordToggleButton visible={adminPasswordVisible} onToggle={() => setAdminPasswordVisible((v) => !v)} />
+                        </div>
+          </TVStop>
         </PubField>
 
         {adminError && <PubError>{adminError}</PubError>}
 
-        <PubButton
-          primary
-          type="submit"
-          disabled={adminLoading || !adminUsername || !adminPassword}
-          icon={adminLoading ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
-        >
-          {adminLoading ? 'Signing in...' : 'Sign in'}
-        </PubButton>
+        <TVStop onEnter={() => { if (!adminLoading && adminUsername && adminPassword) submitForm('admin-login-form')(); }}>
+          <PubButton
+                      primary
+                      type="submit"
+                      disabled={adminLoading || !adminUsername || !adminPassword}
+                      icon={adminLoading ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
+                    >
+                      {adminLoading ? 'Signing in...' : 'Sign in'}
+                    </PubButton>
+        </TVStop>
 
         {hasOthers && (
           <>
             <PubOr />
             <div className="grid gap-2">
-              {passkeyAvailable && (
+              {passkeyAvailable && <TVStop onEnter={() => { if (!passkeyLoading) handlePasskeyLogin(); }}>
                 <PubButton onClick={handlePasskeyLogin} disabled={passkeyLoading} icon={<FingerPrintIcon className="w-5 h-5" />}>
-                  {passkeyLoading ? 'Waiting for your device...' : 'Use a passkey'}
-                </PubButton>
-              )}
-              {isPublic && <PubButton onClick={pickStremio}>Stremio</PubButton>}
-              {isPublic && <PubButton onClick={pickNuvio}>Nuvio</PubButton>}
-              {isPublic && <PubButton onClick={pickJellyfin}>Jellyfin</PubButton>}
-              {oidcConfigured && (
+                                  {passkeyLoading ? 'Waiting for your device...' : 'Use a passkey'}
+                                </PubButton>
+              </TVStop>}
+              {isPublic && <TVStop onEnter={pickStremio}>
+                <PubButton onClick={pickStremio}>Stremio</PubButton>
+              </TVStop>}
+              {isPublic && <TVStop onEnter={pickNuvio}>
+                <PubButton onClick={pickNuvio}>Nuvio</PubButton>
+              </TVStop>}
+              {isPublic && <TVStop onEnter={pickJellyfin}>
+                <PubButton onClick={pickJellyfin}>Jellyfin</PubButton>
+              </TVStop>}
+              {oidcConfigured && <TVStop onEnter={handleStartOidc}>
                 <PubButton onClick={handleStartOidc} icon={<ShieldCheckIcon className="w-5 h-5" />}>
-                  Continue with {oidcDisplayName}
-                </PubButton>
-              )}
+                                  Continue with {oidcDisplayName}
+                                </PubButton>
+              </TVStop>}
             </div>
             {isPublic && <p className="text-xs text-center" style={{ color: 'var(--color-text-subtle)' }}>Jellyfin also covers AIOStreams and AIOMetadata.</p>}
           </>
@@ -948,9 +988,11 @@ function LoginContent() {
         {isPublic && (
           <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
             No account yet?{' '}
-            <button type="button" onClick={() => router.push('/register')} className="hover:underline font-semibold" style={{ color: 'var(--color-primary)' }}>
-              Create one
-            </button>
+            <TVStop onEnter={() => router.push('/register')} className="inline-block">
+              <button type="button" onClick={() => router.push('/register')} className="hover:underline font-semibold" style={{ color: 'var(--color-primary)' }}>
+                              Create one
+                            </button>
+            </TVStop>
           </p>
         )}
       </form>
@@ -959,9 +1001,15 @@ function LoginContent() {
 
   const renderUserChoices = () => (
     <div className="space-y-2.5">
-      <PubTile name="Stremio" line="Sign in with your Stremio account" color="linear-gradient(135deg,#8b5cf6,#6d28d9)" onClick={pickStremio} />
-      <PubTile name="Nuvio" line="Sign in with your Nuvio account" color="linear-gradient(135deg,#6366f1,#a855f7)" onClick={pickNuvio} />
-      <PubTile name="Jellyfin" line="A Jellyfin server, AIOStreams or AIOMetadata" color="#0b2447" onClick={pickJellyfin} />
+      <TVStop onEnter={pickStremio}>
+        <PubTile name="Stremio" line="Sign in with your Stremio account" color="linear-gradient(135deg,#8b5cf6,#6d28d9)" onClick={pickStremio} />
+      </TVStop>
+      <TVStop onEnter={pickNuvio}>
+        <PubTile name="Nuvio" line="Sign in with your Nuvio account" color="linear-gradient(135deg,#6366f1,#a855f7)" onClick={pickNuvio} />
+      </TVStop>
+      <TVStop onEnter={pickJellyfin}>
+        <PubTile name="Jellyfin" line="A Jellyfin server, AIOStreams or AIOMetadata" color="#0b2447" onClick={pickJellyfin} />
+      </TVStop>
       <p className="text-[12.5px] text-center pt-1.5" style={{ color: 'var(--color-text-muted)' }}>
         Use the same sign-in as your app. Nothing is changed in it.
       </p>
@@ -988,19 +1036,22 @@ function LoginContent() {
         : 'Sign in to run SlickSync';
 
   return (
+    <Wrapper>
     <PubFrame>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <PubLogo sub={logoSub} />
 
         <PubCard>
-          {openMethod === null && !inTwoFactor && (
+          {openMethod === null && !inTwoFactor && <TVStop onEnter={() => switchMode(mode === 'user' ? 'admin' : 'user')}>
             <PubSeg
-              value={mode}
-              onChange={switchMode}
-              options={[{ value: 'user', label: 'I watch here' }, { value: 'admin', label: 'I run this' }]}
-            />
-          )}
-          {openMethod !== null && <PubBack onClick={goBackToChoices}>{mode === 'admin' ? 'Back to sign in' : 'All sign-in options'}</PubBack>}
+                          value={mode}
+                          onChange={switchMode}
+                          options={[{ value: 'user', label: 'I watch here' }, { value: 'admin', label: 'I run this' }]}
+                        />
+          </TVStop>}
+          {openMethod !== null && <TVStop onEnter={goBackToChoices} className="inline-block">
+            <PubBack onClick={goBackToChoices}>{mode === 'admin' ? 'Back to sign in' : 'All sign-in options'}</PubBack>
+          </TVStop>}
 
           {openMethod === 'jellyfin' ? renderJellyfinPanel()
             : openMethod === 'stremio' ? renderOAuthPanel('stremio')
@@ -1011,6 +1062,7 @@ function LoginContent() {
         </PubCard>
       </motion.div>
     </PubFrame>
+    </Wrapper>
   );
 }
 

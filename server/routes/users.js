@@ -229,20 +229,34 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // total - see utils/watchDedup.js for the rationale.
       const watchSecondsByUser = new Map()
       try {
+        // The database sums everyone; only people who share an email with
+        // someone else (the only rows the dedup can touch) are read row by
+        // row. Reading every row on every visit was 1.5 s on two years of a
+        // big household's history.
         const accountIdForScope = getAccountId(req) || 'default'
-        const [activities, siblings] = await Promise.all([
-          prisma.watchActivity.findMany({
+        const [sums, siblings] = await Promise.all([
+          prisma.watchActivity.groupBy({
+            by: ['userId'],
             where: { accountId: accountIdForScope },
-            select: { userId: true, itemId: true, date: true, watchTimeSeconds: true, profileLabel: true }
+            _sum: { watchTimeSeconds: true }
           }),
           prisma.user.findMany({
             where: { accountId: accountIdForScope },
             select: { id: true, email: true, nuvioProfileId: true }
           })
         ])
+        for (const s of sums) watchSecondsByUser.set(s.userId, s._sum?.watchTimeSeconds || 0)
         const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('../utils/watchDedup')
-        for (const a of dedupWatchActivityBySharedEmail(activities, findSharedEmailUserIds(siblings))) {
-          watchSecondsByUser.set(a.userId, (watchSecondsByUser.get(a.userId) || 0) + (a.watchTimeSeconds || 0))
+        const shared = findSharedEmailUserIds(siblings)
+        if (shared.size) {
+          const activities = await prisma.watchActivity.findMany({
+            where: { accountId: accountIdForScope, userId: { in: [...shared] } },
+            select: { userId: true, itemId: true, date: true, watchTimeSeconds: true, profileLabel: true }
+          })
+          for (const id of shared) watchSecondsByUser.delete(id)
+          for (const a of dedupWatchActivityBySharedEmail(activities, shared)) {
+            watchSecondsByUser.set(a.userId, (watchSecondsByUser.get(a.userId) || 0) + (a.watchTimeSeconds || 0))
+          }
         }
       } catch (error) {
         console.warn('Error fetching watch time:', error.message)
@@ -1997,7 +2011,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // capped feed. It is a deliberately heavier build, so it neither reads
       // from nor writes to the shared cache - the dashboard has to keep being
       // handed the small, fast payload it was built for.
-      const deepActivity = req.query.deep === '1' || req.query.deep === 'true'
+      // deep=1, 2, 3... reaches further back each step (metricsBuilder.js
+      // deepActivityTake); deep=true is step 1.
+      const deepStep = req.query.deep === 'true' ? 1 : Math.floor(Number(req.query.deep))
+      const deepActivity = Number.isFinite(deepStep) && deepStep >= 1 ? Math.min(deepStep, 100) : false
 
       const { getCachedMetrics, setCachedMetrics, buildOnce, getMetricsStamp } = require('../utils/metricsCache')
       const { buildMetricsForAccount } = require('../utils/metricsBuilder')
@@ -2009,10 +2026,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         console.log(`[API] Returning cached metrics for ${period}`)
         // Everything in the cached object can be a few minutes old except
         // who is watching right now - that is read live on every request.
-        let answer = cached
+        // recentEpisodes is left out of what the app is sent: it repeats the
+        // series half of recentActivity (2.7 MB of a 12.6 MB all-time answer)
+        // and nothing in the app reads it. The external metrics.json keeps it.
+        let answer = { ...cached, recentEpisodes: undefined }
         try {
           const { liveNowPlaying } = require('../utils/metricsBuilder')
-          answer = { ...cached, nowPlaying: await liveNowPlaying(prisma, accountId), buildStamp: getMetricsStamp(accountId, period) }
+          answer = { ...cached, recentEpisodes: undefined, nowPlaying: await liveNowPlaying(prisma, accountId), buildStamp: getMetricsStamp(accountId, period) }
         } catch (e) {
           console.warn('[API] Live Now Playing failed, sending the cached list:', e?.message)
         }
@@ -2025,12 +2045,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       console.log(`[API] Building metrics for ${period}...`)
       // Build on demand (also used on first boot or if scheduler hasn't run yet)
       const build = () => buildMetricsForAccount({ prisma, accountId, period, decrypt, deepActivity })
-      const metrics = deepActivity ? await build() : await buildOnce(accountId, period, build)
+      // A deep build is shared by everyone asking for the same step at once
+      // (a second tab, a double scroll) rather than run again beside it.
+      const metrics = await buildOnce(accountId, deepActivity ? `${period}:deep${deepActivity}` : period, build)
 
       console.log(`[API] Metrics built. Sessions: ${metrics.watchSessions?.length}, Episodes: ${metrics.recentEpisodes?.length}`)
 
       if (!deepActivity) setCachedMetrics(accountId, period, metrics)
-      res.json(deepActivity ? metrics : { ...metrics, buildStamp: getMetricsStamp(accountId, period) })
+      res.json(deepActivity ? { ...metrics, recentEpisodes: undefined } : { ...metrics, recentEpisodes: undefined, buildStamp: getMetricsStamp(accountId, period) })
       warmActivityPosters(metrics)
     } catch (error) {
       console.error('Error fetching metrics:', error)
@@ -2173,38 +2195,38 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         prisma.watchActivity.count({ where: { accountId: accountIdValue } })
       ])
 
-      // Get watch activity grouped by user
-      const activities = await prisma.watchActivity.findMany({
+      // Watch activity grouped by user (and type) in the database - reading
+      // every row to count them took ~2 s on two years of a big household.
+      const grouped = await prisma.watchActivity.groupBy({
+        by: ['userId', 'itemType'],
         where: { accountId: accountIdValue },
-        select: {
-          userId: true,
-          itemId: true,
-          itemType: true,
-          watchTimeSeconds: true,
-          date: true
-        },
-        orderBy: { date: 'asc' }
+        _count: { _all: true },
+        _sum: { watchTimeSeconds: true },
+        _min: { date: true },
+        _max: { date: true }
       })
 
       // Group by user
       const userActivityMap = {}
-      for (const activity of activities) {
-        if (!userActivityMap[activity.userId]) {
-          userActivityMap[activity.userId] = {
-            userId: activity.userId,
+      for (const g of grouped) {
+        if (!userActivityMap[g.userId]) {
+          userActivityMap[g.userId] = {
+            userId: g.userId,
             movies: 0,
             shows: 0,
             watchTime: 0,
             dates: []
           }
         }
-        if (activity.itemType === 'movie') {
-          userActivityMap[activity.userId].movies++
-        } else if (activity.itemType === 'series') {
-          userActivityMap[activity.userId].shows++
+        const rows = g._count?._all || 0
+        if (g.itemType === 'movie') {
+          userActivityMap[g.userId].movies += rows
+        } else if (g.itemType === 'series') {
+          userActivityMap[g.userId].shows += rows
         }
-        userActivityMap[activity.userId].watchTime += activity.watchTimeSeconds || 0
-        userActivityMap[activity.userId].dates.push(activity.date)
+        userActivityMap[g.userId].watchTime += g._sum?.watchTimeSeconds || 0
+        if (g._min?.date) userActivityMap[g.userId].dates.push(g._min.date)
+        if (g._max?.date) userActivityMap[g.userId].dates.push(g._max.date)
       }
 
       // Get user info
@@ -5672,64 +5694,83 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         whereClause.userId = userId
       }
 
-      // Get watch sessions
-      const watchSessions = await prisma.watchSession.findMany({
-        where: whereClause,
-        orderBy: { startTime: 'desc' }
+      // Written out a page at a time rather than built whole: on two years of
+      // a big household the file is ~200 MB, and holding every row plus the
+      // finished string at once took the server most of a gigabyte and 18 s
+      // of mostly-blocked time. The file is byte-for-byte what res.json wrote
+      // before: same keys, same order, counts last.
+      const PAGE = 10000
+      const tables = [
+        { key: 'watchSessions', model: prisma.watchSession, order: 'startTime', map: (s) => ({ ...s, accountId: undefined }) },
+        { key: 'episodeWatchHistory', model: prisma.episodeWatchHistory, order: 'watchedAt', map: (h) => ({ ...h, accountId: undefined }) },
+        { key: 'watchActivity', model: prisma.watchActivity, order: 'date', map: (a) => ({ ...a, accountId: undefined }) },
+        {
+          key: 'watchSnapshots', model: prisma.watchSnapshot, order: 'date', map: (s) => ({
+            ...s,
+            accountId: undefined,
+            overallTimeWatched: s.overallTimeWatched !== null && s.overallTimeWatched !== undefined ? String(s.overallTimeWatched) : undefined,
+            timeOffset: s.timeOffset !== null && s.timeOffset !== undefined ? String(s.timeOffset) : undefined,
+            timeWatched: s.timeWatched !== null && s.timeWatched !== undefined ? String(s.timeWatched) : undefined
+          })
+        },
+      ]
+
+      const write = (chunk) => new Promise((resolve, reject) => {
+        if (res.destroyed) return reject(new Error('client went away'))
+        if (res.write(chunk)) return resolve()
+        const onClose = () => { res.off('drain', onDrain); reject(new Error('client went away')) }
+        const onDrain = () => { res.off('close', onClose); resolve() }
+        res.once('drain', onDrain)
+        res.once('close', onClose)
       })
 
-      // Get episode watch history
-      const episodeHistory = await prisma.episodeWatchHistory.findMany({
-        where: whereClause,
-        orderBy: { watchedAt: 'desc' }
-      })
-
-      // Get watch activity
-      const watchActivity = await prisma.watchActivity.findMany({
-        where: whereClause,
-        orderBy: { date: 'desc' }
-      })
-
-      // Get watch snapshots
-      const watchSnapshots = await prisma.watchSnapshot.findMany({
-        where: whereClause,
-        orderBy: { date: 'desc' }
-      })
-
-      // Build export data
-      const exportData = {
-        exportedAt: new Date().toISOString(),
-        userId: userId || 'all',
-        watchSessions: watchSessions.map(s => ({
-          ...s,
-          accountId: undefined // Don't export accountId
-        })),
-        episodeWatchHistory: episodeHistory.map(h => ({
-          ...h,
-          accountId: undefined
-        })),
-        watchActivity: watchActivity.map(a => ({
-          ...a,
-          accountId: undefined
-        })),
-        watchSnapshots: watchSnapshots.map(s => ({
-          ...s,
-          accountId: undefined,
-          overallTimeWatched: s.overallTimeWatched !== null && s.overallTimeWatched !== undefined ? String(s.overallTimeWatched) : undefined,
-          timeOffset: s.timeOffset !== null && s.timeOffset !== undefined ? String(s.timeOffset) : undefined,
-          timeWatched: s.timeWatched !== null && s.timeWatched !== undefined ? String(s.timeWatched) : undefined
-        })),
-        counts: {
-          watchSessions: watchSessions.length,
-          episodeWatchHistory: episodeHistory.length,
-          watchActivity: watchActivity.length,
-          watchSnapshots: watchSnapshots.length
+      res.status(200)
+      res.set('Content-Type', 'application/json; charset=utf-8')
+      const head = JSON.stringify({ exportedAt: new Date().toISOString(), userId: userId || 'all' })
+      await write(head.slice(0, -1))
+      const counts = {}
+      for (const table of tables) {
+        await write(`,${JSON.stringify(table.key)}:[`)
+        let count = 0
+        const field = table.order
+        const at = (row) => new Date(row[field]).getTime()
+        // Newest first as before. Each page continues below the oldest time
+        // the last one ended on, read in the order the time index already
+        // gives (a cursor with an id tie-break made the database sort the
+        // whole remainder for every page). Rows sharing the page's last time
+        // are read as one group, so a page edge never splits, skips or
+        // repeats them; within a page, ties go by id.
+        let before = null
+        for (;;) {
+          const where = before ? { ...whereClause, [field]: { lt: before } } : whereClause
+          let rows = await table.model.findMany({ where, orderBy: { [field]: 'desc' }, take: PAGE })
+          if (rows.length === 0) break
+          const full = rows.length === PAGE
+          if (full) {
+            const edge = rows[rows.length - 1][field]
+            rows = rows.filter((r) => at(r) !== new Date(edge).getTime())
+            rows.push(...await table.model.findMany({ where: { ...whereClause, [field]: edge } }))
+            before = edge
+          }
+          rows.sort((x, y) => at(y) - at(x) || (x.id < y.id ? 1 : x.id > y.id ? -1 : 0))
+          let out = ''
+          for (const row of rows) {
+            out += (count === 0 ? '' : ',') + JSON.stringify(table.map(row))
+            count++
+          }
+          await write(out)
+          if (!full) break
         }
+        await write(']')
+        counts[table.key] = count
       }
-
-      res.json(exportData)
+      await write(`,"counts":${JSON.stringify(counts)}}`)
+      res.end()
     } catch (error) {
       console.error('Error exporting history:', error)
+      // Once the file has started there is no status left to send; cutting it
+      // off leaves the download visibly broken rather than quietly short.
+      if (res.headersSent) return res.destroy(error)
       res.status(500).json({ message: 'Failed to export history', error: publicMessage(error, 'Failed to export history') })
     }
   })

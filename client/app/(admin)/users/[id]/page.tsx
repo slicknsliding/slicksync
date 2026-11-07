@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User } from '@/lib/api';
@@ -30,6 +30,9 @@ import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
 import { HistoryImportFlow, type HistoryImportFlowHandle } from '@/components/user/HistoryImportFlow';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { SignInNuvioTvButton } from '@/components/nuvio/SignInNuvioTvButton';
 import { NuvioServersTile } from '@/components/nuvio/NuvioServersTile';
@@ -199,9 +202,18 @@ const CLASSIC_LABELS: Record<string, string> = {
   history: 'Watch History Import/Export', tabs: 'Overview and Addons',
 };
 
+// TV: the remote starts on Sync (when they have one), not on the Active switch.
+const PERSON_SYNC_KEY = 'person-sync';
+function PersonTVPage({ children }: { children: React.ReactNode }) {
+  return <TVPageProvider initialFocusKey={PERSON_SYNC_KEY}>{children}</TVPageProvider>;
+}
+
 export default function UserDetailPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  const Wrapper = isTV ? PersonTVPage : Fragment;
+  // The remote reaches a button/tile through TVFocusable; OK runs the same handler as a click.
+  const tvFocus = (node: React.ReactNode, onEnter: () => void) => (isTV ? <TVFocusable onEnterPress={onEnter}>{node}</TVFocusable> : node);
   const { hideSensitive } = useTheme();
   const params = useParams();
   const router = useRouter();
@@ -1036,42 +1048,63 @@ export default function UserDetailPage() {
     }
   }, [params.id, stremioAddons]);
 
+  // On a TV the remote lands on the first reachable piece, so Sync comes first
+  // in the page's order and the Active switch is placed first on screen only.
+  // The remote picks its first stop by where things sit, though, so Sync is
+  // also named as the starting stop (PersonTVPage).
+  const activeSwitch = (
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-muted">Active</span>
+      <ToggleSwitch
+        checked={user?.isActive !== false}
+        onChange={handleToggleActive}
+        size="sm"
+      />
+    </div>
+  );
   const detailActions = (
     <div className="flex items-center gap-3 flex-wrap justify-end">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted">Active</span>
-        <ToggleSwitch
-          checked={user?.isActive !== false}
-          onChange={handleToggleActive}
-          size="sm"
-        />
-      </div>
+      {!isTV && activeSwitch}
       {/* Sync puts the group's addons into a Stremio or Nuvio account; a
           Jellyfin, AIOStreams or AIOMetadata sign-in has no addon list. */}
-      {user && hasAddonList(user) && (
-        <Button
-          variant="glass"
-          leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-          onClick={() => setIsSyncPreviewOpen(true)}
-          isLoading={isSyncing}
-        >
-          Sync
-        </Button>
-      )}
-      <Button
-        variant="glass"
-        leftIcon={<ArrowDownTrayIcon className="w-5 h-5" />}
-        onClick={handleImport}
-      >
-        Import
-      </Button>
-      <Button
-        variant="danger"
-        leftIcon={<TrashIcon className="w-5 h-5" />}
-        onClick={() => setIsDeleteModalOpen(true)}
-      >
-        Delete
-      </Button>
+      {user && hasAddonList(user) && (() => {
+        const btn = (
+          <Button
+            variant="glass"
+            leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+            onClick={() => setIsSyncPreviewOpen(true)}
+            isLoading={isSyncing}
+          >
+            Sync
+          </Button>
+        );
+        return isTV ? <TVFocusable focusKey={PERSON_SYNC_KEY} onEnterPress={() => setIsSyncPreviewOpen(true)}>{btn}</TVFocusable> : btn;
+      })()}
+      {(() => {
+        const btn = (
+          <Button
+            variant="glass"
+            leftIcon={<ArrowDownTrayIcon className="w-5 h-5" />}
+            onClick={handleImport}
+          >
+            Import
+          </Button>
+        );
+        return isTV ? <TVFocusable onEnterPress={handleImport}>{btn}</TVFocusable> : btn;
+      })()}
+      {(() => {
+        const btn = (
+          <Button
+            variant="danger"
+            leftIcon={<TrashIcon className="w-5 h-5" />}
+            onClick={() => setIsDeleteModalOpen(true)}
+          >
+            Delete
+          </Button>
+        );
+        return isTV ? <TVFocusable onEnterPress={() => setIsDeleteModalOpen(true)}>{btn}</TVFocusable> : btn;
+      })()}
+      {isTV && <TVFocusable className="order-first" onEnterPress={handleToggleActive}>{activeSwitch}</TVFocusable>}
     </div>
   );
 
@@ -1159,32 +1192,39 @@ export default function UserDetailPage() {
                       </p>
                     </div>
                   </div>
-                  {user.simklConnected ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      isLoading={isDisconnectingSimkl}
-                      onClick={async () => {
-                        if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
-                        setIsDisconnectingSimkl(true);
-                        try {
-                          await api.disconnectSimkl(user.id);
-                          toast.success('SIMKL disconnected');
-                          setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
-                        } catch (err: any) {
-                          toast.error(err.message || 'Failed to disconnect SIMKL');
-                        } finally {
-                          setIsDisconnectingSimkl(false);
-                        }
-                      }}
-                    >
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setIsSimklModalOpen(true)}>
-                      Link SIMKL
-                    </Button>
-                  )}
+                  {user.simklConnected ? (() => {
+                    const disconnectSimkl = async () => {
+                      if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
+                      setIsDisconnectingSimkl(true);
+                      try {
+                        await api.disconnectSimkl(user.id);
+                        toast.success('SIMKL disconnected');
+                        setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
+                      } catch (err: any) {
+                        toast.error(err.message || 'Failed to disconnect SIMKL');
+                      } finally {
+                        setIsDisconnectingSimkl(false);
+                      }
+                    };
+                    const btn = (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        isLoading={isDisconnectingSimkl}
+                        onClick={disconnectSimkl}
+                      >
+                        Disconnect
+                      </Button>
+                    );
+                    return isTV ? <TVFocusable onEnterPress={disconnectSimkl}>{btn}</TVFocusable> : btn;
+                  })() : (() => {
+                    const btn = (
+                      <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setIsSimklModalOpen(true)}>
+                        Link SIMKL
+                      </Button>
+                    );
+                    return isTV ? <TVFocusable onEnterPress={() => setIsSimklModalOpen(true)}>{btn}</TVFocusable> : btn;
+                  })()}
                 </div>
 
                 <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
@@ -1221,14 +1261,19 @@ export default function UserDetailPage() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant={user.traxAddonEnabled ? 'ghost' : 'primary'}
-                      size="sm"
-                      isLoading={isTogglingTrax}
-                      onClick={handleToggleTraxAddon}
-                    >
-                      {user.traxAddonEnabled ? 'Disable' : 'Enable'}
-                    </Button>
+                    {(() => {
+                      const btn = (
+                        <Button
+                          variant={user.traxAddonEnabled ? 'ghost' : 'primary'}
+                          size="sm"
+                          isLoading={isTogglingTrax}
+                          onClick={handleToggleTraxAddon}
+                        >
+                          {user.traxAddonEnabled ? 'Disable' : 'Enable'}
+                        </Button>
+                      );
+                      return isTV ? <TVFocusable onEnterPress={handleToggleTraxAddon}>{btn}</TVFocusable> : btn;
+                    })()}
                   </div>
 
                   {user.traxAddonEnabled && (
@@ -1299,15 +1344,20 @@ export default function UserDetailPage() {
                       </Button>
                     </>
                   )}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />}
-                    onClick={handleExportHistory}
-                    isLoading={isExportingHistory}
-                  >
-                    Export CSV
-                  </Button>
+                  {(() => {
+                    const btn = (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />}
+                        onClick={handleExportHistory}
+                        isLoading={isExportingHistory}
+                      >
+                        Export CSV
+                      </Button>
+                    );
+                    return isTV ? <TVFocusable onEnterPress={handleExportHistory}>{btn}</TVFocusable> : btn;
+                  })()}
                 </div>
     </>
   );
@@ -1327,9 +1377,14 @@ export default function UserDetailPage() {
                           </p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => refreshGroupAddons(true)} disabled={isRefreshingAddons} title="Refresh addons">
-                        <ArrowPathIcon className={`w-4 h-4 ${isRefreshingAddons ? 'animate-spin' : ''}`} />
-                      </Button>
+                      {(() => {
+                        const btn = (
+                          <Button variant="ghost" size="sm" onClick={() => refreshGroupAddons(true)} disabled={isRefreshingAddons} title="Refresh addons">
+                            <ArrowPathIcon className={`w-4 h-4 ${isRefreshingAddons ? 'animate-spin' : ''}`} />
+                          </Button>
+                        );
+                        return isTV ? <TVFocusable onEnterPress={() => refreshGroupAddons(true)}>{btn}</TVFocusable> : btn;
+                      })()}
                     </div>
 
                     {groupAddons.length > 0 ? (
@@ -1351,9 +1406,10 @@ export default function UserDetailPage() {
                               <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
                                 <Bars3Icon className="w-5 h-5 text-subtle" />
                               </div>
-                              <Link
+                              <TVLink
                                 href={`/addons/${addon.id}`}
                                 className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                focusWrapperClassName="flex-1 min-w-0"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
@@ -1391,15 +1447,20 @@ export default function UserDetailPage() {
                                     </div>
                                   )}
                                 </div>
-                              </Link>
-                              <button
-                                onClick={() => handleToggleExclude(addon.id)}
-                                className={`p-2 rounded-lg transition-colors ${
-                                  isExcluded ? 'text-error bg-error-muted' : 'text-muted hover:text-error hover:bg-error-muted'
-                                }`}
-                              >
-                                {isExcluded ? <ArrowPathIcon className="w-4 h-4" /> : <XMarkIcon className="w-4 h-4" />}
-                              </button>
+                              </TVLink>
+                              {(() => {
+                                const btn = (
+                                  <button
+                                    onClick={() => handleToggleExclude(addon.id)}
+                                    className={`p-2 rounded-lg transition-colors ${
+                                      isExcluded ? 'text-error bg-error-muted' : 'text-muted hover:text-error hover:bg-error-muted'
+                                    }`}
+                                  >
+                                    {isExcluded ? <ArrowPathIcon className="w-4 h-4" /> : <XMarkIcon className="w-4 h-4" />}
+                                  </button>
+                                );
+                                return isTV ? <TVFocusable onEnterPress={() => handleToggleExclude(addon.id)}>{btn}</TVFocusable> : btn;
+                              })()}
                             </motion.div>
                           );
                         }}
@@ -1432,13 +1493,18 @@ export default function UserDetailPage() {
                         </div>
                       </div>
                       {stremioAddons.length > 0 && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleResetStremioAddons}
-                        >
-                          Clear All
-                        </Button>
+                        (() => {
+                          const btn = (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleResetStremioAddons}
+                            >
+                              Clear All
+                            </Button>
+                          );
+                          return isTV ? <TVFocusable onEnterPress={handleResetStremioAddons}>{btn}</TVFocusable> : btn;
+                        })()
                       )}
                     </div>
 
@@ -1538,33 +1604,44 @@ export default function UserDetailPage() {
                                 <Bars3Icon className="w-5 h-5 text-subtle" />
                               </div>
                               {matchedAddon ? (
-                                <Link
+                                <TVLink
                                   href={`/addons/${matchedAddon.id}`}
                                   className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                  focusWrapperClassName="flex-1 min-w-0"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   {content}
-                                </Link>
+                                </TVLink>
                               ) : (
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
                                   {content}
                                 </div>
                               )}
-                              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => handleToggleProtect(name)}
-                                  className={`p-2 rounded-lg transition-colors ${
-                                    isProtected ? 'text-success hover:bg-success-muted' : 'text-muted hover:text-success hover:bg-success-muted'
-                                  }`}
-                                >
-                                  <ShieldCheckIcon className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleRemoveStremioAddon(addon.transportUrl)}
-                                  className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors"
-                                >
-                                  <XMarkIcon className="w-4 h-4" />
-                                </button>
+                              <div className="flex items-center gap-1 hover-reveal transition-opacity">
+                                {(() => {
+                                  const btn = (
+                                    <button
+                                      onClick={() => handleToggleProtect(name)}
+                                      className={`p-2 rounded-lg transition-colors ${
+                                        isProtected ? 'text-success hover:bg-success-muted' : 'text-muted hover:text-success hover:bg-success-muted'
+                                      }`}
+                                    >
+                                      <ShieldCheckIcon className="w-4 h-4" />
+                                    </button>
+                                  );
+                                  return isTV ? <TVFocusable onEnterPress={() => handleToggleProtect(name)}>{btn}</TVFocusable> : btn;
+                                })()}
+                                {(() => {
+                                  const btn = (
+                                    <button
+                                      onClick={() => handleRemoveStremioAddon(addon.transportUrl)}
+                                      className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors"
+                                    >
+                                      <XMarkIcon className="w-4 h-4" />
+                                    </button>
+                                  );
+                                  return isTV ? <TVFocusable onEnterPress={() => handleRemoveStremioAddon(addon.transportUrl)}>{btn}</TVFocusable> : btn;
+                                })()}
                               </div>
                             </motion.div>
                           );
@@ -2047,23 +2124,29 @@ export default function UserDetailPage() {
                             <JellyfinDevicesButton userId={user.id} name={user.username || user.name || 'them'} />
                           </>
                         )}
-                        <button
-                          onClick={() => {
+                        {(() => {
+                          const toggleDebug = () => {
                             if (!showSyncDebug) {
                               refreshSyncPlan();
                             }
                             setShowSyncDebug(!showSyncDebug);
-                          }}
-                          className="text-xs text-muted hover:text-primary underline"
-                        >
-                          {showSyncDebug ? 'Hide' : 'Debug'}
-                        </button>
+                          };
+                          return tvFocus(
+                            <button
+                              onClick={toggleDebug}
+                              className="text-xs text-muted hover:text-primary underline"
+                            >
+                              {showSyncDebug ? 'Hide' : 'Debug'}
+                            </button>,
+                            toggleDebug,
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-2 mb-3 md:mb-4">
                         <p className="text-sm md:text-base text-muted truncate">
                           {hideSensitive && !showEmail ? '••••••••' : displayEmail(user.email)}
                         </p>
-                        {hideSensitive && (
+                        {hideSensitive && tvFocus(
                           <button
                             onClick={() => setShowEmail(!showEmail)}
                             className="p-1 rounded-lg text-muted hover:text-primary hover:bg-surface-hover transition-colors shrink-0"
@@ -2074,33 +2157,40 @@ export default function UserDetailPage() {
                             ) : (
                               <EyeIcon className="w-4 h-4" />
                             )}
-                          </button>
+                          </button>,
+                          () => setShowEmail(!showEmail),
                         )}
                       </div>
 
                       {/* Meta Row (Matched with Group Style) */}
                       <div className="flex flex-col items-start gap-1.5">
-                        <button
-                          onClick={() => setIsEditDetailsOpen(true)}
-                          className="flex items-center gap-2 group transition-colors"
-                        >
-                          <UsersIcon className="w-4 h-4 md:w-5 md:h-5 text-secondary group-hover:text-primary" />
-                          <span className="text-sm md:text-base text-default font-medium">
-                            {groups.find(g => g.id === (user.groupIds?.[0] || user.groupId))?.name || 'No Group'}
-                          </span>
-                        </button>
+                        {tvFocus(
+                          <button
+                            onClick={() => setIsEditDetailsOpen(true)}
+                            className="flex items-center gap-2 group transition-colors"
+                          >
+                            <UsersIcon className="w-4 h-4 md:w-5 md:h-5 text-secondary group-hover:text-primary" />
+                            <span className="text-sm md:text-base text-default font-medium">
+                              {groups.find(g => g.id === (user.groupIds?.[0] || user.groupId))?.name || 'No Group'}
+                            </span>
+                          </button>,
+                          () => setIsEditDetailsOpen(true),
+                        )}
 
-                        <button
-                          onClick={() => setIsEditDetailsOpen(true)}
-                          className="flex items-center gap-2 group transition-colors"
-                        >
-                          <ClockIcon className="w-4 h-4 md:w-5 md:h-5 text-secondary group-hover:text-primary" />
-                          <span className="text-sm md:text-base text-muted">
-                            {user.expiresAt 
-                              ? `Expires ${new Date(user.expiresAt).toLocaleDateString()}` 
-                              : 'Lifetime'}
-                          </span>
-                        </button>
+                        {tvFocus(
+                          <button
+                            onClick={() => setIsEditDetailsOpen(true)}
+                            className="flex items-center gap-2 group transition-colors"
+                          >
+                            <ClockIcon className="w-4 h-4 md:w-5 md:h-5 text-secondary group-hover:text-primary" />
+                            <span className="text-sm md:text-base text-muted">
+                              {user.expiresAt
+                                ? `Expires ${new Date(user.expiresAt).toLocaleDateString()}`
+                                : 'Lifetime'}
+                            </span>
+                          </button>,
+                          () => setIsEditDetailsOpen(true),
+                        )}
 
                         <div className="flex items-center gap-2">
                           <CalendarIcon className="w-4 h-4 md:w-5 md:h-5 text-secondary" />
@@ -2155,9 +2245,12 @@ export default function UserDetailPage() {
                         <p className="text-sm text-muted">Merge this person with their login on another app - Stremio, Nuvio, Jellyfin or AIOStreams.</p>
                       </div>
                     </div>
-                    <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
-                      Merge with another user
-                    </Button>
+                    {tvFocus(
+                      <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
+                        Merge with another user
+                      </Button>,
+                      openMergePicker,
+                    )}
                   </div>
                 </Card>
               </PageSection>
@@ -2178,10 +2271,8 @@ export default function UserDetailPage() {
                       For a test or guest person: their viewing stays on this page, but stops counting in household totals, Top Viewers and Wrapped.
                     </p>
                   </div>
-                  <ToggleSwitch
-                    checked={!!user.excludeFromHouseholdStats}
-                    title="Leave out of household numbers"
-                    onChange={async () => {
+                  {(() => {
+                    const toggleHouseholdStats = async () => {
                       const v = !user.excludeFromHouseholdStats;
                       try {
                         await api.setHouseholdStats(user.id, v);
@@ -2190,8 +2281,16 @@ export default function UserDetailPage() {
                       } catch (err: any) {
                         toast.error(err?.message || 'Could not change that');
                       }
-                    }}
-                  />
+                    };
+                    return tvFocus(
+                      <ToggleSwitch
+                        checked={!!user.excludeFromHouseholdStats}
+                        title="Leave out of household numbers"
+                        onChange={toggleHouseholdStats}
+                      />,
+                      toggleHouseholdStats,
+                    );
+                  })()}
                 </div>
               </Card>
             </PageSection>
@@ -2224,25 +2323,28 @@ export default function UserDetailPage() {
                 Trakt's own free export and needs no app and no VIP. */}
             <PageSection className="mb-6">
               <Card padding="lg">
-                <button
-                  type="button"
-                  onClick={() => toggleSection('tracking')}
-                  className="w-full flex items-center justify-between gap-3 text-left"
-                  aria-expanded={openSections.tracking}
-                >
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
-                    <p className="text-sm text-muted">
-                      {openSections.tracking
-                        ? "Link this user's history to an external tracker"
-                        : `${user.simklConnected ? 'SIMKL linked' : 'SIMKL not linked'} · SlickTrax ${user.traxAddonEnabled ? 'on' : 'off'}`}
-                    </p>
-                  </div>
-                  <ChevronDownIcon
-                    className="w-5 h-5 text-muted shrink-0 transition-transform"
-                    style={{ transform: openSections.tracking ? 'rotate(180deg)' : 'none' }}
-                  />
-                </button>
+                {tvFocus(
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('tracking')}
+                    className="w-full flex items-center justify-between gap-3 text-left"
+                    aria-expanded={openSections.tracking}
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
+                      <p className="text-sm text-muted">
+                        {openSections.tracking
+                          ? "Link this user's history to an external tracker"
+                          : `${user.simklConnected ? 'SIMKL linked' : 'SIMKL not linked'} · SlickTrax ${user.traxAddonEnabled ? 'on' : 'off'}`}
+                      </p>
+                    </div>
+                    <ChevronDownIcon
+                      className="w-5 h-5 text-muted shrink-0 transition-transform"
+                      style={{ transform: openSections.tracking ? 'rotate(180deg)' : 'none' }}
+                    />
+                  </button>,
+                  () => toggleSection('tracking'),
+                )}
 
                 {openSections.tracking && (<div className="mt-4">
 
@@ -2287,9 +2389,12 @@ export default function UserDetailPage() {
                       </div>
                     </div>
                     {mergeInfo.undoable ? (
-                      <Button variant="secondary" size="sm" onClick={() => setIsUndoModalOpen(true)}>
-                        Undo merge
-                      </Button>
+                      tvFocus(
+                        <Button variant="secondary" size="sm" onClick={() => setIsUndoModalOpen(true)}>
+                          Undo merge
+                        </Button>,
+                        () => setIsUndoModalOpen(true),
+                      )
                     ) : (
                       <p className="text-xs text-muted max-w-xs text-right">Can't be undone automatically (no archive on file)</p>
                     )}
@@ -2311,23 +2416,26 @@ export default function UserDetailPage() {
                 and needs no API app, which the removed OAuth route did. */}
             <PageSection className="mb-6">
               <Card padding="lg">
-                <button
-                  type="button"
-                  onClick={() => toggleSection('history')}
-                  className="w-full flex items-center justify-between gap-3 text-left"
-                  aria-expanded={openSections.history}
-                >
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
-                    {!openSections.history && (
-                      <p className="text-sm text-muted mt-0.5">Bring in an IMDb, Letterboxd, Trakt, Netflix, TV Time, Plex or Movary export, or take a copy out</p>
-                    )}
-                  </div>
-                  <ChevronDownIcon
-                    className="w-5 h-5 text-muted shrink-0 transition-transform"
-                    style={{ transform: openSections.history ? 'rotate(180deg)' : 'none' }}
-                  />
-                </button>
+                {tvFocus(
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('history')}
+                    className="w-full flex items-center justify-between gap-3 text-left"
+                    aria-expanded={openSections.history}
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
+                      {!openSections.history && (
+                        <p className="text-sm text-muted mt-0.5">Bring in an IMDb, Letterboxd, Trakt, Netflix, TV Time, Plex or Movary export, or take a copy out</p>
+                      )}
+                    </div>
+                    <ChevronDownIcon
+                      className="w-5 h-5 text-muted shrink-0 transition-transform"
+                      style={{ transform: openSections.history ? 'rotate(180deg)' : 'none' }}
+                    />
+                  </button>,
+                  () => toggleSection('history'),
+                )}
                 {/* A new, nearly empty sign-in: offer to bring their history over. */}
                 <SignInOfferBanner userId={user.id} />
                 {/* AIOSync between their sign-ins (its own page; also on Tasks). */}
@@ -2346,33 +2454,37 @@ export default function UserDetailPage() {
             {/* Tab Navigation */}
             <PageSection className="mb-6 md:mb-8">
               <ScrollRow className="flex items-center gap-2 p-1 rounded-xl bg-surface w-fit max-w-full">
-                <button
-                  onClick={() => setActiveTab('overview')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === 'overview'
-                      ? 'bg-primary-solid text-white'
-                      : 'text-muted hover:text-default hover:bg-surface-hover'
-                  }`}
-                >
-                  Overview
-                </button>
-                {hasAddonList(user) && (
-                <button
-                  onClick={() => setActiveTab('addons')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                    activeTab === 'addons'
-                      ? 'bg-primary-solid text-white'
-                      : 'text-muted hover:text-default hover:bg-surface-hover'
-                  }`}
-                >
-                  <PuzzlePieceIcon className="w-4 h-4" />
-                  Addons
-                  {stremioAddons.length > 0 && (
-                    <span className="px-1.5 py-0.5 text-xs rounded-full bg-surface">
-                      {stremioAddons.length}
-                    </span>
-                  )}
-                </button>
+                {tvFocus(
+                  <button
+                    onClick={() => setActiveTab('overview')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      activeTab === 'overview'
+                        ? 'bg-primary-solid text-white'
+                        : 'text-muted hover:text-default hover:bg-surface-hover'
+                    }`}
+                  >
+                    Overview
+                  </button>,
+                  () => setActiveTab('overview'),
+                )}
+                {hasAddonList(user) && tvFocus(
+                  <button
+                    onClick={() => setActiveTab('addons')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                      activeTab === 'addons'
+                        ? 'bg-primary-solid text-white'
+                        : 'text-muted hover:text-default hover:bg-surface-hover'
+                    }`}
+                  >
+                    <PuzzlePieceIcon className="w-4 h-4" />
+                    Addons
+                    {stremioAddons.length > 0 && (
+                      <span className="px-1.5 py-0.5 text-xs rounded-full bg-surface">
+                        {stremioAddons.length}
+                      </span>
+                    )}
+                  </button>,
+                  () => setActiveTab('addons'),
                 )}
               </ScrollRow>
             </PageSection>
@@ -2382,22 +2494,22 @@ export default function UserDetailPage() {
                 {/* Stats Cards */}
                 <PageSection delay={0.1} className="mb-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <Link href={`/activity?user=${encodeURIComponent(user?.username || '')}&period=today`}>
+                    <TVLink href={`/activity?user=${encodeURIComponent(user?.username || '')}&period=today`}>
                       <StatCard
                         label="Watch Time Today"
                         value={isLoading ? '...' : formatMinutes(liveTodayMinutes)}
                         icon={<ClockIcon className="w-6 h-6" />}
                         delay={0}
                       />
-                    </Link>
-                    <Link href={`/activity?user=${encodeURIComponent(user?.username || '')}&period=week`}>
+                    </TVLink>
+                    <TVLink href={`/activity?user=${encodeURIComponent(user?.username || '')}&period=week`}>
                       <StatCard
                         label="Watch Time This Week"
                         value={isLoading ? '...' : formatMinutes(liveWeekMinutes)}
                         icon={<CalendarIcon className="w-6 h-6" />}
                         delay={0.05}
                       />
-                    </Link>
+                    </TVLink>
                     <StatCard
                       label="Current Streak"
                       value={`${streaks?.currentStreak || 0} days`}
@@ -2620,7 +2732,7 @@ export default function UserDetailPage() {
   ) : detailActions;
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={
@@ -2930,7 +3042,7 @@ export default function UserDetailPage() {
           onUpdateExpiresAt={handleExpiresAtChange}
         />
       )}
-    </>
+    </Wrapper>
   );
 }
 

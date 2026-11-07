@@ -22,6 +22,8 @@ import { ScrollRow } from '@/components/ui/ScrollRow';
 import { toast } from '@/components/ui/Toast';
 import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { useUserAuth } from '@/lib/hooks/useUserAuth';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
@@ -78,6 +80,12 @@ function openingOf(card: ContinueWatchingCardData) {
   return { appUrl, href: appUrl || webUrl, app: providerTypeLabel(card.providerType) };
 }
 
+// OK on the remote: what a click on the card's link does.
+function openOnTV(appUrl: string | null, href: string) {
+  if (appUrl) window.location.href = appUrl;
+  else window.open(href, '_blank', 'noopener,noreferrer');
+}
+
 const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
   card: ContinueWatchingCardData;
   menuOpen: boolean;
@@ -87,6 +95,7 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
   const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
   // Settings: time left / Up next under the card instead of on the picture.
   const under = useCwTime().where === 'under';
+  const isTV = useIsTV();
 
   const body = (
     <>
@@ -126,19 +135,23 @@ const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
 
   return (
     <div className="relative shrink-0 w-[240px] sm:w-[260px]" data-continue-card={card.showId}>
-      {href ? (
-        <a
-          href={href}
-          target={appUrl ? undefined : '_blank'}
-          rel={appUrl ? undefined : 'noopener noreferrer'}
-          draggable={false}
-          aria-label={`${appUrl ? `Resume in ${app}` : 'Open'} ${card.name}`}
-          className={cardClass}
-          style={cardStyle}
-        >
-          {body}
-        </a>
-      ) : (
+      {href ? (() => {
+        const link = (
+          <a
+            href={href}
+            target={appUrl ? undefined : '_blank'}
+            rel={appUrl ? undefined : 'noopener noreferrer'}
+            draggable={false}
+            tabIndex={isTV ? -1 : undefined}
+            aria-label={`${appUrl ? `Resume in ${app}` : 'Open'} ${card.name}`}
+            className={cardClass}
+            style={cardStyle}
+          >
+            {body}
+          </a>
+        );
+        return isTV ? <TVFocusable onEnterPress={() => openOnTV(appUrl, href)}>{link}</TVFocusable> : link;
+      })() : (
         <div className={cardClass} style={cardStyle}>{body}</div>
       )}
       <button
@@ -163,6 +176,7 @@ const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
 }) {
   const { appUrl, href, app } = openingOf(card);
   const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
+  const isTV = useIsTV();
   const inner = (
     <>
       <span className="relative w-24 h-[54px] shrink-0 rounded-lg overflow-hidden" style={{ background: 'var(--color-surface-elevated)' }}>
@@ -184,12 +198,15 @@ const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
   );
   return (
     <div className="flex items-center gap-2 px-2 py-2 border-b last:border-b-0" style={{ borderColor: 'var(--color-surface-border)' }} data-continue-card={card.showId}>
-      {href ? (
-        <a href={href} target={appUrl ? undefined : '_blank'} rel={appUrl ? undefined : 'noopener noreferrer'}
-          aria-label={`${appUrl ? `Resume in ${app}` : 'Open'} ${card.name}`} className="flex-1 min-w-0 flex items-center gap-4 rounded-lg">
-          {inner}
-        </a>
-      ) : <div className="flex-1 min-w-0 flex items-center gap-4">{inner}</div>}
+      {href ? (() => {
+        const link = (
+          <a href={href} target={appUrl ? undefined : '_blank'} rel={appUrl ? undefined : 'noopener noreferrer'} tabIndex={isTV ? -1 : undefined}
+            aria-label={`${appUrl ? `Resume in ${app}` : 'Open'} ${card.name}`} className="flex-1 min-w-0 flex items-center gap-4 rounded-lg">
+            {inner}
+          </a>
+        );
+        return isTV ? <TVFocusable className="flex-1 min-w-0 flex" onEnterPress={() => openOnTV(appUrl, href)}>{link}</TVFocusable> : link;
+      })() : <div className="flex-1 min-w-0 flex items-center gap-4">{inner}</div>}
       <button type="button" onClick={(e) => onToggleMenu(card, e.currentTarget)} aria-label={`More for ${card.name}`} aria-haspopup="dialog" aria-expanded={menuOpen}
         className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors" style={{ color: 'var(--color-text-muted)' }}>
         <EllipsisHorizontalIcon className="w-5 h-5" />

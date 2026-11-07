@@ -123,7 +123,7 @@ const RecentAddonItem = memo(function RecentAddonItem({
         <Button
           variant="ghost"
           size="sm"
-          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-2"
+          className="shrink-0 hover-reveal transition-opacity p-2"
           onClick={onReload}
           aria-label="Reload"
         >

@@ -15,6 +15,8 @@ import { providerTypeLabel } from '@/lib/providers';
 import type { NowPlayingItem } from '@/lib/user-api';
 import { useNowPlayingProgress, useNowPlayingWho } from '@/lib/arrange';
 import { MediaDetailModal } from '@/components/ui/MediaDetailModal';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // Only the two apps' own addresses may open from here.
 const safeAppUrl = (u: string | null | undefined) => (u && /^(stremio|nuvio):/i.test(u) ? u : null);
@@ -102,6 +104,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
   // Who and where: on a line under the picture (the default) or on it.
   const under = useNowPlayingWho().where === 'under';
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const isTV = useIsTV();
   const baseId = (row.item.id || '').split(':')[0];
   const canOpen = !!baseId && !row.item.titlePending;
   const mediaType: 'movie' | 'series' = row.item.type === 'movie' ? 'movie' : 'series';
@@ -132,14 +135,19 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
         <h2 className={`font-bold leading-tight text-white line-clamp-3 ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
         {episode && <p className="text-sm" style={{ color: '#d1d5db' }}>{episode}</p>}
         {!progressUnder && progressBlock(true)}
-        {resumeUrl && (
-          <div className={`flex gap-2 ${compact ? 'mt-0.5' : 'mt-1.5'}`}>
-            <a href={resumeUrl} className={`inline-flex items-center gap-2 rounded-full font-semibold text-white ${compact ? 'px-3 py-1 text-xs' : 'px-4 py-2 text-sm'}`} style={{ background: 'var(--color-primary)' }}>
+        {resumeUrl && (() => {
+          const resume = (
+            <a href={resumeUrl} tabIndex={isTV ? -1 : undefined} className={`inline-flex items-center gap-2 rounded-full font-semibold text-white ${compact ? 'px-3 py-1 text-xs' : 'px-4 py-2 text-sm'}`} style={{ background: 'var(--color-primary)' }}>
               <PlayIcon className="w-4 h-4" />
               Resume in {app}
             </a>
-          </div>
-        )}
+          );
+          return (
+            <div className={`flex gap-2 ${compact ? 'mt-0.5' : 'mt-1.5'}`}>
+              {isTV ? <TVFocusable onEnterPress={() => { window.location.href = resumeUrl; }}>{resume}</TVFocusable> : resume}
+            </div>
+          );
+        })()}
       </div>
     </section>
   );

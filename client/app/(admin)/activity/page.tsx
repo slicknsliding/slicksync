@@ -1837,6 +1837,8 @@ function ActivityPageContent() {
   // rest of the history is fetched once and the list simply grows.
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderLoaded, setOlderLoaded] = useState(false);
+  // Which deep step the feed holds (0 = the ordinary capped read).
+  const olderStepRef = useRef(0);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2061,12 +2063,18 @@ function ActivityPageContent() {
     if (isLoadingMore || loadingOlder) return;
 
     // Already showing everything that arrived, and the server said it capped
-    // the feed: ask once for the whole history rather than stopping here.
+    // the feed: ask for the next step further back rather than stopping here.
+    // Steps, not the whole history at once - that one answer was ~110MB on a
+    // long household history and held the server for seconds.
     const shownEverything = visibleCount >= shownCountRef.current;
     if (shownEverything && metricsData?.activityTruncated && !olderLoaded) {
       setLoadingOlder(true);
-      api.getMetrics('all', { deep: true })
+      const step = olderStepRef.current + 1;
+      let more = false;
+      api.getMetrics('all', { deep: step })
         .then((full) => {
+          olderStepRef.current = step;
+          more = !!full.activityTruncated && !full.activityDeepLast;
           setMetricsData(full);
           setVisibleCount((prev) => prev + 50);
         })
@@ -2075,7 +2083,7 @@ function ActivityPageContent() {
           // keeps whatever it already had rather than emptying itself.
         })
         .finally(() => {
-          setOlderLoaded(true);
+          setOlderLoaded(!more);
           setLoadingOlder(false);
         });
       return;

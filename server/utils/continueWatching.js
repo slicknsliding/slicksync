@@ -117,15 +117,7 @@ function placeAbsoluteEpisode(metadata, season, episode) {
  * must be for the SAME episode as `videoId` (WatchSession is one reused row
  * per show, so its lastPosition belongs to whatever episode videoId says).
  */
-async function getResumeState(prisma, accountId, userId, itemId, videoId) {
-  let session = null
-  try {
-    session = await prisma.watchSession.findUnique({
-      where: { accountId_userId_itemId: { accountId, userId, itemId } },
-      select: { videoId: true, lastPosition: true, totalDuration: true }
-    })
-  } catch {}
-
+function resumeStateOf(session, videoId) {
   if (!session || !session.lastPosition || !session.totalDuration) {
     return { inProgress: false, progressPercent: null }
   }
@@ -140,6 +132,32 @@ async function getResumeState(prisma, accountId, userId, itemId, videoId) {
     progressPercent: Math.round(ratio * 100),
     remainingMinutes: Math.max(1, Math.round((session.totalDuration - session.lastPosition) / 60000))
   }
+}
+
+// Where each person left off, for many titles at once: rows of
+// { userId, itemId, videoId }, answered in the same order. One read per few
+// hundred titles. It used to be one findUnique per title, which Prisma folds
+// into a single query with an OR term per title - every movie anyone watched
+// in the last 120 days, so on a big household thousands of terms that SQLite
+// took 50 seconds over (measured: 4,000 movies, 49.5 s for that one query).
+const RESUME_READ_CHUNK = 500
+async function getResumeStates(prisma, accountId, rows) {
+  const sessions = new Map()
+  const keyOf = (userId, itemId) => `${userId}\u0000${itemId}`
+  const userIds = [...new Set(rows.map((r) => r.userId))]
+  const itemIds = [...new Set(rows.map((r) => r.itemId))]
+  try {
+    for (let i = 0; i < itemIds.length; i += RESUME_READ_CHUNK) {
+      const found = await prisma.watchSession.findMany({
+        where: { accountId, userId: { in: userIds }, itemId: { in: itemIds.slice(i, i + RESUME_READ_CHUNK) } },
+        select: { userId: true, itemId: true, videoId: true, lastPosition: true, totalDuration: true }
+      })
+      for (const s of found) sessions.set(keyOf(s.userId, s.itemId), s)
+    }
+  } catch {
+    return rows.map(() => ({ inProgress: false, progressPercent: null }))
+  }
+  return rows.map((r) => resumeStateOf(sessions.get(keyOf(r.userId, r.itemId)), r.videoId))
 }
 
 /**
@@ -229,13 +247,11 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
   // with two years of history, where several shows no longer resolve and
   // each one waited out its full timeout before the next even started.
   // Together, the whole row costs one deadline rather than a dozen.
-  const prepared = await Promise.all(candidates.map(async (row) => {
-    const [metadata, resumeState] = await Promise.all([
-      fetchMetadata(row.showId, 'series', row.videoId, omdbApiKey).catch(() => null),
-      getResumeState(prisma, accountIdValue, row.userId, row.showId, row.videoId).catch(() => ({ inProgress: false })),
-    ])
-    return { row, metadata, resumeState }
-  }))
+  const [metadataList, resumeStates] = await Promise.all([
+    Promise.all(candidates.map((row) => fetchMetadata(row.showId, 'series', row.videoId, omdbApiKey).catch(() => null))),
+    getResumeStates(prisma, accountIdValue, candidates.map((row) => ({ userId: row.userId, itemId: row.showId, videoId: row.videoId }))),
+  ])
+  const prepared = candidates.map((row, i) => ({ row, metadata: metadataList[i], resumeState: resumeStates[i] }))
 
   const results = []
   for (const { row, metadata, resumeState } of prepared) {
@@ -369,12 +385,14 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
   const movieCandidates = [...latestPerMovie.values()].filter((row) =>
     !dismissedKeys.has(`${row.userId}:${row.itemId}`) && userMap.has(row.userId)
   )
-  const movieResume = await Promise.all(movieCandidates.map((row) =>
-    getResumeState(prisma, accountIdValue, row.userId, row.itemId, null).catch(() => ({ inProgress: false }))
-  ))
+  const movieResume = await getResumeStates(prisma, accountIdValue,
+    movieCandidates.map((row) => ({ userId: row.userId, itemId: row.itemId, videoId: null })))
   const inProgressMovies = movieCandidates
     .map((row, i) => ({ row, resumeState: movieResume[i] }))
     .filter((m) => m.resumeState.inProgress)
+    // Newest first already, and every one of them becomes a card, so only the
+    // first `limit` can survive the cut below - no metadata for the rest.
+    .slice(0, limit)
   const movieMeta = await Promise.all(inProgressMovies.map((m) =>
     fetchMetadata(m.row.itemId, 'movie', null, omdbApiKey).catch(() => null)
   ))

@@ -11,6 +11,7 @@ import { cachedImageUrl } from '@/lib/posterUrl';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { ConfirmV2Body } from '@/components/v2/ConfirmV2';
+import { TVModalContext, useTVModal } from '@/components/tv/useTVModal';
 
 interface ModalProps {
   isOpen: boolean;
@@ -74,6 +75,10 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
   // every frame of the exit; a fade alone composites for free. The open
   // keeps its motion - the content has to be painted then regardless.
   const coarse = useCoarsePointer();
+  // TV: the remote stays inside while it is open (see useTVModal).
+  const isTV = useIsTV();
+  const tvPanelRef = useRef<HTMLDivElement>(null);
+  useTVModal(isTV && isOpen && !lightweight, tvPanelRef, onClose);
   // The library's own title element inside its shell; a plain heading in
   // the lightweight one, wired to the dialog by id for screen readers.
   const TitleTag: React.ElementType = lightweight ? 'h2' : DialogTitle;
@@ -162,7 +167,9 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
 
       {/* Content */}
       <div className="relative z-10 p-6 overflow-y-auto">
-        {children}
+        <TVModalContext.Provider value={isTV}>
+          {children}
+        </TVModalContext.Provider>
       </div>
     </>
   );
@@ -218,6 +225,8 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
             leaveTo={coarse ? 'opacity-0' : 'opacity-0 scale-95 translate-y-4'}
           >
             <DialogPanel
+              ref={tvPanelRef}
+              data-tv-modal={isTV ? '' : undefined}
               className={clsx(
                 'relative w-full flex flex-col max-h-[85dvh]',
                 sizeStyles[size],
@@ -245,6 +254,8 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
   children: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const isTV = useIsTV();
+  useTVModal(isTV && isOpen, panelRef, onClose);
   const restoreFocusTo = useRef<Element | null>(null);
   // The latest onClose, read from the key handler, so a parent that passes a
   // new function every render does not tear down and re-focus the dialog.
@@ -298,11 +309,14 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
           aria-labelledby={titleId}
           aria-label={titleId ? undefined : (ariaLabel || 'Details')}
           tabIndex={-1}
+          data-tv-modal={isTV ? '' : undefined}
           className={clsx(
             'relative w-full flex flex-col max-h-[85dvh] pointer-events-auto outline-none',
             sizeStyles[size],
             'popup-panel rounded-2xl p-0 overflow-hidden overscroll-contain',
-            sheet && 'max-sm:rounded-b-none! max-sm:max-w-none! max-sm:max-h-[92dvh]'
+            // The bottom padding keeps the last row clear of an iPhone's home
+            // bar (0 everywhere without one).
+            sheet && 'max-sm:rounded-b-none! max-sm:max-w-none! max-sm:max-h-[92dvh] max-sm:pb-[env(safe-area-inset-bottom)]!'
           )}
           style={{ maxWidth: sizeMaxWidthPx[size] }}
         >
@@ -369,6 +383,8 @@ export function ConfirmModal({
         <button
           onClick={onClose}
           disabled={isLoading}
+          // TV: the remote starts on the safe choice.
+          data-tv-initial={isTV ? '' : undefined}
           className="px-6 py-3 rounded-xl font-medium transition-all duration-300"
           style={{
             background: 'var(--color-surface-hover)',

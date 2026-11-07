@@ -5,11 +5,15 @@
 // status and the one obvious button (the rest in ⋯), the numbers strip, the
 // tool tiles for things used now and then, and the box sections sit in.
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import { EllipsisHorizontalIcon, EyeIcon } from '@heroicons/react/24/outline';
 import type { PageArrange } from '@/lib/arrange';
 import { StretchHandle } from '@/components/ui/Arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { AnchoredConfirm, type ConfirmAsk } from '@/components/ui/AnchoredConfirm';
 
 export type V2MenuItem = {
   label: string;
@@ -17,10 +21,28 @@ export type V2MenuItem = {
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
+  /** Ask first: the menu turns into this question, under the same ⋯. */
+  confirm?: ConfirmAsk;
 };
 
-/** The ⋯ button and its menu, drawn over the page so nothing clips it. */
-export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel }: {
+/** TV only: keeps the remote inside the open menu, starting on its first item. */
+function TVMenuScope({ children }: { children: ReactNode }) {
+  const { ref, focusKey, focusSelf } = useFocusable<object, HTMLDivElement>({ trackChildren: true, isFocusBoundary: true });
+  useEffect(() => {
+    const timers = [0, 60, 200].map((d) => setTimeout(() => focusSelf(), d));
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <FocusContext.Provider value={focusKey}>
+      <div ref={ref}>{children}</div>
+    </FocusContext.Provider>
+  );
+}
+
+/** The ⋯ button and its menu, drawn over the page so nothing clips it. On a
+ *  TV the ⋯ is its own remote stop and the menu items are too. */
+export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel, focusKey }: {
   items: V2MenuItem[];
   label?: string;
   /** Another icon on the button (a small ✕ that opens a menu). */
@@ -29,11 +51,30 @@ export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel }: {
   small?: boolean;
   /** A line of explanation above the items. */
   menuLabel?: string;
+  /** TV: the ⋯'s remote stop, so something else can send the remote to it. */
+  focusKey?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [asking, setAsking] = useState<V2MenuItem | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const isTV = useIsTV();
+  const autoKey = `more-${useId()}`;
+  const btnKey = focusKey || autoKey;
+  // TV: once the menu closes, the remote goes back to the ⋯.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open) { wasOpen.current = true; return; }
+    if (wasOpen.current && isTV && !asking) setTimeout(() => { try { setFocus(btnKey); } catch {} }, 0);
+    wasOpen.current = false;
+  }, [open, isTV, asking, btnKey]);
+  const backToButton = () => { if (isTV) setTimeout(() => { try { setFocus(btnKey); } catch {} }, 0); };
+  const pick = (it: V2MenuItem) => {
+    setOpen(false);
+    if (it.confirm) setAsking(it);
+    else it.onClick();
+  };
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return;
     const r = btnRef.current.getBoundingClientRect();
@@ -54,7 +95,7 @@ export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel }: {
       if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
       close();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btnRef.current?.focus(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); if (!isTV) btnRef.current?.focus(); } };
     document.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
     // Scrolling moves the menu with its button (a tap often nudges the page);
@@ -77,23 +118,30 @@ export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel }: {
       window.removeEventListener('scroll', follow);
       window.removeEventListener('resize', close);
     };
-  }, [open]);
+  }, [open, isTV]);
   if (items.length === 0) return null;
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        className={small ? 'arrange-icon arrange-icon-plain' : 'v2-btn'}
-        style={small ? undefined : { padding: '7px 10px' }}
-        aria-label={label}
-        title={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => { setPos(null); setOpen((v) => !v); }}
-      >
-        {icon ?? <EllipsisHorizontalIcon className="w-5 h-5" />}
-      </button>
+      {(() => {
+        const toggle = () => { setAsking(null); setPos(null); setOpen((v) => !v); };
+        const btn = (
+          <button
+            ref={btnRef}
+            type="button"
+            className={small ? 'arrange-icon arrange-icon-plain' : 'v2-btn'}
+            style={small ? undefined : { padding: '7px 10px' }}
+            aria-label={label}
+            title={label}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            tabIndex={isTV ? -1 : undefined}
+            onClick={toggle}
+          >
+            {icon ?? <EllipsisHorizontalIcon className="w-5 h-5" />}
+          </button>
+        );
+        return isTV ? <TVFocusable focusKey={btnKey} onEnterPress={toggle} className="inline-block">{btn}</TVFocusable> : btn;
+      })()}
       {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
@@ -102,22 +150,38 @@ export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel }: {
           style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, right: 'auto', zIndex: 60, visibility: pos ? 'visible' : 'hidden' }}
         >
           {menuLabel && <div className="px-2.5 pt-1.5 pb-1 text-[12.5px] text-muted">{menuLabel}</div>}
-          {items.map((it) => (
-            <button
-              key={it.label}
-              type="button"
-              role="menuitem"
-              disabled={it.disabled}
-              className="arrange-menu-item"
-              style={it.danger ? { color: 'var(--color-error, #ef4444)' } : undefined}
-              onClick={() => { setOpen(false); it.onClick(); }}
-            >
-              {it.icon}
-              {it.label}
-            </button>
-          ))}
+          {(() => {
+            const list = items.map((it) => {
+              const b = (
+                <button
+                  key={it.label}
+                  type="button"
+                  role="menuitem"
+                  disabled={it.disabled}
+                  className="arrange-menu-item"
+                  style={it.danger ? { color: 'var(--color-error, #ef4444)' } : undefined}
+                  tabIndex={isTV ? -1 : undefined}
+                  onClick={() => pick(it)}
+                >
+                  {it.icon}
+                  {it.label}
+                </button>
+              );
+              return isTV && !it.disabled ? <TVFocusable key={it.label} onEnterPress={() => pick(it)}>{b}</TVFocusable> : b;
+            });
+            return isTV ? <TVMenuScope>{list}</TVMenuScope> : list;
+          })()}
         </div>,
         document.body,
+      )}
+      {asking?.confirm && (
+        <AnchoredConfirm
+          anchorRef={btnRef}
+          open
+          ask={asking.confirm}
+          onKeep={() => { setAsking(null); backToButton(); }}
+          onConfirm={() => { const it = asking; setAsking(null); backToButton(); it.onClick(); }}
+        />
       )}
     </>
   );

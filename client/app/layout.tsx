@@ -42,7 +42,9 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#050308',
+  // The default (Nebula) background; lib/theme.tsx moves it to the active
+  // theme's background once the page starts.
+  themeColor: '#0d1117',
 };
 
 export default function RootLayout({

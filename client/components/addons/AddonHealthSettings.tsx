@@ -6,6 +6,15 @@ import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { api, AddonHealthConfig } from '@/lib/api';
 import { BoltIcon } from '@heroicons/react/24/outline';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+
+// TV: every button and field here is a remote stop - OK on a field opens the
+// TV's keyboard, OK on a button does what a click does.
+function Stop({ on, onEnter, className, children }: { on: boolean; onEnter: () => void; className?: string; children: React.ReactNode }) {
+  return on ? <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable> : <>{children}</>;
+}
+const focusIn = (e: HTMLElement | null) => e?.querySelector<HTMLElement>('input')?.focus();
 
 // Per-addon health-check overrides, shown inside the Backup Addon card -
 // the two belong together: the health check is what DECIDES a failover,
@@ -73,15 +82,21 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
     router.push('/tasks?open=automation');
   };
 
+  const tv = useIsTV();
+  const toggle = () => setExpanded((v) => !v);
+  const field = (node: React.ReactNode, id: string) => (
+    tv ? <TVFocusable onEnterPress={() => focusIn(document.getElementById(id))}><div id={id}>{node}</div></TVFocusable> : node
+  );
   const inputClass = 'w-full px-3 py-2 rounded-lg text-sm border border-transparent focus:border-primary focus:outline-none';
   const inputStyle = { background: 'var(--color-surface)', color: 'var(--color-text)' } as const;
 
   return (
     <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Stop on={tv} onEnter={toggle}>
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={toggle}
           className="text-left"
         >
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
@@ -96,13 +111,18 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
             {expanded ? 'What counts as "offline" for this addon' : 'Custom probe URL, failure threshold, check interval'}
           </span>
         </button>
+        </Stop>
         <div className="flex items-center gap-2">
+          <Stop on={tv} onEnter={handleAutomate}>
           <Button variant="secondary" size="sm" leftIcon={<BoltIcon className="w-4 h-4" />} onClick={handleAutomate} title="Create an automation rule that fires when this addon goes offline">
             Automate
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setExpanded((v) => !v)}>
+          </Stop>
+          <Stop on={tv} onEnter={toggle}>
+          <Button variant="ghost" size="sm" onClick={toggle}>
             {expanded ? 'Hide' : 'Edit'}
           </Button>
+          </Stop>
         </div>
       </div>
 
@@ -112,7 +132,7 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
               Custom probe URL <span style={{ color: 'var(--color-text-subtle)' }}>(optional — default probes the manifest)</span>
             </label>
-            <input
+            {field(<input
               type="text"
               value={probeUrl}
               onChange={(e) => setProbeUrl(e.target.value)}
@@ -120,14 +140,14 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
               spellCheck={false}
               className={inputClass}
               style={inputStyle}
-            />
+            />, 'health-probe-url')}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
                 Failures before offline <span style={{ color: 'var(--color-text-subtle)' }}>(1–10)</span>
               </label>
-              <input
+              {field(<input
                 type="number"
                 min={1}
                 max={10}
@@ -136,13 +156,13 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
                 placeholder="1"
                 className={inputClass}
                 style={inputStyle}
-              />
+              />, 'health-threshold')}
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
                 Check interval, minutes <span style={{ color: 'var(--color-text-subtle)' }}>(5–1440)</span>
               </label>
-              <input
+              {field(<input
                 type="number"
                 min={5}
                 max={1440}
@@ -151,7 +171,7 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
                 placeholder="global default"
                 className={inputClass}
                 style={inputStyle}
-              />
+              />, 'health-interval')}
             </div>
           </div>
           <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
@@ -159,9 +179,11 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
             of every probe still lands in Health History either way. Clearing a field returns it to the default.
           </p>
           <div className="flex justify-end">
+            <Stop on={tv} onEnter={() => { if (!saving) handleSave(); }}>
             <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving…' : 'Save settings'}
             </Button>
+            </Stop>
           </div>
         </div>
       )}

@@ -28,6 +28,7 @@ import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageDesign } from '@/lib/arrange';
 import { V2DetailHead } from '@/components/v2/V2Detail';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import {
   api, type WatchCopySide, type WatchCopyPerson, type WatchCopyPreview, type WatchCopyItem, type WatchCopyOutcome, type WatchCopyRun, type WatchCopyHas,
 } from '@/lib/api';
@@ -72,6 +73,12 @@ const SINCE = [
   { days: 90, label: 'the last 3 months' },
   { days: 365, label: 'the last year' },
 ];
+
+// On TV the wrapped control becomes D-pad reachable (OK = the same handler as
+// its click); everywhere else it renders exactly as it did.
+function Tv({ on, onEnter, focusKey, children }: { on: boolean; onEnter: () => void; focusKey?: string; children: React.ReactNode }) {
+  return on ? <TVFocusable onEnterPress={onEnter} focusKey={focusKey}>{children}</TVFocusable> : <>{children}</>;
+}
 
 function Logo({ kind, size = 40 }: { kind: string; size?: number }) {
   const look = PROVIDER_LOOK[kind] || PROVIDER_LOOK.jellyfin;
@@ -138,6 +145,8 @@ function useDismiss(open: boolean, ref: React.RefObject<HTMLElement | null>, clo
 function SidePicker({ sides, others, person, current, other, title, onPick }: {
   sides: WatchCopySide[]; others: WatchCopySide[]; person: WatchCopyPerson | null; current: string; other: string; title: string; onPick: (side: string) => void;
 }) {
+  const isTV = useIsTV();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const q = search.trim().toLowerCase();
   const shownOthers = others.filter((o) => !q || (o.person?.username || '').toLowerCase().includes(q) || o.name.toLowerCase().includes(q));
@@ -145,8 +154,8 @@ function SidePicker({ sides, others, person, current, other, title, onPick }: {
     const disabled = side === other;
     const active = side === current;
     return (
+      <Tv key={side} on={isTV} onEnter={() => { if (!disabled) onPick(side); }}>
       <button
-        key={side}
         type="button"
         disabled={disabled}
         onClick={() => onPick(side)}
@@ -158,6 +167,7 @@ function SidePicker({ sides, others, person, current, other, title, onPick }: {
         {disabled && <span className="text-xs text-subtle">{title === 'Copy to…' ? 'copying from' : 'copying to'}</span>}
         {active && <CheckIcon className="w-4 h-4 text-primary" />}
       </button>
+      </Tv>
     );
   };
   return (
@@ -180,15 +190,17 @@ function SidePicker({ sides, others, person, current, other, title, onPick }: {
         <>
           <div className="text-xs text-subtle mt-3 mb-1">Other people</div>
           {others.length > 5 && (
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people" className="w-full mb-1.5 px-2.5 py-1.5 rounded-lg border border-default bg-transparent text-sm text-default placeholder:text-muted outline-none" />
+            <Tv on={isTV} onEnter={() => searchRef.current?.focus()}>
+              <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people" className="w-full mb-1.5 px-2.5 py-1.5 rounded-lg border border-default bg-transparent text-sm text-default placeholder:text-muted outline-none" />
+            </Tv>
           )}
           {shownOthers.map((o) => {
             const disabled = o.side === other;
             const active = o.side === current;
             const pill = PROVIDER_PILL[o.kind] || PROVIDER_PILL.jellyfin;
             return (
+              <Tv key={o.side} on={isTV} onEnter={() => { if (!disabled) onPick(o.side); }}>
               <button
-                key={o.side}
                 type="button"
                 disabled={disabled}
                 onClick={() => onPick(o.side)}
@@ -201,6 +213,7 @@ function SidePicker({ sides, others, person, current, other, title, onPick }: {
                 <span className="text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: pill.bg, color: pill.fg }}>{o.name}</span>
                 {active && <CheckIcon className="w-4 h-4 text-primary" />}
               </button>
+              </Tv>
             );
           })}
           {shownOthers.length === 0 && <div className="text-xs text-muted px-2 py-1.5">Nobody by that name.</div>}
@@ -215,6 +228,7 @@ function Slot({ role, choice, count, sides, others, person, other, onPick, compa
   role: 'from' | 'to'; choice: Choice | null; count: number | null; sides: WatchCopySide[]; others: WatchCopySide[]; person: WatchCopyPerson | null; other: string; onPick: (side: string) => void; compact: boolean;
 }) {
   const owner = choice?.sideInfo.person || person;
+  const isTV = useIsTV();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -225,6 +239,7 @@ function Slot({ role, choice, count, sides, others, person, other, onPick, compa
       <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-bold tracking-[0.08em]" style={{ color }}>
         {role === 'from' ? 'COPY FROM' : 'COPY TO'}
       </div>
+      <Tv on={isTV} onEnter={() => setOpen((o) => !o)}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -251,26 +266,34 @@ function Slot({ role, choice, count, sides, others, person, other, onPick, compa
         </span>}
         {choice && <span className="text-xs text-muted shrink-0 flex items-center gap-1">Change<ChevronDownIcon className="w-3 h-3" /></span>}
       </button>
+      </Tv>
       {open && <SidePicker sides={sides} others={others} person={person} current={choice?.side || ''} other={other} title={role === 'from' ? 'Copy from…' : 'Copy to…'} onPick={(s) => { onPick(s); setOpen(false); }} />}
     </div>
   );
 }
 
 function OtherChip({ side, onUse }: { side: WatchCopySide; onUse: (role: 'from' | 'to') => void }) {
+  const isTV = useIsTV();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, ref, close);
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border border-dashed border-default">
-        <Logo kind={side.kind} size={24} />
-        <span className="text-xs text-default">{side.name}</span>
-      </button>
+      <Tv on={isTV} onEnter={() => setOpen((o) => !o)}>
+        <button type="button" onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border border-dashed border-default">
+          <Logo kind={side.kind} size={24} />
+          <span className="text-xs text-default">{side.name}</span>
+        </button>
+      </Tv>
       {open && (
         <div className="absolute z-30 left-0 mt-2 rounded-xl border border-default p-1.5 shadow-2xl flex flex-col min-w-[9rem]" style={{ background: 'var(--color-surface)' }}>
-          <button type="button" className="text-left text-sm px-3 py-1.5 rounded-lg hover:bg-surface-hover" style={{ color: FROM_C }} onClick={() => { onUse('from'); setOpen(false); }}>Use as From</button>
-          <button type="button" className="text-left text-sm px-3 py-1.5 rounded-lg hover:bg-surface-hover text-primary" onClick={() => { onUse('to'); setOpen(false); }}>Use as To</button>
+          <Tv on={isTV} onEnter={() => { onUse('from'); setOpen(false); }}>
+            <button type="button" className="text-left text-sm px-3 py-1.5 rounded-lg hover:bg-surface-hover" style={{ color: FROM_C }} onClick={() => { onUse('from'); setOpen(false); }}>Use as From</button>
+          </Tv>
+          <Tv on={isTV} onEnter={() => { onUse('to'); setOpen(false); }}>
+            <button type="button" className="text-left text-sm px-3 py-1.5 rounded-lg hover:bg-surface-hover text-primary" onClick={() => { onUse('to'); setOpen(false); }}>Use as To</button>
+          </Tv>
         </div>
       )}
     </div>
@@ -278,22 +301,26 @@ function OtherChip({ side, onUse }: { side: WatchCopySide; onUse: (role: 'from' 
 }
 
 function OptionChip({ on, onClick, children, disabled }: { on: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+  const isTV = useIsTV();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      // The chosen look is a class, never inline - see .sync-chip-on in globals.css.
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap border text-default disabled:opacity-40 ${on ? 'sync-chip-on' : 'sync-chip-off'}`}
-    >
-      {on && <CheckIcon className="w-3.5 h-3.5" />}
-      {children}
-    </button>
+    <Tv on={isTV} onEnter={() => { if (!disabled) onClick(); }}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        // The chosen look is a class, never inline - see .sync-chip-on in globals.css.
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap border text-default disabled:opacity-40 ${on ? 'sync-chip-on' : 'sync-chip-off'}`}
+      >
+        {on && <CheckIcon className="w-3.5 h-3.5" />}
+        {children}
+      </button>
+    </Tv>
   );
 }
 
 function MatchPicker({ userId, item, onPick, onClose }: { userId: string; item: WatchCopyItem; onPick: (id: string) => void; onClose: () => void }) {
   const [list, setList] = useState<{ id: string; name: string; year: string | null; poster: string | null }[] | null>(null);
+  const isTV = useIsTV();
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(true, ref, onClose);
   useEffect(() => {
@@ -305,11 +332,13 @@ function MatchPicker({ userId, item, onPick, onClose }: { userId: string; item: 
       {list === null && <div className="text-xs text-muted py-2">Looking…</div>}
       {list?.length === 0 && <div className="text-xs text-muted py-2">Nothing by that name — it stays out of the copy.</div>}
       {list?.map((c) => (
-        <button key={c.id} type="button" onClick={() => onPick(c.id)} className="w-full flex items-center gap-2.5 text-left p-2 mt-1.5 rounded-xl border border-default bg-surface-hover hover:border-primary">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {c.poster ? <img src={c.poster} alt="" className="w-[30px] h-[45px] rounded-md object-cover" /> : <span className="w-[30px] h-[45px] rounded-md bg-surface" />}
-          <span className="min-w-0"><span className="block text-sm font-semibold text-default truncate">{c.name}</span><span className="block text-xs text-muted">{c.year || ''}</span></span>
-        </button>
+        <Tv key={c.id} on={isTV} onEnter={() => onPick(c.id)}>
+          <button type="button" onClick={() => onPick(c.id)} className="w-full flex items-center gap-2.5 text-left p-2 mt-1.5 rounded-xl border border-default bg-surface-hover hover:border-primary">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {c.poster ? <img src={c.poster} alt="" className="w-[30px] h-[45px] rounded-md object-cover" /> : <span className="w-[30px] h-[45px] rounded-md bg-surface" />}
+            <span className="min-w-0"><span className="block text-sm font-semibold text-default truncate">{c.name}</span><span className="block text-xs text-muted">{c.year || ''}</span></span>
+          </button>
+        </Tv>
       ))}
       <div className="text-xs text-subtle mt-2">The source only had a name for this one.</div>
     </div>
@@ -356,8 +385,9 @@ function Poster({ item, selected, matched, onToggle, onMatch, fromPic, toPic }: 
   item: WatchCopyItem; selected: boolean; matched: boolean; onToggle: () => void; onMatch: () => void;
   fromPic: (size: number) => React.ReactNode; toPic: (size: number) => React.ReactNode;
 }) {
+  const isTV = useIsTV();
   const [broken, setBroken] = useState(false);
-  const src = !broken ? plainPoster(item) : undefined;
+  const src =!broken ? plainPoster(item) : undefined;
   const pickable = item.outcome === 'copy' || matched;
   const faded = pickable ? !selected : true;
   const size = 20;
@@ -368,14 +398,16 @@ function Poster({ item, selected, matched, onToggle, onMatch, fromPic, toPic }: 
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {src ? <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} className="absolute inset-0 w-full h-full object-cover" /> : <span className="absolute inset-0 flex items-end p-2 text-white font-extrabold uppercase text-sm leading-tight" style={{ background: 'linear-gradient(160deg,#2b2b2b,#555)' }}>{item.name}</span>}
         {pickable && (
-          <div className="absolute top-1.5 right-1.5"><SelectionCheckbox checked={selected} onChange={onToggle} /></div>
+          <div className="absolute top-1.5 right-1.5"><Tv on={isTV} onEnter={onToggle}><SelectionCheckbox checked={selected} onChange={onToggle} /></Tv></div>
         )}
       </div>
       <div className="font-semibold text-default text-[13px] mt-1.5 truncate">{item.name || item.id}</div>
       {item.outcome === 'match' && !matched ? (
-        <button type="button" onClick={onMatch} className="mt-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-primary) 22%, transparent)', color: 'color-mix(in srgb, var(--color-primary) 45%, #ffffff)' }}>
-          Pick the match
-        </button>
+        <Tv on={isTV} onEnter={onMatch}>
+          <button type="button" onClick={onMatch} className="mt-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-primary) 22%, transparent)', color: 'color-mix(in srgb, var(--color-primary) 45%, #ffffff)' }}>
+            Pick the match
+          </button>
+        </Tv>
       ) : (
         <div className="mt-1.5 flex items-center gap-1.5">
           <StateAvatar has={item.from} pic={fromPic} size={size} />
@@ -392,6 +424,7 @@ function Poster({ item, selected, matched, onToggle, onMatch, fromPic, toPic }: 
 function Group({ color, title, count, sub, action, folded, onUnfold, children }: {
   color: string; title: string; count: number; sub: React.ReactNode; action?: React.ReactNode; folded?: boolean; onUnfold?: () => void; children?: React.ReactNode;
 }) {
+  const isTV = useIsTV();
   const head = (
     <>
       <span className="w-1 self-stretch rounded shrink-0" style={{ background: color }} />
@@ -405,10 +438,12 @@ function Group({ color, title, count, sub, action, folded, onUnfold, children }:
   );
   if (folded) {
     return (
-      <button type="button" onClick={onUnfold} className="mt-6 w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-surface hover:bg-surface-hover">
-        {head}
-        <span className="text-[13px] font-semibold px-3 py-1.5 rounded-[10px] shrink-0" style={{ color: 'color-mix(in srgb, var(--color-primary) 45%, #ffffff)', background: 'color-mix(in srgb, var(--color-primary) 14%, transparent)' }}>Show ›</span>
-      </button>
+      <Tv on={isTV} onEnter={() => onUnfold?.()}>
+        <button type="button" onClick={onUnfold} className="mt-6 w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-surface hover:bg-surface-hover">
+          {head}
+          <span className="text-[13px] font-semibold px-3 py-1.5 rounded-[10px] shrink-0" style={{ color: 'color-mix(in srgb, var(--color-primary) 45%, #ffffff)', background: 'color-mix(in srgb, var(--color-primary) 14%, transparent)' }}>Show ›</span>
+        </button>
+      </Tv>
     );
   }
   return (
@@ -442,6 +477,8 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const sinceRef = useRef<HTMLSelectElement>(null);
+  const queryRef = useRef<HTMLInputElement>(null);
 
   const [person, setPerson] = useState<string>('');
   const [sides, setSides] = useState<WatchCopySide[] | null>(null);
@@ -586,10 +623,13 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
   const toPic = (size: number) => toChoice ? <ProfilePic profile={toChoice.profile} person={toChoice.sideInfo.person || personInfo} kind={toChoice.sideInfo.kind} size={size} /> : null;
   const enoughSides = !!sides && sides.reduce((n, s) => n + Math.max(1, s.profiles.length), 0) + others.length >= 2;
   const otherSignIns = (sides || []).filter((s) => s.provider !== fromChoice?.sideInfo.provider && s.provider !== toChoice?.sideInfo.provider);
+  const goBack = () => router.push(home === 'tasks' ? '/tasks' : `/users/${encodeURIComponent(userId)}`);
   const backButton = (
-    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push(home === 'tasks' ? '/tasks' : `/users/${encodeURIComponent(userId)}`)}>
-      {v2 ? 'Back' : home === 'tasks' ? 'Tasks' : (person || 'Back')}
-    </Button>
+    <Tv on={isTV} onEnter={goBack}>
+      <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={goBack}>
+        {v2 ? 'Back' : home === 'tasks' ? 'Tasks' : (person || 'Back')}
+      </Button>
+    </Tv>
   );
   const subtitle = 'Watched titles and resume points between any sign-ins and profiles - copy once, or keep them in step. Nothing is removed.';
   const daysLeft = lastRun ? Math.max(0, Math.ceil((new Date(lastRun.undoUntil).getTime() - Date.now()) / 86400000)) : 0;
@@ -615,8 +655,12 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
       {copyChips('mt-2.5')}
       <p className="text-sm text-muted mt-2">Watched marks and resume points are added there. Nothing is removed, and you can undo it from this page for 7 days.</p>
       <div className="flex justify-end gap-2 mt-3">
-        <Button variant="secondary" size="sm" onClick={() => setConfirmCopy(false)}>Cancel</Button>
-        <button type="button" onClick={() => { setConfirmCopy(false); void runCopy(); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}>{copyLabel}</button>
+        <Tv on={isTV} onEnter={() => setConfirmCopy(false)}>
+          <Button variant="secondary" size="sm" onClick={() => setConfirmCopy(false)}>Cancel</Button>
+        </Tv>
+        <Tv on={isTV} onEnter={() => { setConfirmCopy(false); void runCopy(); }}>
+          <button type="button" onClick={() => { setConfirmCopy(false); void runCopy(); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}>{copyLabel}</button>
+        </Tv>
       </div>
     </div>
   );
@@ -693,16 +737,22 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                   </div>
                 </div>
                 <div ref={undoRef} className="relative shrink-0">
-                  <button type="button" onClick={() => setConfirmUndo((o) => !o)} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-sm" style={{ color: '#1a1200', background: AMBER, boxShadow: `0 8px 22px -10px ${AMBER}` }}>
-                    <ArrowUturnLeftIcon className="w-4 h-4" />Undo this copy
-                  </button>
+                  <Tv on={isTV} onEnter={() => setConfirmUndo((o) => !o)}>
+                    <button type="button" onClick={() => setConfirmUndo((o) => !o)} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-sm" style={{ color: '#1a1200', background: AMBER, boxShadow: `0 8px 22px -10px ${AMBER}` }}>
+                      <ArrowUturnLeftIcon className="w-4 h-4" />Undo this copy
+                    </button>
+                  </Tv>
                   {confirmUndo && (
                     <div className="absolute z-30 left-0 right-0 sm:left-auto sm:w-80 mt-2 rounded-2xl border border-default p-4 shadow-2xl" style={{ background: 'var(--color-surface)' }}>
                       <div className="font-semibold text-sm">Undo this copy?</div>
                       <p className="text-sm text-muted mt-1.5">{lastRun.toName || 'The destination'} goes back to how it was before: the watched marks and resume points this copy added come off. Anything they watched since stays.</p>
                       <div className="flex justify-end gap-2 mt-3">
-                        <Button variant="secondary" size="sm" onClick={() => setConfirmUndo(false)}>Keep it</Button>
-                        <button type="button" disabled={undoing} onClick={runUndo} className="px-3 py-1.5 rounded-lg text-sm font-bold disabled:opacity-60" style={{ color: '#1a1200', background: AMBER }}>{undoing ? 'Undoing…' : 'Undo copy'}</button>
+                        <Tv on={isTV} onEnter={() => setConfirmUndo(false)}>
+                          <Button variant="secondary" size="sm" onClick={() => setConfirmUndo(false)}>Keep it</Button>
+                        </Tv>
+                        <Tv on={isTV} onEnter={() => { if (!undoing) void runUndo(); }}>
+                          <button type="button" disabled={undoing} onClick={runUndo} className="px-3 py-1.5 rounded-lg text-sm font-bold disabled:opacity-60" style={{ color: '#1a1200', background: AMBER }}>{undoing ? 'Undoing…' : 'Undo copy'}</button>
+                        </Tv>
                       </div>
                     </div>
                   )}
@@ -744,9 +794,11 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                     <span className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-white" style={{ background: `linear-gradient(135deg, ${FROM_C}, var(--color-primary))`, boxShadow: '0 8px 22px -10px var(--color-primary)' }}>
                       <ArrowRightIcon className="hidden md:block w-5 h-5" /><ArrowDownIcon className="md:hidden w-5 h-5" />
                     </span>
-                    <button type="button" onClick={swap} className="text-xs text-muted flex items-center gap-1 hover:text-default">
-                      <ArrowsRightLeftIcon className="hidden md:block w-3.5 h-3.5" /><ArrowsUpDownIcon className="md:hidden w-3.5 h-3.5" />Swap
-                    </button>
+                    <Tv on={isTV} onEnter={swap}>
+                      <button type="button" onClick={swap} className="text-xs text-muted flex items-center gap-1 hover:text-default">
+                        <ArrowsRightLeftIcon className="hidden md:block w-3.5 h-3.5" /><ArrowsUpDownIcon className="md:hidden w-3.5 h-3.5" />Swap
+                      </button>
+                    </Tv>
                   </div>
                   <Slot role="to" choice={toChoice} count={preview?.counts.to ?? null} sides={sides} others={others} person={personInfo} other={from} onPick={pickTo} compact={compact} />
                 </div>
@@ -771,13 +823,15 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                   <OptionChip on={watched} onClick={() => setWatched((v) => !v)}>Watched</OptionChip>
                   <OptionChip on={resume} onClick={() => setResume((v) => !v)}>Resume points</OptionChip>
                   {libraryAvailable && <OptionChip on={library} onClick={() => setLibrary((v) => !v)}>Library</OptionChip>}
+                  <Tv on={isTV} onEnter={() => { sinceRef.current?.focus(); try { sinceRef.current?.showPicker?.(); } catch { /* not allowed here */ } }}>
                   <label className="relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-default text-default whitespace-nowrap cursor-pointer">
                     Since: {SINCE.find((s) => s.days === sinceDays)?.label}
                     <ChevronDownIcon className="w-3 h-3 opacity-60" />
-                    <select aria-label="Since" value={sinceDays} onChange={(e) => setSinceDays(Number(e.target.value))} className="absolute inset-0 opacity-0 cursor-pointer">
+                    <select ref={sinceRef} aria-label="Since" value={sinceDays} onChange={(e) => setSinceDays(Number(e.target.value))} className="absolute inset-0 opacity-0 cursor-pointer">
                       {SINCE.map((s) => <option key={s.days} value={s.days}>{s.label}</option>)}
                     </select>
                   </label>
+                  </Tv>
                 </div>
 
                 {v2 && (
@@ -803,11 +857,13 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                       {tiles.map((t) => {
                         const on = filter === t.key;
                         return (
-                          <button key={t.key} type="button" onClick={() => setFilter(on ? 'all' : t.key)} className={`text-left px-3.5 py-3 rounded-[14px] border sync-tile ${on ? 'is-on' : ''}`}
-                            style={{ '--tile': t.color } as React.CSSProperties}>
-                            <div className="text-[22px] font-bold" style={{ color: t.color }}>{t.n.toLocaleString()}</div>
-                            <div className="text-xs text-muted">{t.label}</div>
-                          </button>
+                          <Tv key={t.key} on={isTV} onEnter={() => setFilter(on ? 'all' : t.key)}>
+                            <button type="button" onClick={() => setFilter(on ? 'all' : t.key)} className={`${isTV ? 'w-full ' : ''}text-left px-3.5 py-3 rounded-[14px] border sync-tile ${on ? 'is-on' : ''}`}
+                              style={{ '--tile': t.color } as React.CSSProperties}>
+                              <div className="text-[22px] font-bold" style={{ color: t.color }}>{t.n.toLocaleString()}</div>
+                              <div className="text-xs text-muted">{t.label}</div>
+                            </button>
+                          </Tv>
                         );
                       })}
                     </div>
@@ -820,7 +876,9 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                     <div className="mt-4 flex flex-col md:flex-row gap-2 md:items-center">
                       <div className="flex-1 md:min-w-[14rem] flex items-center gap-2 px-3 py-2 rounded-xl border border-default" style={{ background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}>
                         <MagnifyingGlassIcon className="w-4 h-4 text-muted" />
-                        <input value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Search titles" className="flex-1 bg-transparent outline-none text-sm text-default placeholder:text-muted" />
+                        <Tv on={isTV} onEnter={() => queryRef.current?.focus()}>
+                          <input ref={queryRef} value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Search titles" className="flex-1 bg-transparent outline-none text-sm text-default placeholder:text-muted" />
+                        </Tv>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {([['all', `All ${totals!.found.toLocaleString()}`], ['copy', `Will copy ${totals!.copy.toLocaleString()}`], ['further', `Kept ${totals!.further.toLocaleString()}`], ['match', `Need a match ${totals!.match.toLocaleString()}`]] as const).map(([k, label]) => (
@@ -848,9 +906,11 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                             ? <>Marked watched, or picked up where they left off, on {toPic(16)} {choiceLabel(toChoice)}</>
                             : g.key === 'missing' ? `${choiceLabel(toChoice)} doesn’t have these, so they’re left out` : g.sub}
                           action={g.key === 'copy' ? (
-                            <button type="button" onClick={() => setSelected((sel) => { const n = new Set(sel); keys.forEach((k) => (allOn ? n.delete(k) : n.add(k))); return n; })} className="text-[13px] font-semibold px-3 py-1.5 rounded-[10px] shrink-0 whitespace-nowrap" style={{ color: 'color-mix(in srgb, var(--color-primary) 45%, #ffffff)', background: 'color-mix(in srgb, var(--color-primary) 14%, transparent)' }}>
-                              {allOn ? 'Untick all' : 'Tick all'}
-                            </button>
+                            <Tv on={isTV} onEnter={() => setSelected((sel) => { const n = new Set(sel); keys.forEach((k) => (allOn ? n.delete(k) : n.add(k))); return n; })}>
+                              <button type="button" onClick={() => setSelected((sel) => { const n = new Set(sel); keys.forEach((k) => (allOn ? n.delete(k) : n.add(k))); return n; })} className="text-[13px] font-semibold px-3 py-1.5 rounded-[10px] shrink-0 whitespace-nowrap" style={{ color: 'color-mix(in srgb, var(--color-primary) 45%, #ffffff)', background: 'color-mix(in srgb, var(--color-primary) 14%, transparent)' }}>
+                                {allOn ? 'Untick all' : 'Tick all'}
+                              </button>
+                            </Tv>
                           ) : undefined}
                           folded={folded}
                           onUnfold={() => setUnfolded((u) => new Set(u).add(g.key))}
@@ -878,9 +938,11 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                             ))}
                           </div>
                           {list.length > limit && (
-                            <button type="button" onClick={() => (g.key === 'copy' && !copyOpen ? setCopyOpen(true) : setShown((n) => n + PAGE))} className="mt-3.5 w-full py-2.5 rounded-[10px] bg-surface hover:bg-surface-hover text-[13px] font-semibold text-muted">
-                              {g.key === 'copy' && !copyOpen ? `Show all ${list.length.toLocaleString()}` : `Show more (${(list.length - limit).toLocaleString()} left)`}
-                            </button>
+                            <Tv on={isTV} onEnter={() => (g.key === 'copy' && !copyOpen ? setCopyOpen(true) : setShown((n) => n + PAGE))}>
+                              <button type="button" onClick={() => (g.key === 'copy' && !copyOpen ? setCopyOpen(true) : setShown((n) => n + PAGE))} className="mt-3.5 w-full py-2.5 rounded-[10px] bg-surface hover:bg-surface-hover text-[13px] font-semibold text-muted">
+                                {g.key === 'copy' && !copyOpen ? `Show all ${list.length.toLocaleString()}` : `Show more (${(list.length - limit).toLocaleString()} left)`}
+                              </button>
+                            </Tv>
                           )}
                         </Group>
                       );
@@ -898,9 +960,11 @@ export function WatchSyncView({ userId, home = 'person', forSlot, head }: {
                       {/* Copy asks first, naming where it goes - one tap once wrote into
                           a real profile by accident. */}
                       <div ref={copyRef} className="sm:relative shrink-0">
-                        <button type="button" disabled={!toCopy.length || copying} onClick={() => setConfirmCopy((o) => !o)} aria-expanded={confirmCopy} className={`px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm text-white disabled:opacity-50 ${confirmCopy ? 'copy-btn-open' : ''}`} style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))', boxShadow: '0 8px 22px -10px var(--color-primary)' }}>
-                          {copying ? 'Copying…' : copyLabel}
-                        </button>
+                        <Tv on={isTV} focusKey="watchsync-copy" onEnter={() => { if (toCopy.length && !copying) setConfirmCopy((o) => !o); }}>
+                          <button type="button" disabled={!toCopy.length || copying} onClick={() => setConfirmCopy((o) => !o)} aria-expanded={confirmCopy} className={`px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm text-white disabled:opacity-50 ${confirmCopy ? 'copy-btn-open' : ''}`} style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))', boxShadow: '0 8px 22px -10px var(--color-primary)' }}>
+                            {copying ? 'Copying…' : copyLabel}
+                          </button>
+                        </Tv>
                         {confirmCopy && copyConfirm('left-0 right-0 bottom-full mb-3 sm:left-auto sm:w-[22rem]')}
                       </div>
                     </div>

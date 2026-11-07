@@ -6,6 +6,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useUserAuth } from '@/lib/hooks/useUserAuth';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { useSharedNow } from '@/lib/useSharedNow';
 import { userUpcoming, type UpcomingEpisodeItem } from '@/lib/user-api';
@@ -32,6 +34,7 @@ const code = (e: UpcomingEpisodeItem) => `S${String(e.season).padStart(2, '0')}E
 export function UpcomingSection({ view }: { view: 'grid' | 'list' }) {
   const { userId, authKey } = useUserAuth();
   const now = useSharedNow();
+  const isTV = useIsTV();
   const [items, setItems] = useState<{ forUser: string; list: UpcomingEpisodeItem[] } | null>(null);
   const [day, setDay] = useState<string | null>(null);
 
@@ -64,7 +67,7 @@ export function UpcomingSection({ view }: { view: 'grid' | 'list' }) {
       <div className="flex gap-2 overflow-x-auto pb-1 mb-3" role="tablist" aria-label="Days">
         {days.map(([k, { date, count }]) => {
           const on = day === k;
-          return (
+          const tab = (
             <button
               key={k}
               type="button"
@@ -81,6 +84,7 @@ export function UpcomingSection({ view }: { view: 'grid' | 'list' }) {
               </span>
             </button>
           );
+          return isTV ? <TVFocusable key={k} className="shrink-0" onEnterPress={() => setDay(on ? null : k)}>{tab}</TVFocusable> : tab;
         })}
       </div>
       {view === 'list' ? (

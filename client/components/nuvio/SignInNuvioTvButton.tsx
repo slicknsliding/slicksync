@@ -47,7 +47,7 @@ export function SignInNuvioTvButton({ userId, name }: { userId: string; name: st
     const at = place();
     if (at) setAnchor(at);
   };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
   useEffect(() => {
     if (!open) return;

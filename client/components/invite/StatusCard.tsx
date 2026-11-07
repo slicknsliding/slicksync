@@ -1,8 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { ReactNode } from 'react';
 import { PubOutcome, PubButton, type PubTone } from '@/components/v2/PublicV2';
+import { useTVStops } from '@/components/tv/useTVModal';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 
 type StatusType =
   | 'pending'
@@ -47,6 +49,13 @@ export function StatusCard({ type, title, children, footer }: StatusCardProps) {
   );
 }
 
+/** A card's one button; on a TV a remote stop, OK doing what a click does. */
+function RetryButton({ onRetry, children }: { onRetry: () => void; children: ReactNode }) {
+  const isTV = useTVStops();
+  const button = <PubButton onClick={onRetry} tabIndex={isTV ? -1 : undefined}>{children}</PubButton>;
+  return isTV ? <TVFocusable className="block" onEnterPress={onRetry}>{button}</TVFocusable> : button;
+}
+
 /**
  * Preset status cards for common states
  */
@@ -68,9 +77,9 @@ export const StatusCards = {
       type="completed"
       title="You’re in"
       footer={
-        <Link href="/login" className="block">
+        <TVLink href="/login" className="block">
           <PubButton primary>Open SlickSync</PubButton>
-        </Link>
+        </TVLink>
       }
     >
       <p>Your addons are on their way to your app.</p>
@@ -93,7 +102,7 @@ export const StatusCards = {
     <StatusCard
       type="email-mismatch"
       title="That’s a different account"
-      footer={onRetry ? <PubButton onClick={onRetry}>Try again</PubButton> : undefined}
+      footer={onRetry ? <RetryButton onRetry={onRetry}>Try again</RetryButton> : undefined}
     >
       <p>Sign in with the account you started with.</p>
     </StatusCard>
@@ -103,7 +112,7 @@ export const StatusCards = {
     <StatusCard
       type="expired"
       title="The sign-in link ran out"
-      footer={onRetry ? <PubButton onClick={onRetry}>New link</PubButton> : undefined}
+      footer={onRetry ? <RetryButton onRetry={onRetry}>New link</RetryButton> : undefined}
     >
       <p>Get a fresh one and try again.</p>
     </StatusCard>

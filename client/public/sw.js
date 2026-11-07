@@ -22,7 +22,7 @@
 
 // Bump these names to force every installed client to drop what it has
 // cached: the activate handler below deletes any cache whose name is not
-// one of these two. Hashed filenames mean a cached asset can never be
+// one of the names below. Hashed filenames mean a cached asset can never be
 // WRONG, but a navigation served from the pages cache (which only happens
 // when the network is slow) hands back HTML that points at an older build's
 // hashes - and those are cached forever. One bump clears that out.
@@ -40,9 +40,24 @@ let imagePutsSinceTrim = 0;
 // dropped; past this many, the oldest go first (a few builds' worth).
 const STATIC_CACHE_MAX = 800;
 let staticPutsSinceTrim = 0;
+// The small static "You're offline" page (public/offline.html), stored at
+// install so there is always something to show. A navigation that failed
+// with nothing cached for it used to throw, and the browser showed its own
+// error page - with no address bar to recover from in an installed app.
+// Bump the version whenever offline.html changes so every install takes the
+// new copy (the old cache is deleted on activate like the others).
+const OFFLINE_CACHE = 'slicksync-offline-v1';
+const OFFLINE_URL = '/offline.html';
 
-self.addEventListener('install', () => {
+self.addEventListener('install', (event) => {
   self.skipWaiting();
+  // Best effort: a failed fetch here must not stop the worker installing,
+  // since push goes through it too.
+  event.waitUntil(
+    caches.open(OFFLINE_CACHE)
+      .then((cache) => cache.add(new Request(OFFLINE_URL, { cache: 'reload' })))
+      .catch(() => {})
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -50,7 +65,7 @@ self.addEventListener('activate', (event) => {
     // Drop caches from older worker versions, then take over open tabs so
     // caching starts without waiting for the next full reload.
     const names = await caches.keys();
-    await Promise.all(names.filter((n) => n !== STATIC_CACHE && n !== PAGES_CACHE && n !== IMAGE_CACHE).map((n) => caches.delete(n)));
+    await Promise.all(names.filter((n) => n !== STATIC_CACHE && n !== PAGES_CACHE && n !== IMAGE_CACHE && n !== OFFLINE_CACHE).map((n) => caches.delete(n)));
     // Let the browser start a navigation's network request while this worker
     // is still waking up, instead of after. The navigate handler below picks
     // the preloaded response up when there is one.
@@ -138,6 +153,10 @@ self.addEventListener('fetch', (event) => {
         // browser error screen; the app router takes over client-side.
         const any = await cache.match('/');
         if (any) return any;
+        // Nothing saved at all: the plain offline page, which reloads by
+        // itself once the connection is back.
+        const offline = await caches.match(OFFLINE_URL, { cacheName: OFFLINE_CACHE });
+        if (offline) return offline;
         throw new Error('offline with empty cache');
       }
     })());

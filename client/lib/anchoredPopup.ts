@@ -7,6 +7,8 @@
 // it. The popup's real height is measured once it is drawn (useFitPopup).
 
 import { useEffect, useLayoutEffect } from 'react';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useTVModal } from '@/components/tv/useTVModal';
 
 export interface PopupPlacement {
   left: number;
@@ -47,9 +49,14 @@ export function popupStyle(p: PopupPlacement): React.CSSProperties {
 /**
  * Place the popup again once it is drawn, and whenever its content changes
  * height (loading, a result appearing) - `replace` re-runs the component's own
- * placement, which reads the panel's height.
+ * placement, which reads the panel's height. With `close`, a TV remote stays
+ * inside the popup while it is open and Back closes it (useTVModal).
  */
-export function useFitPopup(panel: React.RefObject<HTMLElement | null>, open: boolean, replace: () => void) {
+function noop() {}
+
+export function useFitPopup(panel: React.RefObject<HTMLElement | null>, open: boolean, replace: () => void, close?: () => void) {
+  const isTV = useIsTV();
+  useTVModal(isTV && open && !!close, panel, close || noop);
   useLayoutEffect(() => {
     if (open) replace();
     // eslint-disable-next-line react-hooks/exhaustive-deps

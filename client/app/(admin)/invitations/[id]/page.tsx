@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -10,6 +10,8 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { GroupPicture } from '@/components/v2/GroupPicture';
@@ -64,6 +66,9 @@ export default function InvitationDetailPage() {
   const { layoutMode } = useLayoutMode();
   const isNebula = layoutMode === 'nebula';
   const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  // The remote reaches a button through TVFocusable; OK runs the same handler as a click.
+  const tvFocus = (node: React.ReactNode, onEnter: () => void) => (isTV ? <TVFocusable onEnterPress={onEnter}>{node}</TVFocusable> : node);
   const { design } = usePageDesign();
   const v2 = design === 'v2' && !isTV;
   const arrange = usePageArrangement('invite', useMemo(() => ['link', 'people'], []));
@@ -199,7 +204,7 @@ export default function InvitationDetailPage() {
 
   if (error || !invitation) {
     return (
-      <>
+      <Wrapper>
         {!isNebula && <Header title={<Breadcrumbs items={[{ label: 'Invitations', href: '/invitations' }, { label: 'Error' }]} />} />}
         <div className="p-8">
           <Card padding="lg" className="text-center py-16">
@@ -208,12 +213,15 @@ export default function InvitationDetailPage() {
             </div>
             <h3 className="text-lg font-medium mb-2 text-default">Invitation Not Found</h3>
             <p className="text-muted mb-4">{error?.message || 'The invitation you are looking for does not exist.'}</p>
-            <Button variant="primary" onClick={() => router.push('/invitations')}>
-              Back to Invitations
-            </Button>
+            {tvFocus(
+              <Button variant="primary" onClick={() => router.push('/invitations')}>
+                Back to Invitations
+              </Button>,
+              () => router.push('/invitations'),
+            )}
           </Card>
         </div>
-      </>
+      </Wrapper>
     );
   }
 
@@ -233,27 +241,33 @@ export default function InvitationDetailPage() {
 
   const detailActions = (
     <div className="flex items-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={<PencilIcon className="w-4 h-4" />}
-        onClick={() => setEditOpen(true)}
-      >
-        Edit
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={<TrashIcon className="w-4 h-4" />}
-        onClick={() => setDeleteConfirmOpen(true)}
-      >
-        Delete
-      </Button>
+      {tvFocus(
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={<PencilIcon className="w-4 h-4" />}
+          onClick={() => setEditOpen(true)}
+        >
+          Edit
+        </Button>,
+        () => setEditOpen(true),
+      )}
+      {tvFocus(
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={<TrashIcon className="w-4 h-4" />}
+          onClick={() => setDeleteConfirmOpen(true)}
+        >
+          Delete
+        </Button>,
+        () => setDeleteConfirmOpen(true),
+      )}
     </div>
   );
 
   return (
-    <>
+    <Wrapper>
       {!isNebula && (
         <Header
           // v2: just Back; the page's own title (the code) sits under it.
@@ -267,9 +281,12 @@ export default function InvitationDetailPage() {
             />
           )}
           leading={v2 ? (
-            <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
-              Back
-            </Button>
+            tvFocus(
+              <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
+                Back
+              </Button>,
+              () => router.push('/invitations'),
+            )
           ) : undefined}
           actions={v2 ? undefined : detailActions}
         />
@@ -282,9 +299,12 @@ export default function InvitationDetailPage() {
             title={v2 ? '' : invitation.name || code}
             subtitle={v2 ? undefined : 'Invitations'}
             leading={
-              <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
-                Back
-              </Button>
+              tvFocus(
+                <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/invitations')}>
+                  Back
+                </Button>,
+                () => router.push('/invitations'),
+              )
             }
             actions={v2 ? undefined : detailActions}
           />
@@ -362,7 +382,10 @@ export default function InvitationDetailPage() {
                       <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>{invitation.groupName} was deleted, so people who join won&apos;t be put in a group.</span>
                     </span>
-                    <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Pick a group</Button>
+                    {tvFocus(
+                      <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Pick a group</Button>,
+                      () => setEditOpen(true),
+                    )}
                   </div>
                 ) : (
                   <p className="text-muted mb-4">
@@ -414,14 +437,17 @@ export default function InvitationDetailPage() {
                   <p className="text-sm text-muted">Share this link to invite users</p>
                 </div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={copiedLink ? <CheckIcon className="w-4 h-4" /> : <ClipboardIcon className="w-4 h-4" />}
-                onClick={handleCopyLink}
-              >
-                {copiedLink ? 'Copied!' : 'Copy Link'}
-              </Button>
+              {tvFocus(
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={copiedLink ? <CheckIcon className="w-4 h-4" /> : <ClipboardIcon className="w-4 h-4" />}
+                  onClick={handleCopyLink}
+                >
+                  {copiedLink ? 'Copied!' : 'Copy Link'}
+                </Button>,
+                handleCopyLink,
+              )}
             </div>
             <div className="flex items-center gap-3 p-4 rounded-xl bg-surface-hover border border-default">
               <LinkIcon className="w-5 h-5 text-muted shrink-0" />
@@ -568,43 +594,55 @@ export default function InvitationDetailPage() {
                       <div className="flex items-center gap-1">
                         {request.status === 'pending' && (
                           <>
+                            {tvFocus(
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleAcceptRequest(request.id)}
+                                leftIcon={<CheckIcon className="w-4 h-4" />}
+                              >
+                                Accept
+                              </Button>,
+                              () => handleAcceptRequest(request.id),
+                            )}
+                            {tvFocus(
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRejectRequest(request.id)}
+                                leftIcon={<XMarkIcon className="w-4 h-4" />}
+                              >
+                                Reject
+                              </Button>,
+                              () => handleRejectRequest(request.id),
+                            )}
+                          </>
+                        )}
+                        {request.status === 'rejected' && (
+                          tvFocus(
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleAcceptRequest(request.id)}
-                              leftIcon={<CheckIcon className="w-4 h-4" />}
+                              leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />}
                             >
-                              Accept
-                            </Button>
+                              Undo
+                            </Button>,
+                            () => handleAcceptRequest(request.id),
+                          )
+                        )}
+                        {(request.status === 'accepted' || request.status === 'joined') && (
+                          tvFocus(
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRejectRequest(request.id)}
-                              leftIcon={<XMarkIcon className="w-4 h-4" />}
+                              onClick={() => setDeleteUserConfirm({ open: true, request })}
+                              leftIcon={<TrashIcon className="w-4 h-4 text-error" />}
                             >
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                        {request.status === 'rejected' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleAcceptRequest(request.id)}
-                            leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />}
-                          >
-                            Undo
-                          </Button>
-                        )}
-                        {(request.status === 'accepted' || request.status === 'joined') && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteUserConfirm({ open: true, request })}
-                            leftIcon={<TrashIcon className="w-4 h-4 text-error" />}
-                          >
-                            Remove
-                          </Button>
+                              Remove
+                            </Button>,
+                            () => setDeleteUserConfirm({ open: true, request }),
+                          )
                         )}
                       </div>
                     </motion.div>
@@ -678,6 +716,6 @@ export default function InvitationDetailPage() {
         confirmText="Remove User"
         variant="danger"
       />
-    </>
+    </Wrapper>
   );
 }

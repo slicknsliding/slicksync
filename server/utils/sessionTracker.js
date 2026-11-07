@@ -957,15 +957,15 @@ async function getRecentSessions(prisma, accountId, since, limit = 100) {
 async function getActiveSessions(prisma, accountId) {
   const accountIdValue = accountId || 'default'
 
-  return prisma.watchSession.findMany({
+  // Sorted in JS, not SQL - see buildNowPlaying in metricsBuilder.js: the
+  // ORDER BY made SQLite scan every session the account ever had.
+  const sessions = await prisma.watchSession.findMany({
     where: {
       accountId: accountIdValue,
       isActive: true
-    },
-    orderBy: {
-      startTime: 'desc'
     }
   })
+  return sessions.sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
 }
 
 module.exports = {

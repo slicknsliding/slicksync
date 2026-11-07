@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
@@ -8,6 +8,16 @@ import { PubFrame, PubLogo, PubCard, PubButton, PubHeading, PubField, PubError, 
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+
+// A stop on the TV remote: OK does what a click does. Anywhere else it renders
+// its children as they are.
+function TVStop({ onEnter, className, children }: { onEnter: () => void; className?: string; children: ReactNode }) {
+  const isTV = useIsTV();
+  return isTV ? <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable> : <>{children}</>;
+}
 
 // Public-mode (multi-tenant) self-registration - the flow the README already
 // documented ("first visit shows a registration screen") but that had no
@@ -15,6 +25,12 @@ import { copyToClipboard } from '@/lib/clipboard';
 // and worked, there was just nothing in the frontend that could reach it.
 export default function RegisterPage() {
   const router = useRouter();
+  // TV remote: OK on a field focuses it (which opens the TV keyboard), OK on a
+  // button does what a click does. The copy button is left out on purpose: a TV
+  // has no clipboard to paste from, and the first stop should be the password.
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  const focusField = (id: string) => () => document.getElementById(id)?.focus();
   const INSTANCE_TYPE = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') as 'public' | 'private';
 
   const [uuid, setUuid] = useState<string | null>(null);
@@ -88,6 +104,7 @@ export default function RegisterPage() {
 
   if (INSTANCE_TYPE !== 'public') {
     return (
+      <Wrapper>
       <PubFrame>
         <PubLogo sub="This instance is private" />
         <PubCard>
@@ -95,15 +112,19 @@ export default function RegisterPage() {
             title="Registration isn’t available"
             line="This instance is running in private mode, which uses a single shared login rather than separate self-registered accounts."
           />
-          <PubButton primary onClick={() => router.push('/login?mode=admin')}>
-            Go to sign in
-          </PubButton>
+          <TVStop onEnter={() => router.push('/login?mode=admin')}>
+            <PubButton primary onClick={() => router.push('/login?mode=admin')}>
+                          Go to sign in
+                        </PubButton>
+          </TVStop>
         </PubCard>
       </PubFrame>
+      </Wrapper>
     );
   }
 
   return (
+    <Wrapper>
     <PubFrame>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <PubLogo sub="Create the account that runs this SlickSync" />
@@ -153,72 +174,83 @@ export default function RegisterPage() {
               {uuidError && (
                 <p className="text-xs mt-2" style={{ color: 'var(--color-error)' }}>
                   {uuidError}{' '}
-                  <button type="button" onClick={loadUuid} className="underline">
-                    Retry
-                  </button>
+                  <TVStop onEnter={loadUuid} className="inline-block">
+                    <button type="button" onClick={loadUuid} className="underline">
+                                          Retry
+                                        </button>
+                  </TVStop>
                 </p>
               )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form id="register-form" onSubmit={handleSubmit} className="space-y-4">
               <PubField label="Password" htmlFor="password">
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={passwordVisible ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
-                    style={pubInputStyle}
-                    placeholder="At least 4 characters"
-                    autoComplete="new-password"
-                  />
-                  <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
-                </div>
+                <TVStop onEnter={focusField('password')}>
+                  <div className="relative">
+                                      <input
+                                        id="password"
+                                        type={passwordVisible ? 'text' : 'password'}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+                                        style={pubInputStyle}
+                                        placeholder="At least 4 characters"
+                                        autoComplete="new-password"
+                                      />
+                                      <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
+                                    </div>
+                </TVStop>
               </PubField>
 
               <PubField label="Password again" htmlFor="confirmPassword">
-                <div className="relative">
-                  <input
-                    id="confirmPassword"
-                    type={confirmPasswordVisible ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
-                    style={pubInputStyle}
-                    placeholder="********"
-                    autoComplete="new-password"
-                  />
-                  <PasswordToggleButton visible={confirmPasswordVisible} onToggle={() => setConfirmPasswordVisible((v) => !v)} />
-                </div>
+                <TVStop onEnter={focusField('confirmPassword')}>
+                  <div className="relative">
+                                      <input
+                                        id="confirmPassword"
+                                        type={confirmPasswordVisible ? 'text' : 'password'}
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+                                        style={pubInputStyle}
+                                        placeholder="********"
+                                        autoComplete="new-password"
+                                      />
+                                      <PasswordToggleButton visible={confirmPasswordVisible} onToggle={() => setConfirmPasswordVisible((v) => !v)} />
+                                    </div>
+                </TVStop>
               </PubField>
 
               {formError && <PubError>{formError}</PubError>}
 
-              <PubButton
-                primary
-                type="submit"
-                disabled={isSubmitting || !uuid || !password || !confirmPassword}
-                icon={isSubmitting ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
-              >
-                {isSubmitting ? 'Creating account...' : 'Create account'}
-              </PubButton>
+              <TVStop onEnter={() => { if (!isSubmitting && uuid && password && confirmPassword) (document.getElementById('register-form') as HTMLFormElement | null)?.requestSubmit(); }}>
+                <PubButton
+                                  primary
+                                  type="submit"
+                                  disabled={isSubmitting || !uuid || !password || !confirmPassword}
+                                  icon={isSubmitting ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
+                                >
+                                  {isSubmitting ? 'Creating account...' : 'Create account'}
+                                </PubButton>
+              </TVStop>
             </form>
 
             <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
               Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => router.push('/login?mode=admin')}
-                className="hover:underline font-semibold"
-                style={{ color: 'var(--color-primary)' }}
-              >
-                Sign in
-              </button>
+              <TVStop onEnter={() => router.push('/login?mode=admin')} className="inline-block">
+                <button
+                                  type="button"
+                                  onClick={() => router.push('/login?mode=admin')}
+                                  className="hover:underline font-semibold"
+                                  style={{ color: 'var(--color-primary)' }}
+                                >
+                                  Sign in
+                                </button>
+              </TVStop>
             </p>
           </div>
         </PubCard>
       </motion.div>
     </PubFrame>
+    </Wrapper>
   );
 }

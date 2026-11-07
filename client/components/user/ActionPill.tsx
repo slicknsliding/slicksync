@@ -9,6 +9,8 @@
 
 import { forwardRef, type ComponentType, type ReactNode, type SVGProps } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { useTVStops } from '@/components/tv/useTVModal';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 export type ActionPillTone = 'neutral' | 'on' | 'warn';
 
@@ -35,11 +37,15 @@ export const ActionPill = forwardRef<HTMLButtonElement, {
   title?: string;
 }>(function ActionPill({ icon: Icon, tone = 'neutral', open, onClick, children, size = 'md', title }, ref) {
   const sm = size === 'sm';
-  return (
+  // TV: its own remote stop; OK opens it, same as a click. Its popup keeps
+  // the remote inside while open (useFitPopup).
+  const isTV = useTVStops();
+  const pill = (
     <button
       ref={ref}
       type="button"
       onClick={onClick}
+      tabIndex={isTV ? -1 : undefined}
       aria-expanded={open}
       title={title}
       className={`inline-flex items-center max-w-full min-w-0 rounded-full border font-medium shadow-sm transition-colors ${sm ? 'gap-1 pl-0.5 pr-1.5 py-0.5 text-[11px]' : 'gap-1.5 pl-1 pr-2 py-1 text-xs'} ${FACE[tone]}`}
@@ -51,4 +57,5 @@ export const ActionPill = forwardRef<HTMLButtonElement, {
       <ChevronDownIcon className={`w-3 h-3 shrink-0 opacity-60 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
   );
+  return isTV ? <TVFocusable className="inline-flex max-w-full min-w-0 rounded-full" onEnterPress={onClick}>{pill}</TVFocusable> : pill;
 });

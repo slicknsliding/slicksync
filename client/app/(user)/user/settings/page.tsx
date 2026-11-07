@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, memo } from 'react';
+import { Fragment, useState, useEffect, useRef, memo, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
   Cog6ToothIcon,
@@ -30,6 +30,8 @@ import { HistoryImportTile } from '@/components/user/HistoryImportTile';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useCwTime, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeSettingsV2, SETTINGS_SECTIONS } from '@/components/v2/MeSettingsV2';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -167,6 +169,12 @@ export default function UserSettingsPage() {
   const { on: nameTap, setOn: setNameTap } = useNameFolds();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  const focusWebhook = () => document.getElementById('user-webhook-url')?.focus();
+  // On a TV the remote reaches a button or toggle only through TVFocusable; OK
+  // runs the same handler a click would. Anywhere else the node is returned as it is.
+  const tv = (node: ReactNode, onEnter: () => void, className?: string, key?: string) =>
+    isTV ? <TVFocusable key={key} className={className} onEnterPress={onEnter}>{node}</TVFocusable> : node;
   const v2Arrange = usePageArrangement('settings', [...SETTINGS_SECTIONS], { defaultFolded: ['leave'] });
 
   // Self-service "delete my account" - only this user's own data, not the
@@ -533,6 +541,7 @@ export default function UserSettingsPage() {
   }
 
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       <UserPageHeader
         title="Settings"
@@ -639,14 +648,17 @@ export default function UserSettingsPage() {
 
           <div className="p-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {themeIds.map((id) => (
+              {themeIds.map((id) => tv(
                 <ThemeCard
                   key={id}
                   themeId={id}
                   meta={themeMeta[id]}
                   isSelected={themeId === id}
                   onSelect={() => setTheme(id)}
-                />
+                />,
+                () => setTheme(id),
+                undefined,
+                id,
               ))}
             </div>
           </div>
@@ -833,11 +845,14 @@ export default function UserSettingsPage() {
                   >
                     {isPublic ? 'Public' : 'Private'}
                   </span>
-                  <ToggleSwitch
-                    checked={isPublic}
-                    onChange={handleToggleVisibility}
-                    disabled={updating}
-                  />
+                  {tv(
+                    <ToggleSwitch
+                      checked={isPublic}
+                      onChange={handleToggleVisibility}
+                      disabled={updating}
+                    />,
+                    handleToggleVisibility,
+                  )}
                 </div>
               )}
             </div>
@@ -866,23 +881,29 @@ export default function UserSettingsPage() {
                     >
                       {publicStatsUrl}
                     </code>
-                    <button
-                      onClick={handleCopyPublicStatsUrl}
-                      className="text-xs font-medium"
-                      style={{ color: 'var(--color-primary)' }}
-                    >
-                      Copy
-                    </button>
+                    {tv(
+                      <button
+                        onClick={handleCopyPublicStatsUrl}
+                        className="text-xs font-medium"
+                        style={{ color: 'var(--color-primary)' }}
+                      >
+                        Copy
+                      </button>,
+                      handleCopyPublicStatsUrl,
+                    )}
                   </div>
                 )}
               </div>
 
               {publicStatsLoaded && (
-                <ToggleSwitch
-                  checked={publicStatsEnabled}
-                  onChange={handleTogglePublicStats}
-                  disabled={savingPublicStats}
-                />
+                tv(
+                  <ToggleSwitch
+                    checked={publicStatsEnabled}
+                    onChange={handleTogglePublicStats}
+                    disabled={savingPublicStats}
+                  />,
+                  handleTogglePublicStats,
+                )
               )}
             </div>
 
@@ -899,14 +920,17 @@ export default function UserSettingsPage() {
                   Download your watch history and the household watchlist as a JSON file
                 </p>
               </div>
-              <button
-                onClick={handleExportMyData}
-                disabled={isExportingMyData}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-50"
-                style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
-              >
-                {isExportingMyData ? 'Exporting...' : 'Download'}
-              </button>
+              {tv(
+                <button
+                  onClick={handleExportMyData}
+                  disabled={isExportingMyData}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-50"
+                  style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+                >
+                  {isExportingMyData ? 'Exporting...' : 'Download'}
+                </button>,
+                handleExportMyData,
+              )}
             </div>
 
             {/* Bring a watch history in from another service (their own, SlickSync's history only) */}
@@ -972,11 +996,14 @@ export default function UserSettingsPage() {
                   >
                     {notifyOnWatch ? 'On' : 'Off'}
                   </span>
-                  <ToggleSwitch
-                    checked={notifyOnWatch}
-                    onChange={handleToggleNotifyOnWatch}
-                    disabled={isSavingNotifyOnWatch}
-                  />
+                  {tv(
+                    <ToggleSwitch
+                      checked={notifyOnWatch}
+                      onChange={handleToggleNotifyOnWatch}
+                      disabled={isSavingNotifyOnWatch}
+                    />,
+                    handleToggleNotifyOnWatch,
+                  )}
                 </div>
               </div>
             )}
@@ -985,7 +1012,8 @@ export default function UserSettingsPage() {
               Personal Discord Webhook (optional)
             </label>
             <div className="flex gap-2">
-              <input
+              {tv(<input
+                id="user-webhook-url"
                 type="url"
                 value={discordWebhookUrl}
                 onChange={(e) => setDiscordWebhookUrl(e.target.value)}
@@ -1001,8 +1029,8 @@ export default function UserSettingsPage() {
                   border: '1px solid var(--color-surface-border)',
                   color: 'var(--color-text)',
                 }}
-              />
-              <button
+              />, focusWebhook, 'flex-1 min-w-0 flex')}
+              {tv(<button
                 onClick={handleTestWebhook}
                 disabled={isTestingWebhook || !discordWebhookUrl.trim()}
                 className="shrink-0 px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
@@ -1020,7 +1048,7 @@ export default function UserSettingsPage() {
                   <BeakerIcon className="w-4 h-4" />
                 )}
                 <span className="text-sm">Test</span>
-              </button>
+              </button>, handleTestWebhook, 'shrink-0 flex')}
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--color-text-subtle)' }}>
               Always used for share notifications. Set this and your watch notifications route here too, instead of the shared family channel — leave it blank to keep using that.
@@ -1077,7 +1105,7 @@ export default function UserSettingsPage() {
                 >
                   {maskedApiKey}
                 </code>
-                <button
+                {tv(<button
                   onClick={() => setApiKeyVisible(!apiKeyVisible)}
                   className="p-1 rounded transition-colors"
                   style={{ color: 'var(--color-text-muted)' }}
@@ -1088,8 +1116,8 @@ export default function UserSettingsPage() {
                   ) : (
                     <EyeIcon className="w-4 h-4" />
                   )}
-                </button>
-                <button
+                </button>, () => setApiKeyVisible(!apiKeyVisible))}
+                {tv(<button
                   onClick={handleCopyApiKey}
                   className="p-1 rounded transition-colors"
                   style={{ color: 'var(--color-text-muted)' }}
@@ -1097,9 +1125,9 @@ export default function UserSettingsPage() {
                   disabled={!currentApiKey}
                 >
                   <ClipboardDocumentIcon className="w-4 h-4" />
-                </button>
+                </button>, handleCopyApiKey)}
               </div>
-              <button
+              {tv(<button
                 onClick={handleGenerateApiKey}
                 disabled={isGeneratingKey}
                 className="shrink-0 px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
@@ -1113,7 +1141,7 @@ export default function UserSettingsPage() {
               >
                 <ArrowPathIcon className={`w-4 h-4 ${isGeneratingKey ? 'animate-spin' : ''}`} />
                 <span className="text-sm">{currentApiKey ? 'Rotate' : 'Generate'}</span>
-              </button>
+              </button>, handleGenerateApiKey, 'shrink-0 flex')}
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--color-text-subtle)' }}>
               Use this key in the Authorization header:{' '}
@@ -1219,5 +1247,6 @@ export default function UserSettingsPage() {
 
       {deleteModal}
     </div>
+    </Wrapper>
   );
 }

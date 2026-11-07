@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, memo, useCallback } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   ClockIcon,
@@ -24,6 +24,8 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeActivityV2 } from '@/components/v2/MeActivityV2';
 import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // recharts is large: it loads after the page, inside the chart's fixed-height box.
 const WatchTimeChartBody = dynamic(() => import('@/components/user/ActivityCharts').then((m) => m.WatchTimeChartBody), { ssr: false, loading: () => null });
@@ -250,10 +252,11 @@ const ActivityCard = memo(function ActivityCard({
   onFilterByContent?: (name: string) => void;
 }) {
   const [imageError, setImageError] = useState(false);
+  const isTV = useIsTV();
   const timestamp = new Date(session.startTime);
   const endTime = session.endTime ? new Date(session.endTime) : undefined;
 
-  return (
+  const card = (
     <motion.div
       whileHover={{ x: 4 }}
       className="flex items-start gap-4 p-4 rounded-xl transition-colors"
@@ -373,6 +376,7 @@ const ActivityCard = memo(function ActivityCard({
       </div>
     </motion.div>
   );
+  return isTV ? <TVFocusable onEnterPress={() => onFilterByContent?.(session.itemName)}>{card}</TVFocusable> : card;
 });
 
 // Grid view activity card - Cinematic poster design (matches admin)
@@ -384,9 +388,10 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   onFilterByContent?: (name: string) => void;
 }) {
   const [imageError, setImageError] = useState(false);
+  const isTV = useIsTV();
   const timestamp = new Date(session.startTime);
 
-  return (
+  const card = (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -466,6 +471,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
       </div>
     </motion.div>
   );
+  return isTV ? <TVFocusable onEnterPress={() => onFilterByContent?.(session.itemName)}>{card}</TVFocusable> : card;
 });
 
 export default function UserActivityPage() {
@@ -479,6 +485,7 @@ export default function UserActivityPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [isLoaded, setIsLoaded] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Load view mode preference
   useEffect(() => {
@@ -613,6 +620,7 @@ export default function UserActivityPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const v2Arrange = usePageArrangement('activity', nowPlaying.length > 0
     ? ['nowPlaying', 'numbers', 'charts', 'feed']
     : ['numbers', 'charts', 'feed']);
@@ -669,6 +677,7 @@ export default function UserActivityPage() {
   }
 
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       <UserPageHeader
         title="Activity"
@@ -789,12 +798,15 @@ export default function UserActivityPage() {
             transition={{ delay: 0.25 }}
             className="flex items-center justify-between gap-4 mb-6"
           >
+            {(() => {
+              const searchBox = (
             <div className="relative flex-1" style={{ maxWidth: '384px' }}>
               <MagnifyingGlassIcon
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
                 style={{ color: 'var(--color-text-muted)' }}
               />
               <input
+                ref={searchRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -807,10 +819,19 @@ export default function UserActivityPage() {
                 }}
               />
             </div>
-            <ViewModeToggle
-              mode={viewMode}
-              onChange={(mode) => setViewMode(mode)}
-            />
+              );
+              return isTV ? <TVFocusable className="flex-1" style={{ maxWidth: '384px' }} onEnterPress={() => searchRef.current?.focus()}>{searchBox}</TVFocusable> : searchBox;
+            })()}
+            {isTV ? (
+              <TVFocusable onEnterPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}>
+                <ViewModeToggle mode={viewMode} onChange={(mode) => setViewMode(mode)} />
+              </TVFocusable>
+            ) : (
+              <ViewModeToggle
+                mode={viewMode}
+                onChange={(mode) => setViewMode(mode)}
+              />
+            )}
           </motion.div>
 
           {/* Activity Feed - Grouped by Date */}
@@ -895,5 +916,6 @@ export default function UserActivityPage() {
         </>
       )}
     </div>
+    </Wrapper>
   );
 }

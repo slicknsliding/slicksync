@@ -1,9 +1,12 @@
 'use client';
 
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FilterTabs, FilterTabOption } from './FilterTabs';
 import { SearchInput } from './Input';
 import { SelectAllCheckbox } from './SelectAllCheckbox';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { Card } from './Card';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
@@ -168,6 +171,10 @@ export function PageToolbar({
   // under the search and actions, instead of a drop-down. Only one row is
   // ever mounted, so drop targets on the tabs (Addons' Protected) exist once.
   const isMobile = useIsMobile();
+  // TV: Select all and the search box are remote stops (OK on the search box
+  // opens the TV's keyboard).
+  const isTV = useIsTV();
+  const searchBoxRef = useRef<HTMLDivElement>(null);
   const rowOnPhone = !!filterTabs;
   const phoneRow = rowOnPhone && isMobile;
 
@@ -185,7 +192,20 @@ export function PageToolbar({
           leftContent
         ) : (
           <>
-            {selectionConfig && (
+            {selectionConfig && (isTV ? (
+              <TVFocusable
+                className="inline-flex rounded-lg"
+                onEnterPress={() => (selectionConfig.selectedCount === selectionConfig.totalCount && selectionConfig.totalCount > 0 ? selectionConfig.onDeselectAll() : selectionConfig.onSelectAll())}
+              >
+                <SelectAllCheckbox
+                  totalCount={selectionConfig.totalCount}
+                  selectedCount={selectionConfig.selectedCount}
+                  onSelectAll={selectionConfig.onSelectAll}
+                  onDeselectAll={selectionConfig.onDeselectAll}
+                  title={selectionConfig.selectedCount === 0 ? 'Select all' : 'Deselect all'}
+                />
+              </TVFocusable>
+            ) : (
               <SelectAllCheckbox
                 totalCount={selectionConfig.totalCount}
                 selectedCount={selectionConfig.selectedCount}
@@ -199,9 +219,10 @@ export function PageToolbar({
                       : 'Deselect all'
                 }
               />
-            )}
-            {searchConfig && (
-              <div className={`h-11 flex items-center ${filterTabs?.fill ? 'w-40' : 'w-40 md:w-48 lg:w-56'}`}>
+            ))}
+            {searchConfig && (() => {
+              const box = (
+              <div ref={searchBoxRef} className={`h-11 flex items-center ${filterTabs?.fill ? 'w-40' : 'w-40 md:w-48 lg:w-56'}`}>
                 <SearchInput
                   size="sm"
                   value={searchConfig.value}
@@ -210,7 +231,9 @@ export function PageToolbar({
                   onKeyDown={(e) => { if (e.key === 'Enter' && searchConfig.onSubmit) { e.preventDefault(); searchConfig.onSubmit(); } }}
                 />
               </div>
-            )}
+              );
+              return isTV ? <TVFocusable className="rounded-lg" onEnterPress={() => searchBoxRef.current?.querySelector('input')?.focus()}>{box}</TVFocusable> : box;
+            })()}
           </>
         )}
       </div>

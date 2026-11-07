@@ -3035,11 +3035,13 @@ class ApiClient {
   }
 
   // Metrics
-  // `deep` lifts the caps on the reads the Activity feed is built from. It is
-  // a heavier build and is never cached, so it is only worth asking for once
-  // a reader has actually reached the end of the ordinary feed.
-  async getMetrics(period: string = '30d', opts: { deep?: boolean } = {}) {
-    const deep = opts.deep ? '&deep=1' : '';
+  // `deep` lifts the caps on the reads the Activity feed is built from, one
+  // step further back each time (1, 2, 3...; true is step 1). It is a heavier
+  // build and is never cached, so it is only worth asking for once a reader
+  // has actually reached the end of the feed they already have.
+  async getMetrics(period: string = '30d', opts: { deep?: boolean | number } = {}) {
+    const step = opts.deep === true ? 1 : Number(opts.deep) || 0;
+    const deep = step >= 1 ? `&deep=${Math.floor(step)}` : '';
     return this.fetch<MetricsData>(`/users/metrics?period=${period}${deep}`);
   }
   // Only who is watching now, plus the stamp of the cached feed build it goes with.
@@ -5636,6 +5638,8 @@ export interface MetricsData {
   }>;
   /** True when the feed was capped and older history can still be asked for. */
   activityTruncated?: boolean;
+  /** On a deep read: true once it reached the furthest step there is. */
+  activityDeepLast?: boolean;
   /** When the server built the cached feed this came from; changes only when the feed does. */
   buildStamp?: number | null;
   recentActivity?: Array<{

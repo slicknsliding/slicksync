@@ -2,6 +2,8 @@
 
 import { ReactNode } from 'react';
 import { PubFrame, PubLogo } from '@/components/v2/PublicV2';
+import { useTVStops } from '@/components/tv/useTVModal';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 interface InviteLayoutProps {
   children: ReactNode;
@@ -22,15 +24,20 @@ export function InviteLayout({
   onNewRequest,
   subtitle = 'Join a SlickSync household',
 }: InviteLayoutProps) {
+  // TV: New request is a remote stop; OK does what a click does.
+  const isTV = useTVStops();
+  const newRequest = onNewRequest && (
+    <button type="button" className="v2-btn" onClick={onNewRequest} tabIndex={isTV ? -1 : undefined}>
+      New request
+    </button>
+  );
   return (
     <PubFrame>
       <PubLogo sub={subtitle} />
       {children}
       {showNewRequestButton && onNewRequest && (
         <div className="mt-4 text-center">
-          <button type="button" className="v2-btn" onClick={onNewRequest}>
-            New request
-          </button>
+          {isTV ? <TVFocusable className="inline-block" onEnterPress={onNewRequest}>{newRequest}</TVFocusable> : newRequest}
         </div>
       )}
     </PubFrame>

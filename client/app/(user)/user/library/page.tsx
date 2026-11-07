@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MagnifyingGlassIcon,
@@ -22,6 +22,11 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeLibraryV2, LIBRARY_SECTIONS, type LibraryFilter } from '@/components/v2/MeLibraryV2';
 import { providerTypeLabel } from '@/lib/providers';
+import { V2MoreMenu, type V2MenuItem } from '@/components/v2/V2Detail';
+import { AnchoredConfirm, libraryDeleteLine } from '@/components/ui/AnchoredConfirm';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
 
 type ViewMode = 'grid' | 'list';
 
@@ -54,21 +59,30 @@ interface LibraryCardItemProps {
   canDelete?: boolean;
   stremioLink: string | null;
   watchTime: string | null;
+  /** "Open in Stremio" in the ⋯ menu; null when their app has no link. */
+  appName: string | null;
+  /** The line under "Delete …?" that names their app. */
+  deleteLine?: string;
+  isTV: boolean;
 }
 
-function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime }: LibraryCardItemProps) {
+function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime, appName, deleteLine, isTV }: LibraryCardItemProps) {
   const [imageError, setImageError] = useState(false);
-  
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      whileHover={{ y: -4 }}
-      onClick={onToggle}
-      className="group relative cursor-pointer"
-    >
+  const menuKey = `library-more-${item._id}`;
+
+  // The ⋯ on every poster, always showing (a hover-only bin could not be
+  // found on a phone or reached with a TV remote). Deleting asks first.
+  const menu: V2MenuItem[] = [];
+  if (stremioLink && appName) menu.push({ label: `Open in ${appName}`, icon: <PlayIcon className="w-4 h-4" />, onClick: () => { window.location.href = stremioLink; } });
+  if (canDelete) {
+    menu.push({ label: isSelected ? 'Deselect' : 'Select', icon: <CheckIcon className="w-4 h-4" />, onClick: onToggle });
+    menu.push({ label: 'Delete from library', icon: <TrashIcon className="w-4 h-4" />, danger: true, disabled: isDeleting, onClick: onDelete, confirm: { title: `Delete ${item.name}?`, line: deleteLine } });
+  }
+
+  const card = (
+    <>
       {/* Poster Card */}
-      <div 
+      <div
         className={`relative aspect-[2/3] rounded-xl overflow-hidden shadow-xl ${isSelected ? 'bd3-sel' : 'bd-ok'}`}
       >
         {item.poster && !imageError ? (
@@ -83,7 +97,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />
           </>
         ) : (
-          <div 
+          <div
             className="w-full h-full flex items-center justify-center"
             style={{ background: 'var(--color-surface-elevated)' }}
           >
@@ -97,7 +111,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
 
         {/* Selection indicator - top left */}
         {isSelected && (
-          <div 
+          <div
             className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center"
             style={{ background: 'var(--color-primary)' }}
           >
@@ -110,6 +124,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
           <a
             href={stremioLink}
             onClick={(e) => e.stopPropagation()}
+            tabIndex={isTV ? -1 : undefined}
             className="absolute top-2 right-2 p-1.5 rounded-full transition-opacity opacity-80 hover:opacity-100"
             style={{ background: 'rgba(0,0,0,0.7)' }}
             title="Open"
@@ -118,25 +133,9 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
           </a>
         )}
 
-        {/* Delete button - shows on hover */}
-        {canDelete && (
-          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              disabled={isDeleting}
-              className="p-2 rounded-full transition-all"
-              style={{ background: 'rgba(239, 68, 68, 0.9)' }}
-              title="Delete"
-            >
-              {isDeleting ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <TrashIcon className="w-4 h-4 text-white" />
-              )}
-            </button>
+        {isDeleting && (
+          <div className="absolute bottom-2 left-2 p-1.5 rounded-full" style={{ background: 'rgba(0,0,0,0.65)' }}>
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
@@ -144,7 +143,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
       {/* Content Info - Below the poster */}
       <div className="mt-2 space-y-0.5 text-center">
         {/* Content title */}
-        <h4 
+        <h4
           className="font-semibold text-sm leading-tight line-clamp-3 break-words"
           style={{ color: 'var(--color-text-muted)' }}
           title={item.name}
@@ -154,7 +153,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
 
         {/* Watch time */}
         {watchTime && (
-          <div 
+          <div
             className="flex items-center justify-center gap-1 text-xs"
             style={{ color: 'var(--color-text-subtle)' }}
           >
@@ -163,6 +162,43 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
           </div>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ y: -4 }}
+      onClick={onToggle}
+      className="group relative cursor-pointer"
+    >
+      {/* TV: Right from a poster goes to its own ⋯ first, then on to the next poster. */}
+      {isTV ? (
+        <TVFocusable
+          onEnterPress={onToggle}
+          onArrowPress={(dir) => {
+            if (dir !== 'right' || menu.length === 0) return true;
+            setFocus(menuKey);
+            return false;
+          }}
+        >
+          {card}
+        </TVFocusable>
+      ) : card}
+
+      {/* The ⋯, over the poster's bottom-right corner. A sibling of the
+          poster (not inside it) so on a TV it is its own remote stop. */}
+      {menu.length > 0 && (
+        <div className="absolute inset-x-0 top-0 aspect-[2/3] pointer-events-none">
+          <span
+            className="absolute bottom-2 right-2 pointer-events-auto [&_button]:!p-1.5 [&_button]:!rounded-full [&_button]:!bg-black/65 [&_button]:!border-transparent [&_button]:!text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <V2MoreMenu items={menu} label={`${item.name} options`} focusKey={menuKey} />
+          </span>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -177,22 +213,19 @@ interface LibraryListItemProps {
   canDelete?: boolean;
   stremioLink: string | null;
   watchTime: string | null;
+  deleteLine?: string;
+  isTV: boolean;
 }
 
-function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime }: LibraryListItemProps) {
+function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime, deleteLine, isTV }: LibraryListItemProps) {
   const [imageError, setImageError] = useState(false);
-  
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      whileHover={{ x: 4 }}
-      onClick={onToggle}
-      className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bd2-sel' : 'bd-ok'}`}
-      style={{
-        background: 'var(--color-surface)',
-      }}
-    >
+  // The bin asks first, in a small question right under it.
+  const [asking, setAsking] = useState(false);
+  const binRef = useRef<HTMLButtonElement>(null);
+  const binKey = `library-bin-${item._id}`;
+
+  const about = (
+    <>
       {/* Poster */}
       <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 relative">
         {item.poster && !imageError ? (
@@ -224,7 +257,7 @@ function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, can
           ) : (
             <TvIcon className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-secondary)' }} />
           )}
-          <span 
+          <span
             className="font-medium truncate"
             style={{ color: 'var(--color-text)' }}
           >
@@ -240,39 +273,72 @@ function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, can
           </div>
         )}
       </div>
+    </>
+  );
+
+  const open = stremioLink && (
+    <a
+      href={stremioLink}
+      tabIndex={isTV ? -1 : undefined}
+      className="p-2 rounded-lg transition-colors"
+      style={{ background: 'var(--color-surface-elevated)', color: 'var(--color-text-muted)' }}
+      title="Open"
+    >
+      <PlayIcon className="w-4 h-4" />
+    </a>
+  );
+  const askDelete = () => { if (!isDeleting) setAsking((v) => !v); };
+  const bin = canDelete && (
+    <button
+      ref={binRef}
+      onClick={askDelete}
+      disabled={isDeleting}
+      tabIndex={isTV ? -1 : undefined}
+      className="p-2 rounded-lg transition-all"
+      style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}
+      title="Delete"
+      aria-label={`Delete ${item.name}`}
+    >
+      {isDeleting ? (
+        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+      ) : (
+        <TrashIcon className="w-4 h-4" />
+      )}
+    </button>
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 4 }}
+      onClick={onToggle}
+      className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bd2-sel' : 'bd-ok'}`}
+      style={{
+        background: 'var(--color-surface)',
+      }}
+    >
+      {isTV ? (
+        <TVFocusable onEnterPress={onToggle} className="flex items-start gap-4 flex-1 min-w-0">{about}</TVFocusable>
+      ) : about}
 
       {/* Actions */}
       <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-        {stremioLink && (
-          <a
-            href={stremioLink}
-            className="p-2 rounded-lg transition-colors"
-            style={{ background: 'var(--color-surface-elevated)', color: 'var(--color-text-muted)' }}
-            title="Open"
-          >
-            <PlayIcon className="w-4 h-4" />
-          </a>
-        )}
-        {canDelete && (
-          <button
-            onClick={() => onDelete()}
-            disabled={isDeleting}
-            className="p-2 rounded-lg transition-all"
-            style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}
-            title="Delete"
-          >
-            {isDeleting ? (
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <TrashIcon className="w-4 h-4" />
-            )}
-          </button>
-        )}
+        {open && (isTV ? <TVFocusable onEnterPress={() => { window.location.href = stremioLink!; }}>{open}</TVFocusable> : open)}
+        {bin && (isTV ? <TVFocusable focusKey={binKey} onEnterPress={askDelete}>{bin}</TVFocusable> : bin)}
+        <AnchoredConfirm
+          anchorRef={binRef}
+          open={asking}
+          ask={{ title: `Delete ${item.name}?`, line: deleteLine }}
+          returnFocusKey={binKey}
+          onKeep={() => setAsking(false)}
+          onConfirm={() => { setAsking(false); onDelete(); }}
+        />
       </div>
 
       {/* Selection indicator */}
       {isSelected && (
-        <div 
+        <div
           className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ background: 'var(--color-primary)' }}
         >
@@ -322,6 +388,11 @@ export default function UserLibraryPage() {
   const v2Arrange = usePageArrangement('library', [...LIBRARY_SECTIONS]);
   const [typeFilter, setTypeFilter] = useState<LibraryFilter>('all');
   const [selecting, setSelecting] = useState(false);
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  // Deleting what's picked asks first, in a small question by the Delete button.
+  const [askMany, setAskMany] = useState(false);
+  const deleteManyRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Load view mode preference
   useEffect(() => {
@@ -470,9 +541,11 @@ export default function UserLibraryPage() {
     [filteredLibrary, typeFilter],
   );
   const appLabel = provider === 'nuvio' || provider === 'stremio' ? providerTypeLabel(provider) : null;
+  const deleteLine = libraryDeleteLine(provider);
   const openAppUrl = provider === 'nuvio' ? 'nuvio://' : provider === 'stremio' ? 'stremio:///' : null;
 
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       {v2 ? (
         <MeLibraryV2
@@ -500,6 +573,7 @@ export default function UserLibraryPage() {
           appName={appLabel}
           openAppUrl={openAppUrl}
           subtitle={`${filteredLibrary.length} ${filteredLibrary.length === 1 ? 'title' : 'titles'}`}
+          provider={provider}
         />
       ) : (
       <>
@@ -520,18 +594,25 @@ export default function UserLibraryPage() {
             className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
             style={{ color: 'var(--color-text-muted)' }}
           />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm"
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-surface-border)',
-              color: 'var(--color-text)',
-            }}
-          />
+          {(() => {
+            const input = (
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by title..."
+                tabIndex={isTV ? -1 : undefined}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm"
+                style={{
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-surface-border)',
+                  color: 'var(--color-text)',
+                }}
+              />
+            );
+            return isTV ? <TVFocusable onEnterPress={() => searchRef.current?.focus()}>{input}</TVFocusable> : input;
+          })()}
         </div>
 
         {/* Selection actions */}
@@ -540,38 +621,66 @@ export default function UserLibraryPage() {
             <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
               {selectedItems.length} selected
             </span>
-            <button
-              onClick={handleDeselectAll}
-              className="px-3 py-2 rounded-lg text-sm font-medium"
-              style={{
-                background: 'var(--color-surface)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              Clear
-            </button>
-            {canDeleteLibraryItems && (
-              <button
-                onClick={handleDeleteSelected}
-                disabled={deletingIds.size > 0}
-                className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-                style={{
-                  background: 'var(--color-error)',
-                  color: 'white',
-                }}
-              >
-                <TrashIcon className="w-4 h-4" />
-                Delete
-              </button>
-            )}
+            {(() => {
+              const clear = (
+                <button
+                  onClick={handleDeselectAll}
+                  tabIndex={isTV ? -1 : undefined}
+                  className="px-3 py-2 rounded-lg text-sm font-medium"
+                  style={{
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  Clear
+                </button>
+              );
+              return isTV ? <TVFocusable onEnterPress={handleDeselectAll}>{clear}</TVFocusable> : clear;
+            })()}
+            {canDeleteLibraryItems && (() => {
+              const ask = () => { if (deletingIds.size === 0) setAskMany((v) => !v); };
+              const del = (
+                <button
+                  ref={deleteManyRef}
+                  onClick={ask}
+                  disabled={deletingIds.size > 0}
+                  tabIndex={isTV ? -1 : undefined}
+                  className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                  style={{
+                    background: 'var(--color-error)',
+                    color: 'white',
+                  }}
+                >
+                  <TrashIcon className="w-4 h-4" />
+                  Delete
+                </button>
+              );
+              return isTV ? <TVFocusable focusKey="library-delete-picked" onEnterPress={ask}>{del}</TVFocusable> : del;
+            })()}
+            <AnchoredConfirm
+              anchorRef={deleteManyRef}
+              open={askMany && selectedItems.length > 0}
+              ask={selectedItems.length === 1
+                ? { title: 'Delete 1 title?', line: deleteLine }
+                : { title: `Delete ${selectedItems.length} titles?`, line: libraryDeleteLine(provider, selectedItems.length), keepLabel: 'Keep them', confirmLabel: `Delete ${selectedItems.length}` }}
+              returnFocusKey="library-delete-picked"
+              onKeep={() => setAskMany(false)}
+              onConfirm={() => { setAskMany(false); handleDeleteSelected(); }}
+            />
           </div>
         )}
 
         {/* View toggle: a small two-icon pill at the right of the search */}
-        <ViewModeToggle
-          mode={viewMode}
-          onChange={(mode) => setViewMode(mode)}
-        />
+        {isTV ? (
+          <TVFocusable onEnterPress={() => setViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}>
+            <ViewModeToggle mode={viewMode} onChange={(mode) => setViewMode(mode)} />
+          </TVFocusable>
+        ) : (
+          <ViewModeToggle
+            mode={viewMode}
+            onChange={(mode) => setViewMode(mode)}
+          />
+        )}
       </motion.div>
 
       {/* Select all / Deselect all - selection only exists to enable bulk
@@ -582,13 +691,20 @@ export default function UserLibraryPage() {
           animate={{ opacity: 1 }}
           className="flex items-center gap-4 mb-4"
         >
-          <button
-            onClick={selectedItems.length === filteredLibrary.length ? handleDeselectAll : handleSelectAll}
-            className="text-sm font-medium transition-colors hover:opacity-80"
-            style={{ color: 'var(--color-primary)' }}
-          >
-            {selectedItems.length === filteredLibrary.length ? 'Deselect All' : 'Select All'}
-          </button>
+          {(() => {
+            const all = selectedItems.length === filteredLibrary.length;
+            const btn = (
+              <button
+                onClick={all ? handleDeselectAll : handleSelectAll}
+                tabIndex={isTV ? -1 : undefined}
+                className="text-sm font-medium transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-primary)' }}
+              >
+                {all ? 'Deselect All' : 'Select All'}
+              </button>
+            );
+            return isTV ? <TVFocusable onEnterPress={all ? handleDeselectAll : handleSelectAll}>{btn}</TVFocusable> : btn;
+          })()}
         </motion.div>
       )}
 
@@ -655,6 +771,9 @@ export default function UserLibraryPage() {
                   canDelete={canDeleteLibraryItems}
                   stremioLink={getStremioLink(item)}
                   watchTime={formatWatchTime(item.state?.overallTimeWatched)}
+                  appName={appLabel}
+                  deleteLine={deleteLine}
+                  isTV={isTV}
                 />
               ))}
             </AnimatePresence>
@@ -673,6 +792,8 @@ export default function UserLibraryPage() {
                   canDelete={canDeleteLibraryItems}
                   stremioLink={getStremioLink(item)}
                   watchTime={formatWatchTime(item.state?.overallTimeWatched)}
+                  deleteLine={deleteLine}
+                  isTV={isTV}
                 />
               ))}
             </AnimatePresence>
@@ -680,5 +801,6 @@ export default function UserLibraryPage() {
         )
       )}
     </div>
+    </Wrapper>
   );
 }
