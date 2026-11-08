@@ -371,7 +371,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
             const { createNotification } = require('../utils/notificationStore');
             const parts = [];
             if (iptv.updated.length) parts.push(`Updated the login in ${iptv.updated.length} AIOStreams setup(s) (${iptv.updated.map(a => a.username).join(', ')})`);
-            if (iptv.failed.length) parts.push(`${iptv.failed.length} AIOStreams setup(s) couldn't be reached`);
+            if (iptv.failed.length) parts.push(`${iptv.failed.length} AIOStreams setup(s) couldn't be updated (${iptv.failed.map(a => a.username).join(', ')}) - AIOStreams may have turned the new login down`);
             await createNotification(prisma, accountId, {
               type: 'task',
               title: `IPTV login: "${existing.name}" changed`,
