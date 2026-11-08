@@ -14,6 +14,12 @@ interface TVFocusableProps {
   onArrowPress?: (direction: string) => boolean;
   /** A span instead of a div, for a stop inside a line of text (a <p>). */
   inline?: boolean;
+  /**
+   * Picture cards: focus draws a ring inside the card's own edge and
+   * brightens it, rather than growing it - a wide banner grown 5% ran past
+   * its panel and lost its edges and ... button (.tv-ring-inside, globals.css).
+   */
+  ringInside?: boolean;
   children: ReactNode;
 }
 
@@ -23,7 +29,7 @@ interface TVFocusableProps {
 // picks up the active theme's own accent color instead of a hardcoded one.
 // Enter/OK on the remote fires onEnterPress, same handler the onClick
 // would've called on PC/mobile - no separate TV-only logic to keep in sync.
-export function TVFocusable({ onEnterPress, onFocus, onArrowPress, className = '', style, focusKey, inline = false, children }: TVFocusableProps) {
+export function TVFocusable({ onEnterPress, onFocus, onArrowPress, className = '', style, focusKey, inline = false, ringInside = false, children }: TVFocusableProps) {
   // Norigin moves the focus KEY, not the viewport - nothing scrolls on its
   // own. A poster a few rows down gains focus exactly like one on-screen,
   // just invisibly, which reads as "the remote stopped working" (confirmed:
@@ -49,6 +55,19 @@ export function TVFocusable({ onEnterPress, onFocus, onArrowPress, className = '
   });
 
   const Tag = inline ? 'span' : 'div';
+  if (ringInside) {
+    return (
+      <Tag
+        ref={ref as React.Ref<HTMLDivElement & HTMLSpanElement>}
+        data-tv-stop=""
+        data-tv-focused={focused ? '' : undefined}
+        className={`tv-ring-inside outline-none ${inline ? 'inline-block' : ''} ${className}`}
+        style={style}
+      >
+        {children}
+      </Tag>
+    );
+  }
   return (
     <Tag
       ref={ref as React.Ref<HTMLDivElement & HTMLSpanElement>}

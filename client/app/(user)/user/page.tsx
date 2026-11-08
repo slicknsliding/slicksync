@@ -253,7 +253,7 @@ export default function UserHomePage() {
         }
         if (id === 'continue') {
           // Partly-watched shows and films, theirs only; hides itself when there are none.
-          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><ContinueWatchingRow view={viewMode} /></ArrangePanel>;
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><ContinueWatchingRow view={viewMode} playingId={activityData?.nowPlaying?.[0]?.item.id ?? null} /></ArrangePanel>;
         }
         if (id === 'upcoming') {
           return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><UpcomingSection view={viewMode} /></ArrangePanel>;

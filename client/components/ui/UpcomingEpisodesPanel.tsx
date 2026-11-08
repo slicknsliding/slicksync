@@ -16,6 +16,9 @@ import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 import { useCardBackground, type PageArrange } from '@/lib/arrange';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { AnchoredPopup } from '@/components/user/AnchoredPopup';
+import { PlayIcon } from '@heroicons/react/24/solid';
+import { buildNuvioAppUrl, buildStremioAppUrl } from '@/lib/appLinks';
+import { providerTypeLabel } from '@/lib/providers';
 
 // Dashboard "Coming up" calendar: the next upcoming episode for every show
 // someone here is mid-season on. Data is precomputed server-side by the
@@ -115,8 +118,33 @@ function airWhen(iso: string): string {
   return `${word}, ${air.toLocaleTimeString(undefined, { hour: 'numeric', minute: air.getMinutes() ? '2-digit' : undefined })}`;
 }
 
-/** Someone partway through a show, and the episode they're on. */
-export type UpcomingFollower = { userId: string; name: string; season: number | null; episode: number | null };
+/** Someone partway through a show, the episode they're on, and the app they watch in. */
+export type UpcomingFollower = { userId: string; name: string; season: number | null; episode: number | null; providerType?: string };
+
+// An episode already out: "aired 2 h ago" (or "aired today" when the date has no time).
+function airedAgo(iso: string, now = Date.now()): string | null {
+  const air = new Date(iso);
+  const ms = now - air.getTime();
+  if (!(ms >= 0)) return null;
+  if (air.getHours() === 0 && air.getMinutes() === 0) return 'aired today';
+  const min = Math.round(ms / 60000);
+  if (min < 1) return 'just aired';
+  if (min < 60) return `aired ${min} min ago`;
+  return `aired ${Math.round(min / 60)} h ago`;
+}
+
+// Out now: the episode in the app of the first follower who watches in
+// Stremio or Nuvio (the two with a link that opens a title).
+function outNowLink(item: UpcomingEpisode, followers?: UpcomingFollower[]) {
+  const imdb = imdbOf(item.showId);
+  if (!imdb) return null;
+  const who = followers?.find((f) => f.providerType === 'stremio' || f.providerType === 'nuvio');
+  if (!who) return null;
+  const href = who.providerType === 'stremio'
+    ? buildStremioAppUrl(imdb, 'series', item.season, item.episode)
+    : buildNuvioAppUrl(imdb, 'series');
+  return { href, text: `Play S${item.season} E${item.episode} in ${providerTypeLabel(who.providerType || '')}` };
+}
 
 const imdbOf = (id: string) => /^tt\d+/.exec(id || '')?.[0] || null;
 
@@ -153,6 +181,8 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
   const imdb = imdbOf(item.showId);
   const { url: backdrop, onError } = useArtworkFallback(plain ? [] : [imdb ? `https://images.metahub.space/background/medium/${imdb}/img` : null]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // TV: Right from the tile lights its ... (OK opens the menu); any other way moves on.
+  const [moreLit, setMoreLit] = useState(false);
   const anchor = useRef<HTMLButtonElement | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPos = useRef<{ x: number; y: number } | null>(null);
@@ -163,6 +193,8 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
   };
   const when = airWhen(item.airDate);
   const left = countdown(item.airDate);
+  const aired = airedAgo(item.airDate);
+  const play = aired ? outNowLink(item, followers) : null;
   const onPicture = !plain;
   const first = followers?.[0];
   const open = () => { if (!menuOpen) onOpen(item); };
@@ -199,7 +231,7 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
     >
       {onPicture && backdrop && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={cachedImageUrl(backdrop, 500) || backdrop} onError={onError} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center' }} />
+        <img src={cachedImageUrl(backdrop, 500) || backdrop} onError={onError} alt="" loading="lazy" decoding="async" className="art-fill absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center' }} />
       )}
       {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.88) 50%, rgba(10,12,20,.25) 100%)' }} />}
       <button
@@ -210,23 +242,29 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
         aria-haspopup="dialog"
         aria-expanded={menuOpen}
         className="absolute top-2 right-2 z-[2] w-9 h-9 rounded-full flex items-center justify-center"
-        style={{ background: onPicture ? 'rgba(0,0,0,0.5)' : 'var(--color-surface-hover)', color: onPicture ? '#fff' : 'var(--color-text)' }}
+        style={{ background: onPicture ? 'rgba(0,0,0,0.5)' : 'var(--color-surface-hover)', color: onPicture ? '#fff' : 'var(--color-text)', boxShadow: moreLit ? '0 0 0 3px var(--color-primary)' : undefined }}
       >
         <EllipsisHorizontalIcon className="w-5 h-5" />
       </button>
       <div className="relative flex items-end gap-3 w-full p-3 pr-12">
-        <div className="w-[52px] h-[78px] rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: 'var(--color-surface-hover)', boxShadow: '0 2px 8px rgba(0,0,0,.4)' }}>
-          {item.poster ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" loading="lazy" className="w-full h-full object-cover" />
-          ) : (
-            <TvIcon className="w-5 h-5 text-subtle" />
+        {/* Out now: the label sits above the poster. */}
+        <div className="flex flex-col items-center gap-1.5 shrink-0">
+          {aired && (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap pointer-events-none" style={{ background: 'var(--color-success, #16a34a)', color: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.4)' }}>Out now</span>
           )}
+          <div className="w-[52px] h-[78px] rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: 'var(--color-surface-hover)', boxShadow: '0 2px 8px rgba(0,0,0,.4)' }}>
+            {item.poster ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" loading="lazy" className="w-full h-full object-cover" />
+            ) : (
+              <TvIcon className="w-5 h-5 text-subtle" />
+            )}
+          </div>
         </div>
         <div className="min-w-0 flex flex-col gap-0.5">
           <p className="flex items-center gap-2 text-[12.5px]" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: left.soon ? 'var(--color-primary)' : (onPicture ? '#9ca3af' : 'var(--color-text-subtle)') }} />
-            <span className="min-w-0 break-words">{when}{left.text ? ` · ${left.text}` : ''}</span>
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: aired ? 'var(--color-success, #16a34a)' : left.soon ? 'var(--color-primary)' : (onPicture ? '#9ca3af' : 'var(--color-text-subtle)') }} />
+            <span className="min-w-0 break-words">{when}{aired ? ` · ${aired}` : left.text ? ` · ${left.text}` : ''}</span>
           </p>
           <p className="text-[16.5px] font-bold leading-tight break-words" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName || 'Unknown show'}</p>
           <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>
@@ -241,6 +279,19 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
               </span>
             </p>
           )}
+          {play && (
+            <a
+              href={play.href}
+              draggable={false}
+              tabIndex={isTV ? -1 : undefined}
+              onClick={(e) => e.stopPropagation()}
+              className="cwb-play mt-2 self-start inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold text-white"
+              style={{ background: 'var(--color-primary)' }}
+            >
+              <PlayIcon className="w-3.5 h-3.5" />
+              {play.text}
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -248,7 +299,20 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
 
   return (
     <>
-      {isTV ? <TVFocusable onEnterPress={open}>{tile}</TVFocusable> : tile}
+      {isTV ? (
+        <TVFocusable
+          ringInside
+          className="h-full"
+          onEnterPress={() => (moreLit ? setMenuOpen(true) : open())}
+          onArrowPress={(dir) => {
+            if (dir === 'right' && !moreLit) { setMoreLit(true); return false; }
+            if (moreLit) { setMoreLit(false); if (dir === 'left') return false; }
+            return true;
+          }}
+        >
+          {tile}
+        </TVFocusable>
+      ) : tile}
       {menuOpen && (
         <AnchoredPopup anchorRef={anchor} onClose={() => setMenuOpen(false)} title={`${item.showName || 'Unknown show'} S${item.season} E${item.episode}`} width={280} align="end">
           <div className="space-y-1 -mx-1">

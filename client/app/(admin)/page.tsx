@@ -162,7 +162,7 @@ export default function DashboardPage() {
     for (const c of continueWatching) {
       const list = out[c.showId] || (out[c.showId] = []);
       if (list.some((f) => f.userId === c.userId)) continue;
-      list.push({ userId: c.userId, name: c.username.split(' ')[0], season: c.nextEpisode?.season ?? null, episode: c.nextEpisode?.episode ?? null });
+      list.push({ userId: c.userId, name: c.username.split(' ')[0], season: c.nextEpisode?.season ?? null, episode: c.nextEpisode?.episode ?? null, providerType: c.providerType });
     }
     return out;
   }, [continueWatching]);
@@ -563,7 +563,15 @@ export default function DashboardPage() {
   // Playing and Continue Watching only exist while there is something in
   // them; the chart and Quick Actions only in the Original layout.
   const hasNowPlaying = !!(metricsData?.nowPlaying && metricsData.nowPlaying.length > 0);
-  const hasContinue = continueWatching.length > 0;
+  // A title someone is playing right now shows in Now Playing, so their own
+  // Continue Watching card for it steps aside until they stop (someone else
+  // partway through the same show keeps theirs).
+  const continueShown = useMemo(() => {
+    const playing = new Set((metricsData?.nowPlaying || []).map((np) => `${np.user.id}::${String(np.item.id || '').split(':')[0]}`));
+    if (playing.size === 0) return continueWatching;
+    return continueWatching.filter((c) => !playing.has(`${c.userId}::${String(c.showId || '').split(':')[0]}`));
+  }, [continueWatching, metricsData?.nowPlaying]);
+  const hasContinue = continueShown.length > 0;
   const isOriginal = layoutMode !== 'nebula';
 
   // v2: what needs the admin (a sign-in that stopped, someone asking to join,
@@ -642,13 +650,13 @@ export default function DashboardPage() {
   // the latest title wide, as Now Playing's first banner, and the rest in a
   // row that drags sideways and sizes with Arrange's stretch handle.
   const continueBanners = () => {
-    const [lead, ...rest] = continueWatching;
+    const [lead, ...rest] = continueShown;
     if (!lead) return null;
     const leadCard = <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
     return (
       <>
         {isTV
-          ? <TVFocusable className={rest.length ? 'mb-3' : ''} onEnterPress={() => setDetailModalItem(lead)}>{leadCard}</TVFocusable>
+          ? <TVFocusable ringInside className={rest.length ? 'mb-3' : ''} onEnterPress={() => setDetailModalItem(lead)}>{leadCard}</TVFocusable>
           : <div className={rest.length ? 'mb-3' : ''}>{leadCard}</div>}
         {rest.length > 0 && (
           <div
@@ -666,7 +674,7 @@ export default function DashboardPage() {
               const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
               const key = `${item.userId}-${item.showId}`;
               return isTV
-                ? <TVFocusable key={key} className="w-[300px] shrink-0" onEnterPress={() => setDetailModalItem(item)}>{card}</TVFocusable>
+                ? <TVFocusable key={key} ringInside className="w-[300px] shrink-0" onEnterPress={() => setDetailModalItem(item)}>{card}</TVFocusable>
                 : <Fragment key={key}>{card}</Fragment>;
             })}
             {!isTV && <StretchHandle arrange={dashArrange} id="continue" kind="row" label="Continue Watching" />}
@@ -1175,7 +1183,7 @@ export default function DashboardPage() {
                       </div>
                     ))}
                     {dashPanel('upcoming', 'Coming up', 'lg:col-span-2', (
-                      <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
+                      <UpcomingEpisodesPanel className="" tiles watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
                     ))}
                     {dashPanel('recent', 'Recent Activity', '', (
                       <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
@@ -1488,7 +1496,7 @@ export default function DashboardPage() {
                   </PageSection>
                 ))}
                 {dashPanel('upcoming', 'Coming up', 'lg:col-span-6', (
-                  <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
+                  <UpcomingEpisodesPanel className="" tiles watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
                 ))}
                 {dashPanel('syncActivity', 'Sync Activity', 'lg:col-span-4', (
                   <PageSection delay={0.2}>

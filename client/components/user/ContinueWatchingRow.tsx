@@ -1,8 +1,9 @@
 'use client';
 
 // "Continue Watching" on a person's own Home: the shows and films they have
-// partly watched, each a card with a progress bar and a ... menu beside it
-// (Resume in their app, Remove from Continue Watching). Only their own - for a
+// partly watched, as banners: the latest one wide, the rest in a row beside
+// it, each with a ... menu (Resume in their app, Remove from Continue
+// Watching). The title Now Playing shows above is left out. Only their own - for a
 // Stremio, Nuvio, Jellyfin or AIOStreams person alike - and the whole row
 // hides itself when there is nothing to pick up. Removing a card keeps their
 // watch history.
@@ -30,7 +31,8 @@ import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { availableApps, linksFor, rememberApp, rememberedApp, rememberedShortcut, type OpenTargets, type OpenWithAppId } from '@/lib/openWith';
 import { userContinueWatching, userOpenTargets, type ContinueWatchingCardData } from '@/lib/user-api';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
-import { useCwTime } from '@/lib/arrange';
+import { ContinueBannerCard, ContinueLeadBanner } from '@/components/dashboard/ContinueBanners';
+import type { ContinueWatchingItem } from '@/lib/api';
 
 const REFRESH_MS = 60 * 1000;
 const EMPTY: ContinueWatchingCardData[] = [];
@@ -57,12 +59,6 @@ function episodeLine(c: ContinueWatchingCardData): string {
   return c.progressPercent != null ? `Resume · ${c.progressPercent}% watched` : 'Resume';
 }
 
-/** Under the picture (Settings → Continue Watching: Under): just the episode, or Movie. */
-function episodeName(c: ContinueWatchingCardData): string {
-  if (c.season != null && c.episode != null) return `S${c.season} E${c.episode}${c.episodeTitle ? ` · ${c.episodeTitle}` : ''}`;
-  return 'Movie';
-}
-
 /** The badge on the picture: time left when resuming, Up next for the next episode. */
 function leftLabel(c: ContinueWatchingCardData): string {
   if (!c.resume) return 'Up next';
@@ -86,87 +82,33 @@ function openOnTV(appUrl: string | null, href: string) {
   else window.open(href, '_blank', 'noopener,noreferrer');
 }
 
-const Card = memo(function Card({ card, menuOpen, onToggleMenu }: {
-  card: ContinueWatchingCardData;
-  menuOpen: boolean;
-  onToggleMenu: (card: ContinueWatchingCardData, button: HTMLElement) => void;
-}) {
-  const { appUrl, href, app } = openingOf(card);
-  const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
-  // Settings: time left / Up next under the card instead of on the picture.
-  const under = useCwTime().where === 'under';
-  const isTV = useIsTV();
-
-  const body = (
-    <>
-      <div className="relative aspect-video" style={{ background: 'var(--color-surface-elevated)' }}>
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cachedImageUrl(image, 342) || image} onError={onImageError} alt="" draggable={false} loading="lazy" decoding="async" className="w-full h-full object-cover pointer-events-none" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center"><PlayIcon className="w-8 h-8 text-subtle" /></div>
-        )}
-        {!under && <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full text-[11px] font-semibold pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>{leftLabel(card)}</span>}
-        {card.resume && card.progressPercent != null && (
-          <div className="absolute bottom-0 left-0 right-0 h-1.5 pointer-events-none" style={{ background: 'rgba(0,0,0,0.55)' }}>
-            <div
-              className="h-full rounded-r-full"
-              style={{ width: `${Math.min(100, Math.max(3, card.progressPercent))}%`, background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))' }}
-            />
-          </div>
-        )}
-      </div>
-      <div className="p-3">
-        <p className="text-sm font-medium break-words" style={{ color: 'var(--color-text)' }}>{card.name}</p>
-        <p className="text-xs break-words mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{under ? episodeName(card) : episodeLine(card)}</p>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 min-w-0">
-          <Badge variant={providerBadgeVariant({ providerType: card.providerType })} size="sm">{app}</Badge>
-          {card.profileLabel && <span className="text-[11px] break-words" style={{ color: 'var(--color-text-muted)' }}>{card.profileLabel}</span>}
-          {under && (card.resume
-            ? <span className="text-[11px] font-semibold break-words" style={{ color: 'var(--color-text)' }}>{leftLabel(card)}</span>
-            : <span className="text-[11px] font-semibold break-words" style={{ color: 'var(--color-primary)' }}>Up next</span>)}
-        </div>
-      </div>
-    </>
-  );
-
-  const cardClass = 'block w-full rounded-xl overflow-hidden select-none';
-  const cardStyle = { background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' };
-
-  return (
-    <div className="relative shrink-0 w-[240px] sm:w-[260px]" data-continue-card={card.showId}>
-      {href ? (() => {
-        const link = (
-          <a
-            href={href}
-            target={appUrl ? undefined : '_blank'}
-            rel={appUrl ? undefined : 'noopener noreferrer'}
-            draggable={false}
-            tabIndex={isTV ? -1 : undefined}
-            aria-label={`${appUrl ? `Resume in ${app}` : 'Open'} ${card.name}`}
-            className={cardClass}
-            style={cardStyle}
-          >
-            {body}
-          </a>
-        );
-        return isTV ? <TVFocusable onEnterPress={() => openOnTV(appUrl, href)}>{link}</TVFocusable> : link;
-      })() : (
-        <div className={cardClass} style={cardStyle}>{body}</div>
-      )}
-      <button
-        type="button"
-        onClick={(e) => onToggleMenu(card, e.currentTarget)}
-        aria-label={`More for ${card.name}`}
-        aria-haspopup="dialog"
-        aria-expanded={menuOpen}
-        className="art-btn absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-      >
-        <EllipsisHorizontalIcon className="w-5 h-5" />
-      </button>
-    </div>
-  );
-});
+// A card as the banners read it: the same title, theirs only.
+function asBannerItem(c: ContinueWatchingCardData, userId: string): ContinueWatchingItem {
+  return {
+    userId,
+    username: '',
+    providerType: c.providerType,
+    profileLabel: c.profileLabel,
+    contentType: c.contentType,
+    showId: c.showId,
+    showName: c.name,
+    poster: c.poster,
+    background: c.background,
+    lastWatched: null,
+    nextEpisode: c.season != null && c.episode != null ? { season: c.season, episode: c.episode, title: c.episodeTitle, thumbnail: c.thumbnail } : null,
+    resume: c.resume,
+    progressPercent: c.progressPercent,
+    remainingMinutes: c.remainingMinutes,
+    positionMs: c.positionMs ?? null,
+    durationMs: c.durationMs ?? null,
+    lastWatchedAt: c.lastWatchedAt,
+    appUrl: safeAppUrl(c.appUrl) || undefined,
+    webUrl: safeWebUrl(c.webUrl) || undefined,
+    imdbRating: null,
+    rottenTomatoes: null,
+    metacritic: null,
+  };
+}
 
 // List view: one row per title - picture, title, what's next, time left, app and the ... menu.
 const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
@@ -215,11 +157,20 @@ const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
   );
 });
 
-export function ContinueWatchingRow({ view = 'grid' }: { view?: 'grid' | 'list' } = {}) {
+export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
+  view?: 'grid' | 'list';
+  /** What Now Playing shows above: that title is left out here. */
+  playingId?: string | null;
+} = {}) {
   const { userId, authKey } = useUserAuth();
+  const isTV = useIsTV();
   // Kept with the person it was read for, so a profile switch never shows the last one's row.
   const [loaded, setLoaded] = useState<{ forUser: string; items: ContinueWatchingCardData[] } | null>(null);
-  const cards = loaded && loaded.forUser === userId ? loaded.items : EMPTY;
+  const playingBase = playingId ? playingId.split(':')[0] : null;
+  const all = loaded && loaded.forUser === userId ? loaded.items : EMPTY;
+  const cards = useMemo(() => (playingBase ? all.filter((c) => c.showId.split(':')[0] !== playingBase) : all), [all, playingBase]);
+  // The row scrolls itself and swallows the click that ends a drag.
+  const notDragged = useRef(false);
   const [menuFor, setMenuFor] = useState<ContinueWatchingCardData | null>(null);
   // The app picker, hung from the same ... button once the menu is dismissed.
   const [pickerFor, setPickerFor] = useState<ContinueWatchingCardData | null>(null);
@@ -300,7 +251,20 @@ export function ContinueWatchingRow({ view = 'grid' }: { view?: 'grid' | 'list' 
     }
   }, [userId, authKey]);
 
+  // The banners hand back their own item; the menu works on the card it came from.
+  const moreFor = (item: ContinueWatchingItem, anchor: HTMLElement) => {
+    const card = cards.find((c) => c.showId === item.showId);
+    if (card) toggleMenu(card, anchor);
+  };
+  const noRemove = () => {};
+
   if (cards.length === 0) return null;
+  const banners = cards.map((c) => asBannerItem(c, userId || ''));
+  const [lead, ...rest] = banners;
+  const tvOpen = (item: ContinueWatchingItem) => {
+    const href = item.appUrl || item.webUrl;
+    if (href) openOnTV(item.appUrl || null, href);
+  };
 
   return (
     <section className="mb-8" aria-label="Continue Watching">
@@ -312,11 +276,26 @@ export function ContinueWatchingRow({ view = 'grid' }: { view?: 'grid' | 'list' 
           ))}
         </div>
       ) : (
-        <ScrollRow className="flex gap-3 pb-1">
-          {cards.map((card) => (
-            <Card key={card.showId} card={card} menuOpen={menuFor?.showId === card.showId} onToggleMenu={toggleMenu} />
-          ))}
-        </ScrollRow>
+        <>
+          {(() => {
+            const leadCard = <ContinueLeadBanner item={lead} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} />;
+            return isTV
+              ? <TVFocusable ringInside className={rest.length ? 'mb-3' : ''} onEnterPress={() => tvOpen(lead)}>{leadCard}</TVFocusable>
+              : <div className={rest.length ? 'mb-3' : ''}>{leadCard}</div>;
+          })()}
+          {rest.length > 0 && (
+            <ScrollRow className={isTV
+              ? 'flex gap-3 pb-1'
+              : 'grid grid-flow-col gap-3 pb-1 auto-cols-[82%] min-[640px]:auto-cols-[calc((100%-24px)/3)] min-[1100px]:auto-cols-[calc((100%-36px)/4)] min-[1700px]:auto-cols-[calc((100%-48px)/5)]'}>
+              {rest.map((item, index) => {
+                const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} />;
+                return isTV
+                  ? <TVFocusable key={item.showId} ringInside className="w-[300px] shrink-0" onEnterPress={() => tvOpen(item)}>{card}</TVFocusable>
+                  : <div key={item.showId} className="min-w-0">{card}</div>;
+              })}
+            </ScrollRow>
+          )}
+        </>
       )}
       {menuFor && cards.some((c) => c.showId === menuFor.showId) && (() => {
         const { appUrl, href, app } = openingOf(menuFor);

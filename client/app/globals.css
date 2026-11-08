@@ -1995,6 +1995,19 @@ select:not(.appearance-none) {
 }
 /* Continue Watching banner cards (components/dashboard/ContinueBanners.tsx):
    sized by their own width, so Arrange's stretch handle tightens or grows them. */
+/* TV focus on picture cards (TVFocusable ringInside): a ring inside the
+   card's own edge and a little brighter, never bigger - nothing is cut off. */
+.tv-ring-inside > :first-child { transition: filter 0.15s; }
+.tv-ring-inside[data-tv-focused] > :first-child { filter: brightness(1.12); }
+.tv-ring-inside[data-tv-focused] > :first-child::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: 20; pointer-events: none;
+  box-shadow: inset 0 0 0 4px var(--color-primary), inset 0 0 0 6px rgba(0, 0, 0, 0.55);
+}
+/* A picture filling a rounded card, under a shading layer: its own corners a
+   touch rounder than the card's, so its curve sits under the shading. With
+   both clipped at the same curve, half-covered pixels let the picture leak
+   past the shading - light curves on the corners only. --art-r: the card's radius. */
+.art-fill { border-radius: calc(var(--art-r, 16px) + 3px); }
 .cwb { container-type: inline-size; }
 .cwb-title { font-size: 18px; }
 @container (max-width: 230px) {

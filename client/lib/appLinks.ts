@@ -11,8 +11,9 @@
  * rather than guessed at.
  */
 
-export function buildStremioAppUrl(imdbId: string, type: 'movie' | 'series'): string {
-  const videoId = type === 'movie' ? imdbId : '';
+export function buildStremioAppUrl(imdbId: string, type: 'movie' | 'series', season?: number, episode?: number): string {
+  // A season and episode open that episode (as the server's own links do).
+  const videoId = type === 'movie' ? imdbId : (season != null && episode != null ? `${imdbId}:${season}:${episode}` : '');
   return `stremio:///detail/${type}/${imdbId}/${videoId}`;
 }
 

@@ -126,7 +126,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
       className={`relative flex flex-col rounded-[20px] overflow-hidden ${canOpen ? 'cursor-pointer ' : ''}${flush || under || progressUnder ? '' : 'mb-8 '}${compact ? 'min-h-[176px]' : 'min-h-[230px] sm:min-h-[300px] min-[2000px]:min-h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
       {art && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center' }} />
+        <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="art-fill absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center', ['--art-r' as string]: '20px' }} />
       )}
       {/* Dark on the side the words sit on, so they read on every theme. */}
       <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.96) 0%, rgba(10,12,20,.85) 45%, rgba(10,12,20,.15) 100%)' }} />

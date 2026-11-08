@@ -82,15 +82,25 @@ type CardProps = {
   item: ContinueWatchingItem;
   wasDraggedRef: RefObject<boolean>;
   onRemove: (item: ContinueWatchingItem) => void;
-  onOpenDetails: (item: ContinueWatchingItem) => void;
+  /** Tapping the card. Without it (a person's own Home) a tap opens the menu. */
+  onOpenDetails?: (item: ContinueWatchingItem) => void;
   /** The first cards: fetched at once rather than when seen. */
   priority?: boolean;
+  /** A person's own Home: the profile only, not their name and picture on every card. */
+  self?: boolean;
+  /** The caller draws the menu (a person's Home: Resume, Choose app..., Remove), hung from this button. */
+  onMore?: (item: ContinueWatchingItem, anchor: HTMLElement) => void;
 };
 
 /** Right-click, long press and the ... button all open the same anchored menu. */
-function useCardMenu(wasDraggedRef: RefObject<boolean>) {
-  const [open, setOpen] = useState(false);
+function useCardMenu(wasDraggedRef: RefObject<boolean>, onMore?: (anchor: HTMLElement) => void) {
+  const [open, setOpenState] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
+  // With a caller-drawn menu, opening hands it the ... button instead.
+  const setOpen = (v: boolean) => {
+    if (v && onMore) { if (anchorRef.current) onMore(anchorRef.current); return; }
+    setOpenState(v);
+  };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
   const opened = useRef(false);
@@ -120,8 +130,9 @@ function useCardMenu(wasDraggedRef: RefObject<boolean>) {
   };
 }
 
-function Who({ item, extra, onPicture }: { item: ContinueWatchingItem; extra?: string; onPicture: boolean }) {
+function Who({ item, extra, onPicture, self }: { item: ContinueWatchingItem; extra?: string; onPicture: boolean; self?: boolean }) {
   const where = [extra, item.profileLabel || providerTypeLabel(item.providerType || 'stremio')].filter(Boolean).join(' · ');
+  if (self) return <p className="cwb-who text-[12.5px] break-words" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{where}</p>;
   return (
     <div className="cwb-who flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 text-[12.5px]" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>
       <UserAvatar userId={item.userId} name={item.username} size="xs" />
@@ -190,7 +201,7 @@ function MoreButton({ anchorRef, open, onToggle, label, onPicture }: { anchorRef
   );
 }
 
-function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails }: { anchorRef: RefObject<HTMLButtonElement | null>; open: boolean; onClose: () => void; item: ContinueWatchingItem; onRemove: CardProps['onRemove']; onOpenDetails: CardProps['onOpenDetails'] }) {
+function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails }: { anchorRef: RefObject<HTMLButtonElement | null>; open: boolean; onClose: () => void; item: ContinueWatchingItem; onRemove: CardProps['onRemove']; onOpenDetails?: CardProps['onOpenDetails'] }) {
   if (!open) return null;
   const row = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] text-left text-default hover:bg-surface-hover transition-colors';
   const icon = 'w-[18px] h-[18px] shrink-0 text-muted';
@@ -198,10 +209,12 @@ function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails }: {
   return (
     <AnchoredPopup anchorRef={anchorRef} onClose={close} title={item.showName} width={280} align="end">
       <div className="space-y-1 -mx-1">
-        <button type="button" className={row} onClick={() => { close(); onOpenDetails(item); }}>
-          <InformationCircleIcon className={icon} />
-          Details
-        </button>
+        {onOpenDetails && (
+          <button type="button" className={row} onClick={() => { close(); onOpenDetails(item); }}>
+            <InformationCircleIcon className={icon} />
+            Details
+          </button>
+        )}
         <button type="button" className={row} onClick={() => { close(); onRemove(item); }}>
           <XMarkIcon className={icon} />
           Remove from Continue Watching
@@ -213,13 +226,14 @@ function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails }: {
 }
 
 /** The card's own frame: tap for details, right-click or long press for the menu. */
-function Frame({ item, handlers, ignoreClick, wasDraggedRef, onOpenDetails, className, style, children }: {
+function Frame({ item, handlers, ignoreClick, wasDraggedRef, onActivate, className, style, children }: {
   item: ContinueWatchingItem;
   handlers: ReturnType<typeof useCardMenu>['handlers'];
   /** True for the click that follows a long press, or while the menu is open. */
   ignoreClick: () => boolean;
   wasDraggedRef: RefObject<boolean>;
-  onOpenDetails: CardProps['onOpenDetails'];
+  /** A tap on the card itself: its details, or its menu. */
+  onActivate: () => void;
   className: string;
   style: React.CSSProperties;
   children: ReactNode;
@@ -230,7 +244,7 @@ function Frame({ item, handlers, ignoreClick, wasDraggedRef, onOpenDetails, clas
       onClick={(e) => {
         if (ignoreClick() || wasDraggedRef.current) return;
         if ((e.target as HTMLElement).closest('a,button')) return;
-        onOpenDetails(item);
+        onActivate();
       }}
       draggable={false}
       onDragStart={(e) => e.preventDefault()}
@@ -244,20 +258,20 @@ function Frame({ item, handlers, ignoreClick, wasDraggedRef, onOpenDetails, clas
 }
 
 /** One of the smaller banners in the row. */
-export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDraggedRef, onRemove, onOpenDetails, priority = false }: CardProps) {
+export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDraggedRef, onRemove, onOpenDetails, priority = false, self, onMore }: CardProps) {
   const plain = useCardBackground().bg === 'plain';
   const { url: art, onError } = useCardArt(item, plain);
-  const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef);
+  const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef, onMore ? (a) => onMore(item, a) : undefined);
   const onPicture = !plain;
   const ep = episodeLong(item);
   return (
     <>
-      <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onOpenDetails={onOpenDetails}
+      <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onActivate={() => (onOpenDetails ? onOpenDetails(item) : setOpen(true))}
         className={`rounded-2xl flex flex-col h-full ${plain ? '' : 'min-h-[230px] sm:min-h-[250px]'}`}
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cachedImageUrl(art, 500) || art} onError={onError} alt="" draggable={false} loading={priority ? 'eager' : 'lazy'} decoding="async" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+          <img src={cachedImageUrl(art, 500) || art} onError={onError} alt="" draggable={false} loading={priority ? 'eager' : 'lazy'} decoding="async" className="art-fill absolute inset-0 w-full h-full object-cover pointer-events-none" />
         )}
         {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(0deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.82) 45%, rgba(10,12,20,.1) 100%)' }} />}
         {onPicture ? (
@@ -274,7 +288,7 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
         )}
         <MoreButton anchorRef={anchorRef} open={open} onToggle={() => setOpen(!open)} label={item.showName} onPicture={onPicture} />
         <div className={`relative mt-auto flex flex-col gap-[3px] px-3.5 pb-3.5 ${plain ? "pt-3" : "pt-0"}`}>
-          <Who item={item} onPicture={onPicture} />
+          <Who item={item} onPicture={onPicture} self={self} />
           <p className="cwb-title font-bold leading-tight break-words mt-0.5" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName}</p>
           {ep && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
           <ProgressBar item={item} onPicture={onPicture} />
@@ -282,26 +296,26 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
           <div className="mt-2"><PlayButton item={item} wasDraggedRef={wasDraggedRef} /></div>
         </div>
       </Frame>
-      <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />
+      {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />}
     </>
   );
 });
 
 /** The latest title, as wide as the section: the same shape as Now Playing's first banner. */
-export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDraggedRef, onRemove, onOpenDetails }: CardProps) {
+export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDraggedRef, onRemove, onOpenDetails, self, onMore }: CardProps) {
   const plain = useCardBackground().bg === 'plain';
   const { url: art, onError } = useCardArt(item, plain);
-  const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef);
+  const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef, onMore ? (a) => onMore(item, a) : undefined);
   const onPicture = !plain;
   const ep = episodeLong(item);
   return (
     <>
-      <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onOpenDetails={onOpenDetails}
+      <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onActivate={() => (onOpenDetails ? onOpenDetails(item) : setOpen(true))}
         className="rounded-[20px] flex flex-col min-h-[230px] sm:min-h-[250px]"
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" draggable={false} loading="eager" decoding="async" className="absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center' }} />
+          <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" draggable={false} loading="eager" decoding="async" className="art-fill absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center', ['--art-r' as string]: '20px' }} />
         )}
         {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.96) 0%, rgba(10,12,20,.85) 45%, rgba(10,12,20,.15) 100%)' }} />}
         {plain && art && (
@@ -312,7 +326,7 @@ export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDr
         )}
         <MoreButton anchorRef={anchorRef} open={open} onToggle={() => setOpen(!open)} label={item.showName} onPicture={onPicture} />
         <div className={`relative flex-1 flex flex-col justify-end gap-1.5 p-[18px] sm:p-[26px] max-w-full sm:max-w-[60%] ${plain ? 'pr-[92px] sm:pr-[26px]' : ''}`}>
-          <Who item={item} extra="Pick up where you left off" onPicture={onPicture} />
+          <Who item={item} extra="Pick up where you left off" onPicture={onPicture} self={self} />
           <h4 className="text-2xl sm:text-[30px] font-bold leading-tight break-words" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName}</h4>
           {ep && <p className="text-sm break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
           <ProgressBar item={item} onPicture={onPicture} />
@@ -320,7 +334,7 @@ export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDr
           <div className="mt-1.5"><PlayButton item={item} wasDraggedRef={wasDraggedRef} big /></div>
         </div>
       </Frame>
-      <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />
+      {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />}
     </>
   );
 });

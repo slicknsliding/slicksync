@@ -3834,6 +3834,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           resume: r.resume === true,
           progressPercent: r.progressPercent ?? null,
           remainingMinutes: r.remainingMinutes ?? null,
+          positionMs: r.positionMs ?? null,
+          durationMs: r.durationMs ?? null,
           lastWatchedAt: r.lastWatchedAt,
           providerType: r.providerType,
           profileLabel: r.profileLabel || null,

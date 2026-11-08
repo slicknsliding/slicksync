@@ -1000,6 +1000,9 @@ export interface ContinueWatchingCardData {
   resume: boolean;
   progressPercent: number | null;
   remainingMinutes: number | null;
+  /** Where they stopped and how long it is (ms), when resuming. */
+  positionMs?: number | null;
+  durationMs?: number | null;
   lastWatchedAt: string;
   providerType: string;
   /** Nuvio: the profile it is watched under. */
