@@ -692,10 +692,20 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       where: { id: rowId },
       select: { posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
     })
-    // AIOStreams' own apps may already have announced this same viewing.
-    if (fresh?.metadataItemId && !require('./startNotifyDedupe').claimStart(accountId, user.id, fresh.metadataItemId)) return
     // The matched title's own name where there is one - see proxyTitle.js.
-    const shownName = proxyDisplayTitle({ ...(fresh || {}), displayName }) || displayName
+    let shownName = proxyDisplayTitle({ ...(fresh || {}), displayName }) || displayName
+    // A stream named only by an opaque id gets the name Now Playing shows for
+    // it: the same file played before under a real name, or else the title
+    // they were partway through, as a guess. Never "a title SlickSync
+    // couldn't name yet" while the card beside it says what it is.
+    const better = isOpaqueStreamName(String(shownName || '').trim()) ? await nameForUnnamedStart(prisma, accountId, user.id, rowId) : null
+    const itemId = better ? better.itemId : (fresh?.metadataItemId || null)
+    const itemType = better ? better.itemType : fresh?.metadataItemType
+    const poster = better ? better.poster : (fresh?.posterUrl || null)
+    if (better) shownName = better.name
+    // AIOStreams' own apps may already have announced this same viewing.
+    if (itemId && !require('./startNotifyDedupe').claimStart(accountId, user.id, itemId)) return
+    const guessed = !!better?.guessed
     // A user's own personal webhook (set in their self-service Settings)
     // takes over from the shared account webhook for their own activity —
     // lets each household member route their own pings to their own
@@ -703,14 +713,14 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const targetWebhookUrl = user.discordWebhookUrl || webhookUrl
     if (targetWebhookUrl) {
       await sendSessionStartNotification(targetWebhookUrl, {
-        itemName: shownName,
-        itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
-        itemId: fresh?.metadataItemId || null,
+        itemName: guessed ? `${shownName} (probably)` : shownName,
+        itemType: itemType === 'series' ? 'series' : 'movie',
+        itemId: guessed ? null : itemId,
         videoId: null,
         season: null,
         episode: null,
         startTime: fresh?.startTime || new Date(),
-        poster: fresh?.posterUrl || null,
+        poster,
       }, user)
     }
     // Automation runs off the same start edge as the notification above,
@@ -723,9 +733,9 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       await emitAutomationEvent(prisma, accountId, 'watch.started', {
         username: user.username || '',
         userId: user.id,
-        itemName: shownName,
-        itemId: fresh?.metadataItemId || '',
-        contentType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
+        itemName: guessed ? `${shownName} (probably)` : shownName,
+        itemId: guessed ? '' : (itemId || ''),
+        contentType: itemType === 'series' ? 'series' : 'movie',
       })
     } catch { /* emit never throws; guards the require itself */ }
 
@@ -733,12 +743,37 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const whoName = user.username || user.email || 'Someone'
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
       title: `${whoName} started watching`,
-      body: readableStreamTitle(shownName),
-      icon: fresh?.posterUrl || '/android-chrome-192x192.png',
+      body: guessed ? `Probably ${shownName} - resumed from Continue Watching` : readableStreamTitle(shownName),
+      icon: poster || '/android-chrome-192x192.png',
       url: '/activity',
     })
   } catch (error) {
     heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
+  }
+}
+
+// What Now Playing calls a stream named only by an opaque id (see
+// proxyNowPlaying.js): the same file played earlier under a real name
+// (certain), or the title they were partway through (a guess). Null when
+// neither is known.
+async function nameForUnnamedStart(prisma, accountId, userId, rowId) {
+  try {
+    const { nameFromSameFile, guessResumedTitle } = require('./proxyNowPlaying')
+    const row = await prisma.proxyStreamSession.findUnique({
+      where: { id: rowId },
+      select: { id: true, url: true, filename: true, displayName: true, posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
+    })
+    if (!row) return null
+    await nameFromSameFile(prisma, accountId, [row])
+    const named = proxyDisplayTitle(row)
+    if (named && !isOpaqueStreamName(String(named).trim())) {
+      return { name: named, itemId: row.metadataItemId || null, itemType: row.metadataItemType, poster: row.posterUrl || null, guessed: false }
+    }
+    const g = await guessResumedTitle(prisma, accountId, userId, row.startTime || new Date())
+    if (!g?.item?.name) return null
+    return { name: g.item.name, itemId: g.item.id || null, itemType: g.item.type, poster: g.item.poster || null, guessed: true }
+  } catch {
+    return null
   }
 }
 
@@ -1100,6 +1135,7 @@ module.exports = {
     pollOnce,
     attemptPosterLookup,
     retryMissingPosters,
+    maybeNotifyStart,
     reset() {
       cachedCookie = null
       loginBlockedUntil = 0
