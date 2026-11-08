@@ -188,6 +188,26 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Add an entry',
   },
   {
+    id: 'vault-iptv-login',
+    title: 'Keep an IPTV login in the Vault',
+    category: 'Vault & credentials',
+    keywords: ['iptv', 'xtream', 'live tv', 'iptv login', 'iptv password', 'channels', 'aiostreams iptv'],
+    answer: 'Vault → Add Entry → IPTV. Fill in the server address, username and password of the IPTV login you use in AIOStreams. Test signs in to check it works and fills in when it runs out, so the usual reminder comes before it does.',
+    steps: [
+      'Go to Vault → Add Entry and pick IPTV.',
+      'Fill in the server address, username and password, the same ones you typed into AIOStreams.',
+      'Save, then press Test. The end date fills in by itself.',
+      'On each person’s page who watches through AIOStreams, switch on Update keys and logins in AIOStreams (Watch-Tracking Integrations).',
+    ],
+    details: [
+      'When you change the password, username or server address on the Vault entry, every AIOStreams setup of a person who switched it on gets the new login. Only an IPTV login that matches the old one exactly is changed; nothing else in their setup is touched.',
+      'It needs them to have been added with their AIOStreams configuration password. A notification says which setups were updated and which could not be reached.',
+    ],
+    related: ['vault-add-credential', 'vault-key-rotation'],
+    href: '/vault?open=add',
+    linkLabel: 'Add an entry',
+  },
+  {
     id: 'vault-auto-remove',
     title: 'Debrid auto-remove torrents',
     category: 'Vault & credentials',
@@ -250,9 +270,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Secrets shorter than 12 characters never propagate, so a short test value can never rewrite half a URL by coincidence.',
       'Only the addon URL changes - the addon itself, its name, its group assignments all stay put. Users are re-synced only if one of their groups carries an affected addon.',
       'If propagation hits a problem, the Vault save itself still succeeds - the new secret is stored either way, and the summary says what did and did not happen.',
-      'AIOStreams setups can follow too - switch on Update debrid keys in AIOStreams on that person’s page (Watch-Tracking Integrations; off by default). Then a debrid key inside their AIOStreams configuration is swapped for the new one on rotation, failover to a backup key, and the swap back. Only that key is changed, and it needs them to have been added with their AIOStreams configuration password.',
+      'AIOStreams setups can follow too - switch on Update keys and logins in AIOStreams on that person’s page (Watch-Tracking Integrations; off by default). Then a debrid key inside their AIOStreams configuration is swapped for the new one on rotation, failover to a backup key, and the swap back. Only that key is changed, and it needs them to have been added with their AIOStreams configuration password.',
     ],
-    related: ['vault-add-credential', 'vault-backup-key'],
+    related: ['vault-add-credential', 'vault-backup-key', 'vault-iptv-login'],
   },
   {
     id: 'vault-backup-key',

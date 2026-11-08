@@ -4348,9 +4348,9 @@ export interface CreateGroupData {
 
 export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
-  | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
+  | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth';
 
 export interface VaultEntry {
   id: string;

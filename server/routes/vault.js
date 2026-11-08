@@ -5,7 +5,7 @@ const { INSTANCE_TYPE } = require('../utils/config');
 
 const CATEGORIES = [
   'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
-  'metadata', 'ai', 'vpn', 'aiostreams', 'custom'
+  'metadata', 'ai', 'vpn', 'iptv', 'aiostreams', 'custom'
 ];
 
 module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
@@ -301,6 +301,17 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         try { oldSecret = decrypt(existing.encryptedSecret, req); } catch { oldSecret = null; }
       }
 
+      // An IPTV login is three parts (server, username, password); any of them
+      // changing is a new login for the AIOStreams setups that carry it.
+      let iptvBefore = null;
+      if ((category || existing.category) === 'iptv' && existing.category === 'iptv') {
+        let password = oldSecret;
+        if (password === null) { try { password = decrypt(existing.encryptedSecret, req); } catch { password = null; } }
+        let cfg = {};
+        try { cfg = existing.testConfig ? JSON.parse(existing.testConfig) : {}; } catch {}
+        iptvBefore = { server: cfg.url || '', username: existing.provider || '', password: password || '' };
+      }
+
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
 
       // Key-rotation propagation - opt-in per account (keyRotationPropagation
@@ -345,7 +356,34 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         }
       }
 
-      res.json({ success: true, rotation });
+      // IPTV logins inside AIOStreams setups of people who switched it on.
+      let iptv = null;
+      if (iptvBefore) {
+        try {
+          const after = {
+            server: testConfig !== undefined ? (testConfig?.url || '') : iptvBefore.server,
+            username: provider !== undefined ? (provider || '') : iptvBefore.username,
+            password: secret || iptvBefore.password,
+          };
+          const { rotateIptvInAioConfigs } = require('../utils/aioServiceKeys');
+          iptv = await rotateIptvInAioConfigs(prisma, decrypt, { accountId, before: iptvBefore, after });
+          if (iptv.updated.length || iptv.failed.length) {
+            const { createNotification } = require('../utils/notificationStore');
+            const parts = [];
+            if (iptv.updated.length) parts.push(`Updated the login in ${iptv.updated.length} AIOStreams setup(s) (${iptv.updated.map(a => a.username).join(', ')})`);
+            if (iptv.failed.length) parts.push(`${iptv.failed.length} AIOStreams setup(s) couldn't be reached`);
+            await createNotification(prisma, accountId, {
+              type: 'task',
+              title: `IPTV login: "${existing.name}" changed`,
+              body: `${parts.join('; ')}.`,
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[Vault] IPTV login update failed (save itself succeeded):', e?.message);
+        }
+      }
+
+      res.json({ success: true, rotation, iptv });
     } catch (error) {
       console.error('Error updating vault entry:', error);
       res.status(500).json({ error: 'Failed to update vault entry' });

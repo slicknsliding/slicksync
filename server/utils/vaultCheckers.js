@@ -434,7 +434,50 @@ async function checkOpenAiCompatible(secret, config = {}) {
   }
 }
 
+// IPTV (Xtream) login: the server's own player_api answers with the account,
+// its status and when it runs out - the same sign-in AIOStreams' IPTV
+// option makes. The address is one the account chose, so it is fetched
+// through the safe-address rule like any other check address.
+function xtreamBase(server) {
+  const trimmed = String(server || '').trim()
+  if (!trimmed) return null
+  let url
+  try { url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`) } catch { return null }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  const path = url.pathname.replace(/\/(player_api|get|xmltv)\.php$/i, '').replace(/\/+$/, '')
+  return `${url.origin}${path}`
+}
+
+async function checkXtreamAuth(secret, config = {}) {
+  const base = xtreamBase(config.url)
+  if (!base) return { ok: false, message: 'No IPTV server address on file for this entry' }
+  const username = config.identifier
+  if (!username) return { ok: false, message: 'No IPTV username on file for this entry' }
+  if (!secret) return { ok: false, message: 'No IPTV password on file for this entry' }
+  try {
+    const url = `${base}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(secret)}`
+    const res = await fetchWithRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' } }, { checked: true })
+    if (res.status === 401 || res.status === 403) return { ok: false, message: 'The IPTV server turned the login down' }
+    if (!res.ok) return { ok: false, message: `The IPTV server returned ${res.status}` }
+    let data
+    try { data = JSON.parse(await readText(res)) } catch { return { ok: false, message: 'That address did not answer like an IPTV server' } }
+    const info = data && typeof data === 'object' ? data.user_info : null
+    if (!info || typeof info !== 'object') return { ok: false, message: 'That address did not answer like an IPTV server' }
+    if (Number(info.auth) !== 1) return { ok: false, message: 'The IPTV server turned the login down' }
+    const secs = Number(info.exp_date)
+    const expiresAt = Number.isFinite(secs) && secs > 0 ? new Date(secs * 1000) : undefined
+    const status = String(info.status || '').trim()
+    if (status && status.toLowerCase() !== 'active') {
+      return { ok: false, message: `Login works, but the account is ${status.toLowerCase()}`, expiresAt }
+    }
+    return { ok: true, message: `Login works${expiresAt ? `, runs out ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
 const CHECKERS = {
+  xtream_auth: checkXtreamAuth,
   openai_compatible: checkOpenAiCompatible,
   generic_http: checkGenericHttp,
   real_debrid: checkRealDebrid,
@@ -458,4 +501,4 @@ async function runCheck(testType, secret, config) {
   }
 }
 
-module.exports = { runCheck, CHECKERS, fetchAiModels }
+module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase }
