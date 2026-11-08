@@ -580,6 +580,20 @@ export function useCwTime() {
 }
 
 /** Where SlickSync opens for this account (Themes → Layout). '/' is the Dashboard. */
+/** Settings → Themes → Card backgrounds: the show's picture behind the words (the default), or plain. */
+export function useCardBackground() {
+  const { arrangement, update } = useArrangement();
+  const bg: 'picture' | 'plain' = arrangement.cardBg === 'plain' ? 'plain' : 'picture';
+  const setBg = useCallback((b: 'picture' | 'plain') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cardBg: 'plain' };
+      if (b === 'picture') delete out.cardBg;
+      return out;
+    });
+  }, [update]);
+  return { bg, setBg };
+}
+
 export function useStartPage() {
   const { arrangement, update } = useArrangement();
   const startPage = arrangement.startPage || '/';

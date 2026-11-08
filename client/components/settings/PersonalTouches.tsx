@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCwTime, useDensity, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCardBackground, useCwTime, useDensity, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -18,6 +18,7 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
   const { keep, setKeep } = useKeepFilters();
   const { where, setWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
+  const { bg: cardBg, setBg: setCardBg } = useCardBackground();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const { shown: arrows, setShown: setArrows } = useFoldArrows();
   const { on: nameTap, setOn: setNameTap } = useNameFolds();
@@ -54,6 +55,11 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           title="Continue Watching"
           line="Time left: on the picture, or under it with the episode name"
           control={<V2Seg<'on' | 'under'> label="Continue Watching time left" value={cwWhere} options={[{ id: 'on' as const, label: 'On the picture' }, { id: 'under' as const, label: 'Under' }]} onChange={setCwWhere} />}
+        />
+        <V2SetRow
+          title="Card backgrounds"
+          line="Continue Watching and Coming up: the show’s picture behind the words, or a plain background that’s easier to read"
+          control={<V2Seg<'picture' | 'plain'> label="Card backgrounds" value={cardBg} options={[{ id: 'picture' as const, label: 'Picture' }, { id: 'plain' as const, label: 'Plain' }]} onChange={setCardBg} />}
         />
         <V2SetRow
           title="Start page"
@@ -96,6 +102,19 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           {(['under', 'on'] as const).map((w) => (
             <button key={w} type="button" role="radio" aria-checked={where === w} className={where === w ? 'on' : ''} onClick={() => setWhere(w)}>
               {w === 'under' ? 'Under' : 'On the picture'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Card backgrounds</p>
+          <p className="text-xs text-muted">Continue Watching and Coming up: the show’s picture behind the words, or a plain background that’s easier to read</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Card backgrounds">
+          {(['picture', 'plain'] as const).map((b) => (
+            <button key={b} type="button" role="radio" aria-checked={cardBg === b} className={cardBg === b ? 'on' : ''} onClick={() => setCardBg(b)}>
+              {b === 'picture' ? 'Picture' : 'Plain'}
             </button>
           ))}
         </div>

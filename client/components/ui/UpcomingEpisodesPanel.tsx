@@ -1,8 +1,8 @@
 'use client';
 
-import { PanelControls } from '@/components/ui/Arrange';
+import { PanelControls, StretchHandle } from '@/components/ui/Arrange';
 import { useEffect, useState, useMemo, memo, useCallback, useRef } from 'react';
-import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
+import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
 import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button } from '@/components/ui';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -11,7 +11,11 @@ import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
-import { posterUrl } from '@/lib/posterUrl';
+import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
+import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
+import { useCardBackground, type PageArrange } from '@/lib/arrange';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 
 // Dashboard "Coming up" calendar: the next upcoming episode for every show
 // someone here is mid-season on. Data is precomputed server-side by the
@@ -111,6 +115,158 @@ function airWhen(iso: string): string {
   return `${word}, ${air.toLocaleTimeString(undefined, { hour: 'numeric', minute: air.getMinutes() ? '2-digit' : undefined })}`;
 }
 
+/** Someone partway through a show, and the episode they're on. */
+export type UpcomingFollower = { userId: string; name: string; season: number | null; episode: number | null };
+
+const imdbOf = (id: string) => /^tt\d+/.exec(id || '')?.[0] || null;
+
+// "in 33 h" / "in 4 days" - only when the air date has a time; nothing once it's out.
+function countdown(iso: string, now = Date.now()): { text: string | null; soon: boolean } {
+  const air = new Date(iso);
+  const ms = air.getTime() - now;
+  if (ms <= 0) return { text: null, soon: true };
+  const hasTime = air.getHours() !== 0 || air.getMinutes() !== 0;
+  const h = Math.round(ms / 3600000);
+  const soon = ms < 48 * 3600000;
+  if (!hasTime) return { text: null, soon };
+  if (h < 1) return { text: 'within the hour', soon };
+  return { text: h < 48 ? `in ${h} h` : `in ${Math.round(h / 24)} days`, soon };
+}
+
+/**
+ * A tile as a small banner, matching Now Playing: the show's picture behind
+ * the words (or plain - Settings → Themes → Card backgrounds), the poster,
+ * when it airs and how long until, the episode, and who is following it. The
+ * ... button, right-click or a long press offers Hide this episode and Stop
+ * tracking this series.
+ */
+const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDismiss, onMute, followers }: {
+  item: UpcomingEpisode;
+  onOpen: (item: UpcomingEpisode) => void;
+  onDismiss: (item: UpcomingEpisode) => void;
+  onMute: (item: UpcomingEpisode) => void;
+  followers?: UpcomingFollower[];
+}) {
+  const plain = useCardBackground().bg === 'plain';
+  const { rpdbEnabled } = usePersonalFeatures();
+  const isTV = useIsTV();
+  const imdb = imdbOf(item.showId);
+  const { url: backdrop, onError } = useArtworkFallback(plain ? [] : [imdb ? `https://images.metahub.space/background/medium/${imdb}/img` : null]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement | null>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startPos = useRef<{ x: number; y: number } | null>(null);
+  const longPressed = useRef(false);
+  const clearPress = () => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+    startPos.current = null;
+  };
+  const when = airWhen(item.airDate);
+  const left = countdown(item.airDate);
+  const onPicture = !plain;
+  const first = followers?.[0];
+  const open = () => { if (!menuOpen) onOpen(item); };
+  const row = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] text-left text-default hover:bg-surface-hover transition-colors';
+  const icon = 'w-[18px] h-[18px] shrink-0 text-muted';
+
+  const tile = (
+    <div
+      role="button"
+      tabIndex={isTV ? -1 : 0}
+      onClick={(e) => {
+        if (longPressed.current) { longPressed.current = false; return; }
+        if ((e.target as HTMLElement).closest('button')) return;
+        open();
+      }}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } }}
+      onContextMenu={(e) => { e.preventDefault(); setMenuOpen(true); }}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        if (!t) return;
+        startPos.current = { x: t.clientX, y: t.clientY };
+        pressTimer.current = setTimeout(() => { pressTimer.current = null; longPressed.current = true; setMenuOpen(true); }, LONG_PRESS_MS);
+      }}
+      onTouchMove={(e) => {
+        const t = e.touches[0];
+        if (!t || !startPos.current || !pressTimer.current) return;
+        if (Math.abs(t.clientX - startPos.current.x) > 10 || Math.abs(t.clientY - startPos.current.y) > 10) clearPress();
+      }}
+      onTouchEnd={clearPress}
+      onTouchCancel={clearPress}
+      aria-label={`${item.showName || 'Unknown show'}, season ${item.season} episode ${item.episode}, ${when}`}
+      className="relative flex min-w-0 min-h-[132px] h-full rounded-2xl overflow-hidden text-left cursor-pointer select-none tap-card"
+      style={{ border: '1px solid var(--color-surface-border)', background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}
+    >
+      {onPicture && backdrop && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={cachedImageUrl(backdrop, 500) || backdrop} onError={onError} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center' }} />
+      )}
+      {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.88) 50%, rgba(10,12,20,.25) 100%)' }} />}
+      <button
+        ref={anchor}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+        aria-label={`More for ${item.showName || 'this episode'}`}
+        aria-haspopup="dialog"
+        aria-expanded={menuOpen}
+        className="absolute top-2 right-2 z-[2] w-9 h-9 rounded-full flex items-center justify-center"
+        style={{ background: onPicture ? 'rgba(0,0,0,0.5)' : 'var(--color-surface-hover)', color: onPicture ? '#fff' : 'var(--color-text)' }}
+      >
+        <EllipsisHorizontalIcon className="w-5 h-5" />
+      </button>
+      <div className="relative flex items-end gap-3 w-full p-3 pr-12">
+        <div className="w-[52px] h-[78px] rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: 'var(--color-surface-hover)', boxShadow: '0 2px 8px rgba(0,0,0,.4)' }}>
+          {item.poster ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" loading="lazy" className="w-full h-full object-cover" />
+          ) : (
+            <TvIcon className="w-5 h-5 text-subtle" />
+          )}
+        </div>
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <p className="flex items-center gap-2 text-[12.5px]" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: left.soon ? 'var(--color-primary)' : (onPicture ? '#9ca3af' : 'var(--color-text-subtle)') }} />
+            <span className="min-w-0 break-words">{when}{left.text ? ` · ${left.text}` : ''}</span>
+          </p>
+          <p className="text-[16.5px] font-bold leading-tight break-words" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName || 'Unknown show'}</p>
+          <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>
+            Season {item.season}, Episode {item.episode}{item.title ? ` · ${item.title}` : ''}
+          </p>
+          {first && (
+            <p className="flex items-center gap-1.5 text-xs mt-0.5 min-w-0" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>
+              <UserAvatar userId={first.userId} name={first.name} size="xs" />
+              <span className="min-w-0 break-words">
+                {first.season != null && first.episode != null ? `${first.name} is on S${first.season} E${first.episode}` : `${first.name} follows it`}
+                {followers && followers.length > 1 ? ` · +${followers.length - 1}` : ''}
+              </span>
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {isTV ? <TVFocusable onEnterPress={open}>{tile}</TVFocusable> : tile}
+      {menuOpen && (
+        <AnchoredPopup anchorRef={anchor} onClose={() => setMenuOpen(false)} title={`${item.showName || 'Unknown show'} S${item.season} E${item.episode}`} width={280} align="end">
+          <div className="space-y-1 -mx-1">
+            <button type="button" className={row} onClick={() => { setMenuOpen(false); onDismiss(item); }}>
+              <XCircleIcon className={icon} />
+              Hide this episode
+            </button>
+            <button type="button" className={row} onClick={() => { setMenuOpen(false); onMute(item); }}>
+              <SpeakerXMarkIcon className={icon} />
+              Stop tracking this series
+            </button>
+          </div>
+        </AnchoredPopup>
+      )}
+    </>
+  );
+});
+
 // A single row. Extracted so each has its own context-menu hook, otherwise the
 // menu's shared position would jump to whichever row was right-clicked last.
 const UpcomingRow = memo(function UpcomingRow({
@@ -118,17 +274,11 @@ const UpcomingRow = memo(function UpcomingRow({
   onOpen,
   onDismiss,
   onMute,
-  v2 = false,
-  who,
 }: {
   item: UpcomingEpisode;
   onOpen: (item: UpcomingEpisode) => void;
   onDismiss: (item: UpcomingEpisode) => void;
   onMute: (item: UpcomingEpisode) => void;
-  /** Page design v2: a tile with a small poster, the title and episode, and when and who. */
-  v2?: boolean;
-  /** v2: who is partway through this show. */
-  who?: string;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const label = airLabel(item.airDate);
@@ -164,38 +314,7 @@ const UpcomingRow = memo(function UpcomingRow({
     if (dx > 10 || dy > 10) clearPress();
   };
 
-  const rowButton = v2 ? (
-    <button
-      type="button"
-      onClick={() => {
-        if (isOpen) return;
-        onOpen(item);
-      }}
-      onContextMenu={handleContextMenu}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={clearPress}
-      onTouchCancel={clearPress}
-      onTouchMove={handleTouchMove}
-      title={item.title ? `${item.showName || 'Unknown show'} · ${item.title}` : undefined}
-      className="v2-tool text-left tap-card"
-      style={{ alignItems: 'center' }}
-    >
-      <div className="w-[34px] h-[50px] rounded-md overflow-hidden bg-surface-hover flex-shrink-0 flex items-center justify-center">
-        {item.poster ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <TvIcon className="w-4 h-4 text-subtle" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[14.5px] font-semibold text-default truncate">
-          {item.showName || 'Unknown show'} S{item.season} E{item.episode}
-        </p>
-        <p className="text-[12.5px] text-muted truncate">{airWhen(item.airDate)}{who ? ` · ${who}` : ''}</p>
-      </div>
-    </button>
-  ) : (
+  const rowButton = (
     <button
       type="button"
       onClick={() => {
@@ -267,14 +386,16 @@ function Shell({ v2, children }: { v2: boolean; children: React.ReactNode }) {
 
 // `className` is the outer spacing; the Dashboard's arranged grid spaces its
 // panels itself and passes ''.
-export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6', v2 = false, tiles: tilesProp = false, watchers }: {
+export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ className = 'mb-6', v2 = false, tiles: tilesProp = false, watchers, stretch }: {
   className?: string;
   /** Page design v2: tiles under the section’s own heading (the page draws the card and title). */
   v2?: boolean;
   /** The episodes as tiles (poster, episode, when and who) while keeping the Classic card and heading. */
   tiles?: boolean;
-  /** Tiles: show id to the first names of the people partway through it. */
-  watchers?: Record<string, string>;
+  /** Tiles: show id to the people partway through it, and the episode they're on. */
+  watchers?: Record<string, UpcomingFollower[]>;
+  /** Tiles: the Dashboard's arrangement, so the tiles size with its stretch handle. */
+  stretch?: { arrange: PageArrange; id: string };
 } = {}) {
   const tiles = v2 || tilesProp;
   const [items, setItems] = useState<UpcomingEpisode[]>([]);
@@ -383,12 +504,6 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
       <Shell v2={v2}>
         {v2 ? (
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            {groups.length > 0 && (
-              <>
-                <span className="text-xs text-muted hidden sm:inline">Right-click or long-press an episode to hide it</span>
-                <span className="text-xs text-muted sm:hidden">Long-press an episode to hide it</span>
-              </>
-            )}
             <div className="ml-auto">
               {mutedButton}
             </div>
@@ -399,7 +514,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
           <PanelControls side="start" />
           <CalendarDaysIcon className="w-5 h-5 text-primary" />
           <h3 className="text-base font-semibold font-display text-default">Coming up</h3>
-          {groups.length > 0 && (
+          {groups.length > 0 && !tiles && (
             <>
               <span className="text-xs text-muted hidden sm:inline">Right-click or long-press an episode to hide it</span>
               <span className="text-xs text-muted sm:hidden">Long-press an episode to hide it</span>
@@ -456,19 +571,33 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel({ class
               </div>
               {/* Two columns from md up so a healthy watchlist doesn't turn
                   into a long vertical rail; one column on a phone. */}
-              <div className={tiles ? 'v2-tiles v2-tiles-4' : 'grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5'}>
-                {shownItems.map((item) => (
-                  <UpcomingRow
-                    key={`${item.showId}-${item.season}-${item.episode}`}
-                    item={item}
-                    onOpen={setDetail}
-                    onDismiss={handleDismiss}
-                    onMute={handleMute}
-                    v2={tiles}
-                    who={watchers?.[item.showId]}
-                  />
-                ))}
-              </div>
+              {tiles ? (
+                <div className="v2-tiles v2-tiles-4" {...(stretch ? stretch.arrange.cardAttrs(stretch.id) : {})}>
+                  {shownItems.map((item) => (
+                    <UpcomingBannerTile
+                      key={`${item.showId}-${item.season}-${item.episode}`}
+                      item={item}
+                      onOpen={setDetail}
+                      onDismiss={handleDismiss}
+                      onMute={handleMute}
+                      followers={watchers?.[item.showId]}
+                    />
+                  ))}
+                  {stretch && <StretchHandle arrange={stretch.arrange} id={stretch.id} label="Coming up" />}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
+                  {shownItems.map((item) => (
+                    <UpcomingRow
+                      key={`${item.showId}-${item.season}-${item.episode}`}
+                      item={item}
+                      onOpen={setDetail}
+                      onDismiss={handleDismiss}
+                      onMute={handleMute}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             {visibleItems.length > rowLimit && (

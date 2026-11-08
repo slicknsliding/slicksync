@@ -1993,6 +1993,19 @@ select:not(.appearance-none) {
   .v2-grid[data-cards-phone="S"] .v2-card-foot > span:first-child { display: none; }
   .v2-grid[data-cards-phone="S"] .text-\[17px\], .v2-grid[data-cards-phone="S"] .text-lg { font-size: 14.5px; }
 }
+/* Continue Watching banner cards (components/dashboard/ContinueBanners.tsx):
+   sized by their own width, so Arrange's stretch handle tightens or grows them. */
+.cwb { container-type: inline-size; }
+.cwb-title { font-size: 18px; }
+@container (max-width: 230px) {
+  .cwb-title { font-size: 15px; }
+  .cwb-line { display: none; }
+  .cwb-chip { font-size: 10.5px; }
+  .cwb-play { padding: 3px 10px; font-size: 11px; }
+}
+@container (min-width: 380px) {
+  .cwb-title { font-size: 21px; }
+}
 .stretch-handle {
   position: absolute; z-index: 22; width: 30px; height: 30px; margin: -15px 0 0 -15px;
   display: flex; align-items: center; justify-content: center; border-radius: 999px; border: 0;

@@ -5444,6 +5444,9 @@ export interface ContinueWatchingItem {
   progressPercent?: number | null;
   /** Minutes left when resuming (from the saved position and length). */
   remainingMinutes?: number | null;
+  /** Where they stopped and how long it is (ms), when resuming. */
+  positionMs?: number | null;
+  durationMs?: number | null;
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;

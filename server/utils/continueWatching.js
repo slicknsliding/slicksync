@@ -130,7 +130,10 @@ function resumeStateOf(session, videoId) {
   return {
     inProgress,
     progressPercent: Math.round(ratio * 100),
-    remainingMinutes: Math.max(1, Math.round((session.totalDuration - session.lastPosition) / 60000))
+    remainingMinutes: Math.max(1, Math.round((session.totalDuration - session.lastPosition) / 60000)),
+    // Where they stopped and how long it is, for the card's "Stopped at 54:00 of 1:00:00".
+    positionMs: session.lastPosition,
+    durationMs: session.totalDuration
   }
 }
 
@@ -324,6 +327,8 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
       resume: isResume,
       progressPercent: isResume ? resumeState.progressPercent : null,
       remainingMinutes: isResume ? (resumeState.remainingMinutes ?? null) : null,
+      positionMs: isResume ? (resumeState.positionMs ?? null) : null,
+      durationMs: isResume ? (resumeState.durationMs ?? null) : null,
       lastWatchedAt: row.watchedAt,
       imdbRating: metadata.imdbRating || null,
       rottenTomatoes: metadata.rottenTomatoes || null,
@@ -417,6 +422,8 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
       resume: true,
       progressPercent: resumeState.progressPercent,
       remainingMinutes: resumeState.remainingMinutes ?? null,
+      positionMs: resumeState.positionMs ?? null,
+      durationMs: resumeState.durationMs ?? null,
       lastWatchedAt: row.watchedAt,
       imdbRating: metadata?.imdbRating || null,
       rottenTomatoes: metadata?.rottenTomatoes || null,

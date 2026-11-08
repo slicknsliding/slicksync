@@ -49,6 +49,8 @@ export type Arrangement = {
   nowPlayingWho?: 'on';
   /** Continue Watching: time left / Up next on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */
   cwTime?: 'on' | 'under';
+  /** Continue Watching and Coming up cards: the show's picture behind the words, or a plain background ('plain'). */
+  cardBg?: 'plain';
   /** Now Playing: the bar and times on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */
   nowPlayingProgress?: 'on' | 'under';
   /** The fold arrow beside each section's name: shown ('show'), or hidden (the default; 'hide' from before it was). */

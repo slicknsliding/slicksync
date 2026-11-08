@@ -229,6 +229,8 @@ test('Continue Watching reads where people left off a few hundred titles at a ti
   // The in-progress films, newest first.
   assert.deepEqual(rows.map((r) => r.showId), Array.from({ length: 12 }, (_, k) => `tt${1000000 + k * 100}`).slice(0, 8))
   assert.ok(rows.every((r) => r.resume === true && r.progressPercent === 30 && r.remainingMinutes === 70))
+  // Where they stopped and how long it is, for the card's "Stopped at 30:00 of 1:40:00".
+  assert.ok(rows.every((r) => r.positionMs === 30 * 60000 && r.durationMs === 100 * 60000))
 })
 
 // --- Users routes ------------------------------------------------------------
