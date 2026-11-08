@@ -253,7 +253,7 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
   return (
     <>
       <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onOpenDetails={onOpenDetails}
-        className={`rounded-2xl flex flex-col h-full ${plain ? '' : 'cwb-picture'}`}
+        className={`rounded-2xl flex flex-col h-full ${plain ? '' : 'min-h-[230px] sm:min-h-[250px]'}`}
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -261,7 +261,8 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
         )}
         {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(0deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.82) 45%, rgba(10,12,20,.1) 100%)' }} />}
         {onPicture ? (
-          <span className="absolute left-2.5 top-2.5 z-[1]"><Chip item={item} onPicture /></span>
+          // The chip sits in its own strip, so long titles push the card taller instead of under it.
+          <div className="relative h-12 shrink-0"><span className="absolute left-2.5 top-2.5 z-[1]"><Chip item={item} onPicture /></span></div>
         ) : (
           <div className="relative flex items-start gap-2.5 pt-3 pl-3.5 pr-12">
             {art ? (
@@ -272,7 +273,7 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
           </div>
         )}
         <MoreButton anchorRef={anchorRef} open={open} onToggle={() => setOpen(!open)} label={item.showName} onPicture={onPicture} />
-        <div className="relative mt-auto flex flex-col gap-[3px] px-3.5 pb-3.5 pt-3">
+        <div className={`relative mt-auto flex flex-col gap-[3px] px-3.5 pb-3.5 ${plain ? "pt-3" : "pt-0"}`}>
           <Who item={item} onPicture={onPicture} />
           <p className="cwb-title font-bold leading-tight break-words mt-0.5" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName}</p>
           {ep && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
