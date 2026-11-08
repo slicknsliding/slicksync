@@ -37,7 +37,7 @@ function fakePrisma({ earlierRows = [], sessions = [], dismissed = [] } = {}, ac
     watchSession: {
       findMany: async ({ where }) => sessions
         .filter((s) => s.userId === where.userId && s.lastPosition >= where.lastPosition.gte && s.totalDuration != null &&
-          s.updatedAt >= where.updatedAt.gte && s.updatedAt <= where.updatedAt.lte)
+          s.updatedAt >= where.updatedAt.gte && (!where.updatedAt.lte || s.updatedAt <= where.updatedAt.lte))
         .sort((a, b) => b.updatedAt - a.updatedAt),
     },
     dismissedContinueWatching: { findFirst: async ({ where }) => dismissed.find((d) => d.userId === where.userId && d.showId === where.showId) || null },
@@ -69,7 +69,7 @@ test('the app\'s own checkpoint, once it comes, replaces the guess', async () =>
   assert.equal(card.lastPosition, 44 * MIN)
 })
 
-test('no guess: nothing unfinished, finished titles, too old, or a checkpoint after the stream began', async () => {
+test('no guess: nothing unfinished, finished titles, too old, or someone else\'s', async () => {
   const none = await merge({ sessions: [] })
   assert.equal(none[0].item.name, TITLE_PENDING_NAME)
   const finished = await merge({ sessions: [session({ lastPosition: 110 * MIN })] })
@@ -111,4 +111,16 @@ test('an earlier row of the same file that was also unnamed gives nothing', asyn
   const earlierOpaque = { id: 'old', url: opaque().url, filename: '375b77f941fe3f914778fade39533f27.mkv', displayName: '375b77f941fe3f914778fade39533f27', posterUrl: null, metadataItemId: null, metadataItemType: null, metadataName: null }
   const [card] = await merge({ earlierRows: [earlierOpaque] })
   assert.equal(card.item.titlePending, true)
+})
+
+// A real case: the stream was resumed, paused on the TV, and Nuvio saved the
+// spot. That save is after the stream began; the title must stay, not turn
+// into "Title not known yet" once the app's own entry goes quiet.
+test('a checkpoint saved while the stream is open (a pause) keeps the title', async () => {
+  const paused = session({ itemId: 'tt35538033', itemName: 'Resident Evil', lastPosition: 46 * MIN, totalDuration: 93 * MIN, updatedAt: new Date(START.getTime() + 46 * MIN) })
+  const [card] = await merge({ sessions: [paused] })
+  assert.equal(card.item.name, 'Resident Evil')
+  assert.equal(card.item.guessed, true)
+  assert.equal(card.lastPosition, 46 * MIN)
+  assert.equal(card.positionAt, START.getTime() + 46 * MIN, 'counts on from the save, not from the stream start')
 })

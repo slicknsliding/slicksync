@@ -121,9 +121,10 @@ const RESUME_GUESS_TIE_MS = 10 * 60 * 1000
 /**
  * While an unnamed stream plays and the app has not said what it is (Nuvio
  * only writes at pause and stop), the person's most recent unfinished title
- * from before the stream started - the one Continue Watching offers to
- * resume - is very likely it. Shown as a guess (item.guessed) until the
- * app's first checkpoint replaces it. Nothing unfinished, a second
+ * - the one Continue Watching offers to resume - is very likely it. Shown as
+ * a guess (item.guessed). A checkpoint the app wrote while this stream was
+ * open (a pause) counts too: it is the strongest sign of all, and it stays
+ * after the app's own entry goes quiet, so a paused stream keeps its title. Nothing unfinished, a second
  * unfinished title checkpointed within minutes of it, or a title they
  * dismissed from Continue Watching: no guess.
  */
@@ -135,7 +136,7 @@ async function guessResumedTitle(prisma, accountId, userId, streamStart) {
     rows = await prisma.watchSession.findMany({
       where: {
         accountId, userId, lastPosition: { gte: RESUME_MIN_POSITION_MS }, totalDuration: { not: null },
-        updatedAt: { gte: new Date(start - RESUME_GUESS_MAX_AGE_MS), lte: streamStart },
+        updatedAt: { gte: new Date(start - RESUME_GUESS_MAX_AGE_MS) },
       },
       orderBy: { updatedAt: 'desc' },
       take: 20,
