@@ -601,12 +601,21 @@ async function retryMissingPosters(prisma, accountId) {
         { isActive: true, metadataItemId: { not: null }, metadataName: null },
       ],
     },
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, filename: true, metadataItemId: true },
     take: 5,
     orderBy: { createdAt: 'asc' },
   })
   for (const row of stuck) {
-    await attemptPosterLookup(prisma, row.id, row.displayName)
+    // An unmatched row is read again from its file name, so a name this
+    // build reads better ("Resident_Evil_2026_..." once underscores split
+    // words) gets looked up as that, not as the name it was first given.
+    let name = row.displayName
+    const reread = !row.metadataItemId && row.filename ? parseDisplayName(row.filename) : null
+    if (reread && reread !== name) {
+      await prisma.proxyStreamSession.update({ where: { id: row.id }, data: { displayName: reread } })
+      name = reread
+    }
+    await attemptPosterLookup(prisma, row.id, name)
   }
 }
 
@@ -1090,6 +1099,7 @@ module.exports = {
     fetchLiveStreams,
     pollOnce,
     attemptPosterLookup,
+    retryMissingPosters,
     reset() {
       cachedCookie = null
       loginBlockedUntil = 0

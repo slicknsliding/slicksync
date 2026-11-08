@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const monitor = require('../server/utils/proxyStreamMonitor')
 const { isProxyMonitorConfirming, getProxyMonitorStatus, CHECK_INTERVAL_MS } = monitor
-const { fetchLiveStreams, pollOnce, attemptPosterLookup, reset, setMonitored, setLastOk, setRateLimitedUntil } = monitor._test
+const { fetchLiveStreams, pollOnce, attemptPosterLookup, retryMissingPosters, reset, setMonitored, setLastOk, setRateLimitedUntil } = monitor._test
 
 const BASE = 'http://aiostreams.example'
 const CONFIG = { baseUrl: BASE, username: 'admin', password: 'pw' }
@@ -245,4 +245,28 @@ test('attemptPosterLookup: with a year, the part before the dash is tried as wel
 
 test('attemptPosterLookup: without a year, a spin-off is never looked up under the original show', async (t) => {
   assert.deepEqual(await posterRun(t, 'Dexter - New Blood S01E03'), ['Dexter - New Blood'])
+})
+
+// --- the retry pass reads an unmatched row's file name again ----------------
+
+test('retryMissingPosters: an unmatched row is looked up under its re-read name', async (t) => {
+  const searched = []
+  global.fetch = async (url) => {
+    searched.push(decodeURIComponent(String(url).split('search=')[1].replace(/\.json$/, '')))
+    return json({ metas: [] })
+  }
+  t.after(() => { global.fetch = realFetch })
+  const updates = []
+  const rows = [
+    { id: 'old', displayName: 'Resident Evil 2026', filename: 'Resident_Evil_2026_2160p_MA_WEB-DL_H265.mkv', metadataItemId: null },
+    { id: 'kept', displayName: 'Some Film (2020)', filename: 'Some.Film.2020.1080p.mkv', metadataItemId: null },
+  ]
+  const prisma = {
+    proxyStreamSession: { findMany: async () => rows, update: async (a) => { updates.push(a); return {} } },
+    watchSession: { updateMany: async () => ({}) },
+  }
+  await retryMissingPosters(prisma, 'acct-1')
+  assert.deepEqual(updates.filter((u) => u.data.displayName).map((u) => [u.where.id, u.data.displayName]), [['old', 'Resident Evil (2026)']])
+  assert.ok(searched.includes('Resident Evil'), `searched ${searched.join(' | ')}`)
+  assert.ok(!searched.includes('Resident Evil 2026'))
 })
