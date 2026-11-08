@@ -602,6 +602,8 @@ export interface NowPlayingItem {
     episode?: number;
     // A proxy stream whose title isn't known yet - name is plain words.
     titlePending?: boolean;
+    // Their unfinished title, shown while the app hasn't said what's playing.
+    guessed?: boolean;
     episodeTitle?: string;
   };
   startTime: string;

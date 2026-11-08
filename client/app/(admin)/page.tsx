@@ -1158,7 +1158,7 @@ export default function DashboardPage() {
                       >
                         <b>{np.user.username.split(' ')[0]}</b>{' '}
                         <span className="text-muted">
-                          {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                          {np.isLive ? (np.item.guessed ? 'is probably watching' : 'is watching') : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                           {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                             <> {np.item.season !== undefined && np.item.season > 0
                               ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
@@ -1540,7 +1540,7 @@ export default function DashboardPage() {
                                     <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
                                       {np.user.username.split(' ')[0]}
                                     </span>{' '}
-                                    {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                                    {np.isLive ? (np.item.guessed ? 'is probably watching' : 'is watching') : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                                     {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                                       <span className="text-subtle ml-1">
                                         {np.item.season !== undefined && np.item.season > 0
@@ -1904,7 +1904,7 @@ export default function DashboardPage() {
                                   <span className="font-medium text-default">
                                     {np.user.username.split(' ')[0]}
                                   </span>{' '}
-                                  {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                                  {np.isLive ? (np.item.guessed ? 'is probably watching' : 'is watching') : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                                   {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                                     <span className="text-subtle ml-1">
                                       {np.item.season !== undefined && np.item.season > 0

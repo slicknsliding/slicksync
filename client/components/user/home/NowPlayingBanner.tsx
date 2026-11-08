@@ -134,6 +134,8 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
         {!under && whoLine}
         <h2 className={`font-bold leading-tight text-white line-clamp-3 ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
         {episode && <p className="text-sm" style={{ color: '#d1d5db' }}>{episode}</p>}
+        {/* The app hasn't said yet: their unfinished title, until it does. */}
+        {row.item.guessed && <p className="text-sm font-medium" style={{ color: '#d1d5db' }}>Probably - resumed from Continue Watching</p>}
         {!progressUnder && progressBlock(true)}
         {resumeUrl && (() => {
           const resume = (
