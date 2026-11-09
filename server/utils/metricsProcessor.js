@@ -43,6 +43,18 @@ const NOTIFY_RECENCY_WINDOW_MS = 2 * 60 * 60 * 1000
 // advanced by at least this much since the last recorded value.
 const MEANINGFUL_PROGRESS_SECONDS = 60
 
+// Whether this poll moves watchedAt forward. A session that began after the
+// recorded watch is a new viewing, and its duration is that viewing's alone -
+// comparing it with the old total read a 6-minute rewatch of a film first
+// watched for 17 minutes as no progress, so it stayed dated weeks back.
+function movesWatchedAt(existing, session, sessionDuration) {
+  if (!existing) return true
+  const start = session?.startTime ? new Date(session.startTime) : null
+  const newViewing = !!start && !isNaN(start.getTime()) && existing.watchedAt && start > new Date(existing.watchedAt)
+  const progress = newViewing ? sessionDuration : sessionDuration - (existing.durationSeconds || 0)
+  return progress >= MEANINGFUL_PROGRESS_SECONDS
+}
+
 // Real completion for a library item: did playback reach (near) the end?
 // From the item's own position vs runtime (state.timeOffset / state.duration),
 // the same fields the duration logic reads. Returns true (finished), false
@@ -276,7 +288,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId: showId } },
-        select: { videoId: true, durationSeconds: true }
+        select: { videoId: true, durationSeconds: true, startTime: true }
       })
     ])
     const sessionDuration = session?.videoId === videoId ? (session.durationSeconds || 0) : 0
@@ -284,8 +296,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
 
     // See recordMovieWatch's matching comment - only move watchedAt forward
     // when this poll observed real new progress on THIS episode.
-    const newProgress = sessionDuration - (existing?.durationSeconds || 0)
-    const effectiveWatchedAt = (existing && newProgress < MEANINGFUL_PROGRESS_SECONDS) ? existing.watchedAt : watchedAt
+    const effectiveWatchedAt = movesWatchedAt(existing, session?.videoId === videoId ? session : null, sessionDuration) ? watchedAt : existing.watchedAt
 
     // Only run the correlation lookup if this row doesn't already have a
     // confirmed label - once found, a debrid service never changes for a
@@ -474,7 +485,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-        select: { durationSeconds: true }
+        select: { durationSeconds: true, startTime: true }
       })
     ])
     const durationSeconds = Math.max(existing?.durationSeconds || 0, session?.durationSeconds || 0) || undefined
@@ -483,8 +494,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
     // progress - see MEANINGFUL_PROGRESS_SECONDS's comment. Without an
     // existing row there's nothing to preserve, so the first-ever write
     // always uses the real watchedAt.
-    const newProgress = (session?.durationSeconds || 0) - (existing?.durationSeconds || 0)
-    const effectiveWatchedAt = (existing && newProgress < MEANINGFUL_PROGRESS_SECONDS) ? existing.watchedAt : watchedAt
+    const effectiveWatchedAt = movesWatchedAt(existing, session, session?.durationSeconds || 0) ? watchedAt : existing.watchedAt
 
     // Real completion - once true, stays true (finishing can't un-finish; a
     // later partial re-watch of the same title mustn't flip it back).
@@ -1295,6 +1305,7 @@ module.exports = {
   processLibraryItem,
   processUserLibrary,
   processAccountMetrics,
-  getPreviousSnapshot
+  getPreviousSnapshot,
+  movesWatchedAt
 }
 
