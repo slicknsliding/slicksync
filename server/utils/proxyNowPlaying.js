@@ -286,7 +286,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // session) rather than a guess - only confident resolutions get written
   // back into ipAffinityByIp, so a guess can never reinforce itself into a
   // permanent wrong answer.
-  function disambiguateMatch(candidates, proxyRow, clientIp, confidentIfUnique) {
+  function disambiguateMatch(candidates, proxyRow, clientIp, confidentIfUnique, streamStart = null) {
     if (candidates.length <= 1) return { user: candidates[0] || null, confident: confidentIfUnique }
 
     // Device claim first: a human said outright whose device this is, which
@@ -305,6 +305,18 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     const titleMatch = candidates.find((u) =>
       (watchSessionsByUserId.get(u.id) || []).some((np) => pairMatches(described, np.item)))
     if (titleMatch) return { user: titleMatch, confident: true }
+
+    // A Stremio app saves to the account the moment it opens something. Once
+    // that library has been read since this stream began and nothing was
+    // opened, the stream is not that app's. Two profiles of one person on one
+    // home network share an address, so the address below can't tell them
+    // apart - this can. A guess still, so never learned as affinity.
+    if (streamStart) {
+      const stremioSaves = require('./stremioSaves')
+      const left = candidates.filter((u) => !(u.providerType === 'stremio' && stremioSaves.openedNothingSince(u.id, streamStart)))
+      if (left.length === 1) return { user: left[0], confident: false }
+      if (left.length > 1) candidates = left
+    }
 
     // No title-match signal available (common while a stream is mid-playback
     // and native hasn't checkpointed yet - native only writes a session at
@@ -409,7 +421,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
     if (candidates.length === 0) continue // no direct match and no usable fallback - skip rather than guess
 
-    const { user, confident } = disambiguateMatch(candidates, representative, representative.clientIp, candidatesAreRealMatch)
+    const { user, confident } = disambiguateMatch(candidates, representative, representative.clientIp, candidatesAreRealMatch, earliestStartTime)
     if (!user) continue
 
     // Learn from this resolution for next time - only when it's real

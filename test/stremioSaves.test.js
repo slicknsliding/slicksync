@@ -369,3 +369,38 @@ test('an episode that ends still ends: lastWatched does not move with it', () =>
   saves.observe('u1', 'tt0096697', end, at('2026-11-02T22:52:00.000Z') + 5000)
   assert.equal(saves.viewing('u1', 'tt0096697', 'tt0096697:1:2', at('2026-11-02T22:52:00.000Z') + 5000).ended, true)
 })
+
+test('a Stremio account read since a stream began, with nothing opened, is ruled out for it', () => {
+  saves.forget()
+  const start = Date.parse('2026-11-09T21:54:44Z')
+  assert.equal(saves.openedNothingSince('u1', start, start + 60000), false, 'never read: nothing known')
+  saves.libraryRead('u1', start - 16 * 3600e3, start + 10000)
+  assert.equal(saves.openedNothingSince('u1', start, start + 20000), false, 'read too soon after the start')
+  saves.libraryRead('u1', start - 16 * 3600e3, start + 60000)
+  assert.equal(saves.openedNothingSince('u1', start, start + 70000), true)
+  saves.libraryRead('u1', start + 3000, start + 60000)
+  assert.equal(saves.openedNothingSince('u1', start, start + 70000), false, 'opened something then: maybe theirs')
+  saves.libraryRead('u1', start - 60000, start + 60000)
+  assert.equal(saves.openedNothingSince('u1', start, start + 70000), false, 'within a device clock\'s slack')
+  saves.forget()
+})
+
+test('the stream goes to the Nuvio profile when the same person\'s Stremio opened nothing', async () => {
+  saves.forget()
+  const start = new Date(Date.now() - 3 * 60000)
+  const stremio = { id: 'st', username: 'Them Stremio', email: 'them@example.invalid', providerType: 'stremio' }
+  const nuvio = { id: 'nv', username: 'Them Nuvio', email: 'them@example.invalid', providerType: 'nuvio' }
+  const row = { id: 'p1', accountId: 'default', aiostreamsUser: 'them', clientIp: '192.0.2.10', url: 'https://example.invalid/a', filename: 'Police.Story.1985.mkv', displayName: 'Police Story (1985)', requestCount: 6, startTime: start, lastSeenAt: new Date(start.getTime() + 150000), updatedAt: new Date(), isActive: true }
+  const prisma = {
+    proxyStreamSession: { findMany: async ({ where }) => (where.isActive ? [row] : []) },
+    proxyUserIpAffinity: { findMany: async () => [{ clientIp: '192.0.2.10', userId: 'st' }], upsert: async () => {} },
+    proxyDeviceClaim: { findMany: async () => [] },
+    watchSession: { findMany: async () => [] },
+    dismissedContinueWatching: { findFirst: async () => null },
+  }
+  const who = async () => (await mergeProxyNowPlaying(prisma, 'default', [stremio, nuvio], [], { isConfirming: () => true })).map((n) => n.user?.id)
+  assert.deepEqual(await who(), ['st'], 'before Stremio is read, the address still decides')
+  saves.libraryRead('st', start.getTime() - 16 * 3600e3, Date.now())
+  assert.deepEqual(await who(), ['nv'])
+  saves.forget()
+})

@@ -3043,7 +3043,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         // login) had nobody else to go to and showed up here as theirs.
         const household = await prisma.user.findMany({
           where: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, isActive: true },
-          select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, useGravatar: true }
+          select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, useGravatar: true, providerType: true }
         });
         const merged = await mergeProxyNowPlaying(prisma, user.accountId || DEFAULT_ACCOUNT_ID, household.length ? household : [user], wrapped);
         nowPlaying.length = 0;

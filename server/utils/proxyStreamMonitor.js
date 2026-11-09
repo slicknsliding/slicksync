@@ -545,8 +545,13 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
     // Without one, "Dexter - New Blood" fell back to "Dexter" and took the
     // original show's poster, name and id.
     const candidates = [parsed.searchTitle]
+    // "Ging chaat goo si aka Police Story": a release named by its original
+    // title and then its English one. Each name is tried, the English (after
+    // "aka") first - only with a year, as below.
+    const akas = parsed.year ? parsed.searchTitle.split(/\s+a\.?k\.?a\.?\s+/i).map((t) => t.trim()).filter((t) => t.length >= 3) : []
+    if (akas.length > 1) candidates.push(...akas.slice(1).reverse(), akas[0])
     const cut = parsed.searchTitle.split(/\s+[-–—:]\s+/)[0].trim()
-    if (parsed.year && cut && cut !== parsed.searchTitle && cut.length >= 3) candidates.push(cut)
+    if (parsed.year && cut && !candidates.includes(cut) && cut.length >= 3) candidates.push(cut)
     const otherType = parsed.type === 'series' ? 'movie' : 'series'
     let result = null
     for (const candidate of candidates) {

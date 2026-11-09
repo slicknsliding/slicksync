@@ -162,6 +162,32 @@ function viewing(userId, itemId, videoId, now = Date.now()) {
   }
 }
 
-function forget() { records.clear(); lastSweep = 0 }
+// When each person's whole library was last read, and the newest moment it says
+// anything was opened (state.lastWatched is set to that moment on opening).
+const libraryReads = new Map() // userId -> { readAt, newestOpenedAt }
 
-module.exports = { observe, viewing, lastSaveAt, classify, forget, SILENT_MS }
+/** Takes in a whole library read: when, and the newest lastWatched in it. */
+function libraryRead(userId, newestOpenedAt, now = Date.now()) {
+  libraryReads.set(userId, { readAt: now, newestOpenedAt: Number.isFinite(newestOpenedAt) ? newestOpenedAt : null })
+}
+
+// A read this long after a moment is late enough for an opening save made then.
+const OPEN_READ_AFTER_MS = 30 * 1000
+
+/**
+ * True when this person's Stremio account was read well after `since` and
+ * opened nothing from a little before it on - so a stream that began at
+ * `since` is not this app's. The opening side allows for a device clock off
+ * by up to CLOCK_TRUST_MS. Nothing known yet: false.
+ */
+function openedNothingSince(userId, since, now = Date.now()) {
+  const read = libraryReads.get(userId)
+  const at = since instanceof Date ? since.getTime() : Number(since)
+  if (!read || !Number.isFinite(at) || read.readAt > now + CLOCK_TRUST_MS) return false
+  if (read.readAt < at + OPEN_READ_AFTER_MS) return false
+  return read.newestOpenedAt == null || read.newestOpenedAt < at - CLOCK_TRUST_MS
+}
+
+function forget() { records.clear(); libraryReads.clear(); lastSweep = 0 }
+
+module.exports = { observe, viewing, lastSaveAt, classify, forget, libraryRead, openedNothingSince, SILENT_MS }

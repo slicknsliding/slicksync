@@ -346,6 +346,16 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     select: { id: true, username: true, email: true, colorIndex: true, discordWebhookUrl: true, providerType: true }
   })
   const readsStremioSaves = (user?.providerType || 'stremio') === 'stremio'
+  // The newest opening in the whole library: lets a stream elsewhere be ruled
+  // out as this app's (stremioSaves.openedNothingSince).
+  if (readsStremioSaves) {
+    let newestOpenedAt = null
+    for (const it of library) {
+      const t = Date.parse(it?.state?.lastWatched || '')
+      if (Number.isFinite(t) && (newestOpenedAt == null || t > newestOpenedAt)) newestOpenedAt = t
+    }
+    stremioSaves.libraryRead(userId, newestOpenedAt, nowMs)
+  }
 
   // Get all active sessions for this user
   const activeSessions = await prisma.watchSession.findMany({
