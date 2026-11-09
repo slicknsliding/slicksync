@@ -707,7 +707,6 @@ export default function DashboardPage() {
     for (const a of metricsData?.recentActivity || []) if (a.user.providerType && !providerByUser.has(a.user.id)) providerByUser.set(a.user.id, a.user.providerType);
 
     const summary = [
-      `${stats.totalUsers} ${stats.totalUsers === 1 ? 'person' : 'people'}`,
       activeUsers > 0 ? `${activeUsers} watching` : null,
       needsCount > 0 ? `${needsCount} ${needsCount === 1 ? 'thing needs' : 'things need'} you` : null,
     ].filter(Boolean).join(' · ');
@@ -842,7 +841,7 @@ export default function DashboardPage() {
             <div key={id} className={span(id)}>
               <ArrangeSection
                 arrange={dashArrange} id={id} title="Continue Watching" cards
-                meta={dashArrange.isEmpty(id) ? 'empty right now' : 'everyone'}
+                meta={dashArrange.isEmpty(id) ? 'empty right now' : undefined}
                 emptyNote={dashArrange.isEmpty(id) ? 'Continue Watching · shows when someone has something to resume' : undefined}
               >
                 {continueBanners()}
@@ -988,13 +987,13 @@ export default function DashboardPage() {
       <>
         {isOriginal ? (
           <>
-            <Header title="Dashboard" subtitle={summary} actions={v2Actions} />
+            <Header title="Dashboard" subtitle={summary || undefined} actions={v2Actions} />
             <div className="p-6 lg:p-8">{body}</div>
           </>
         ) : (
           <div className="px-4 md:px-6 pb-8 pt-6">
             <div className="mx-auto" style={{ maxWidth: 'min(120rem, 92vw)' }}>
-              <NebulaPageHeading title="Dashboard" subtitle={summary} actions={v2Actions} />
+              <NebulaPageHeading title="Dashboard" subtitle={summary || undefined} actions={v2Actions} />
               {body}
             </div>
           </div>

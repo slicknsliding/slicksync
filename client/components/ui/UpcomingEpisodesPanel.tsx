@@ -10,6 +10,7 @@ import { api, UpcomingEpisode, MutedShow } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { pointAnchor, HIDDEN_ANCHOR } from '@/lib/pointAnchor';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
@@ -211,12 +212,13 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
         open();
       }}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } }}
-      onContextMenu={(e) => { e.preventDefault(); setMenuOpen(true); }}
+      onContextMenu={(e) => { e.preventDefault(); if (!isTV) pointAnchor(anchor.current, e); setMenuOpen(true); }}
       onTouchStart={(e) => {
         const t = e.touches[0];
         if (!t) return;
         startPos.current = { x: t.clientX, y: t.clientY };
-        pressTimer.current = setTimeout(() => { pressTimer.current = null; longPressed.current = true; setMenuOpen(true); }, LONG_PRESS_MS);
+        const at = { clientX: t.clientX, clientY: t.clientY };
+        pressTimer.current = setTimeout(() => { pressTimer.current = null; longPressed.current = true; if (!isTV) pointAnchor(anchor.current, at); setMenuOpen(true); }, LONG_PRESS_MS);
       }}
       onTouchMove={(e) => {
         const t = e.touches[0];
@@ -234,7 +236,9 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
         <img src={cachedImageUrl(backdrop, 500) || backdrop} onError={onError} alt="" loading="lazy" decoding="async" className="art-fill absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center' }} />
       )}
       {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.88) 50%, rgba(10,12,20,.25) 100%)' }} />}
-      <button
+      {/* Right-click or a long press opens the menu where it happened; only a
+          remote, which has neither, needs the ... button. */}
+      {!isTV ? <button ref={anchor} type="button" tabIndex={-1} aria-hidden="true" className={HIDDEN_ANCHOR} /> : <button
         ref={anchor}
         type="button"
         onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
@@ -245,7 +249,7 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
         style={{ background: onPicture ? 'rgba(0,0,0,0.5)' : 'var(--color-surface-hover)', color: onPicture ? '#fff' : 'var(--color-text)', boxShadow: moreLit ? '0 0 0 3px var(--color-primary)' : undefined }}
       >
         <EllipsisHorizontalIcon className="w-5 h-5" />
-      </button>
+      </button>}
       <div className="relative flex items-end gap-3 w-full p-3 pr-12">
         {/* Out now: the label sits above the poster. */}
         <div className="flex flex-col items-center gap-1.5 shrink-0">

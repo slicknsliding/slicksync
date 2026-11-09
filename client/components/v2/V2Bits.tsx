@@ -18,11 +18,13 @@ import { useLongPress } from '@/lib/hooks/useLongPress';
 import { StretchHandle } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 
-export type V2Tone = 'live' | 'ok' | 'warn' | 'bad' | 'off';
+export type V2Tone = 'live' | 'ok' | 'good' | 'warn' | 'bad' | 'off';
 
 const TONE: Record<V2Tone, { dot: string; text: string }> = {
   live: { dot: 'var(--color-success, #22c55e)', text: 'var(--color-success, #22c55e)' },
   ok: { dot: '#60a5fa', text: 'var(--color-text-muted)' },
+  // Synced: a green dot, quiet words - as on the classic pages.
+  good: { dot: 'var(--color-success, #22c55e)', text: 'var(--color-text-muted)' },
   warn: { dot: 'var(--color-warning, #f59e0b)', text: 'var(--color-warning, #f59e0b)' },
   bad: { dot: 'var(--color-error, #ef4444)', text: 'var(--color-error, #ef4444)' },
   off: { dot: '#9ca3af', text: 'var(--color-text-muted)' },

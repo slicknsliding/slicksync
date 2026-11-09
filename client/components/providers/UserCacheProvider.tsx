@@ -8,6 +8,9 @@ interface UserData {
   name: string;
   email?: string;
   colorIndex?: number;
+  /** Their own picture, so places that only know the id show it too. */
+  avatarUrl?: string | null;
+  useGravatar?: boolean;
 }
 
 interface UserCacheContextType {
@@ -38,7 +41,9 @@ export function UserCacheProvider({ children }: { children: ReactNode }) {
           id: user.id,
           name: user.username || user.name || 'Unknown',
           email: user.email,
-          colorIndex: user.colorIndex
+          colorIndex: user.colorIndex,
+          avatarUrl: user.avatarUrl ?? null,
+          useGravatar: user.useGravatar === true,
         };
         
         // Cache the user data

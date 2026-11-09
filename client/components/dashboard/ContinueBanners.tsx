@@ -25,6 +25,8 @@ import { EllipsisHorizontalIcon, InformationCircleIcon, XMarkIcon } from '@heroi
 import { PlayIcon } from '@heroicons/react/24/solid';
 import type { ContinueWatchingItem } from '@/lib/api';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { pointAnchor, HIDDEN_ANCHOR } from '@/lib/pointAnchor';
 import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { formatClock } from '@/components/ui/NowPlayingPosition';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
@@ -125,12 +127,15 @@ function useCardMenu(wasDraggedRef: RefObject<boolean>, onMore?: (anchor: HTMLEl
     /** Swallows the click that follows a long press. */
     justOpened: () => { const o = opened.current; opened.current = false; return o; },
     handlers: {
-      onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); if (!wasDraggedRef.current) setOpen(true); },
+      // A tap that opens the menu (a person's Home) opens it where it landed too.
+      onPointerDown: (e: React.PointerEvent) => pointAnchor(anchorRef.current, e),
+      onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); if (!wasDraggedRef.current) { pointAnchor(anchorRef.current, e); setOpen(true); } },
       onTouchStart: (e: React.TouchEvent) => {
         const t = e.touches[0];
         if (!t) return;
         start.current = { x: t.clientX, y: t.clientY };
-        timer.current = setTimeout(() => { timer.current = null; opened.current = true; setOpen(true); }, LONG_PRESS_MS);
+        const at = { clientX: t.clientX, clientY: t.clientY };
+        timer.current = setTimeout(() => { timer.current = null; opened.current = true; pointAnchor(anchorRef.current, at); setOpen(true); }, LONG_PRESS_MS);
       },
       onTouchMove: (e: React.TouchEvent) => {
         const t = e.touches[0];
@@ -199,6 +204,10 @@ function Chip({ item, onPicture }: { item: ContinueWatchingItem; onPicture: bool
 }
 
 function MoreButton({ anchorRef, open, onToggle, label, onPicture }: { anchorRef: RefObject<HTMLButtonElement | null>; open: boolean; onToggle: () => void; label: string; onPicture: boolean }) {
+  const isTV = useIsTV();
+  // Right-click or a long press opens the menu where it happened; a remote has
+  // neither, so only TV shows the button.
+  if (!isTV) return <button ref={anchorRef} type="button" tabIndex={-1} aria-hidden="true" className={HIDDEN_ANCHOR} />;
   return (
     <button
       ref={anchorRef}
@@ -305,7 +314,7 @@ function UnderParts({ item, parts, extra, self }: { item: ContinueWatchingItem; 
  *  lines under it, the card alone. */
 function Cell({ under, children }: { under: ReactNode | null; children: ReactNode }) {
   if (!under) return <>{children}</>;
-  return <div className="cwb-cell flex flex-col min-w-0 h-full">{children}{under}</div>;
+  return <div className="cwb-cell flex flex-col min-w-0 h-full select-none">{children}{under}</div>;
 }
 
 /** One of the smaller banners in the row. */
