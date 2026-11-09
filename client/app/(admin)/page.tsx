@@ -761,7 +761,7 @@ export default function DashboardPage() {
 
     const syncButton = (
       <Button
-        variant="primary"
+        variant="secondary"
         size={isOriginal ? 'md' : 'sm'}
         leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
         onClick={handleSyncAll}
@@ -1052,7 +1052,7 @@ export default function DashboardPage() {
               actions={(() => {
                 const syncBtn = (
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
                     leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
                     onClick={handleSyncAll}
@@ -1388,7 +1388,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <ArrangeButton arrange={dashArrange} />
             <Button
-              variant="primary"
+              variant="secondary"
               leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
               onClick={handleSyncAll}
               isLoading={isSyncing}
