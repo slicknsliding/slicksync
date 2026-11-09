@@ -124,7 +124,7 @@ export function syncWords(s: V2Sync): { tone: V2Tone; words: string } | null {
   switch (s.kind) {
     case 'synced': return { tone: 'good', words: 'Synced' };
     case 'unsynced': return { tone: 'bad', words: s.detail ? `Unsynced · ${s.detail}` : 'Unsynced' };
-    case 'syncing': return { tone: 'ok', words: 'Syncing…' };
+    case 'syncing': return { tone: 'off', words: 'Syncing…' };
     case 'checking': return { tone: 'off', words: 'Checking…' };
     case 'connect': return { tone: 'warn', words: 'Sign-in needs a fix' };
     case 'error': return { tone: 'bad', words: 'Couldn’t check' };

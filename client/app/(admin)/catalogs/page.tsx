@@ -468,12 +468,13 @@ export default function ListsPage() {
   const setPillSize = (key: string, n: number) => collectionArrange.setCardSizing(`pill-${key}`, { w: n >= PILL_MAX ? undefined : n });
   const sideDefaultRow = (key: string): PillRowId => {
     const side = collectionArrange.sideOf(key);
-    return collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, side === 'left' ? 'above' : 'below');
+    // A phone puts both under the title by default, lined up left like a computer.
+    return collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, 'below');
   };
   const rowOf = (key: string): PillRowId => (phone
     ? collectionArrange.placeOf<PillRowId>(`phone-row-${key}`, sideDefaultRow(key))
     : collectionArrange.sideOf(key));
-  const alignDefault = (row: PillRowId): PillAlign => (row === 'right' || row === 'below' ? 'right' : 'left');
+  const alignDefault = (row: PillRowId): PillAlign => (row === 'right' ? 'right' : 'left');
   const alignOf = (row: PillRowId) => collectionArrange.placeOf<PillAlign>(`${phone ? 'phone-' : ''}align-${row}`, alignDefault(row));
   // Side by side unless the row was set to one under the other (phone and wider screens saved apart).
   const stackKey = (row: PillRowId) => `${phone ? 'phone-' : ''}stack-${row}`;
@@ -503,7 +504,7 @@ export default function ListsPage() {
       if (over.startsWith(SPOT)) {
         const [r, a] = over.slice(SPOT.length).split(':') as [PillRowId, PillAlign];
         row = r;
-        arr.setPlace(`${onPhone ? 'phone-' : ''}align-${r}`, a, r === 'right' || r === 'below' ? 'right' : 'left');
+        arr.setPlace(`${onPhone ? 'phone-' : ''}align-${r}`, a, r === 'right' ? 'right' : 'left');
       } else if (over.startsWith(pillPrefix)) {
         row = rowNow(over.slice(pillPrefix.length));
       }
@@ -588,7 +589,7 @@ export default function ListsPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} />}
-        {layoutMode === 'nebula' && phone && rightPills && <div className="-mt-2 mb-5">{rightPills}</div>}
+        {phone && rightPills && <div className={layoutMode === 'nebula' ? '-mt-2 mb-5' : 'mb-5'}>{rightPills}</div>}
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>
