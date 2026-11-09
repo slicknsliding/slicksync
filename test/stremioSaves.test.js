@@ -314,3 +314,58 @@ test('a Nuvio copy stays out of Now Playing until the position or date moves', a
   await processUserSessions(prisma, 'a', 'u1', [played], new Date(at(WHEN) + 150000))
   assert.equal(prisma.rows.length, 1, 'real playback is never held back')
 })
+
+// Opening a title saves at once, with state.lastWatched at that same moment.
+const opening = (mtime, offset, videoId = VIDEO) => item(mtime, offset, { lastWatched: mtime, video_id: videoId })
+
+test('a title just opened plays from the opening save, before the timer has saved', () => {
+  saves.forget()
+  const t = '2026-11-09T05:27:00.000Z'
+  assert.equal(saves.observe('u1', 'tt0096697', opening(t, 0), at(t) + 20000), true, 'the opening save counts')
+  const seen = saves.viewing('u1', 'tt0096697', VIDEO, at(t) + 20000)
+  assert.equal(seen.paused, false)
+  assert.equal(seen.ended, false)
+  assert.equal(seen.positionMs, 0)
+  const card = stremioSaveFields({ id: 'u1', providerType: 'stremio' }, { itemId: 'tt0096697', videoId: VIDEO }, at(t) + 20000)
+  assert.equal(card.positionAt, at(t), 'counted on from the moment it opened')
+  assert.equal(card.paused, undefined)
+})
+
+test('reopening a title part way through plays from where it was', () => {
+  saves.forget()
+  const t = '2026-11-09T05:27:00.000Z'
+  saves.observe('u1', 'tt0096697', opening(t, 600000), at(t) + 5000)
+  assert.equal(saves.viewing('u1', 'tt0096697', VIDEO, at(t) + 5000).positionMs, 600000)
+})
+
+test('a first sight of an older opening is still only the baseline', () => {
+  saves.forget()
+  const t = '2026-11-09T05:27:00.000Z'
+  // Opened ten minutes before the server first read it (a restart).
+  assert.equal(saves.observe('u1', 'tt0096697', opening(t, 0), at(t) + 600000), false)
+  assert.equal(saves.viewing('u1', 'tt0096697', VIDEO, at(t) + 600000), null)
+  // A later save that is not the opening one (lastWatched stays put).
+  saves.forget()
+  const later = item('2026-11-09T05:30:00.000Z', 180000, { lastWatched: t })
+  assert.equal(saves.observe('u1', 'tt0096697', later, at('2026-11-09T05:30:00.000Z') + 5000), false)
+})
+
+test('the next episode opened at 0 is playing, not an ending', () => {
+  saves.forget()
+  read('2026-11-02T22:48:23.126Z', 1195027)
+  read('2026-11-02T22:49:53.126Z', 1285027)
+  const t = '2026-11-02T23:10:00.000Z'
+  assert.equal(saves.observe('u1', 'tt0096697', opening(t, 0, 'tt0096697:1:2'), at(t) + 10000), true)
+  const seen = saves.viewing('u1', 'tt0096697', 'tt0096697:1:2', at(t) + 10000)
+  assert.equal(seen.ended, false)
+  assert.equal(seen.paused, false)
+})
+
+test('an episode that ends still ends: lastWatched does not move with it', () => {
+  saves.forget()
+  read('2026-11-02T22:48:23.126Z', 1195027)
+  read('2026-11-02T22:49:53.126Z', 1285027)
+  const end = item('2026-11-02T22:52:00.000Z', 0, { video_id: 'tt0096697:1:2' })
+  saves.observe('u1', 'tt0096697', end, at('2026-11-02T22:52:00.000Z') + 5000)
+  assert.equal(saves.viewing('u1', 'tt0096697', 'tt0096697:1:2', at('2026-11-02T22:52:00.000Z') + 5000).ended, true)
+})

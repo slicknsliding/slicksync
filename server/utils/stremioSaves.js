@@ -35,6 +35,9 @@ const SILENT_MS = 200 * 1000
 // A device clock this far from ours is not used to time anything shown.
 const CLOCK_TRUST_MS = 2 * 60 * 1000
 const REMEMBER_MS = 24 * 60 * 60 * 1000
+// Opening a title saves at once with state.lastWatched set to that same moment;
+// a save this close to lastWatched is the opening one.
+const OPEN_MATCH_MS = 5 * 1000
 
 const ownWrites = require('./ownWrites')
 
@@ -57,7 +60,7 @@ function readItem(item) {
   const offset = Number(item?.state?.timeOffset ?? NaN)
   const mtime = Date.parse(item?._mtime || '')
   if (!Number.isFinite(offset) || !Number.isFinite(mtime)) return null
-  return { offset, mtime, videoId: item?.state?.video_id || null }
+  return { offset, mtime, videoId: item?.state?.video_id || null, openedAt: Date.parse(item?.state?.lastWatched || '') }
 }
 
 /** Pause or play, from a save and the one before it. Pure. */
@@ -80,6 +83,18 @@ function classify(prev, cur) {
   return { paused: prev.paused, ended: prev.ended, timerMs: prev.timerMs, timerSeen: prev.timerSeen }
 }
 
+/**
+ * The save made by opening the title (or another episode of it) a moment ago:
+ * playback starts there. Without this a first sight only set the baseline, and
+ * an episode opened at 0 read as one that had ended, so a stream someone had
+ * just started showed as stopped until the timer's first save, 90 s in.
+ */
+function justOpened(cur, prev, now) {
+  if (!Number.isFinite(cur.openedAt) || Math.abs(cur.mtime - cur.openedAt) > OPEN_MATCH_MS) return false
+  if (now - cur.mtime > SILENT_MS) return false
+  return !prev || !(cur.openedAt <= prev.openedAt)
+}
+
 /** Takes in a library item as it was just read. True when it holds a new save. */
 function observe(userId, itemId, item, now = Date.now()) {
   sweep(now)
@@ -91,9 +106,11 @@ function observe(userId, itemId, item, now = Date.now()) {
     // Whole libraries pass through here every minute; only what was touched
     // lately is worth remembering.
     if (now - cur.mtime > REMEMBER_MS) return false
-    // A first sight is where things stood, not something that just happened.
-    records.set(key, { ...cur, checkedAt: now, seenAt: null, paused: false, ended: false, timerMs: null, timerSeen: false })
-    return false
+    // A first sight is where things stood, not something that just happened -
+    // unless it is the save from opening it just now.
+    const opened = justOpened(cur, null, now) && !ownWrites.isOwn(userId, itemId, item)
+    records.set(key, { ...cur, checkedAt: now, seenAt: opened ? now : null, paused: false, ended: false, timerMs: null, timerSeen: false })
+    return opened
   }
   prev.checkedAt = now
   // SlickSync's own write (a copy) is not a save: the baseline moves to it so
@@ -105,7 +122,9 @@ function observe(userId, itemId, item, now = Date.now()) {
   if (cur.mtime === prev.mtime || (cur.offset === prev.offset && cur.videoId === prev.videoId)) return false
   // An episode that ends moves the title on to the next one at position 0 or 1,
   // whether or not anyone plays it, so that says nothing until the position moves.
-  const next = cur.videoId !== prev.videoId
+  const next = justOpened(cur, prev, now)
+    ? { paused: false, ended: false, timerMs: prev.timerMs, timerSeen: prev.timerSeen }
+    : cur.videoId !== prev.videoId
     ? { paused: false, ended: cur.offset <= 1, timerMs: prev.timerMs, timerSeen: prev.timerSeen }
     : classify(prev, cur)
   records.set(key, { ...cur, ...next, checkedAt: now, seenAt: now })

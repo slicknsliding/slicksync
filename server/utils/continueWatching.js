@@ -231,10 +231,10 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
   })
   const userMap = new Map(users.map((u) => [u.id, u]))
 
-  const dismissed = await prisma.dismissedContinueWatching.findMany({
+  const dismissed = await releaseRewatched(prisma, accountIdValue, await prisma.dismissedContinueWatching.findMany({
     where: { accountId: accountIdValue },
-    select: { userId: true, showId: true }
-  })
+    select: { id: true, userId: true, showId: true, createdAt: true, wipedAt: true }
+  }))
   const dismissedKeys = new Set(dismissed.map((d) => `${d.userId}:${d.showId}`))
 
   const candidates = Array.from(latestPerShow.values())
@@ -500,7 +500,8 @@ async function dismissContinueWatching(prisma, accountId, userId, showId) {
 // Reuses DismissedContinueWatching for burying rather than adding a second
 // dismissal table - "I am done with this show" is the same statement in
 // both places, and a show buried here should equally never resurface in
-// Continue Watching if it somehow became recent again.
+// Continue Watching from old data - only from someone really playing it again
+// (releaseRewatched).
 // The default; each account sets its own in Settings (utils/watchSettings.js).
 const ABANDONED_AFTER_DAYS = 45
 
@@ -529,10 +530,10 @@ async function getAbandonedShows(prisma, accountId, limit = 20) {
     if (!latestPerShow.has(key)) latestPerShow.set(key, row)
   }
 
-  const dismissed = await prisma.dismissedContinueWatching.findMany({
+  const dismissed = await releaseRewatched(prisma, accountIdValue, await prisma.dismissedContinueWatching.findMany({
     where: { accountId: accountIdValue },
-    select: { userId: true, showId: true },
-  })
+    select: { id: true, userId: true, showId: true, createdAt: true, wipedAt: true },
+  }))
   const dismissedKeys = new Set(dismissed.map((d) => `${d.userId}:${d.showId}`))
 
   const candidates = []
@@ -580,12 +581,12 @@ async function getAbandonedShows(prisma, accountId, limit = 20) {
 // occupants would be the old vanishing problem all over again.
 async function getBuriedShows(prisma, accountId) {
   const accountIdValue = accountId || 'default'
-  const dismissed = await prisma.dismissedContinueWatching.findMany({
+  const dismissed = await releaseRewatched(prisma, accountIdValue, await prisma.dismissedContinueWatching.findMany({
     // Tombstones (wiped shows) stay out of the graveyard - they exist only
     // to keep Continue Watching from resurfacing what was erased.
     where: { accountId: accountIdValue, wipedAt: null },
     orderBy: { createdAt: 'desc' },
-  })
+  }))
   if (dismissed.length === 0) return []
 
   // Enrich from watch history - the dismissal row itself stores only ids.
@@ -650,6 +651,33 @@ async function getBuriedShows(prisma, accountId) {
   return buried
 }
 
+/**
+ * A removed, buried or wiped title that someone has really started playing
+ * again since comes back: its removal is cleared. Only a viewing that began
+ * after the removal counts - the provider's own library still holding old
+ * progress never does, which is what the removal (and a wipe's tombstone) is
+ * there to stop. Returns the removals that still stand.
+ */
+async function releaseRewatched(prisma, accountIdValue, dismissed) {
+  if (dismissed.length === 0) return dismissed
+  let sessions = []
+  try {
+    sessions = await prisma.watchSession.findMany({
+      where: { accountId: accountIdValue, userId: { in: [...new Set(dismissed.map((d) => d.userId))] }, itemId: { in: [...new Set(dismissed.map((d) => d.showId))] } },
+      select: { userId: true, itemId: true, startTime: true }
+    })
+  } catch { return dismissed }
+  const startedAt = new Map(sessions.map((s) => [`${s.userId}:${s.itemId}`, s.startTime ? new Date(s.startTime).getTime() : 0]))
+  const released = dismissed.filter((d) => {
+    const removedAt = Math.max(new Date(d.createdAt).getTime(), d.wipedAt ? new Date(d.wipedAt).getTime() : 0)
+    return (startedAt.get(`${d.userId}:${d.showId}`) || 0) > removedAt
+  })
+  if (released.length === 0) return dismissed
+  await prisma.dismissedContinueWatching.deleteMany({ where: { id: { in: released.map((d) => d.id) } } }).catch(() => {})
+  const gone = new Set(released.map((d) => d.id))
+  return dismissed.filter((d) => !gone.has(d.id))
+}
+
 /** Dig a show back up: the dismissal is removed, so it reappears in
  * Continue Watching (if recent) or the abandoned list (if not). */
 async function unburyShow(prisma, accountId, userId, showId) {
@@ -686,4 +714,4 @@ async function wipeBuriedShow(prisma, accountId, userId, showId) {
   return { episodesDeleted: episodes.count, moviesDeleted: movies.count }
 }
 
-module.exports = { RESUME_MIN_POSITION_MS, RESUME_MAX_RATIO, hasAired, getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }
+module.exports = { releaseRewatched, RESUME_MIN_POSITION_MS, RESUME_MAX_RATIO, hasAired, getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }
