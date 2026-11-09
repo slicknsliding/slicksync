@@ -425,14 +425,26 @@ export default function DashboardPage() {
   const ringCircumference = 2 * Math.PI * 28;
   const ringRatio = stats.totalUsers > 0 ? Math.min(1, activeUsers / stats.totalUsers) : 0;
 
+  // The same as Users' Sync All: each person in turn, and a count once they're done.
   const handleSyncAll = async () => {
     setIsSyncing(true);
     try {
-      await api.syncAllUsers();
-      toast.success('Global sync triggered for all users');
+      const people = await api.getUsers();
+      let success = 0;
+      for (const person of people) {
+        try {
+          await api.syncUser(person.id);
+          success++;
+        } catch (err) {
+          console.error('Failed to sync user:', err);
+        }
+      }
+      if (success > 0) {
+        toast.success(`Synced ${success} user${success !== 1 ? 's' : ''} successfully`);
+      }
       await refreshData();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to trigger global sync');
+      toast.error(err.message || 'Failed to sync all users');
     } finally {
       setIsSyncing(false);
     }
@@ -765,9 +777,9 @@ export default function DashboardPage() {
         size={isOriginal ? 'md' : 'sm'}
         leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
         onClick={handleSyncAll}
-        isLoading={isSyncing}
+        disabled={isSyncing}
       >
-        Sync all
+        {isSyncing ? 'Syncing...' : 'Sync All'}
       </Button>
     );
     const v2Actions = (
@@ -1056,9 +1068,9 @@ export default function DashboardPage() {
                     size="sm"
                     leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
                     onClick={handleSyncAll}
-                    isLoading={isSyncing}
+                    disabled={isSyncing}
                   >
-                    Sync All
+                    {isSyncing ? 'Syncing...' : 'Sync All'}
                   </Button>
                 );
                 return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : <div className="flex items-center gap-2"><ArrangeButton arrange={dashArrange} />{syncBtn}</div>;
@@ -1391,9 +1403,9 @@ export default function DashboardPage() {
               variant="secondary"
               leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
               onClick={handleSyncAll}
-              isLoading={isSyncing}
+              disabled={isSyncing}
             >
-              Sync All
+              {isSyncing ? 'Syncing...' : 'Sync All'}
             </Button>
           </div>
         }
