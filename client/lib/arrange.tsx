@@ -579,6 +579,48 @@ export function useCwTime() {
   return { where, setWhere };
 }
 
+/** Continue Watching: who is watching under the card (the default), or on its picture. */
+export function useCwWho() {
+  const { arrangement, update } = useArrangement();
+  const where: 'on' | 'under' = arrangement.cwWho === 'on' ? 'on' : 'under';
+  const setWhere = useCallback((w: 'on' | 'under') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cwWho: 'on' };
+      if (w === 'under') delete out.cwWho;
+      return out;
+    });
+  }, [update]);
+  return { where, setWhere };
+}
+
+/** Continue Watching: the bar and where they stopped under the card (the default), or on its picture. */
+export function useCwProgress() {
+  const { arrangement, update } = useArrangement();
+  const where: 'on' | 'under' = arrangement.cwProgress === 'on' ? 'on' : 'under';
+  const setWhere = useCallback((w: 'on' | 'under') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cwProgress: 'on' };
+      if (w === 'under') delete out.cwProgress;
+      return out;
+    });
+  }, [update]);
+  return { where, setWhere };
+}
+
+/** Continue Watching: the latest title the same size as the rest (the default), or one wide banner. */
+export function useCwFirst() {
+  const { arrangement, update } = useArrangement();
+  const first: 'wide' | 'same' = arrangement.cwFirst === 'wide' ? 'wide' : 'same';
+  const setFirst = useCallback((f: 'wide' | 'same') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cwFirst: 'wide' };
+      if (f === 'same') delete out.cwFirst;
+      return out;
+    });
+  }, [update]);
+  return { first, setFirst };
+}
+
 /** Where SlickSync opens for this account (Themes → Layout). '/' is the Dashboard. */
 /** Settings → Themes → Card backgrounds: the show's picture behind the words (the default), or plain. */
 export function useCardBackground() {

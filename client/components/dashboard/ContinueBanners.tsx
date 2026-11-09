@@ -1,9 +1,15 @@
 'use client';
 
 // Continue Watching on the Dashboard, drawn like the Now Playing banner: the
-// latest title as one wide banner, the rest as smaller banners in a row under
-// it. Each says who and which profile, the episode, where they stopped, and
+// latest title as one wide banner or the first card of the row (Settings →
+// Themes → Continue Watching first card), the rest as smaller banners in a
+// row. Each says who and which profile, the episode, where they stopped, and
 // has a Resume (or Play) button - visible everywhere, not only on hover.
+//
+// Settings → Themes → Continue Watching, ... progress, ... time left: who is
+// watching, the bar with where they stopped, and the time left with the
+// episode each sit on the picture or in lines under the card (the default).
+// The title, Resume and the ... button always stay on the card.
 // Tapping the card opens its details; the ... button (or right-click, or a
 // long press) offers Details and Remove from Continue Watching.
 //
@@ -22,7 +28,7 @@ import { UserAvatar } from '@/components/ui/UserAvatar';
 import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { formatClock } from '@/components/ui/NowPlayingPosition';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
-import { useCardBackground } from '@/lib/arrange';
+import { useCardBackground, useCwProgress, useCwTime, useCwWho } from '@/lib/arrange';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { providerTypeLabel } from '@/lib/providers';
 
@@ -53,6 +59,13 @@ export function stoppedLine(item: ContinueWatchingItem, now = Date.now()): strin
   if (!item.resume) return `Next episode · watched ${ago}`;
   if (item.positionMs && item.durationMs) return `Stopped at ${formatClock(item.positionMs / 1000)} of ${formatClock(item.durationMs / 1000)} · ${ago}`;
   return `${timeLeftChip(item)} · ${ago}`;
+}
+
+/** "S1 E4 · The Band", or "Movie": the episode beside the time left under the card. */
+function episodeShort(item: ContinueWatchingItem): string {
+  const e = item.nextEpisode;
+  if (item.contentType === 'series' && e) return `S${e.season} E${e.episode}${e.title ? ` · ${e.title}` : ''}`;
+  return item.contentType === 'movie' ? 'Movie' : '';
 }
 
 function episodeLong(item: ContinueWatchingItem): string {
@@ -130,11 +143,12 @@ function useCardMenu(wasDraggedRef: RefObject<boolean>, onMore?: (anchor: HTMLEl
   };
 }
 
-function Who({ item, extra, onPicture, self }: { item: ContinueWatchingItem; extra?: string; onPicture: boolean; self?: boolean }) {
+function Who({ item, extra, onPicture, self, under }: { item: ContinueWatchingItem; extra?: string; onPicture: boolean; self?: boolean; under?: boolean }) {
   const where = [extra, item.profileLabel || providerTypeLabel(item.providerType || 'stremio')].filter(Boolean).join(' · ');
-  if (self) return <p className="cwb-who text-[12.5px] break-words" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{where}</p>;
+  const size = under ? 'text-[13.5px] mt-0.5' : 'text-[12.5px]';
+  if (self) return <p className={`cwb-who ${size} break-words`} style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{where}</p>;
   return (
-    <div className="cwb-who flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 text-[12.5px]" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>
+    <div className={`cwb-who flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 ${size}`} style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>
       <UserAvatar userId={item.userId} name={item.username} size="xs" />
       <b className="break-words min-w-0" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.username.split(' ')[0]}</b>
       <span aria-hidden="true">·</span>
@@ -143,10 +157,10 @@ function Who({ item, extra, onPicture, self }: { item: ContinueWatchingItem; ext
   );
 }
 
-function ProgressBar({ item, onPicture }: { item: ContinueWatchingItem; onPicture: boolean }) {
+function ProgressBar({ item, onPicture, under }: { item: ContinueWatchingItem; onPicture: boolean; under?: boolean }) {
   if (!item.resume || item.progressPercent == null) return null;
   return (
-    <div className="h-1.5 rounded-full mt-1.5" style={{ background: onPicture ? 'rgba(255,255,255,.18)' : 'var(--color-surface-hover)' }}>
+    <div className={`h-1.5 rounded-full ${under ? '' : 'mt-1.5'}`} style={{ background: onPicture ? 'rgba(255,255,255,.18)' : 'var(--color-surface-hover)' }}>
       <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(3, item.progressPercent))}%`, background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))' }} />
     </div>
   );
@@ -257,17 +271,56 @@ function Frame({ item, handlers, ignoreClick, wasDraggedRef, onActivate, classNa
   );
 }
 
+/** Which parts sit under the card rather than on it (Settings → Themes → Continue Watching). */
+function useUnderParts() {
+  const who = useCwWho().where === 'under';
+  const progress = useCwProgress().where === 'under';
+  const time = useCwTime().where === 'under';
+  return { who, progress, time, any: who || progress || time };
+}
+
+/** The lines under the card, each where its own switch puts it: the bar, the
+ *  time left with the episode, where they stopped, and who is watching. */
+function UnderParts({ item, parts, extra, self }: { item: ContinueWatchingItem; parts: ReturnType<typeof useUnderParts>; extra?: string; self?: boolean }) {
+  const ep = episodeShort(item);
+  // "Up next" already says the next episode waits.
+  const stopped = parts.time ? stoppedLine(item).replace(/^Next episode · w/, 'W') : stoppedLine(item);
+  return (
+    <div className="cwb-under flex flex-col gap-1 px-1 mt-2.5 min-w-0">
+      {/* No bar (Up next): the same room, so every card in the row stays one height. */}
+      {parts.progress && (item.resume && item.progressPercent != null ? <ProgressBar item={item} onPicture={false} under /> : <div className="h-1.5" aria-hidden="true" />)}
+      {parts.time && (
+        <p className="text-[13.5px] leading-snug break-words" style={{ color: 'var(--color-text-muted)' }}>
+          <b className="font-bold" style={{ color: item.resume ? 'var(--color-text)' : 'var(--color-primary)' }}>{timeLeftChip(item)}</b>
+          {ep && ` · ${ep}`}
+        </p>
+      )}
+      {parts.progress && <p className="text-[12.5px] leading-snug break-words" style={{ color: 'var(--color-text)' }}>{stopped}</p>}
+      {parts.who && <Who item={item} extra={extra} onPicture={false} self={self} under />}
+    </div>
+  );
+}
+
+/** The card with its lines under it, as one cell of the row. Without any
+ *  lines under it, the card alone. */
+function Cell({ under, children }: { under: ReactNode | null; children: ReactNode }) {
+  if (!under) return <>{children}</>;
+  return <div className="cwb-cell flex flex-col min-w-0 h-full">{children}{under}</div>;
+}
+
 /** One of the smaller banners in the row. */
 export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDraggedRef, onRemove, onOpenDetails, priority = false, self, onMore }: CardProps) {
   const plain = useCardBackground().bg === 'plain';
+  const parts = useUnderParts();
   const { url: art, onError } = useCardArt(item, plain);
   const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef, onMore ? (a) => onMore(item, a) : undefined);
   const onPicture = !plain;
   const ep = episodeLong(item);
   return (
     <>
+      <Cell under={parts.any ? <UnderParts item={item} parts={parts} self={self} /> : null}>
       <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onActivate={() => (onOpenDetails ? onOpenDetails(item) : setOpen(true))}
-        className={`rounded-2xl flex flex-col h-full ${plain ? '' : 'min-h-[230px] sm:min-h-[250px]'}`}
+        className={`rounded-2xl flex flex-col ${parts.any ? 'flex-1' : 'h-full'} ${plain ? '' : 'min-h-[230px] sm:min-h-[250px]'}`}
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -276,26 +329,27 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
         {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(0deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.82) 45%, rgba(10,12,20,.1) 100%)' }} />}
         {onPicture ? (
           // The chip sits in its own strip, so long titles push the card taller instead of under it.
-          <div className="relative h-12 shrink-0"><span className="absolute left-2.5 top-2.5 z-[1]"><Chip item={item} onPicture /></span></div>
+          <div className="relative h-12 shrink-0">{!parts.time && <span className="absolute left-2.5 top-2.5 z-[1]"><Chip item={item} onPicture /></span>}</div>
         ) : (
           <div className="relative flex items-start gap-2.5 pt-3 pl-3.5 pr-12">
             {art ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={cachedImageUrl(art, 154) || art} onError={onError} alt="" draggable={false} loading={priority ? 'eager' : 'lazy'} decoding="async" className="w-11 h-[66px] rounded-lg object-cover shrink-0 pointer-events-none" style={{ boxShadow: '0 2px 8px rgba(0,0,0,.35)' }} />
             ) : <span className="w-11 h-[66px] rounded-lg shrink-0" style={{ background: 'var(--color-surface-hover)' }} />}
-            <Chip item={item} onPicture={false} />
+            {!parts.time && <Chip item={item} onPicture={false} />}
           </div>
         )}
         <MoreButton anchorRef={anchorRef} open={open} onToggle={() => setOpen(!open)} label={item.showName} onPicture={onPicture} />
         <div className={`relative mt-auto flex flex-col gap-[3px] px-3.5 pb-3.5 ${plain ? "pt-3" : "pt-0"}`}>
-          <Who item={item} onPicture={onPicture} self={self} />
+          {!parts.who && <Who item={item} onPicture={onPicture} self={self} />}
           <p className="cwb-title font-bold leading-tight break-words mt-0.5" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName}</p>
-          {ep && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
-          <ProgressBar item={item} onPicture={onPicture} />
-          <p className="cwb-line text-xs break-words mt-0.5" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{stoppedLine(item)}</p>
+          {ep && !parts.time && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
+          {!parts.progress && <ProgressBar item={item} onPicture={onPicture} />}
+          {!parts.progress && <p className="cwb-line text-xs break-words mt-0.5" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{stoppedLine(item)}</p>}
           <div className="mt-2"><PlayButton item={item} wasDraggedRef={wasDraggedRef} /></div>
         </div>
       </Frame>
+      </Cell>
       {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />}
     </>
   );
@@ -304,14 +358,17 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
 /** The latest title, as wide as the section: the same shape as Now Playing's first banner. */
 export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDraggedRef, onRemove, onOpenDetails, self, onMore }: CardProps) {
   const plain = useCardBackground().bg === 'plain';
+  const parts = useUnderParts();
   const { url: art, onError } = useCardArt(item, plain);
   const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef, onMore ? (a) => onMore(item, a) : undefined);
   const onPicture = !plain;
   const ep = episodeLong(item);
+  const extra = 'Pick up where you left off';
   return (
     <>
+      <Cell under={parts.any ? <UnderParts item={item} parts={parts} extra={extra} self={self} /> : null}>
       <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onActivate={() => (onOpenDetails ? onOpenDetails(item) : setOpen(true))}
-        className="rounded-[20px] flex flex-col min-h-[230px] sm:min-h-[250px]"
+        className={`rounded-[20px] flex flex-col min-h-[230px] sm:min-h-[250px] ${parts.any ? 'flex-1' : ''}`}
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -326,14 +383,15 @@ export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDr
         )}
         <MoreButton anchorRef={anchorRef} open={open} onToggle={() => setOpen(!open)} label={item.showName} onPicture={onPicture} />
         <div className={`relative flex-1 flex flex-col justify-end gap-1.5 p-[18px] sm:p-[26px] max-w-full sm:max-w-[60%] ${plain ? 'pr-[92px] sm:pr-[26px]' : ''}`}>
-          <Who item={item} extra="Pick up where you left off" onPicture={onPicture} self={self} />
+          {!parts.who && <Who item={item} extra={extra} onPicture={onPicture} self={self} />}
           <h4 className="text-2xl sm:text-[30px] font-bold leading-tight break-words" style={{ color: onPicture ? '#fff' : 'var(--color-text)' }}>{item.showName}</h4>
-          {ep && <p className="text-sm break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
-          <ProgressBar item={item} onPicture={onPicture} />
-          <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{stoppedLine(item)}</p>
+          {ep && !parts.time && <p className="text-sm break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
+          {!parts.progress && <ProgressBar item={item} onPicture={onPicture} />}
+          {!parts.progress && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{stoppedLine(item)}</p>}
           <div className="mt-1.5"><PlayButton item={item} wasDraggedRef={wasDraggedRef} big /></div>
         </div>
       </Frame>
+      </Cell>
       {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />}
     </>
   );

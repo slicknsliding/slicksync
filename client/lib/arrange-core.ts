@@ -49,6 +49,12 @@ export type Arrangement = {
   nowPlayingWho?: 'on';
   /** Continue Watching: time left / Up next on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */
   cwTime?: 'on' | 'under';
+  /** Continue Watching: who is watching on the picture ('on'); under the card otherwise (the default). */
+  cwWho?: 'on';
+  /** Continue Watching: the bar and where they stopped on the picture ('on'); under the card otherwise (the default). */
+  cwProgress?: 'on';
+  /** Continue Watching: the latest title as one wide banner ('wide'); the same size as the rest otherwise (the default). */
+  cwFirst?: 'wide';
   /** Continue Watching and Coming up cards: the show's picture behind the words, or a plain background ('plain'). */
   cardBg?: 'plain';
   /** Now Playing: the bar and times on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */

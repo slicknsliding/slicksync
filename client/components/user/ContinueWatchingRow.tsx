@@ -1,8 +1,8 @@
 'use client';
 
 // "Continue Watching" on a person's own Home: the shows and films they have
-// partly watched, as banners: the latest one wide, the rest in a row beside
-// it, each with a ... menu (Resume in their app, Remove from Continue
+// partly watched, as banners in a row (the latest one wide above it when
+// they pick Wide in Settings), each with a ... menu (Resume in their app, Remove from Continue
 // Watching). The title Now Playing shows above is left out. Only their own - for a
 // Stremio, Nuvio, Jellyfin or AIOStreams person alike - and the whole row
 // hides itself when there is nothing to pick up. Removing a card keeps their
@@ -24,6 +24,7 @@ import { toast } from '@/components/ui/Toast';
 import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { useUserAuth } from '@/lib/hooks/useUserAuth';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useCwFirst } from '@/lib/arrange';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
 import { cachedImageUrl } from '@/lib/posterUrl';
@@ -163,6 +164,8 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
   playingId?: string | null;
 } = {}) {
   const { userId, authKey } = useUserAuth();
+  // Settings → Continue Watching first card: the same size as the rest unless they pick Wide.
+  const wideFirst = useCwFirst().first === 'wide';
   const isTV = useIsTV();
   // Kept with the person it was read for, so a profile switch never shows the last one's row.
   const [loaded, setLoaded] = useState<{ forUser: string; items: ContinueWatchingCardData[] } | null>(null);
@@ -260,7 +263,8 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
 
   if (cards.length === 0) return null;
   const banners = cards.map((c) => asBannerItem(c, userId || ''));
-  const [lead, ...rest] = banners;
+  const lead = wideFirst ? banners[0] : null;
+  const rest = wideFirst ? banners.slice(1) : banners;
   const tvOpen = (item: ContinueWatchingItem) => {
     const href = item.appUrl || item.webUrl;
     if (href) openOnTV(item.appUrl || null, href);
@@ -277,7 +281,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
         </div>
       ) : (
         <>
-          {(() => {
+          {lead && (() => {
             const leadCard = <ContinueLeadBanner item={lead} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} />;
             return isTV
               ? <TVFocusable ringInside className={rest.length ? 'mb-3' : ''} onEnterPress={() => tvOpen(lead)}>{leadCard}</TVFocusable>

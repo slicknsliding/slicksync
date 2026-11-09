@@ -20,7 +20,7 @@ import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem, Invitation, InviteRequest, User, VaultEntry } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { NEEDS_KIND_NAMES, NEEDS_WEEK, useNeedsDismiss, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { NEEDS_KIND_NAMES, NEEDS_WEEK, useCwFirst, useNeedsDismiss, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangeGrid, ArrangePanel, ArrangeSection, HiddenTray, PanelControls, StretchHandle } from '@/components/ui/Arrange';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { NowPlayingV2, NeedsYouTiles, PersonRow, type NeedsYouItem } from '@/components/v2/DashboardV2';
@@ -572,6 +572,8 @@ export default function DashboardPage() {
     return continueWatching.filter((c) => !playing.has(`${c.userId}::${String(c.showId || '').split(':')[0]}`));
   }, [continueWatching, metricsData?.nowPlaying]);
   const hasContinue = continueShown.length > 0;
+  // Settings → Themes → Continue Watching first card: the same size as the rest unless Wide is picked.
+  const wideFirst = useCwFirst().first === 'wide';
   const isOriginal = layoutMode !== 'nebula';
 
   // v2: what needs the admin (a sign-in that stopped, someone asking to join,
@@ -647,17 +649,19 @@ export default function DashboardPage() {
   // the big banner from a person's Home, the numbers in one strip, and the
   // rest as sections that move, fold and hide.
   // Continue Watching as banners (components/dashboard/ContinueBanners.tsx):
-  // the latest title wide, as Now Playing's first banner, and the rest in a
+  // the latest title wide as Now Playing's first banner when Wide is picked
+  // (otherwise it is the row's first card), and the rest in a
   // row that drags sideways and sizes with Arrange's stretch handle.
   const continueBanners = () => {
-    const [lead, ...rest] = continueShown;
-    if (!lead) return null;
-    const leadCard = <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+    if (!continueShown.length) return null;
+    const lead = wideFirst ? continueShown[0] : null;
+    const rest = wideFirst ? continueShown.slice(1) : continueShown;
+    const leadCard = lead && <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
     return (
       <>
-        {isTV
+        {lead && (isTV
           ? <TVFocusable ringInside className={rest.length ? 'mb-3' : ''} onEnterPress={() => setDetailModalItem(lead)}>{leadCard}</TVFocusable>
-          : <div className={rest.length ? 'mb-3' : ''}>{leadCard}</div>}
+          : <div className={rest.length ? 'mb-3' : ''}>{leadCard}</div>)}
         {rest.length > 0 && (
           <div
             {...dashArrange.cardAttrs('continue')}

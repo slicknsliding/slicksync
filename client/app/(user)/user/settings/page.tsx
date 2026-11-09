@@ -28,7 +28,7 @@ import { PersonPushRow } from '@/components/user/PersonPushRow';
 import { ProfilePictureEditor } from '@/components/user/ProfilePictureEditor';
 import { HistoryImportTile } from '@/components/user/HistoryImportTile';
 import { useIsTV } from '@/lib/hooks/useIsTV';
-import { useCwTime, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { useCwFirst, useCwProgress, useCwTime, useCwWho, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeSettingsV2, SETTINGS_SECTIONS } from '@/components/v2/MeSettingsV2';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -164,6 +164,9 @@ export default function UserSettingsPage() {
   const { design, setDesign } = usePageDesign();
   const { where: npWhere, setWhere: setNpWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
+  const { where: cwWho, setWhere: setCwWho } = useCwWho();
+  const { where: cwProgress, setWhere: setCwProgress } = useCwProgress();
+  const { first: cwFirst, setFirst: setCwFirst } = useCwFirst();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const { shown: arrows, setShown: setArrows } = useFoldArrows();
   const { on: nameTap, setOn: setNameTap } = useNameFolds();
@@ -750,6 +753,58 @@ export default function UserSettingsPage() {
           </div>
           <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Continue Watching</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Your app and profile: under the card, or on its picture</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Continue Watching">
+              {(['under', 'on'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={cwWho === w} className={cwWho === w ? 'on' : ''} onClick={() => setCwWho(w)}>
+                  {w === 'under' ? 'Under' : 'On the picture'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Continue Watching progress</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>How far in and where they stopped: on the picture, or under it</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Continue Watching progress">
+              {(['on', 'under'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={cwProgress === w} className={cwProgress === w ? 'on' : ''} onClick={() => setCwProgress(w)}>
+                  {w === 'on' ? 'On the picture' : 'Under'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Continue Watching time left</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Time left: on the picture, or under it with the episode name</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Continue Watching time left">
+              {(['on', 'under'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={cwWhere === w} className={cwWhere === w ? 'on' : ''} onClick={() => setCwWhere(w)}>
+                  {w === 'on' ? 'On the picture' : 'Under'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Continue Watching first card</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>The latest title: one wide banner, or the same size as the rest</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Continue Watching first card">
+              {(['wide', 'same'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={cwFirst === w} className={cwFirst === w ? 'on' : ''} onClick={() => setCwFirst(w)}>
+                  {w === 'wide' ? 'Wide' : 'Same size'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
               <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Fold arrows</p>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>The arrow beside each section’s name. Hidden by default; they always show while arranging</p>
             </div>
@@ -770,19 +825,6 @@ export default function UserSettingsPage() {
               {([true, false] as const).map((v) => (
                 <button key={String(v)} type="button" role="radio" aria-checked={nameTap === v} className={nameTap === v ? 'on' : ''} onClick={() => setNameTap(v)}>
                   {v ? 'On' : 'Off'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex-1 min-w-[12rem]">
-              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Continue Watching</p>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Time left: on the picture, or under it with the episode name</p>
-            </div>
-            <div className="menu-seg" role="radiogroup" aria-label="Continue Watching time left">
-              {(['on', 'under'] as const).map((w) => (
-                <button key={w} type="button" role="radio" aria-checked={cwWhere === w} className={cwWhere === w ? 'on' : ''} onClick={() => setCwWhere(w)}>
-                  {w === 'under' ? 'Under' : 'On the picture'}
                 </button>
               ))}
             </div>
