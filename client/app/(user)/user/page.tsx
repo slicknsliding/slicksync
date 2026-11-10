@@ -84,8 +84,9 @@ export default function UserHomePage() {
         if (riskResult.status === 'fulfilled') {
           setAtRiskStatus(riskResult.value);
         } else {
-          console.error('Failed to load risk status:', riskResult.reason);
-          // Don't set error for risk status - it's optional
+          // Optional, and it fails for anyone with no app connected (nothing to
+          // check), so it stays out of the console's errors.
+          console.debug('Risk status not available:', riskResult.reason?.message || riskResult.reason);
         }
       } catch (err: any) {
         console.error('Failed to load data:', err);
