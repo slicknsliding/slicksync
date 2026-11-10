@@ -155,24 +155,37 @@ async function start(prisma, decrypt, accountId, userId, { showId, season, episo
   if (running?.state === 'running' || running?.state === 'undoing') throw fail('Already marking a show for them - wait for it to finish', 429)
 
   const now = deps.now || Date.now()
-  const list = await episodesFor(prisma, decrypt, accountId, userId, showId, deps)
-  const targets = list.episodes.filter(upTo(s, ep)).filter((e) => aired(e.released, now))
-  if (!targets.length) throw fail('No aired episodes up to there')
-  const person = await personFor(prisma, accountId, userId)
-  const provider = providerFor(person, decrypt, deps.createProvider)
-
+  // Claim the slot before the first await, so a double tap starts one run.
+  // The previous run's card and Undo stay in place until this one is set up.
+  const previous = running
   const job = {
     state: 'running',
-    show: list.name || list.showId,
+    show: showId,
     upTo: `S${s}E${ep}`,
-    total: targets.length,
+    total: 0,
     recorded: 0,
-    alreadyWatched: targets.filter((t) => t.watched).length,
-    server: provider ? { state: 'waiting', marked: 0, total: null, how: null } : null,
+    alreadyWatched: 0,
+    server: null,
     error: null,
     startedAt: new Date(now).toISOString(),
   }
   jobs.set(userId, job)
+  let list, targets, provider
+  try {
+    list = await episodesFor(prisma, decrypt, accountId, userId, showId, deps)
+    targets = list.episodes.filter(upTo(s, ep)).filter((e) => aired(e.released, now))
+    if (!targets.length) throw fail('No aired episodes up to there')
+    const person = await personFor(prisma, accountId, userId)
+    provider = providerFor(person, decrypt, deps.createProvider)
+  } catch (e) {
+    if (previous) jobs.set(userId, previous)
+    else jobs.delete(userId)
+    throw e
+  }
+  job.show = list.name || list.showId
+  job.total = targets.length
+  job.alreadyWatched = targets.filter((t) => t.watched).length
+  job.server = provider ? { state: 'waiting', marked: 0, total: null, how: null } : null
   const record = { added: [], serverIds: [] }
   undoable.set(userId, record)
 
@@ -243,22 +256,40 @@ async function undo(prisma, decrypt, accountId, userId, deps = {}) {
   if (!job || job.state !== 'done' || !record) throw fail('Nothing to undo')
   const person = await personFor(prisma, accountId, userId)
   const provider = record.serverIds.length ? providerFor(person, decrypt, deps.createProvider) : null
-  undoable.delete(userId)
   job.state = 'undoing'
+  job.error = null
   const work = (async () => {
+    // What could not be taken back stays in the record, so Undo can be tried again.
+    const leftAdded = []
+    const leftServer = []
     for (const a of record.added) {
       const where = { accountId, userId, videoId: a.videoId }
-      if (a.existed) await prisma.episodeWatchHistory.updateMany({ where, data: { completed: false } })
-      else await prisma.episodeWatchHistory.deleteMany({ where })
+      try {
+        if (a.existed) await prisma.episodeWatchHistory.updateMany({ where, data: { completed: false } })
+        else await prisma.episodeWatchHistory.deleteMany({ where })
+      } catch {
+        leftAdded.push(a)
+      }
     }
     if (provider) {
       await mapLimit(record.serverIds, SERVER_CONCURRENCY, async (itemId) => {
-        try { await provider.setPlayed(itemId, false) } catch { /* left played there */ }
+        try { await provider.setPlayed(itemId, false) } catch { leftServer.push(itemId) }
       })
+    } else {
+      leftServer.push(...record.serverIds)
     }
-    job.state = 'undone'
+    const failed = leftAdded.length + leftServer.length
+    if (failed) {
+      record.added = leftAdded
+      record.serverIds = leftServer
+      job.state = 'done'
+      job.error = `${failed} couldn’t be undone - try Undo again`
+    } else {
+      undoable.delete(userId)
+      job.state = 'undone'
+    }
   })().catch((e) => {
-    job.state = 'failed'
+    job.state = 'done'
     job.error = e?.message || 'Could not undo'
   })
   if (deps.wait) await work

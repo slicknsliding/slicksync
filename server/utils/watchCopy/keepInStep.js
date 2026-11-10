@@ -143,6 +143,7 @@ async function runPerson(prisma, deps, setting, now = Date.now(), report = {}) {
     if (!locks.take(lockKey, 'keepInStep')) { problems.push(`${placeLabel(p)} is busy with a copy - trying again shortly`); continue }
     try {
       const w = await ADAPTERS[target.kind].write(target.provider, target.read, items, { ...deps, now })
+      require('../ownWrites').note(target.signInId, w.own)
       const failed = new Set((w.failed || []).map((f) => f.key))
       for (const i of items) {
         if (failed.has(i.key)) continue

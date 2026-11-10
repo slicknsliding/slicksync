@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { BellAlertIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
+import { setPushHint } from '@/lib/pushHint';
 import { toast } from '@/components/ui/Toast';
 
 // Turns the browser's Push API subscription into a one-button toggle. Enabling
@@ -41,10 +42,16 @@ export function PushNotificationToggle() {
 
     // Is push available on the server (VAPID configured), and are we already
     // subscribed on this device?
-    api.getPushVapidKey().then((r) => setServerEnabled(r.enabled)).catch(() => setServerEnabled(false));
+    const vapid = api.getPushVapidKey();
+    vapid.then((r) => setServerEnabled(r.enabled)).catch(() => setServerEnabled(false));
     navigator.serviceWorker.getRegistration()
       .then((reg) => reg?.pushManager.getSubscription())
-      .then((sub) => setSubscribed(!!sub))
+      .then(async (sub) => {
+        setSubscribed(!!sub);
+        // Keep the service worker's note current for devices turned on before it existed.
+        const r = await vapid.catch(() => null);
+        if (sub && r?.publicKey) setPushHint({ kind: 'admin', publicKey: r.publicKey });
+      })
       .catch(() => {});
   }, []);
 
@@ -68,6 +75,7 @@ export function PushNotificationToggle() {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
       await api.savePushSubscription(sub.toJSON(), navigator.userAgent);
+      setPushHint({ kind: 'admin', publicKey });
       setSubscribed(true);
       toast.success('Phone notifications enabled on this device');
     } catch (e: any) {
@@ -86,6 +94,7 @@ export function PushNotificationToggle() {
         await api.removePushSubscription(sub.endpoint).catch(() => {});
         await sub.unsubscribe().catch(() => {});
       }
+      setPushHint(null);
       setSubscribed(false);
       toast.success('Notifications disabled on this device');
     } catch (e: any) {

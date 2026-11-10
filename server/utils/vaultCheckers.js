@@ -1,6 +1,14 @@
 // Vault entry "active" checkers. Each returns { ok: boolean, message: string, expiresAt?: Date }
 // testConfig is a parsed JSON object stored per-entry; shape varies by testType.
 
+const { readBounded } = require('./boundedBody')
+
+// A check only needs the start of a response; reading it whole would let a
+// hostile or broken endpoint hold the process's memory or the check open.
+async function readText(res, maxBytes = 1024 * 1024) {
+  try { return (await readBounded(res, { maxBytes, timeoutMs: 15000 })).toString('utf8') } catch { return '' }
+}
+
 const net = require('net')
 const dns = require('dns').promises
 const { assertSafeUrl, safeFetch, instancePolicy, isPrivateIp, isLinkLocalIp } = require('./safeUrl')
@@ -114,7 +122,7 @@ async function checkGenericHttp(secret, config = {}) {
 
   try {
     const res = await fetchWithRetry(finalUrl, { method, headers }, { checked: true })
-    const text = await res.text().catch(() => '')
+    const text = await readText(res)
     const statusOk = Array.isArray(expectStatus) ? expectStatus.includes(res.status) : res.status === expectStatus
     if (!statusOk) return { ok: false, message: `Unexpected status ${res.status}` }
     if (bodyContains && !text.includes(bodyContains)) return { ok: false, message: 'Response did not match expected content' }
@@ -205,7 +213,7 @@ async function checkNewznabCaps(secret, config = {}) {
       return { ok: false, message: 'Indexer returned 403 - likely blocking this server\'s IP (common for private indexers/Usenet providers toward cloud/VPS hosting ranges), not necessarily the API key' }
     }
     if (!res.ok) return { ok: false, message: `Indexer returned ${res.status}` }
-    const text = await res.text()
+    const text = await readText(res)
     if (/error/i.test(text) && /apikey|api key|invalid/i.test(text)) {
       return { ok: false, message: 'API key rejected' }
     }
@@ -338,8 +346,9 @@ async function checkStremioAuth(secret, config = {}) {
 
     logDebug({
       event: 'stremio_raw_login_response',
-      identifier,
-      rawResult,
+      // Never the response itself: a successful one carries the sign-in key.
+      gotAuthKey: !!rawResult?.authKey,
+      rawError: rawResult?.error || rawResult?.message,
       rawErrMessage: rawErr?.message,
       rawErrStatus: rawErr?.status || rawErr?.statusCode,
       rawErrBody: rawErr?.body || rawErr?.response
@@ -360,8 +369,8 @@ async function checkStremioAuth(secret, config = {}) {
     if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
     if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
     if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: false, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
-    logDebug({ event: 'stremio_auth_threw', identifier, message: err?.message, stack: err?.stack })
-    console.warn('[VaultCheck] Stremio auth threw for', identifier, err)
+    logDebug({ event: 'stremio_auth_threw', message: err?.message, stack: err?.stack })
+    console.warn('[VaultCheck] Stremio auth threw:', err?.message)
     return { ok: false, message: err?.message || 'Stremio login failed' }
   }
 }
@@ -425,7 +434,50 @@ async function checkOpenAiCompatible(secret, config = {}) {
   }
 }
 
+// IPTV (Xtream) login: the server's own player_api answers with the account,
+// its status and when it runs out - the same sign-in AIOStreams' IPTV
+// option makes. The address is one the account chose, so it is fetched
+// through the safe-address rule like any other check address.
+function xtreamBase(server) {
+  const trimmed = String(server || '').trim()
+  if (!trimmed) return null
+  let url
+  try { url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`) } catch { return null }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  const path = url.pathname.replace(/\/(player_api|get|xmltv)\.php$/i, '').replace(/\/+$/, '')
+  return `${url.origin}${path}`
+}
+
+async function checkXtreamAuth(secret, config = {}) {
+  const base = xtreamBase(config.url)
+  if (!base) return { ok: false, message: 'No IPTV server address on file for this entry' }
+  const username = config.identifier
+  if (!username) return { ok: false, message: 'No IPTV username on file for this entry' }
+  if (!secret) return { ok: false, message: 'No IPTV password on file for this entry' }
+  try {
+    const url = `${base}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(secret)}`
+    const res = await fetchWithRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' } }, { checked: true })
+    if (res.status === 401 || res.status === 403) return { ok: false, message: 'The IPTV server turned the login down' }
+    if (!res.ok) return { ok: false, message: `The IPTV server returned ${res.status}` }
+    let data
+    try { data = JSON.parse(await readText(res)) } catch { return { ok: false, message: 'That address did not answer like an IPTV server' } }
+    const info = data && typeof data === 'object' ? data.user_info : null
+    if (!info || typeof info !== 'object') return { ok: false, message: 'That address did not answer like an IPTV server' }
+    if (Number(info.auth) !== 1) return { ok: false, message: 'The IPTV server turned the login down' }
+    const secs = Number(info.exp_date)
+    const expiresAt = Number.isFinite(secs) && secs > 0 ? new Date(secs * 1000) : undefined
+    const status = String(info.status || '').trim()
+    if (status && status.toLowerCase() !== 'active') {
+      return { ok: false, message: `Login works, but the account is ${status.toLowerCase()}`, expiresAt }
+    }
+    return { ok: true, message: `Login works${expiresAt ? `, runs out ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
 const CHECKERS = {
+  xtream_auth: checkXtreamAuth,
   openai_compatible: checkOpenAiCompatible,
   generic_http: checkGenericHttp,
   real_debrid: checkRealDebrid,
@@ -449,4 +501,4 @@ async function runCheck(testType, secret, config) {
   }
 }
 
-module.exports = { runCheck, CHECKERS, fetchAiModels }
+module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase }

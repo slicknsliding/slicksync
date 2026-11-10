@@ -229,20 +229,34 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // total - see utils/watchDedup.js for the rationale.
       const watchSecondsByUser = new Map()
       try {
+        // The database sums everyone; only people who share an email with
+        // someone else (the only rows the dedup can touch) are read row by
+        // row. Reading every row on every visit was 1.5 s on two years of a
+        // big household's history.
         const accountIdForScope = getAccountId(req) || 'default'
-        const [activities, siblings] = await Promise.all([
-          prisma.watchActivity.findMany({
+        const [sums, siblings] = await Promise.all([
+          prisma.watchActivity.groupBy({
+            by: ['userId'],
             where: { accountId: accountIdForScope },
-            select: { userId: true, itemId: true, date: true, watchTimeSeconds: true, profileLabel: true }
+            _sum: { watchTimeSeconds: true }
           }),
           prisma.user.findMany({
             where: { accountId: accountIdForScope },
             select: { id: true, email: true, nuvioProfileId: true }
           })
         ])
+        for (const s of sums) watchSecondsByUser.set(s.userId, s._sum?.watchTimeSeconds || 0)
         const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('../utils/watchDedup')
-        for (const a of dedupWatchActivityBySharedEmail(activities, findSharedEmailUserIds(siblings))) {
-          watchSecondsByUser.set(a.userId, (watchSecondsByUser.get(a.userId) || 0) + (a.watchTimeSeconds || 0))
+        const shared = findSharedEmailUserIds(siblings)
+        if (shared.size) {
+          const activities = await prisma.watchActivity.findMany({
+            where: { accountId: accountIdForScope, userId: { in: [...shared] } },
+            select: { userId: true, itemId: true, date: true, watchTimeSeconds: true, profileLabel: true }
+          })
+          for (const id of shared) watchSecondsByUser.delete(id)
+          for (const a of dedupWatchActivityBySharedEmail(activities, shared)) {
+            watchSecondsByUser.set(a.userId, (watchSecondsByUser.get(a.userId) || 0) + (a.watchTimeSeconds || 0))
+          }
         }
       } catch (error) {
         console.warn('Error fetching watch time:', error.message)
@@ -1997,9 +2011,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // capped feed. It is a deliberately heavier build, so it neither reads
       // from nor writes to the shared cache - the dashboard has to keep being
       // handed the small, fast payload it was built for.
-      const deepActivity = req.query.deep === '1' || req.query.deep === 'true'
+      // deep=1, 2, 3... reaches further back each step (metricsBuilder.js
+      // deepActivityTake); deep=true is step 1.
+      const deepStep = req.query.deep === 'true' ? 1 : Math.floor(Number(req.query.deep))
+      const deepActivity = Number.isFinite(deepStep) && deepStep >= 1 ? Math.min(deepStep, 100) : false
 
-      const { getCachedMetrics, setCachedMetrics, buildOnce } = require('../utils/metricsCache')
+      const { getCachedMetrics, setCachedMetrics, buildOnce, getMetricsStamp } = require('../utils/metricsCache')
       const { buildMetricsForAccount } = require('../utils/metricsBuilder')
 
       // Try in-memory metrics cache first (populated by activityMonitor every 5 minutes)
@@ -2009,10 +2026,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         console.log(`[API] Returning cached metrics for ${period}`)
         // Everything in the cached object can be a few minutes old except
         // who is watching right now - that is read live on every request.
-        let answer = cached
+        // recentEpisodes is left out of what the app is sent: it repeats the
+        // series half of recentActivity (2.7 MB of a 12.6 MB all-time answer)
+        // and nothing in the app reads it. The external metrics.json keeps it.
+        let answer = { ...cached, recentEpisodes: undefined }
         try {
           const { liveNowPlaying } = require('../utils/metricsBuilder')
-          answer = { ...cached, nowPlaying: await liveNowPlaying(prisma, accountId) }
+          answer = { ...cached, recentEpisodes: undefined, nowPlaying: await liveNowPlaying(prisma, accountId), buildStamp: getMetricsStamp(accountId, period) }
         } catch (e) {
           console.warn('[API] Live Now Playing failed, sending the cached list:', e?.message)
         }
@@ -2025,16 +2045,37 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       console.log(`[API] Building metrics for ${period}...`)
       // Build on demand (also used on first boot or if scheduler hasn't run yet)
       const build = () => buildMetricsForAccount({ prisma, accountId, period, decrypt, deepActivity })
-      const metrics = deepActivity ? await build() : await buildOnce(accountId, period, build)
+      // A deep build is shared by everyone asking for the same step at once
+      // (a second tab, a double scroll) rather than run again beside it.
+      const metrics = await buildOnce(accountId, deepActivity ? `${period}:deep${deepActivity}` : period, build)
 
       console.log(`[API] Metrics built. Sessions: ${metrics.watchSessions?.length}, Episodes: ${metrics.recentEpisodes?.length}`)
 
       if (!deepActivity) setCachedMetrics(accountId, period, metrics)
-      res.json(metrics)
+      res.json(deepActivity ? { ...metrics, recentEpisodes: undefined } : { ...metrics, recentEpisodes: undefined, buildStamp: getMetricsStamp(accountId, period) })
       warmActivityPosters(metrics)
     } catch (error) {
       console.error('Error fetching metrics:', error)
       res.status(500).json({ error: 'Failed to fetch metrics' })
+    }
+  })
+
+  // GET /users/metrics/now-playing - only who is watching right now, plus the
+  // stamp of the cached feed build it goes with, so a page that already holds
+  // the feed can tell whether the feed itself has changed without fetching it.
+  router.get('/metrics/now-playing', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const period = req.query.period || '30d'
+      const { getMetricsStamp } = require('../utils/metricsCache')
+      const { liveNowPlaying } = require('../utils/metricsBuilder')
+      res.json({ nowPlaying: await liveNowPlaying(prisma, accountId), buildStamp: getMetricsStamp(accountId, period) })
+    } catch (error) {
+      console.error('Error fetching now playing:', error)
+      res.status(500).json({ error: 'Failed to fetch now playing' })
     }
   })
 
@@ -2154,38 +2195,38 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         prisma.watchActivity.count({ where: { accountId: accountIdValue } })
       ])
 
-      // Get watch activity grouped by user
-      const activities = await prisma.watchActivity.findMany({
+      // Watch activity grouped by user (and type) in the database - reading
+      // every row to count them took ~2 s on two years of a big household.
+      const grouped = await prisma.watchActivity.groupBy({
+        by: ['userId', 'itemType'],
         where: { accountId: accountIdValue },
-        select: {
-          userId: true,
-          itemId: true,
-          itemType: true,
-          watchTimeSeconds: true,
-          date: true
-        },
-        orderBy: { date: 'asc' }
+        _count: { _all: true },
+        _sum: { watchTimeSeconds: true },
+        _min: { date: true },
+        _max: { date: true }
       })
 
       // Group by user
       const userActivityMap = {}
-      for (const activity of activities) {
-        if (!userActivityMap[activity.userId]) {
-          userActivityMap[activity.userId] = {
-            userId: activity.userId,
+      for (const g of grouped) {
+        if (!userActivityMap[g.userId]) {
+          userActivityMap[g.userId] = {
+            userId: g.userId,
             movies: 0,
             shows: 0,
             watchTime: 0,
             dates: []
           }
         }
-        if (activity.itemType === 'movie') {
-          userActivityMap[activity.userId].movies++
-        } else if (activity.itemType === 'series') {
-          userActivityMap[activity.userId].shows++
+        const rows = g._count?._all || 0
+        if (g.itemType === 'movie') {
+          userActivityMap[g.userId].movies += rows
+        } else if (g.itemType === 'series') {
+          userActivityMap[g.userId].shows += rows
         }
-        userActivityMap[activity.userId].watchTime += activity.watchTimeSeconds || 0
-        userActivityMap[activity.userId].dates.push(activity.date)
+        userActivityMap[g.userId].watchTime += g._sum?.watchTimeSeconds || 0
+        if (g._min?.date) userActivityMap[g.userId].dates.push(g._min.date)
+        if (g._max?.date) userActivityMap[g.userId].dates.push(g._max.date)
       }
 
       // Get user info
@@ -3408,6 +3449,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         })
       ])
       await require('../utils/jellyfinProfiles').forgetPersonHousehold(prisma, id)
+      await require('../utils/watchTogether').removeUserFromPacts(prisma, getAccountId(req), id)
 
       res.json({ message: 'User deleted successfully' });
     } catch (error) {
@@ -5652,63 +5694,83 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         whereClause.userId = userId
       }
 
-      // Get watch sessions
-      const watchSessions = await prisma.watchSession.findMany({
-        where: whereClause,
-        orderBy: { startTime: 'desc' }
+      // Written out a page at a time rather than built whole: on two years of
+      // a big household the file is ~200 MB, and holding every row plus the
+      // finished string at once took the server most of a gigabyte and 18 s
+      // of mostly-blocked time. The file is byte-for-byte what res.json wrote
+      // before: same keys, same order, counts last.
+      const PAGE = 10000
+      const tables = [
+        { key: 'watchSessions', model: prisma.watchSession, order: 'startTime', map: (s) => ({ ...s, accountId: undefined }) },
+        { key: 'episodeWatchHistory', model: prisma.episodeWatchHistory, order: 'watchedAt', map: (h) => ({ ...h, accountId: undefined }) },
+        { key: 'watchActivity', model: prisma.watchActivity, order: 'date', map: (a) => ({ ...a, accountId: undefined }) },
+        {
+          key: 'watchSnapshots', model: prisma.watchSnapshot, order: 'date', map: (s) => ({
+            ...s,
+            accountId: undefined,
+            overallTimeWatched: s.overallTimeWatched !== null && s.overallTimeWatched !== undefined ? String(s.overallTimeWatched) : undefined,
+            timeOffset: s.timeOffset !== null && s.timeOffset !== undefined ? String(s.timeOffset) : undefined,
+            timeWatched: s.timeWatched !== null && s.timeWatched !== undefined ? String(s.timeWatched) : undefined
+          })
+        },
+      ]
+
+      const write = (chunk) => new Promise((resolve, reject) => {
+        if (res.destroyed) return reject(new Error('client went away'))
+        if (res.write(chunk)) return resolve()
+        const onClose = () => { res.off('drain', onDrain); reject(new Error('client went away')) }
+        const onDrain = () => { res.off('close', onClose); resolve() }
+        res.once('drain', onDrain)
+        res.once('close', onClose)
       })
 
-      // Get episode watch history
-      const episodeHistory = await prisma.episodeWatchHistory.findMany({
-        where: whereClause,
-        orderBy: { watchedAt: 'desc' }
-      })
-
-      // Get watch activity
-      const watchActivity = await prisma.watchActivity.findMany({
-        where: whereClause,
-        orderBy: { date: 'desc' }
-      })
-
-      // Get watch snapshots
-      const watchSnapshots = await prisma.watchSnapshot.findMany({
-        where: whereClause,
-        orderBy: { date: 'desc' }
-      })
-
-      // Build export data
-      const exportData = {
-        exportedAt: new Date().toISOString(),
-        userId: userId || 'all',
-        watchSessions: watchSessions.map(s => ({
-          ...s,
-          accountId: undefined // Don't export accountId
-        })),
-        episodeWatchHistory: episodeHistory.map(h => ({
-          ...h,
-          accountId: undefined
-        })),
-        watchActivity: watchActivity.map(a => ({
-          ...a,
-          accountId: undefined
-        })),
-        watchSnapshots: watchSnapshots.map(s => ({
-          ...s,
-          accountId: undefined,
-          overallTimeWatched: s.overallTimeWatched !== null && s.overallTimeWatched !== undefined ? String(s.overallTimeWatched) : undefined,
-          timeOffset: s.timeOffset !== null && s.timeOffset !== undefined ? String(s.timeOffset) : undefined
-        })),
-        counts: {
-          watchSessions: watchSessions.length,
-          episodeWatchHistory: episodeHistory.length,
-          watchActivity: watchActivity.length,
-          watchSnapshots: watchSnapshots.length
+      res.status(200)
+      res.set('Content-Type', 'application/json; charset=utf-8')
+      const head = JSON.stringify({ exportedAt: new Date().toISOString(), userId: userId || 'all' })
+      await write(head.slice(0, -1))
+      const counts = {}
+      for (const table of tables) {
+        await write(`,${JSON.stringify(table.key)}:[`)
+        let count = 0
+        const field = table.order
+        const at = (row) => new Date(row[field]).getTime()
+        // Newest first as before. Each page continues below the oldest time
+        // the last one ended on, read in the order the time index already
+        // gives (a cursor with an id tie-break made the database sort the
+        // whole remainder for every page). Rows sharing the page's last time
+        // are read as one group, so a page edge never splits, skips or
+        // repeats them; within a page, ties go by id.
+        let before = null
+        for (;;) {
+          const where = before ? { ...whereClause, [field]: { lt: before } } : whereClause
+          let rows = await table.model.findMany({ where, orderBy: { [field]: 'desc' }, take: PAGE })
+          if (rows.length === 0) break
+          const full = rows.length === PAGE
+          if (full) {
+            const edge = rows[rows.length - 1][field]
+            rows = rows.filter((r) => at(r) !== new Date(edge).getTime())
+            rows.push(...await table.model.findMany({ where: { ...whereClause, [field]: edge } }))
+            before = edge
+          }
+          rows.sort((x, y) => at(y) - at(x) || (x.id < y.id ? 1 : x.id > y.id ? -1 : 0))
+          let out = ''
+          for (const row of rows) {
+            out += (count === 0 ? '' : ',') + JSON.stringify(table.map(row))
+            count++
+          }
+          await write(out)
+          if (!full) break
         }
+        await write(']')
+        counts[table.key] = count
       }
-
-      res.json(exportData)
+      await write(`,"counts":${JSON.stringify(counts)}}`)
+      res.end()
     } catch (error) {
       console.error('Error exporting history:', error)
+      // Once the file has started there is no status left to send; cutting it
+      // off leaves the download visibly broken rather than quietly short.
+      if (res.headersSent) return res.destroy(error)
       res.status(500).json({ message: 'Failed to export history', error: publicMessage(error, 'Failed to export history') })
     }
   })
@@ -8104,359 +8166,6 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error updating user activity visibility:', error)
       res.status(500).json({ error: 'Failed to update activity visibility', details: publicMessage(error, 'Failed to update activity visibility') })
-    }
-  })
-
-  // ==================== SHARES ENDPOINTS ====================
-  const { getShares, addShare, removeShare, markShareAsViewed, getGroupMembers } = require('../utils/sharesManager')
-  const { getCachedLibrary } = require('../utils/libraryCache')
-
-  // Get all shares for a user (sent + received)
-  router.get('/:userId/shares', async (req, res) => {
-    try {
-      const { userId } = req.params
-      const accountId = getAccountId(req)
-
-      if (!accountId) {
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-
-      // Verify user exists and belongs to account
-      const user = await prisma.user.findFirst({
-        where: { id: userId, accountId },
-        select: { id: true, username: true }
-      })
-
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' })
-      }
-
-      const shares = getShares(accountId, userId)
-      res.json(shares)
-    } catch (error) {
-      console.error(`Failed to get shares for user ${req.params.userId}:`, error)
-      res.status(500).json({ error: 'Failed to get shares', message: publicMessage(error, 'Failed to get shares') })
-    }
-  })
-
-  // Get received shares only
-  router.get('/:userId/shares/received', async (req, res) => {
-    try {
-      const { userId } = req.params
-      const accountId = getAccountId(req)
-
-      if (!accountId) {
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-
-      const user = await prisma.user.findFirst({
-        where: { id: userId, accountId },
-        select: { id: true }
-      })
-
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' })
-      }
-
-      const shares = getShares(accountId, userId)
-      res.json({ received: shares.received })
-    } catch (error) {
-      console.error(`Failed to get received shares for user ${req.params.userId}:`, error)
-      res.status(500).json({ error: 'Failed to get received shares', message: publicMessage(error, 'Failed to get received shares') })
-    }
-  })
-
-  // Get group members (users in same group)
-  router.get('/:userId/shares/group-members', async (req, res) => {
-    try {
-      const { userId } = req.params
-      const accountId = getAccountId(req)
-
-      if (!accountId) {
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-
-      const user = await prisma.user.findFirst({
-        where: { id: userId, accountId },
-        select: { id: true }
-      })
-
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' })
-      }
-
-      const groupMembers = await getGroupMembers(prisma, accountId, userId)
-      res.json({ members: groupMembers })
-    } catch (error) {
-      console.error(`Failed to get group members for user ${req.params.userId}:`, error)
-      res.status(500).json({ error: 'Failed to get group members', message: publicMessage(error, 'Failed to get group members') })
-    }
-  })
-
-  // Share item(s) with user(s)
-  router.post('/:userId/shares', async (req, res) => {
-    try {
-      const { userId } = req.params
-      const { items, targetUserIds } = req.body
-      const accountId = getAccountId(req)
-
-      if (!accountId) {
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-
-      if (!Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ error: 'Items array is required' })
-      }
-
-      if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
-        return res.status(400).json({ error: 'Target user IDs array is required' })
-      }
-
-      // Verify sender exists and get info for notification
-      const sender = await prisma.user.findFirst({
-        where: { id: userId, accountId },
-        select: { id: true, username: true, email: true, colorIndex: true }
-      })
-
-      if (!sender) {
-        return res.status(404).json({ error: 'User not found' })
-      }
-
-      // Get target users with their Discord webhook URLs for notifications
-      const targetUsers = await prisma.user.findMany({
-        where: { id: { in: targetUserIds }, accountId },
-        select: { id: true, username: true, discordWebhookUrl: true }
-      })
-      const targetUserMap = new Map(targetUsers.map(u => [u.id, u]))
-
-      // Get account sync config for account-level webhook
-      let accountWebhookUrl = null
-      try {
-        const account = await prisma.appAccount.findUnique({
-          where: { id: accountId },
-          select: { sync: true }
-        })
-        let syncCfg = account?.sync
-        if (typeof syncCfg === 'string') {
-          try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null }
-        }
-        if (syncCfg && typeof syncCfg === 'object' && syncCfg.notifyOnActivity === true && syncCfg.webhookUrl) {
-          accountWebhookUrl = syncCfg.webhookUrl
-        }
-      } catch {}
-
-      // Verify all target users exist and are in the same group
-      const groupMembers = await getGroupMembers(prisma, accountId, userId)
-      const groupMemberIds = new Set(groupMembers.map(u => u.id))
-
-      const invalidTargets = targetUserIds.filter(id => !groupMemberIds.has(id))
-      if (invalidTargets.length > 0) {
-        return res.status(400).json({
-          error: 'Some target users are not in your group',
-          invalidTargets
-        })
-      }
-
-      // Get sender's library to verify items exist
-      const senderLibrary = getCachedLibrary(accountId, userId) || []
-      const libraryItemMap = new Map()
-      const baseIdMap = new Map() // Map base IDs (tt...) to any matching library item
-
-      senderLibrary.forEach(item => {
-        const itemId = item._id || item.id
-        if (itemId) {
-          libraryItemMap.set(itemId, item)
-          // Also index by base ID (everything before the first colon)
-          const baseId = itemId.split(':')[0]
-          if (baseId && !baseIdMap.has(baseId)) {
-            baseIdMap.set(baseId, item)
-          }
-        }
-      })
-
-      // Helper to find item in library (exact match first, then base ID match)
-      const findLibraryItem = (searchId) => {
-        // Try exact match first
-        let found = libraryItemMap.get(searchId)
-        if (found) return found
-
-        // Try base ID match (for shows where we might have episode IDs)
-        const baseId = searchId.split(':')[0]
-        found = baseIdMap.get(baseId)
-        if (found) return found
-
-        return null
-      }
-
-      // Build valid items - use library data when available, fall back to frontend data
-      const validItems = []
-      for (const item of items) {
-        const itemId = item.itemId || item._id || item.id
-        const libraryItem = findLibraryItem(itemId)
-
-        // Accept item if found in library OR if frontend provided enough data
-        if (libraryItem || (item.itemName && item.itemType)) {
-          validItems.push({
-            itemId,
-            itemName: libraryItem?.name || item.itemName || 'Unknown',
-            itemType: libraryItem?.type || item.itemType || 'movie',
-            poster: libraryItem?.poster || item.poster || ''
-          })
-        }
-      }
-
-      if (validItems.length === 0) {
-        return res.status(400).json({
-          error: 'No valid items to share'
-        })
-      }
-
-      // Share each item with each target user
-      const results = []
-      const errors = []
-
-      // Track which users received shares for notifications
-      const notificationsToSend = []
-
-      for (const item of validItems) {
-        for (const targetUserId of targetUserIds) {
-          try {
-            const targetUser = groupMembers.find(u => u.id === targetUserId)
-            if (!targetUser) continue
-
-            const share = addShare(
-              accountId,
-              userId,
-              targetUserId,
-              item,
-              sender.username,
-              targetUser.username
-            )
-            results.push(share)
-
-            // Queue notification if target user has a Discord webhook
-            const targetUserData = targetUserMap.get(targetUserId)
-            if (targetUserData?.discordWebhookUrl) {
-              notificationsToSend.push({
-                webhookUrl: targetUserData.discordWebhookUrl,
-                item
-              })
-            }
-
-            // Also queue account-level notification if enabled
-            if (accountWebhookUrl) {
-              notificationsToSend.push({
-                webhookUrl: accountWebhookUrl,
-                item,
-                isAccountNotification: true
-              })
-            }
-          } catch (error) {
-            if (error.message.includes('already shared')) {
-              // Skip duplicates silently
-              continue
-            }
-            errors.push({ itemId: item.itemId, targetUserId, error: publicMessage(error, 'Something went wrong') })
-          }
-        }
-      }
-
-      // Send Discord notifications to target users (don't block the response)
-      if (notificationsToSend.length > 0) {
-        // Fire and forget - send notifications in the background
-        setImmediate(async () => {
-          for (const notification of notificationsToSend) {
-            try {
-              const isAccount = notification.isAccountNotification
-              const username = isAccount
-                ? `${sender.username} shared with ${targetUserMap.get(notification.item.targetUserId)?.username || 'a user'}`
-                : sender.username
-              const email = isAccount ? sender.email : sender.email
-              await sendShareNotification(
-                notification.webhookUrl,
-                username,
-                email,
-                sender.colorIndex,
-                notification.item
-              )
-            } catch (err) {
-              // Silently fail - notifications are best effort
-            }
-          }
-        })
-      }
-
-      res.json({
-        success: errors.length === 0,
-        shared: results.length,
-        results,
-        errors: errors.length > 0 ? errors : undefined
-      })
-    } catch (error) {
-      console.error(`Failed to share items for user ${req.params.userId}:`, error)
-      res.status(500).json({ error: 'Failed to share items', message: publicMessage(error, 'Failed to share items') })
-    }
-  })
-
-  // Remove a share
-  router.delete('/:userId/shares/:shareId', async (req, res) => {
-    try {
-      const { userId, shareId } = req.params
-      const accountId = getAccountId(req)
-
-      if (!accountId) {
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-
-      const user = await prisma.user.findFirst({
-        where: { id: userId, accountId },
-        select: { id: true }
-      })
-
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' })
-      }
-
-      const removed = removeShare(accountId, userId, shareId)
-      if (!removed) {
-        return res.status(404).json({ error: 'Share not found' })
-      }
-
-      res.json({ success: true, message: 'Share removed' })
-    } catch (error) {
-      console.error(`Failed to remove share ${req.params.shareId} for user ${req.params.userId}:`, error)
-      res.status(500).json({ error: 'Failed to remove share', message: publicMessage(error, 'Failed to remove share') })
-    }
-  })
-
-  // Mark share as viewed
-  router.put('/:userId/shares/:shareId/viewed', async (req, res) => {
-    try {
-      const { userId, shareId } = req.params
-      const accountId = getAccountId(req)
-
-      if (!accountId) {
-        return res.status(401).json({ error: 'Unauthorized' })
-      }
-
-      const user = await prisma.user.findFirst({
-        where: { id: userId, accountId },
-        select: { id: true }
-      })
-
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' })
-      }
-
-      const marked = markShareAsViewed(accountId, userId, shareId)
-      if (!marked) {
-        return res.status(404).json({ error: 'Share not found' })
-      }
-
-      res.json({ success: true, message: 'Share marked as viewed' })
-    } catch (error) {
-      console.error(`Failed to mark share ${req.params.shareId} as viewed for user ${req.params.userId}:`, error)
-      res.status(500).json({ error: 'Failed to mark share as viewed', message: publicMessage(error, 'Failed to mark share as viewed') })
     }
   })
 

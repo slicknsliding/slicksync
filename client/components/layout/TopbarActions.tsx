@@ -8,6 +8,8 @@ import { NotificationsDropdown, FLOATING_ICON_STYLE } from '@/components/ui/Noti
 import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
 import { ResumeTourIcon } from '@/components/ui/icons/ResumeTourIcon';
 import { openCommandPalette } from '@/lib/commandPaletteBus';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import {
   isOnboardingUnfinished,
   completeOnboarding,
@@ -200,6 +202,9 @@ export function TopbarActions({
   }, [measure]);
 
   const resume = () => window.dispatchEvent(new Event(ONBOARDING_RESUME_EVENT));
+  // TV: each of these is a remote stop; OK does what a click does.
+  const isTV = useIsTV();
+  const stop = (node: React.ReactNode, onEnter: () => void) => (isTV ? <TVFocusable className="inline-flex rounded-lg" onEnterPress={onEnter}>{node}</TVFocusable> : node);
 
   // This X is the real dismissal - the wizard's own X is only "not now".
   const dismiss = () => completeOnboarding();
@@ -214,22 +219,24 @@ export function TopbarActions({
       }}
     >
       <ResumeTourIcon className="w-6 h-6 shrink-0" style={{ color: 'var(--color-primary)' }} />
-      <button
+      {stop(<button
         onClick={resume}
+        tabIndex={isTV ? -1 : undefined}
         className="px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-opacity hover:opacity-90"
         style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
       >
         Resume tour
-      </button>
-      <button
+      </button>, resume)}
+      {stop(<button
         onClick={dismiss}
+        tabIndex={isTV ? -1 : undefined}
         title="Dismiss - don't show this again"
         aria-label="Dismiss the tour"
         className="shrink-0 p-1 rounded-lg transition-colors hover:bg-surface-hover"
         style={{ color: 'var(--color-text-muted)' }}
       >
         <XMarkIcon className="w-4 h-4" />
-      </button>
+      </button>, dismiss)}
     </div>
   );
 
@@ -250,15 +257,16 @@ export function TopbarActions({
           padding, radius, muted colour and hover treatment - so the two
           read as one pair of peer controls rather than a button next to
           an icon. */}
-      <button
+      {stop(<button
         onClick={openCommandPalette}
+        tabIndex={isTV ? -1 : undefined}
         title="Search, jump to a page, or ask how to do something (Ctrl+K)"
         aria-label="Open the command palette"
         className={`p-2 transition-colors ${floating ? 'rounded-full' : 'rounded-lg hov-surface'}`}
         style={{ color: 'var(--color-text-muted)', ...(floating ? FLOATING_ICON_STYLE : {}) }}
       >
         <WizardBooksIcon className="w-5 h-5" />
-      </button>
+      </button>, openCommandPalette)}
 
       <NotificationsDropdown
         floating={floating}

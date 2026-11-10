@@ -1,9 +1,11 @@
 const express = require('express');
 const { runCheck } = require('../utils/vaultCheckers');
+const { cleanDashboardUrl } = require('../utils/vaultFields');
+const { INSTANCE_TYPE } = require('../utils/config');
 
 const CATEGORIES = [
   'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
-  'metadata', 'ai', 'vpn', 'aiostreams', 'custom'
+  'metadata', 'ai', 'vpn', 'iptv', 'aiostreams', 'custom'
 ];
 
 module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
@@ -148,6 +150,17 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (!CATEGORIES.includes(category)) {
         return res.status(400).json({ error: `category must be one of: ${CATEGORIES.join(', ')}` });
       }
+      if (typeof name !== 'string' || typeof secret !== 'string') {
+        return res.status(400).json({ error: 'name and secret must be text' });
+      }
+      if (provider !== undefined && provider !== null && typeof provider !== 'string') {
+        return res.status(400).json({ error: 'provider must be text' });
+      }
+      const cleanUrl = cleanDashboardUrl(dashboardUrl);
+      if (cleanUrl === null) return res.status(400).json({ error: 'dashboardUrl must be an http or https address' });
+      if (expiresAt && isNaN(new Date(expiresAt).getTime())) {
+        return res.status(400).json({ error: 'expiresAt must be a valid date' });
+      }
 
       const maxPositionEntry = await prisma.vaultEntry.findFirst({
         where: { accountId, category },
@@ -166,7 +179,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           encryptedSecret: encrypt(secret, req),
           testType: testType || 'manual',
           testConfig: testConfig ? JSON.stringify(testConfig) : null,
-          dashboardUrl: dashboardUrl || null,
+          dashboardUrl: cleanUrl || null,
           cost: typeof cost === 'number' && cost >= 0 ? cost : null,
           costCycle: costCycle === 'yearly' ? 'yearly' : 'monthly',
           expiresAt: expiresAt ? new Date(expiresAt) : null,
@@ -234,6 +247,19 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         return res.status(400).json({ error: `category must be one of: ${CATEGORIES.join(', ')}` });
       }
 
+      // Wrong types are the caller's mistake (400), not a server error.
+      if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+        return res.status(400).json({ error: 'name must be non-empty text' });
+      }
+      if (provider !== undefined && provider !== null && typeof provider !== 'string') {
+        return res.status(400).json({ error: 'provider must be text' });
+      }
+      if (expiresAt && ((typeof expiresAt !== 'string' && typeof expiresAt !== 'number') || isNaN(new Date(expiresAt).getTime()))) {
+        return res.status(400).json({ error: 'expiresAt must be a valid date' });
+      }
+      const cleanUrl = dashboardUrl === undefined ? undefined : cleanDashboardUrl(dashboardUrl);
+      if (cleanUrl === null) return res.status(400).json({ error: 'dashboardUrl must be an http or https address' });
+
       const data = {};
       if (name !== undefined) data.name = name;
       if (category !== undefined) data.category = category;
@@ -242,7 +268,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (secret) data.encryptedSecret = encrypt(secret, req);
       if (testType !== undefined) data.testType = testType;
       if (testConfig !== undefined) data.testConfig = testConfig ? JSON.stringify(testConfig) : null;
-      if (dashboardUrl !== undefined) data.dashboardUrl = dashboardUrl;
+      if (cleanUrl !== undefined) data.dashboardUrl = cleanUrl || null;
       if (cost !== undefined) data.cost = typeof cost === 'number' && cost >= 0 ? cost : null;
       if (costCycle !== undefined) data.costCycle = costCycle === 'yearly' ? 'yearly' : 'monthly';
       if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
@@ -250,7 +276,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (isActive !== undefined) data.isActive = isActive;
       if (healthIgnored !== undefined) data.healthIgnored = !!healthIgnored;
       if (autoRemoveEnabled !== undefined) data.autoRemoveEnabled = !!autoRemoveEnabled;
-      if (autoRemoveAfterDays !== undefined) data.autoRemoveAfterDays = typeof autoRemoveAfterDays === 'number' && autoRemoveAfterDays > 0 ? autoRemoveAfterDays : 7;
+      if (autoRemoveAfterDays !== undefined) data.autoRemoveAfterDays = typeof autoRemoveAfterDays === 'number' && Number.isFinite(autoRemoveAfterDays) && autoRemoveAfterDays >= 1 ? Math.min(Math.floor(autoRemoveAfterDays), 3650) : 7;
 
       // Failover partner. Guarded rather than trusted: it has to be a real
       // entry on this same account, and an entry cannot back up itself
@@ -273,6 +299,17 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       let oldSecret = null;
       if (secret) {
         try { oldSecret = decrypt(existing.encryptedSecret, req); } catch { oldSecret = null; }
+      }
+
+      // An IPTV login is three parts (server, username, password); any of them
+      // changing is a new login for the AIOStreams setups that carry it.
+      let iptvBefore = null;
+      if ((category || existing.category) === 'iptv' && existing.category === 'iptv') {
+        let password = oldSecret;
+        if (password === null) { try { password = decrypt(existing.encryptedSecret, req); } catch { password = null; } }
+        let cfg = {};
+        try { cfg = existing.testConfig ? JSON.parse(existing.testConfig) : {}; } catch {}
+        iptvBefore = { server: cfg.url || '', username: existing.provider || '', password: password || '' };
       }
 
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
@@ -319,7 +356,34 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         }
       }
 
-      res.json({ success: true, rotation });
+      // IPTV logins inside AIOStreams setups of people who switched it on.
+      let iptv = null;
+      if (iptvBefore) {
+        try {
+          const after = {
+            server: testConfig !== undefined ? (testConfig?.url || '') : iptvBefore.server,
+            username: provider !== undefined ? (provider || '') : iptvBefore.username,
+            password: secret || iptvBefore.password,
+          };
+          const { rotateIptvInAioConfigs } = require('../utils/aioServiceKeys');
+          iptv = await rotateIptvInAioConfigs(prisma, decrypt, { accountId, before: iptvBefore, after });
+          if (iptv.updated.length || iptv.failed.length) {
+            const { createNotification } = require('../utils/notificationStore');
+            const parts = [];
+            if (iptv.updated.length) parts.push(`Updated the login in ${iptv.updated.length} AIOStreams setup(s) (${iptv.updated.map(a => a.username).join(', ')})`);
+            if (iptv.failed.length) parts.push(`${iptv.failed.length} AIOStreams setup(s) couldn't be updated (${iptv.failed.map(a => a.username).join(', ')}) - AIOStreams may have turned the new login down`);
+            await createNotification(prisma, accountId, {
+              type: 'task',
+              title: `IPTV login: "${existing.name}" changed`,
+              body: `${parts.join('; ')}.`,
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[Vault] IPTV login update failed (save itself succeeded):', e?.message);
+        }
+      }
+
+      res.json({ success: true, rotation, iptv });
     } catch (error) {
       console.error('Error updating vault entry:', error);
       res.status(500).json({ error: 'Failed to update vault entry' });
@@ -371,6 +435,20 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       }
       await prisma.vaultEntry.update({ where: { id: entry.id }, data: updateData });
 
+      // This write replaces lastCheckStatus, which is what the scheduled
+      // monitor compares against to spot an ok -> error flip. Raise the same
+      // alert and automation events here, or a failure found by the Test
+      // button would never be announced.
+      if (entry.lastCheckStatus === 'ok' && result.ok !== true && result.ok !== null) {
+        try {
+          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+          let cfg = acc?.sync;
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+          const { raiseCheckFailed } = require('../utils/vaultMonitor');
+          await raiseCheckFailed({ prisma, accountId, cfg: cfg || {}, entry, result });
+        } catch (e) { console.warn('[Vault] failure alert after manual test failed:', e?.message); }
+      }
+
       res.json({ ...result, checkedAt: updateData.lastCheckedAt });
     } catch (error) {
       console.error('Error testing vault entry:', error);
@@ -387,6 +465,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
 
   // POST /api/vault/backup-now - trigger an immediate backup export (in addition to the nightly schedule)
   router.post('/backup-now', async (req, res) => {
+    // A backup writes every account's decrypted secrets into one file - fine
+    // on a single-household install, never on an instance serving strangers.
+    if (INSTANCE_TYPE === 'public') return res.status(404).json({ error: 'Not available on this instance' });
     try {
       const { performVaultBackupOnce } = require('../utils/vaultBackup');
       await performVaultBackupOnce({ prisma, decrypt });

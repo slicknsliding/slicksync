@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   PuzzlePieceIcon,
@@ -20,6 +20,9 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeAddonsV2, ADDON_SECTIONS } from '@/components/v2/MeAddonsV2';
 import { MeHead } from '@/components/v2/MeBits';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { AnchoredConfirm } from '@/components/ui/AnchoredConfirm';
 
 type TabType = 'group' | 'stremio';
 
@@ -30,6 +33,7 @@ export default function UserAddonsPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const v2Arrange = usePageArrangement('addons', [...ADDON_SECTIONS]);
   const providerLabel = providerTypeLabel(provider);
   const [groupAddons, setGroupAddons] = useState<GroupAddon[]>([]);
@@ -103,11 +107,15 @@ export default function UserAddonsPage() {
     }
   };
 
-  // Remove Stremio addon
+  // Remove Stremio addon - asked first, in a small question by its Remove button.
+  const [asking, setAsking] = useState<string | null>(null);
+  const askAnchor = useRef<HTMLElement | null>(null);
+  const askToRemove = (addonName: string) => {
+    askAnchor.current = document.querySelector<HTMLElement>(`[data-remove-addon="${CSS.escape(addonName)}"]`);
+    setAsking(addonName);
+  };
   const handleRemoveAddon = async (addonName: string) => {
     if (!userId || actionLoading) return;
-
-    if (!confirm(`Are you sure you want to remove "${addonName}"?`)) return;
 
     setActionLoading(addonName);
     try {
@@ -119,6 +127,17 @@ export default function UserAddonsPage() {
       setActionLoading(null);
     }
   };
+
+  const removeQuestion = (
+    <AnchoredConfirm
+      anchorRef={askAnchor}
+      open={!!asking}
+      ask={{ title: `Remove ${asking}?`, confirmLabel: 'Remove' }}
+      onKeep={() => setAsking(null)}
+      onConfirm={() => { const name = asking; setAsking(null); if (name) handleRemoveAddon(name); }}
+      returnFocusKey={isTV && asking ? `addon-remove-${asking}` : undefined}
+    />
+  );
 
   // Add one of their own (v2): the same call, then the list is read again.
   const handleAddAddon = async (addonUrl: string): Promise<boolean> => {
@@ -188,15 +207,42 @@ export default function UserAddonsPage() {
             busy={actionLoading}
             onToggleExclude={handleToggleExclude}
             onToggleProtect={handleToggleProtect}
-            onRemove={handleRemoveAddon}
+            onRemove={askToRemove}
             onAdd={handleAddAddon}
           />
         )}
+        {removeQuestion}
       </div>
     );
   }
 
+  const groupTabBtn = (
+    <button
+      onClick={() => setActiveTab('group')}
+      className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'group' ? 'seg-on' : 'seg-off'}`}
+    >
+      Group Addons ({groupAddons.length})
+    </button>
+  );
+  const providerTabBtn = (
+    <button
+      onClick={() => setActiveTab('stremio')}
+      className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'stremio' ? 'seg-on' : 'seg-off'}`}
+    >
+      {providerLabel} Addons ({stremioAddons.length})
+    </button>
+  );
+  const dismissBtn = (
+    <button
+      onClick={() => setError(null)}
+      className="ml-2 underline hover:no-underline"
+    >
+      Dismiss
+    </button>
+  );
+
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       <UserPageHeader
         title="Addons"
@@ -210,18 +256,8 @@ export default function UserAddonsPage() {
         className="flex p-1 rounded-xl mb-6 w-fit"
         style={{ background: 'var(--color-surface)' }}
       >
-        <button
-          onClick={() => setActiveTab('group')}
-          className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'group' ? 'seg-on' : 'seg-off'}`}
-        >
-          Group Addons ({groupAddons.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('stremio')}
-          className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'stremio' ? 'seg-on' : 'seg-off'}`}
-        >
-          {providerLabel} Addons ({stremioAddons.length})
-        </button>
+        {isTV ? <TVFocusable onEnterPress={() => setActiveTab('group')}>{groupTabBtn}</TVFocusable> : groupTabBtn}
+        {isTV ? <TVFocusable onEnterPress={() => setActiveTab('stremio')}>{providerTabBtn}</TVFocusable> : providerTabBtn}
       </motion.div>
 
       {/* Loading */}
@@ -243,12 +279,7 @@ export default function UserAddonsPage() {
           style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}
         >
           {error}
-          <button
-            onClick={() => setError(null)}
-            className="ml-2 underline hover:no-underline"
-          >
-            Dismiss
-          </button>
+          {isTV ? <TVFocusable className="inline-block" onEnterPress={() => setError(null)}>{dismissBtn}</TVFocusable> : dismissBtn}
         </motion.div>
       )}
 
@@ -275,6 +306,22 @@ export default function UserAddonsPage() {
           ) : (
             groupAddons.map((addon, index) => {
               const isExcluded = excludedIds.includes(addon.id);
+              const excludeBtn = (
+                <button
+                  onClick={() => handleToggleExclude(addon.id, isExcluded)}
+                  disabled={actionLoading === addon.id}
+                  className={`p-2 rounded-lg transition-all ${isExcluded ? 'bg-success-muted' : 'bg-warning-muted'}`}
+                  title={isExcluded ? 'Include addon' : 'Exclude addon'}
+                >
+                  {actionLoading === addon.id ? (
+                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : isExcluded ? (
+                    <EyeIcon className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
+                  ) : (
+                    <EyeSlashIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
+                  )}
+                </button>
+              );
               return (
                 <motion.div
                   key={addon.id}
@@ -334,20 +381,7 @@ export default function UserAddonsPage() {
                   </div>
 
                   {/* Actions */}
-                  <button
-                    onClick={() => handleToggleExclude(addon.id, isExcluded)}
-                    disabled={actionLoading === addon.id}
-                    className={`p-2 rounded-lg transition-all ${isExcluded ? 'bg-success-muted' : 'bg-warning-muted'}`}
-                    title={isExcluded ? 'Include addon' : 'Exclude addon'}
-                  >
-                    {actionLoading === addon.id ? (
-                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : isExcluded ? (
-                      <EyeIcon className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
-                    ) : (
-                      <EyeSlashIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
-                    )}
-                  </button>
+                  {isTV ? <TVFocusable onEnterPress={() => handleToggleExclude(addon.id, isExcluded)}>{excludeBtn}</TVFocusable> : excludeBtn}
                 </motion.div>
               );
             })
@@ -395,6 +429,34 @@ export default function UserAddonsPage() {
             stremioAddons.map((addon, index) => {
               const isProtected = (protectedNames || []).includes(addon.manifest?.name || '');
               const isOfficial = addon.flags?.official;
+              const protectBtn = (
+                <button
+                  onClick={() => handleToggleProtect(addon.manifest.name, isProtected)}
+                  disabled={actionLoading === addon.manifest.name}
+                  className={`p-2 rounded-lg transition-all ${isProtected ? 'bg-warning-muted' : 'bg-success-muted'}`}
+                  title={isProtected ? 'Remove protection' : 'Protect addon'}
+                >
+                  {actionLoading === addon.manifest.name ? (
+                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : isProtected ? (
+                    <ShieldExclamationIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
+                  ) : (
+                    <ShieldCheckIcon className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
+                  )}
+                </button>
+              );
+              const removeBtn = (
+                <button
+                  data-remove-addon={addon.manifest.name}
+                  onClick={() => askToRemove(addon.manifest.name)}
+                  disabled={actionLoading === addon.manifest.name}
+                  className="p-2 rounded-lg transition-all"
+                  style={{ background: 'var(--color-error-muted)' }}
+                  title="Remove addon"
+                >
+                  <TrashIcon className="w-5 h-5" style={{ color: 'var(--color-error)' }} />
+                </button>
+              );
               return (
                 <motion.div
                   key={addon.manifest.id}
@@ -459,31 +521,10 @@ export default function UserAddonsPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleProtect(addon.manifest.name, isProtected)}
-                      disabled={actionLoading === addon.manifest.name}
-                      className={`p-2 rounded-lg transition-all ${isProtected ? 'bg-warning-muted' : 'bg-success-muted'}`}
-                      title={isProtected ? 'Remove protection' : 'Protect addon'}
-                    >
-                      {actionLoading === addon.manifest.name ? (
-                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : isProtected ? (
-                        <ShieldExclamationIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
-                      ) : (
-                        <ShieldCheckIcon className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
-                      )}
-                    </button>
+                    {isTV ? <TVFocusable onEnterPress={() => handleToggleProtect(addon.manifest.name, isProtected)}>{protectBtn}</TVFocusable> : protectBtn}
                     
                     {!isProtected && !isOfficial && (
-                      <button
-                        onClick={() => handleRemoveAddon(addon.manifest.name)}
-                        disabled={actionLoading === addon.manifest.name}
-                        className="p-2 rounded-lg transition-all"
-                        style={{ background: 'var(--color-error-muted)' }}
-                        title="Remove addon"
-                      >
-                        <TrashIcon className="w-5 h-5" style={{ color: 'var(--color-error)' }} />
-                      </button>
+                      isTV ? <TVFocusable focusKey={`addon-remove-${addon.manifest.name}`} onEnterPress={() => askToRemove(addon.manifest.name)}>{removeBtn}</TVFocusable> : removeBtn
                     )}
                   </div>
                 </motion.div>
@@ -508,6 +549,8 @@ export default function UserAddonsPage() {
           )}
         </motion.div>
       )}
+      {removeQuestion}
     </div>
+    </Wrapper>
   );
 }

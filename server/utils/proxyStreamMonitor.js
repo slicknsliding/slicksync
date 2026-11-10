@@ -166,7 +166,7 @@ function clearProxyStreamMonitor() {
 // can also be part of a title ("WEB", "Extended") would cut real titles short.
 const FIRST_RELEASE_TAG = /(?<![a-z0-9])(?:2160p|1080[pi]|720p|576p|480p|4K|HDR|WEB-?DL|WEBRip|Blu-?Ray|BRRip|BDRip|DVDRip|HDTV|HEVC|x26[45]|H[.\s]?26[45]|DDP?5[.\s]?1|AAC|AC3|REMUX)(?![a-z0-9])/i
 // Nothing but edition wording after a second year-like number.
-const EDITION_WORDS_ONLY = /^(?:[.\s]*(?:the|remaster(?:ed)?|restor(?:ed|ation)|extended|unrated|uncut|theatrical|imax|redux|criterion|ultimate|(?:directors?|final|extended|theatrical)[.\s]cut|(?:special|anniversary|collectors?|ultimate|extended)[.\s]edition))+[.\s]*$/i
+const EDITION_WORDS_ONLY = /^(?:[._\s]*(?:the|remaster(?:ed)?|restor(?:ed|ation)|extended|unrated|uncut|theatrical|imax|redux|criterion|ultimate|(?:directors?|final|extended|theatrical)[._\s]cut|(?:special|anniversary|collectors?|ultimate|extended)[._\s]edition))+[._\s]*$/i
 
 function parseDisplayName(filename) {
   if (!filename) return null
@@ -200,7 +200,9 @@ function parseDisplayName(filename) {
   const beforeTags = tagAt === -1 ? withoutExt : withoutExt.slice(0, tagAt)
   const latestYear = new Date().getFullYear() + 1
   const years = []
-  for (const m of beforeTags.matchAll(/[.\s]\(?(\d{4})\)?(?=[.\s]|$)/g)) {
+  // Dots, spaces and underscores all separate words ("Resident_Evil_2026_
+  // 2160p" read as a film called "Resident Evil 2026" and matched nothing).
+  for (const m of beforeTags.matchAll(/[._\s]\(?(\d{4})\)?(?=[._\s]|$)/g)) {
     const y = Number(m[1])
     if (y >= 1880 && y <= latestYear) years.push({ at: m.index, end: m.index + m[0].length, year: m[1] })
   }
@@ -219,7 +221,7 @@ function parseDisplayName(filename) {
   while (pick > 0 && /[a-z]/i.test(beforeTags.slice(years[pick - 1].end, years[pick].at))) pick -= 1
 
   if (pick >= 0) {
-    let title = beforeTags.slice(0, years[pick].at).replace(/\./g, ' ').trim()
+    let title = beforeTags.slice(0, years[pick].at).replace(/[._]/g, ' ').trim()
     // Strip numeric-junk parenthetical groups (e.g. a literal "(1.23.45)"
     // timestamp/version marker from the release name) that survive the
     // dot-to-space cleanup untouched, since only dots get replaced there -
@@ -543,8 +545,13 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
     // Without one, "Dexter - New Blood" fell back to "Dexter" and took the
     // original show's poster, name and id.
     const candidates = [parsed.searchTitle]
+    // "Ging chaat goo si aka Police Story": a release named by its original
+    // title and then its English one. Each name is tried, the English (after
+    // "aka") first - only with a year, as below.
+    const akas = parsed.year ? parsed.searchTitle.split(/\s+a\.?k\.?a\.?\s+/i).map((t) => t.trim()).filter((t) => t.length >= 3) : []
+    if (akas.length > 1) candidates.push(...akas.slice(1).reverse(), akas[0])
     const cut = parsed.searchTitle.split(/\s+[-–—:]\s+/)[0].trim()
-    if (parsed.year && cut && cut !== parsed.searchTitle && cut.length >= 3) candidates.push(cut)
+    if (parsed.year && cut && !candidates.includes(cut) && cut.length >= 3) candidates.push(cut)
     const otherType = parsed.type === 'series' ? 'movie' : 'series'
     let result = null
     for (const candidate of candidates) {
@@ -599,12 +606,21 @@ async function retryMissingPosters(prisma, accountId) {
         { isActive: true, metadataItemId: { not: null }, metadataName: null },
       ],
     },
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, filename: true, metadataItemId: true },
     take: 5,
     orderBy: { createdAt: 'asc' },
   })
   for (const row of stuck) {
-    await attemptPosterLookup(prisma, row.id, row.displayName)
+    // An unmatched row is read again from its file name, so a name this
+    // build reads better ("Resident_Evil_2026_..." once underscores split
+    // words) gets looked up as that, not as the name it was first given.
+    let name = row.displayName
+    const reread = !row.metadataItemId && row.filename ? parseDisplayName(row.filename) : null
+    if (reread && reread !== name) {
+      await prisma.proxyStreamSession.update({ where: { id: row.id }, data: { displayName: reread } })
+      name = reread
+    }
+    await attemptPosterLookup(prisma, row.id, name)
   }
 }
 
@@ -681,10 +697,20 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       where: { id: rowId },
       select: { posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
     })
-    // AIOStreams' own apps may already have announced this same viewing.
-    if (fresh?.metadataItemId && !require('./startNotifyDedupe').claimStart(accountId, user.id, fresh.metadataItemId)) return
     // The matched title's own name where there is one - see proxyTitle.js.
-    const shownName = proxyDisplayTitle({ ...(fresh || {}), displayName }) || displayName
+    let shownName = proxyDisplayTitle({ ...(fresh || {}), displayName }) || displayName
+    // A stream named only by an opaque id gets the name Now Playing shows for
+    // it: the same file played before under a real name, or else the title
+    // they were partway through, as a guess. Never "a title SlickSync
+    // couldn't name yet" while the card beside it says what it is.
+    const better = isOpaqueStreamName(String(shownName || '').trim()) ? await nameForUnnamedStart(prisma, accountId, user.id, rowId) : null
+    const itemId = better ? better.itemId : (fresh?.metadataItemId || null)
+    const itemType = better ? better.itemType : fresh?.metadataItemType
+    const poster = better ? better.poster : (fresh?.posterUrl || null)
+    if (better) shownName = better.name
+    // AIOStreams' own apps may already have announced this same viewing.
+    if (itemId && !require('./startNotifyDedupe').claimStart(accountId, user.id, itemId)) return
+    const guessed = !!better?.guessed
     // A user's own personal webhook (set in their self-service Settings)
     // takes over from the shared account webhook for their own activity —
     // lets each household member route their own pings to their own
@@ -692,14 +718,14 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const targetWebhookUrl = user.discordWebhookUrl || webhookUrl
     if (targetWebhookUrl) {
       await sendSessionStartNotification(targetWebhookUrl, {
-        itemName: shownName,
-        itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
-        itemId: fresh?.metadataItemId || null,
+        itemName: guessed ? `${shownName} (probably)` : shownName,
+        itemType: itemType === 'series' ? 'series' : 'movie',
+        itemId: guessed ? null : itemId,
         videoId: null,
         season: null,
         episode: null,
         startTime: fresh?.startTime || new Date(),
-        poster: fresh?.posterUrl || null,
+        poster,
       }, user)
     }
     // Automation runs off the same start edge as the notification above,
@@ -712,9 +738,9 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       await emitAutomationEvent(prisma, accountId, 'watch.started', {
         username: user.username || '',
         userId: user.id,
-        itemName: shownName,
-        itemId: fresh?.metadataItemId || '',
-        contentType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
+        itemName: guessed ? `${shownName} (probably)` : shownName,
+        itemId: guessed ? '' : (itemId || ''),
+        contentType: itemType === 'series' ? 'series' : 'movie',
       })
     } catch { /* emit never throws; guards the require itself */ }
 
@@ -722,12 +748,37 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const whoName = user.username || user.email || 'Someone'
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
       title: `${whoName} started watching`,
-      body: readableStreamTitle(shownName),
-      icon: fresh?.posterUrl || '/android-chrome-192x192.png',
+      body: guessed ? `Probably ${shownName} - resumed from Continue Watching` : readableStreamTitle(shownName),
+      icon: poster || '/android-chrome-192x192.png',
       url: '/activity',
     })
   } catch (error) {
     heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
+  }
+}
+
+// What Now Playing calls a stream named only by an opaque id (see
+// proxyNowPlaying.js): the same file played earlier under a real name
+// (certain), or the title they were partway through (a guess). Null when
+// neither is known.
+async function nameForUnnamedStart(prisma, accountId, userId, rowId) {
+  try {
+    const { nameFromSameFile, guessResumedTitle } = require('./proxyNowPlaying')
+    const row = await prisma.proxyStreamSession.findUnique({
+      where: { id: rowId },
+      select: { id: true, url: true, filename: true, displayName: true, posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
+    })
+    if (!row) return null
+    await nameFromSameFile(prisma, accountId, [row])
+    const named = proxyDisplayTitle(row)
+    if (named && !isOpaqueStreamName(String(named).trim())) {
+      return { name: named, itemId: row.metadataItemId || null, itemType: row.metadataItemType, poster: row.posterUrl || null, guessed: false }
+    }
+    const g = await guessResumedTitle(prisma, accountId, userId, row.startTime || new Date())
+    if (!g?.item?.name) return null
+    return { name: g.item.name, itemId: g.item.id || null, itemType: g.item.type, poster: g.item.poster || null, guessed: true }
+  } catch {
+    return null
   }
 }
 
@@ -883,8 +934,12 @@ async function pollOnce(prisma, accountId, config) {
       // own is not yet a "started watching".
       const existingRow = await prisma.proxyStreamSession.findUnique({
         where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser, clientIp, url } },
-        select: { id: true, isActive: true, requestCount: true, startTime: true, lastSeenAt: true },
+        select: { id: true, isActive: true, requestCount: true, startTime: true, lastSeenAt: true, displayName: true, metadataItemId: true },
       })
+      // A name an older build read differently and could not match (it
+      // missed the year in "Resident_Evil_2026_2160p"): read it again and
+      // look the title up again, while it is still playing.
+      const renamed = !!existingRow && !existingRow.metadataItemId && !!displayName && existingRow.displayName !== displayName
 
       // Debrid resolvers frequently return a deterministic, content-
       // addressed identity for the same title+store rather than a
@@ -924,6 +979,7 @@ async function pollOnce(prisma, accountId, config) {
           isActive: true,
           endTime: null,
           ...(isReactivation ? { startTime: startedAt } : {}),
+          ...(renamed ? { displayName, metadataMatchedAt: null } : {}),
         },
       })
 
@@ -1083,6 +1139,8 @@ module.exports = {
     fetchLiveStreams,
     pollOnce,
     attemptPosterLookup,
+    retryMissingPosters,
+    maybeNotifyStart,
     reset() {
       cachedCookie = null
       loginBlockedUntil = 0

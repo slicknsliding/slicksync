@@ -63,7 +63,6 @@ export function UserAuthGate({ children }: UserAuthGateProps) {
         className="min-h-screen flex items-center justify-center p-6"
         style={{ background: 'var(--color-bg)' }}
       >
-        {/* max-w-md no-ops under globals.css's unlayered `* { max-width: 100vw }` - see NebulaTopbar.tsx */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useCallback, useRef, memo, Fragment } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { avatarColorFill } from '@/components/ui/Avatar';
@@ -19,6 +19,8 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { CatalogV2Head, CatalogV2Toolbar } from '@/components/v2/CatalogV2';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
@@ -81,7 +83,8 @@ function MoreMenuItem({
   title?: string;
 }) {
   const tintVar = `var(--color-${tint})`;
-  return (
+  const isTV = useIsTV();
+  const btn = (
     <button
       type="button"
       onClick={onClick}
@@ -100,6 +103,7 @@ function MoreMenuItem({
       </span>
     </button>
   );
+  return isTV && !disabled ? <TVFocusable onEnterPress={onClick}>{btn}</TVFocusable> : btn;
 }
 
 // PosterCard only needs this narrowed shape (see its own comment) - a
@@ -152,6 +156,7 @@ const CatalogGridCard = memo(function CatalogGridCard({
   onToggleSelect: (id: string) => void;
   disabled: boolean;
 }) {
+  const isTV = useIsTV();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -188,6 +193,7 @@ const CatalogGridCard = memo(function CatalogGridCard({
         onRemoveFromCatalog={selectMode ? undefined : (onRemove ? () => onRemove(item) : undefined)}
         isMenuOpen={isMenuOpen}
         onMenuOpenChange={onMenuOpenChange}
+        focusable={isTV}
       />
       {selectMode && (
         <div className="absolute top-1.5 left-1.5 z-20">
@@ -221,6 +227,10 @@ export default function ListDetailPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  // TV: one D-pad stop around a button / select; OK calls the same handler the click does.
+  const tv = (node: React.ReactNode, onEnter: () => void) =>
+    isTV ? <TVFocusable onEnterPress={onEnter}>{node}</TVFocusable> : node;
   const [searchQuery, setSearchQuery] = useState('');
   const params = useParams();
   const router = useRouter();
@@ -279,6 +289,7 @@ export default function ListDetailPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sortSelectRef = useRef<HTMLSelectElement | null>(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   // Share-as-code (ShareCodeDialog) - explicit confirm, then the code.
   const [showShareCode, setShowShareCode] = useState(false);
@@ -851,10 +862,11 @@ export default function ListDetailPage() {
   // land on the Catalogs index in one hop, regardless of how this page was
   // reached, per feedback that clicking "Catalogs" in the nav to get back felt
   // like backtracking.
-  const backButton = (
+  const backButton = tv(
     <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
       Back
-    </Button>
+    </Button>,
+    () => router.push('/catalogs'),
   );
 
   // Nebula: Back sits alone in the heading's left column (see `leading`
@@ -872,7 +884,7 @@ export default function ListDetailPage() {
   // action at once instead of needing a per-button check.
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2 flex-wrap justify-end">
-      <Button
+      {tv(<Button
         variant={(list.keptRatings?.length ?? 0) > 0 ? 'primary' : 'secondary'}
         size="sm"
         leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
@@ -880,13 +892,13 @@ export default function ListDetailPage() {
         title={(list.keptRatings?.length ?? 0) > 0 ? `Keeping only: ${(list.keptRatings || []).join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
       >
         {(list.keptRatings?.length ?? 0) > 0 ? `Content Rating (${(list.keptRatings?.length ?? 0)})` : 'Content Rating'}
-      </Button>
-      <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
+      </Button>, openPolicyModal)}
+      {tv(<Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
-      </Button>
+      </Button>, handleOpenSuggest)}
       {/* Smart rule: criteria the catalog keeps re-evaluating, as opposed to
           Suggest titles (a one-off) or Refresh (re-pulls an imported URL). */}
-      <Button
+      {tv(<Button
         variant={list.smartRuleJson ? 'primary' : 'secondary'}
         size="sm"
         leftIcon={<FunnelIcon className="w-4 h-4" />}
@@ -894,14 +906,15 @@ export default function ListDetailPage() {
         title="Give this catalog criteria it keeps re-evaluating, instead of a fixed list"
       >
         {list.smartRuleJson ? 'Smart rule on' : 'Smart rule'}
-      </Button>
-      {list.importSourceUrl && (
+      </Button>, () => setSmartOpen(true))}
+      {list.importSourceUrl && tv(
         <Button variant="secondary" size="sm" leftIcon={<ArrowPathIcon className="w-4 h-4" />} onClick={handleOpenRefresh} isLoading={loadingRefreshDiff}>
           Refresh
-        </Button>
+        </Button>,
+        handleOpenRefresh,
       )}
       <div className="relative" ref={moreMenuRef}>
-        <Button
+        {tv(<Button
           ref={moreMenuButtonRef}
           variant="secondary"
           size="sm"
@@ -911,7 +924,7 @@ export default function ListDetailPage() {
           className="!px-2.5"
         >
           <EllipsisVerticalIcon className="w-4 h-4" />
-        </Button>
+        </Button>, () => setShowMoreMenu((v) => !v))}
         <AnimatePresence>
           {showMoreMenu && (
             <>
@@ -1038,7 +1051,7 @@ export default function ListDetailPage() {
   const v2Head = v2 && !!list && !isLoading && !notFound;
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={
@@ -1136,7 +1149,7 @@ export default function ListDetailPage() {
             <Card padding="lg" className="text-center">
               <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
               <p className="text-sm text-muted">This catalog doesn&apos;t exist (it may have been deleted).</p>
-              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/catalogs')}>Back to Catalogs</Button>
+              {tv(<Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/catalogs')}>Back to Catalogs</Button>, () => router.push('/catalogs'))}
             </Card>
           ) : isLoading ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
@@ -1186,12 +1199,15 @@ export default function ListDetailPage() {
                   <div className="flex items-center gap-2">
                     {selectMode && list.isOwner ? (
                       <>
-                        <SelectAllCheckbox
-                          totalCount={sortedItems.length}
-                          selectedCount={selectedIds.size}
-                          onSelectAll={() => setSelectedIds(new Set(sortedItems.map((i) => i.id)))}
-                          onDeselectAll={() => setSelectedIds(new Set())}
-                        />
+                        {tv(
+                          <SelectAllCheckbox
+                            totalCount={sortedItems.length}
+                            selectedCount={selectedIds.size}
+                            onSelectAll={() => setSelectedIds(new Set(sortedItems.map((i) => i.id)))}
+                            onDeselectAll={() => setSelectedIds(new Set())}
+                          />,
+                          () => setSelectedIds(selectedIds.size === 0 ? new Set(sortedItems.map((i) => i.id)) : new Set()),
+                        )}
                         <span className="text-xs text-muted">{selectedIds.size} of {sortedItems.length} selected</span>
                         {/* Right next to "selected", not off on the far side
                             with Sort - real feedback that it read as "no way
@@ -1200,30 +1216,42 @@ export default function ListDetailPage() {
                             meaning between the two states (Select button ->
                             checkbox+count+Cancel); Sort stays put on the
                             right in both. */}
-                        <Button variant="ghost" size="sm" leftIcon={<XCircleIcon className="w-4 h-4" />} onClick={exitSelectMode}>
-                          Cancel
-                        </Button>
+                        {tv(
+                          <Button variant="ghost" size="sm" leftIcon={<XCircleIcon className="w-4 h-4" />} onClick={exitSelectMode}>
+                            Cancel
+                          </Button>,
+                          exitSelectMode,
+                        )}
                       </>
                     ) : list.isOwner ? (
-                      <Button variant="ghost" size="sm" leftIcon={<CheckCircleIcon className="w-4 h-4" />} onClick={() => setSelectMode(true)}>
-                        Select
-                      </Button>
+                      tv(
+                        <Button variant="ghost" size="sm" leftIcon={<CheckCircleIcon className="w-4 h-4" />} onClick={() => setSelectMode(true)}>
+                          Select
+                        </Button>,
+                        () => setSelectMode(true),
+                      )
                     ) : (
                       <Badge variant="muted" size="sm">Shared with you - read only</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted">Sort:</span>
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as SortKey)}
-                      aria-label="Sort list"
-                      className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
-                    >
-                      {SORT_OPTIONS.map((opt) => (
-                        <option key={opt.key} value={opt.key}>{opt.label}</option>
-                      ))}
-                    </select>
+                    {(() => {
+                      const sortSelect = (
+                        <select
+                          ref={sortSelectRef}
+                          value={sortBy}
+                          onChange={(e) => setSortBy(e.target.value as SortKey)}
+                          aria-label="Sort list"
+                          className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
+                        >
+                          {SORT_OPTIONS.map((opt) => (
+                            <option key={opt.key} value={opt.key}>{opt.label}</option>
+                          ))}
+                        </select>
+                      );
+                      return isTV ? <TVFocusable onEnterPress={() => sortSelectRef.current?.focus()}>{sortSelect}</TVFocusable> : sortSelect;
+                    })()}
                   </div>
                 </div>
               )}
@@ -1293,15 +1321,22 @@ export default function ListDetailPage() {
                 </div>
                 <span className="text-sm text-muted">selected</span>
               </div>
-              <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setShowBulkDeleteConfirm(true)}>
-                Remove
-              </Button>
-              <button
-                onClick={exitSelectMode}
-                className="p-2 rounded-lg text-muted hover:bg-surface-hover transition-colors"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
+              {tv(
+                <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setShowBulkDeleteConfirm(true)}>
+                  Remove
+                </Button>,
+                () => setShowBulkDeleteConfirm(true),
+              )}
+              {tv(
+                <button
+                  onClick={exitSelectMode}
+                  aria-label="Exit selection"
+                  className="p-2 rounded-lg text-muted hover:bg-surface-hover transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>,
+                exitSelectMode,
+              )}
             </div>
           </motion.div>
         )}
@@ -1793,6 +1828,6 @@ export default function ListDetailPage() {
         />
       )}
 
-    </>
+    </Wrapper>
   );
 }

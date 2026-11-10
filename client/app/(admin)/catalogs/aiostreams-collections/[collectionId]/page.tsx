@@ -7,7 +7,7 @@
 // so Discover's "Add to Catalogs" fills it too. Everything saves as it
 // happens - there is no Save step to forget.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeftIcon, CheckIcon, ChevronDownIcon, MagnifyingGlassIcon, PlusIcon, Squares2X2Icon, TrashIcon, XMarkIcon,
@@ -18,6 +18,8 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { JfCollectionV2, JfCollectionCover, JfCatalogChips } from '@/components/v2/JellyfinCollectionV2';
 import { rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -34,6 +36,14 @@ import { ScrollRow } from '@/components/ui/ScrollRow';
 const LIST = '/catalogs/aiostreams-collections';
 
 const noop = () => {};
+
+// TV: one D-pad stop around a button / input; OK calls the same handler the
+// click does. Renders its children untouched (no wrapper) off TV.
+function TV({ onEnter, className, children }: { onEnter: () => void; className?: string; children: ReactNode }) {
+  const isTV = useIsTV();
+  if (!isTV) return <>{children}</>;
+  return <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable>;
+}
 
 function toPosterItem(t: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null; releaseInfo?: string | null }) {
   return { id: t.id, type: t.type, name: t.name, poster: t.poster ?? null, releaseInfo: t.releaseInfo ?? (t.year ? String(t.year) : null) };
@@ -68,6 +78,7 @@ function TitleTile({ t, onOpen, onRemove, menuOpen, onMenuOpenChange }: {
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean, itemId: string) => void;
 }) {
+  const isTV = useIsTV();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: t.id });
   return (
     <div
@@ -88,6 +99,7 @@ function TitleTile({ t, onOpen, onRemove, menuOpen, onMenuOpenChange }: {
         removeLabel="Remove from collection"
         isMenuOpen={menuOpen}
         onMenuOpenChange={onMenuOpenChange}
+        focusable={isTV}
       />
     </div>
   );
@@ -109,6 +121,7 @@ export default function AiostreamsCollectionPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
 
   const [initial] = useState(() => {
     const cached = userId ? api.peekGet<AioCollectionsView>(api.aioCollectionsPath(userId, profileId)) ?? null : null;
@@ -132,6 +145,8 @@ export default function AiostreamsCollectionPage() {
 
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
   const [results, setResults] = useState<DiscoverItem[]>([]);
   const [searching, setSearching] = useState(false);
 
@@ -367,16 +382,22 @@ export default function AiostreamsCollectionPage() {
   };
 
   const backButton = (
-    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={goBack}>
-      Back
-    </Button>
+    <TV onEnter={goBack}>
+      <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={goBack}>
+        Back
+      </Button>
+    </TV>
   );
   const actions = isNew ? (
-    <Button variant="primary" size="sm" onClick={create} isLoading={creating}>Create</Button>
+    <TV onEnter={create}>
+      <Button variant="primary" size="sm" onClick={create} isLoading={creating}>Create</Button>
+    </TV>
   ) : (
-    <Button variant="ghost" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setConfirmRemove(true)} disabled={!ready}>
-      Remove
-    </Button>
+    <TV onEnter={() => { if (ready) setConfirmRemove(true); }}>
+      <Button variant="ghost" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setConfirmRemove(true)} disabled={!ready}>
+        Remove
+      </Button>
+    </TV>
   );
   const title = isNew ? 'New collection' : (form.name.trim() || 'Collection');
   const subtitle = isNew ? 'A collection in AIOStreams’ apps' : `${titles.length} title${titles.length === 1 ? '' : 's'} · changes save as you go`;
@@ -392,15 +413,17 @@ export default function AiostreamsCollectionPage() {
     <div>
       <div className="relative mb-3">
         <MagnifyingGlassIcon className="w-4 h-4 text-muted absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <input
-          ref={searchRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search movies and shows to add"
-          aria-label="Search movies and shows to add"
-          className={`${field} pl-10 pr-10`}
-          style={fieldStyle}
-        />
+        <TV onEnter={() => searchRef.current?.focus()}>
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search movies and shows to add"
+            aria-label="Search movies and shows to add"
+            className={`${field} pl-10 pr-10`}
+            style={fieldStyle}
+          />
+        </TV>
         {query && (
           <button type="button" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-default" aria-label="Clear search">
             <XMarkIcon className="w-4 h-4" />
@@ -427,17 +450,20 @@ export default function AiostreamsCollectionPage() {
                     onToggleWatched={noop}
                     showWatchlistMenu={false}
                     showWatchedMenu={false}
+                    focusable={isTV}
                   />
+                  <TV onEnter={() => { if (!added && busyTitle !== r.id) addTitle(r); }} className="absolute top-1.5 right-1.5 z-10">
                   <button
                     type="button"
                     onClick={() => (added ? undefined : addTitle(r))}
                     disabled={busyTitle === r.id || added}
-                    className={`absolute top-1.5 right-1.5 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow transition-colors ${added ? 'bg-primary-solid' : 'bg-black/70 hover:bg-primary-solid'}`}
+                    className={`${isTV ? 'relative' : 'absolute top-1.5 right-1.5'} z-10 w-8 h-8 rounded-full flex items-center justify-center shadow transition-colors ${added ? 'bg-primary-solid' : 'bg-black/70 hover:bg-primary-solid'}`}
                     aria-label={added ? `${r.name} is in this collection` : `Add ${r.name}`}
                     title={added ? 'In this collection' : 'Add to this collection'}
                   >
                     {added ? <CheckIcon className="w-4 h-4 text-white" /> : <PlusIcon className="w-4 h-4 text-white" />}
                   </button>
+                  </TV>
                 </div>
               );
             })}
@@ -496,7 +522,7 @@ export default function AiostreamsCollectionPage() {
   };
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections', href: listPath }, { label: title }]} className="text-xl font-semibold" />}
@@ -567,12 +593,16 @@ export default function AiostreamsCollectionPage() {
                     <div className="flex-1 min-w-0 space-y-3 sm:space-y-4">
                       <div>
                         <label htmlFor="aio-col-name" className="block text-sm font-medium mb-2 text-default">Name</label>
-                        <input id="aio-col-name" value={form.name} onChange={(e) => editText({ name: e.target.value })} maxLength={80} className={field} style={fieldStyle}
-                          onKeyDown={(e) => { if (isNew && e.key === 'Enter') create(); }} autoFocus={isNew} />
+                        <TV onEnter={() => nameRef.current?.focus()}>
+                          <input id="aio-col-name" ref={nameRef} value={form.name} onChange={(e) => editText({ name: e.target.value })} maxLength={80} className={field} style={fieldStyle}
+                            onKeyDown={(e) => { if (isNew && e.key === 'Enter') create(); }} autoFocus={isNew} />
+                        </TV>
                       </div>
                       <div>
                         <label htmlFor="aio-col-cover" className="block text-sm font-medium mb-2 text-default">Cover image address</label>
-                        <input id="aio-col-cover" value={form.coverUrl} onChange={(e) => editText({ coverUrl: e.target.value })} placeholder="Optional - first title's poster" className={field} style={fieldStyle} />
+                        <TV onEnter={() => coverRef.current?.focus()}>
+                          <input id="aio-col-cover" ref={coverRef} value={form.coverUrl} onChange={(e) => editText({ coverUrl: e.target.value })} placeholder="Optional - first title's poster" className={field} style={fieldStyle} />
+                        </TV>
                       </div>
                     </div>
                   </div>
@@ -593,6 +623,7 @@ export default function AiostreamsCollectionPage() {
                     </div>
 
                     <div className="rounded-2xl border border-default">
+                      <TV onEnter={() => setShowSources((v) => !v)}>
                       <button type="button" onClick={() => setShowSources((v) => !v)} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={showSources}>
                         <span>
                           <span className="block text-sm font-medium text-default">Built from catalogs</span>
@@ -603,6 +634,7 @@ export default function AiostreamsCollectionPage() {
                         </span>
                         <ChevronDownIcon className={`w-4 h-4 text-muted shrink-0 transition-transform ${showSources ? 'rotate-180' : ''}`} />
                       </button>
+                      </TV>
                       {showSources && (
                         <div className="px-4 pb-4">
                           <p className="text-xs text-muted mb-3">Pick more catalogs to show their titles here too.</p>
@@ -610,12 +642,12 @@ export default function AiostreamsCollectionPage() {
                             {catalogs.map((cat) => {
                               const on = form.catalogIds.includes(cat.id);
                               return (
+                                <TV key={cat.id} onEnter={() => toggleCatalog(cat.id)}>
                                 <button
-                                  key={cat.id}
                                   type="button"
                                   onClick={() => toggleCatalog(cat.id)}
                                   aria-pressed={on}
-                                  className={`group text-left rounded-xl overflow-hidden border transition-colors ${on ? 'border-primary ring-2 ring-primary/60' : 'border-default hover:border-primary/50'}`}
+                                  className={`group text-left rounded-xl overflow-hidden border transition-colors ${isTV ? 'w-full' : ''} ${on ? 'border-primary ring-2 ring-primary/60' : 'border-default hover:border-primary/50'}`}
                                 >
                                   <div className="relative aspect-[2/3] bg-surface-hover">
                                     {cat.cover
@@ -633,6 +665,7 @@ export default function AiostreamsCollectionPage() {
                                     <p className="text-[10px] text-muted">{cat.titles} title{cat.titles === 1 ? '' : 's'}</p>
                                   </div>
                                 </button>
+                                </TV>
                               );
                             })}
                           </div>
@@ -666,6 +699,6 @@ export default function AiostreamsCollectionPage() {
         description="It stops showing in AIOStreams' apps. Its titles stay in their catalogs."
         confirmText="Remove"
       />
-    </>
+    </Wrapper>
   );
 }

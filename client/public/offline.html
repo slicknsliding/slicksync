@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>SlickSync - offline</title>
+<!-- Served by sw.js when a page can't load and nothing is saved for it.
+     Self-contained on purpose: no app code, no other files, Nebula colours. -->
+<style>
+  @font-face { font-family: 'Outfit'; src: url('/fonts/outfit-latin-v15.woff2') format('woff2'); font-display: swap; }
+  @font-face { font-family: 'Space Grotesk'; src: url('/fonts/space-grotesk-latin-v22.woff2') format('woff2'); font-display: swap; }
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #0d1117;
+    color: #f0f6fc;
+    font-family: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  .glow { position: fixed; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 800px 500px at 15% -10%, rgba(139,126,200,.15) 0%, transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(95,212,196,.15) 0%, transparent 55%); }
+  main { position: relative; min-height: 100%; display: flex; align-items: center; justify-content: center;
+    padding: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .card { width: 100%; max-width: 448px; border-radius: 16px; padding: 24px; text-align: center;
+    background: #1c2128; border: 1px solid rgba(240,246,252,.1); }
+  .icon { width: 48px; height: 48px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center;
+    color: #d29922; background: rgba(210,153,34,.16); margin-bottom: 14px; }
+  h1 { margin: 0; font: 600 18px/1.4 'Space Grotesk', 'Outfit', system-ui, sans-serif; }
+  p { margin: 8px 0 0; font-size: 14px; line-height: 1.45; color: #8b949e; }
+  button { margin-top: 20px; padding: 8px 16px; border: 0; border-radius: 10px; font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.4; background: #796abf; color: #fff; cursor: pointer; }
+  button:hover { background: #6f62b0; }
+  button:focus-visible { outline: none; box-shadow: 0 0 0 4px #8b7ec8; }
+</style>
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<main>
+  <div class="card">
+    <span class="icon" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 8.735 8.735m0 0a.374.374 0 1 1 .53.53m-.53-.53.53.53m0 0L21 21M14.652 9.348a3.75 3.75 0 0 1 0 5.304m2.121-7.425a6.75 6.75 0 0 1 0 9.546m2.121-11.667c3.808 3.807 3.808 9.98 0 13.788m-9.546-4.242a3.733 3.733 0 0 1-1.06-2.122m-1.061 4.243a6.75 6.75 0 0 1-1.625-6.929m-.496 9.05c-3.068-3.067-3.664-7.67-1.79-11.334M12 12h.008v.008H12V12Z"/></svg>
+    </span>
+    <h1>You’re offline</h1>
+    <p>SlickSync can’t reach its server right now. This page opens by itself as soon as you’re back online.</p>
+    <button type="button" id="retry">Try again</button>
+  </div>
+</main>
+<script>
+  (function () {
+    function reload() { location.reload(); }
+    document.getElementById('retry').addEventListener('click', reload);
+    window.addEventListener('online', reload);
+    // TV remotes and some phones never fire 'online': look again now and then.
+    setInterval(function () { if (navigator.onLine) fetch(location.href, { cache: 'no-store' }).then(function (r) { if (r.ok) reload(); }).catch(function () {}); }, 15000);
+    // On a TV the remote starts on the button (same signals as lib/hooks/useIsTV.ts).
+    try {
+      var tv = window.__SLICKSYNC_TV__ === true || /[?&]tv=1/.test(location.search) ||
+        sessionStorage.getItem('slicksync-tv-mode') === '1' ||
+        /\bAFT[A-Z]|Android TV|\bBRAVIA\b|GoogleTV/i.test(navigator.userAgent);
+      if (tv) document.getElementById('retry').focus();
+    } catch (e) {}
+  })();
+</script>
+</body>
+</html>

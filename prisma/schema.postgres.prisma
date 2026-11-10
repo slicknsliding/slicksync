@@ -480,7 +480,8 @@ model WatchSnapshot {
   date               DateTime  @db.Date // Date of snapshot (YYYY-MM-DD)
   overallTimeWatched BigInt? // Total watch time in milliseconds
   timeOffset         BigInt? // Current time offset in milliseconds
-  videoId            String? // For series: which episode this snapshot's overallTimeWatched/timeOffset actually describes (e.g. "tt123456:1:5") - see getMaxOverallTimeWatched's comment for why this matters
+  timeWatched        BigInt? // Stremio: time played in this video (videoId) in milliseconds, the counter its watch time is read from
+  videoId            String? // For series: which episode this snapshot's overallTimeWatched/timeOffset actually describes (e.g. "tt123456:1:5") - see getMaxSeen's comment for why this matters
   lastWatched        DateTime? // Last watched timestamp
   mtime              DateTime? // Library item modification time
   createdAt          DateTime  @default(now())
@@ -726,6 +727,7 @@ model WatchSession {
   @@index([accountId, startTime]) // account-wide windows: stats, Now/Recently watched
   @@index([accountId, userId, isActive])
   @@index([accountId, isActive])
+  @@index([isActive]) // the open-viewings read spans accounts
   @@map("watch_sessions")
 }
 

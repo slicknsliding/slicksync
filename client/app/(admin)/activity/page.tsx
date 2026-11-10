@@ -1837,6 +1837,8 @@ function ActivityPageContent() {
   // rest of the history is fetched once and the list simply grows.
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderLoaded, setOlderLoaded] = useState(false);
+  // Which deep step the feed holds (0 = the ordinary capped read).
+  const olderStepRef = useRef(0);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1873,6 +1875,10 @@ function ActivityPageContent() {
   // exists.
   const shownCountRef = useRef(0);
 
+  // The feed build the page holds, and when it was last fetched whole.
+  const stampRef = useRef<number | null>(null);
+  const lastFullRef = useRef(0);
+
   const fetchData = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     setError(null);
@@ -1891,6 +1897,8 @@ function ActivityPageContent() {
       });
 
       setMetricsData(metrics);
+      stampRef.current = metrics.buildStamp ?? null;
+      lastFullRef.current = Date.now();
       setInvitations(invs);
       setGroups(grps);
 
@@ -1902,16 +1910,39 @@ function ActivityPageContent() {
     }
   };
 
+  // Now Playing alone: the whole feed is fetched only when its own build has
+  // changed (or by the slow poll below), not for every stream starting.
+  const refreshNowPlaying = async () => {
+    try {
+      const light = await api.getNowPlaying('all');
+      if (light.buildStamp != null && stampRef.current != null && light.buildStamp !== stampRef.current) {
+        await fetchData(false);
+        return;
+      }
+      setMetricsData((prev) => (prev ? { ...prev, nowPlaying: light.nowPlaying } : prev));
+    } catch { /* the next refresh tries again */ }
+  };
+
   useEffect(() => {
     fetchData();
 
     // Keeps Now Playing current: every 30s on its own, every 3 minutes
     // while the live stream is connected (a stream starting or stopping is
-    // pushed and refetches right away, below), never while the tab is hidden.
-    const stopPoll = startAdaptivePoll(() => fetchData(false), 30000, 180000);
-    const onLive = () => fetchData(false);
+    // pushed and refreshes right away, below), never while the tab is hidden.
+    // The whole feed is fetched at the slow rate; in between only who is
+    // watching is asked for.
+    const stopPoll = startAdaptivePoll(() => {
+      if (Date.now() - lastFullRef.current >= 170000) fetchData(false);
+      else refreshNowPlaying();
+    }, 30000, 180000);
+    // Several devices starting at once send a burst: one refresh for it.
+    let liveTimer: ReturnType<typeof setTimeout> | null = null;
+    const onLive = () => {
+      if (liveTimer) clearTimeout(liveTimer);
+      liveTimer = setTimeout(() => { liveTimer = null; refreshNowPlaying(); }, 1500);
+    };
     window.addEventListener('slicksync:live-nowplaying', onLive);
-    return () => { stopPoll(); window.removeEventListener('slicksync:live-nowplaying', onLive); };
+    return () => { stopPoll(); if (liveTimer) clearTimeout(liveTimer); window.removeEventListener('slicksync:live-nowplaying', onLive); };
   }, []);
 
   // Tick "now" once a second so Now Playing durations count up - but ONLY
@@ -1935,12 +1966,23 @@ function ActivityPageContent() {
     }, 15000);
     return () => clearInterval(id);
   }, [hasLivePlayback]);
+  // Same as the dashboard: while someone is watching, Now Playing asks again
+  // often enough not to count far past what the server knows.
+  useEffect(() => {
+    if (!hasLivePlayback) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshNowPlaying();
+    }, 20000);
+    return () => clearInterval(id);
+  }, [hasLivePlayback]);
 
   // Transform API data to activity items
   // Activity feed shows ALL history - Now Playing is handled separately by the backend
   const activityData = useMemo(
     () => transformMetricsToActivity(metricsData),
-    [metricsData]
+    // The feed is built from the sessions alone; Now Playing refreshes leave them as they were.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [metricsData?.watchSessions]
   );
 
   // Sum of today's already-recorded entries. Deliberately separate from the
@@ -2021,12 +2063,18 @@ function ActivityPageContent() {
     if (isLoadingMore || loadingOlder) return;
 
     // Already showing everything that arrived, and the server said it capped
-    // the feed: ask once for the whole history rather than stopping here.
+    // the feed: ask for the next step further back rather than stopping here.
+    // Steps, not the whole history at once - that one answer was ~110MB on a
+    // long household history and held the server for seconds.
     const shownEverything = visibleCount >= shownCountRef.current;
     if (shownEverything && metricsData?.activityTruncated && !olderLoaded) {
       setLoadingOlder(true);
-      api.getMetrics('all', { deep: true })
+      const step = olderStepRef.current + 1;
+      let more = false;
+      api.getMetrics('all', { deep: step })
         .then((full) => {
+          olderStepRef.current = step;
+          more = !!full.activityTruncated && !full.activityDeepLast;
           setMetricsData(full);
           setVisibleCount((prev) => prev + 50);
         })
@@ -2035,7 +2083,7 @@ function ActivityPageContent() {
           // keeps whatever it already had rather than emptying itself.
         })
         .finally(() => {
-          setOlderLoaded(true);
+          setOlderLoaded(!more);
           setLoadingOlder(false);
         });
       return;

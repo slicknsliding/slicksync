@@ -89,6 +89,84 @@ function borrowForOpaqueStream(sessions, streamStart) {
   return candidates.length === 1 ? candidates[0] : null
 }
 
+/**
+ * A stream named only by an opaque id that is the same file as an earlier
+ * stream with a readable name (the same usenet download or link, played
+ * again - a resume usually is) gets that name. The same file is the same
+ * title, so this is certain, not a guess. Changes the rows in memory only.
+ */
+async function nameFromSameFile(prisma, accountId, rows) {
+  const opaque = rows.filter((r) => r.url && !r.metadataItemId && !r.metadataName && isOpaqueStreamName(proxyDisplayTitle(r)))
+  if (!opaque.length) return
+  let earlier = []
+  try {
+    earlier = (await prisma.proxyStreamSession.findMany({
+      where: { accountId, url: { in: [...new Set(opaque.map((r) => r.url))] } },
+      orderBy: { startTime: 'desc' },
+      select: { id: true, url: true, filename: true, displayName: true, posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true },
+    })) || []
+  } catch { return }
+  for (const row of opaque) {
+    const named = earlier.find((e) => e.url === row.url && e.id !== row.id && !isOpaqueStreamName(proxyDisplayTitle(e)))
+    if (!named) continue
+    for (const f of ['filename', 'displayName', 'posterUrl', 'metadataItemId', 'metadataItemType', 'metadataName']) row[f] = named[f]
+  }
+}
+
+// The resume guess: how far back a checkpoint may be, and how close a second
+// one may sit before neither is picked.
+const RESUME_GUESS_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000
+const RESUME_GUESS_TIE_MS = 10 * 60 * 1000
+
+/**
+ * While an unnamed stream plays and the app has not said what it is (Nuvio
+ * only writes at pause and stop), the person's most recent unfinished title
+ * - the one Continue Watching offers to resume - is very likely it. Shown as
+ * a guess (item.guessed). A checkpoint the app wrote while this stream was
+ * open (a pause) counts too: it is the strongest sign of all, and it stays
+ * after the app's own entry goes quiet, so a paused stream keeps its title. Nothing unfinished, a second
+ * unfinished title checkpointed within minutes of it, or a title they
+ * dismissed from Continue Watching: no guess.
+ */
+async function guessResumedTitle(prisma, accountId, userId, streamStart) {
+  const { RESUME_MIN_POSITION_MS, RESUME_MAX_RATIO } = require('./continueWatching')
+  const start = streamStart.getTime()
+  let rows
+  try {
+    rows = await prisma.watchSession.findMany({
+      where: {
+        accountId, userId, lastPosition: { gte: RESUME_MIN_POSITION_MS }, totalDuration: { not: null },
+        updatedAt: { gte: new Date(start - RESUME_GUESS_MAX_AGE_MS) },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 20,
+    })
+  } catch { return null }
+  const unfinished = rows.filter((r) => r.totalDuration > 0 && r.lastPosition / r.totalDuration < RESUME_MAX_RATIO)
+  if (!unfinished.length) return null
+  const [first, second] = unfinished
+  if (second && first.updatedAt.getTime() - second.updatedAt.getTime() < RESUME_GUESS_TIE_MS) return null
+  try {
+    const dismissed = await prisma.dismissedContinueWatching.findFirst({ where: { accountId, userId, showId: first.itemId } })
+    if (dismissed) return null
+  } catch { /* not dismissed as far as is known */ }
+  return {
+    item: {
+      id: first.itemId,
+      name: first.itemName,
+      type: first.itemType,
+      poster: first.poster || null,
+      season: first.season ?? null,
+      episode: first.episode ?? null,
+      guessed: true,
+    },
+    videoId: first.videoId || null,
+    lastPosition: first.lastPosition,
+    totalDuration: first.totalDuration,
+    reportedAtTimestamp: first.updatedAt.getTime(),
+  }
+}
+
 async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPlaying, { isConfirming } = {}) {
   let proxySessions
   let recentlyClosedSessions
@@ -130,6 +208,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     ? isConfirming(accountId)
     : require('./proxyStreamMonitor').isProxyMonitorConfirming(accountId)
   if (!confirming) proxySessions = []
+  await nameFromSameFile(prisma, accountId, proxySessions)
 
   if (proxySessions.length === 0 && recentlyClosedSessions.length === 0) {
     return watchSessionNowPlaying
@@ -207,7 +286,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // session) rather than a guess - only confident resolutions get written
   // back into ipAffinityByIp, so a guess can never reinforce itself into a
   // permanent wrong answer.
-  function disambiguateMatch(candidates, proxyRow, clientIp, confidentIfUnique) {
+  function disambiguateMatch(candidates, proxyRow, clientIp, confidentIfUnique, streamStart = null) {
     if (candidates.length <= 1) return { user: candidates[0] || null, confident: confidentIfUnique }
 
     // Device claim first: a human said outright whose device this is, which
@@ -226,6 +305,18 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     const titleMatch = candidates.find((u) =>
       (watchSessionsByUserId.get(u.id) || []).some((np) => pairMatches(described, np.item)))
     if (titleMatch) return { user: titleMatch, confident: true }
+
+    // A Stremio app saves to the account the moment it opens something. Once
+    // that library has been read since this stream began and nothing was
+    // opened, the stream is not that app's. Two profiles of one person on one
+    // home network share an address, so the address below can't tell them
+    // apart - this can. A guess still, so never learned as affinity.
+    if (streamStart) {
+      const stremioSaves = require('./stremioSaves')
+      const left = candidates.filter((u) => !(u.providerType === 'stremio' && stremioSaves.openedNothingSince(u.id, streamStart)))
+      if (left.length === 1) return { user: left[0], confident: false }
+      if (left.length > 1) candidates = left
+    }
 
     // No title-match signal available (common while a stream is mid-playback
     // and native hasn't checkpointed yet - native only writes a session at
@@ -330,7 +421,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
     if (candidates.length === 0) continue // no direct match and no usable fallback - skip rather than guess
 
-    const { user, confident } = disambiguateMatch(candidates, representative, representative.clientIp, candidatesAreRealMatch)
+    const { user, confident } = disambiguateMatch(candidates, representative, representative.clientIp, candidatesAreRealMatch, earliestStartTime)
     if (!user) continue
 
     // Learn from this resolution for next time - only when it's real
@@ -380,10 +471,21 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       isOpaqueStreamName(proxyDisplayTitle(representative))
     if (titlePending) {
       existing = borrowForOpaqueStream(theirSessions, earliestStartTime)
+      // Nothing from the app yet: the title they were partway through.
+      if (!existing) existing = await guessResumedTitle(prisma, accountId, user.id, earliestStartTime)
       if (existing) {
         // The native entry is now this card; it must not also be listed below.
         coveredByUser.get(user.id).push({ id: existing.item.id || null, titles: [existing.item.name].filter(Boolean) })
       }
+    }
+    // Stremio's own player said this (utils/stremioAddonEvents.js): its real
+    // position and its pause outrank a stream the proxy can only see is open.
+    // That row stays as it is, in the loop below.
+    if (existing?.source === 'stremio') continue
+    // Its saves to the account say the same, a little later (stremioSaves.js).
+    if (existing?.source === 'stremio-saves') {
+      existing.carriedByProxy = true
+      continue
     }
     const existingTitleMatches = !!existing
 
@@ -420,6 +522,8 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       positionAt: existingTitleMatches && typeof existing.lastPosition === 'number' && typeof existing.reportedAtTimestamp === 'number'
         ? Math.max(existing.reportedAtTimestamp, earliestStartTime.getTime())
         : null,
+      // A guessed title's position is its last checkpoint plus the time played since.
+      ...(existing?.item?.guessed ? { positionEstimated: true } : {}),
       ...(existingTitleMatches && existing.stremioAppUrl ? { stremioAppUrl: existing.stremioAppUrl, nuvioAppUrl: existing.nuvioAppUrl } : {}),
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
@@ -521,7 +625,9 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // Superseded when the proxy is currently carrying this title (the proxy
     // entry above replaces it), or recently finished carrying it (stale echo).
     const matches = (streams) => !!streams && streams.some((d) => pairMatches(d, np.item))
-    const isSuperseded = matches(active) || matches(ended)
+    const isSuperseded = np.source === 'stremio-saves'
+      ? matches(ended) && !matches(active)
+      : np.source !== 'stremio' && (matches(active) || matches(ended))
     if (!isSuperseded) result.push(np)
   }
 
@@ -546,4 +652,4 @@ async function notifyNewDevice(prisma, accountId, user, clientIp) {
   } catch {}
 }
 
-module.exports = { mergeProxyNowPlaying }
+module.exports = { mergeProxyNowPlaying, guessResumedTitle, nameFromSameFile }

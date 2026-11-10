@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { motion } from 'framer-motion';
 import {
   ClockIcon,
@@ -22,6 +23,9 @@ import { RecentAndMost } from '@/components/user/home/RecentAndMost';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePageArrangement } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // The names the Arrange tray uses for hidden sections.
 const HOME_LABELS: Record<string, string> = {
@@ -31,6 +35,8 @@ const HOME_LABELS: Record<string, string> = {
 export default function UserHomePage() {
   const { userId, userInfo, provider } = useUserAuth();
   const providerLabel = providerTypeLabel(provider);
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const { authKey, isReady } = useUserAuthHeaders();
   // Grid or list, as picked under Themes (phones are always grid).
   const { viewMode } = useDefaultViewMode();
@@ -42,8 +48,8 @@ export default function UserHomePage() {
     let stopped = false;
     const look = () => getOwnScreenTime(userId, authKey).then((r) => { if (!stopped) setPaused(r.paused); }).catch(() => {});
     look();
-    const timer = setInterval(look, 60 * 1000);
-    return () => { stopped = true; clearInterval(timer); };
+    const stopPoll = startAdaptivePoll(look, 60 * 1000, 60 * 1000);
+    return () => { stopped = true; stopPoll(); };
   }, [userId, authKey, isReady]);
   
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);
@@ -78,8 +84,9 @@ export default function UserHomePage() {
         if (riskResult.status === 'fulfilled') {
           setAtRiskStatus(riskResult.value);
         } else {
-          console.error('Failed to load risk status:', riskResult.reason);
-          // Don't set error for risk status - it's optional
+          // Optional, and it fails for anyone with no app connected (nothing to
+          // check), so it stays out of the console's errors.
+          console.debug('Risk status not available:', riskResult.reason?.message || riskResult.reason);
         }
       } catch (err: any) {
         console.error('Failed to load data:', err);
@@ -91,6 +98,17 @@ export default function UserHomePage() {
 
     fetchData();
   }, [userId, authKey, isReady]);
+
+  // While they're watching, the card follows along without a reload.
+  const watchingNow = !!activityData?.nowPlaying?.[0];
+  useEffect(() => {
+    if (!watchingNow || !isReady || !userId) return;
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      userActivity.getActivity(userId, authKey || undefined).then(setActivityData).catch(() => {});
+    }, 20000);
+    return () => clearInterval(id);
+  }, [watchingNow, userId, authKey, isReady]);
 
   // Handle sync
   const handleSync = async () => {
@@ -152,7 +170,29 @@ export default function UserHomePage() {
     ? ['nowPlaying', 'continue', 'upcoming', 'numbers', 'recent']
     : ['continue', 'upcoming', 'numbers', 'recent']);
 
+  const syncBtn = (
+    <button
+      onClick={handleSync}
+      disabled={syncing}
+      className="flex items-center gap-2 px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
+      style={{ background: 'var(--color-primary)', color: 'white' }}
+    >
+      <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+      <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
+    </button>
+  );
+  const retryBtn = (
+    <button
+      onClick={() => window.location.reload()}
+      className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
+      style={{ background: 'var(--color-primary)', color: 'white' }}
+    >
+      Try Again
+    </button>
+  );
+
   return (
+    <Wrapper>
     <div className="p-4 sm:p-8">
       {/* Hello, their picture, health, group and Sync Now. */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-4 mb-6">
@@ -174,16 +214,8 @@ export default function UserHomePage() {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <div className="flex items-center gap-2">
-          <ArrangeButton arrange={homeArrange} />
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all hover:opacity-90 disabled:opacity-50"
-            style={{ background: 'var(--color-primary)', color: 'white' }}
-          >
-            <ArrowPathIcon className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
-          </button>
+          {!isTV && <ArrangeButton arrange={homeArrange} />}
+          {isTV ? <TVFocusable onEnterPress={handleSync}>{syncBtn}</TVFocusable> : syncBtn}
           </div>
           {syncMessage && (
             <p className={`text-xs ${syncMessage.includes('completed') ? 'text-success' : 'text-error'}`}>{syncMessage}</p>
@@ -222,7 +254,7 @@ export default function UserHomePage() {
         }
         if (id === 'continue') {
           // Partly-watched shows and films, theirs only; hides itself when there are none.
-          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><ContinueWatchingRow view={viewMode} /></ArrangePanel>;
+          return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><ContinueWatchingRow view={viewMode} playingId={activityData?.nowPlaying?.[0]?.item.id ?? null} /></ArrangePanel>;
         }
         if (id === 'upcoming') {
           return <ArrangePanel key={id} arrange={homeArrange} id={id} label={HOME_LABELS[id]} ownHeading={false}><UpcomingSection view={viewMode} /></ArrangePanel>;
@@ -259,13 +291,7 @@ export default function UserHomePage() {
           <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-error)' }} />
           <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-error)' }}>Failed to load activity data</h3>
           <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
-            style={{ background: 'var(--color-primary)', color: 'white' }}
-          >
-            Try Again
-          </button>
+          {isTV ? <TVFocusable className="inline-block" onEnterPress={() => window.location.reload()}>{retryBtn}</TVFocusable> : retryBtn}
         </div>
       )}
 
@@ -277,5 +303,6 @@ export default function UserHomePage() {
         </div>
       )}
     </div>
+    </Wrapper>
   );
 }

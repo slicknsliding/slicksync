@@ -6,6 +6,8 @@ import { PubButton, PubCode, PubError, PubHeading, PubLink, PubOr, PubQr, PubWai
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { stremioOAuth } from '@/lib/invite-api';
 import { copyToClipboard } from '@/lib/clipboard';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 interface StremioOAuthCardProps {
   /** OAuth link provided by admin (if already generated) */
@@ -195,6 +197,9 @@ export function StremioOAuthCard({
     window.open(oauthLink, '_blank', 'noopener,noreferrer');
   }, [oauthLink, disabled]);
 
+  // TV remote: OK on the buttons does what a click does.
+  const isTV = useIsTV();
+
   // Time left color based on urgency
   const getTimeColor = () => {
     if (!oauthExpiresAt) return 'var(--color-text-subtle)';
@@ -218,16 +223,21 @@ export function StremioOAuthCard({
       )}
 
       {/* Main button - Open Stremio */}
-      <PubButton
-        primary
-        onClick={openLink}
-        disabled={!oauthLink || disabled || isExpired || isCompleting}
-        icon={isCompleting || isGenerating
-          ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          : <ArrowTopRightOnSquareIcon className="w-5 h-5" />}
-      >
-        {isCompleting ? 'Creating Account...' : isGenerating ? 'Generating Link...' : 'Open Stremio'}
-      </PubButton>
+      {(() => {
+        const openButton = (
+          <PubButton
+            primary
+            onClick={openLink}
+            disabled={!oauthLink || disabled || isExpired || isCompleting}
+            icon={isCompleting || isGenerating
+              ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              : <ArrowTopRightOnSquareIcon className="w-5 h-5" />}
+          >
+            {isCompleting ? 'Creating Account...' : isGenerating ? 'Generating Link...' : 'Open Stremio'}
+          </PubButton>
+        );
+        return isTV ? <TVFocusable onEnterPress={() => { if (oauthLink && !disabled && !isExpired && !isCompleting) openLink(); }}>{openButton}</TVFocusable> : openButton;
+      })()}
 
       <PubOr />
 
@@ -256,9 +266,14 @@ export function StremioOAuthCard({
           </span>
         )}
         {!hasAdminLink && (
-          <PubLink onClick={generateLink} disabled={isGenerating || disabled} icon={<ArrowPathIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />}>
-            Refresh
-          </PubLink>
+          (() => {
+            const refresh = (
+              <PubLink onClick={generateLink} disabled={isGenerating || disabled} icon={<ArrowPathIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />}>
+                Refresh
+              </PubLink>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => { if (!isGenerating && !disabled) generateLink(); }}>{refresh}</TVFocusable> : refresh;
+          })()
         )}
       </div>
 

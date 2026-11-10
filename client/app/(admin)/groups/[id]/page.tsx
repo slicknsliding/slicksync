@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef, memo, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, memo, useMemo, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { api, User, Group, Addon } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { formatLastSync } from '@/lib/relativeTime';
@@ -356,11 +359,25 @@ const GroupContentBreakdownChart = memo(function GroupContentBreakdownChart({
 });
 
 // Sortable Addon Item Component with clean draggable card design
+// Makes its children reachable by the TV remote (OK = onEnter); a no-op wrapper elsewhere.
+function TVAvatarWrap({ isTV, onEnter, children }: { isTV: boolean; onEnter: () => void; children: React.ReactNode }) {
+  return isTV ? <TVFocusable onEnterPress={onEnter}>{children}</TVFocusable> : <>{children}</>;
+}
+
+// TV: the remote starts on Sync Group, not on the Active switch before it.
+const GROUP_SYNC_KEY = 'group-sync';
+function GroupTVPage({ children }: { children: React.ReactNode }) {
+  return <TVPageProvider initialFocusKey={GROUP_SYNC_KEY}>{children}</TVPageProvider>;
+}
+
 export default function GroupDetailPage() {
   const { layoutMode } = useLayoutMode();
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? GroupTVPage : Fragment;
+  const tv = (node: React.ReactNode, onEnter: () => void, focusKey?: string) =>
+    isTV ? <TVFocusable onEnterPress={onEnter} focusKey={focusKey}>{node}</TVFocusable> : node;
   const params = useParams();
   const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -963,41 +980,54 @@ export default function GroupDetailPage() {
 
   const detailActions = (
     <div className="flex items-center gap-3 flex-wrap justify-end">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted">Active</span>
-        <ToggleSwitch
-          checked={(group as any)?.isActive !== false}
-          onChange={handleToggleActive}
-          size="sm"
-        />
-      </div>
-      <Button
-        variant="glass"
-        leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-        onClick={handleSync}
-        isLoading={isSyncing}
-      >
-        Sync Group
-      </Button>
-      <Button
-        variant="glass"
-        leftIcon={<PencilIcon className="w-5 h-5" />}
-        onClick={() => setIsEditModalOpen(true)}
-      >
-        Edit
-      </Button>
-      <Button
-        variant="danger"
-        leftIcon={<TrashIcon className="w-5 h-5" />}
-        onClick={() => setIsDeleteModalOpen(true)}
-      >
-        Delete
-      </Button>
+      {tv(
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted">Active</span>
+          <ToggleSwitch
+            checked={(group as any)?.isActive !== false}
+            onChange={handleToggleActive}
+            size="sm"
+          />
+        </div>,
+        handleToggleActive,
+      )}
+      {tv(
+        <Button
+          variant="glass"
+          leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+          onClick={handleSync}
+          isLoading={isSyncing}
+        >
+          Sync Group
+        </Button>,
+        handleSync,
+        GROUP_SYNC_KEY,
+      )}
+      {tv(
+        <Button
+          variant="glass"
+          leftIcon={<PencilIcon className="w-5 h-5" />}
+          onClick={() => setIsEditModalOpen(true)}
+        >
+          Edit
+        </Button>,
+        () => setIsEditModalOpen(true),
+      )}
+      {tv(
+        <Button
+          variant="danger"
+          leftIcon={<TrashIcon className="w-5 h-5" />}
+          onClick={() => setIsDeleteModalOpen(true)}
+        >
+          Delete
+        </Button>,
+        () => setIsDeleteModalOpen(true),
+      )}
     </div>
   );
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={
@@ -1074,6 +1104,7 @@ export default function GroupDetailPage() {
                   transition={{ type: 'spring', stiffness: 200 }}
                   className="relative shrink-0"
                 >
+                  <TVAvatarWrap isTV={isTV} onEnter={() => setShowAvatarPicker(true)}>
                   <div
                     onClick={() => setShowAvatarPicker(true)}
                     className="cursor-pointer hover:scale-105 transition-transform"
@@ -1086,6 +1117,7 @@ export default function GroupDetailPage() {
                       className="shadow-lg ring-4 ring-[var(--color-bg)]"
                     />
                   </div>
+                  </TVAvatarWrap>
                   <AvatarPickerModal
                     isOpen={showAvatarPicker}
                     onClose={() => setShowAvatarPicker(false)}
@@ -1194,7 +1226,7 @@ export default function GroupDetailPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {groupUsers.length > 0 && (
+                {groupUsers.length > 0 && tv(
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1203,16 +1235,20 @@ export default function GroupDetailPage() {
                   >
                     <TrashIcon className="w-4 h-4 mr-1" />
                     Clear All
-                  </Button>
+                  </Button>,
+                  () => setIsClearMembersModalOpen(true),
                 )}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<UserPlusIcon className="w-4 h-4" />}
-                  onClick={() => setIsAddMemberModalOpen(true)}
-                >
-                  Add Member
-                </Button>
+                {tv(
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<UserPlusIcon className="w-4 h-4" />}
+                    onClick={() => setIsAddMemberModalOpen(true)}
+                  >
+                    Add Member
+                  </Button>,
+                  () => setIsAddMemberModalOpen(true),
+                )}
               </div>
             </div>
 
@@ -1233,12 +1269,12 @@ export default function GroupDetailPage() {
 
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <Link
+                            <TVLink
                               href={`/users/${user.id}`}
                               className="font-medium text-default hover:text-primary transition-colors break-words"
                             >
                               {displayName}
-                            </Link>
+                            </TVLink>
                             <SyncBadge 
                               key={`user-sync-${user.id}-${isUserSyncing}`}
                               userId={user.id} 
@@ -1250,25 +1286,31 @@ export default function GroupDetailPage() {
                           <p className="text-sm text-muted break-words">{displayEmail(user.email)}</p>
                         </div>
 
-                        <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isUserSyncing ? 'animate-spin' : ''}`} />}
-                            onClick={() => handleSyncUser(user.id, displayName)}
-                            disabled={isUserSyncing}
-                          >
-                            Sync
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            leftIcon={<UserMinusIcon className="w-4 h-4" />}
-                            onClick={() => handleRemoveUser(user.id, displayName)}
-                            className="text-error hover:bg-error-muted"
-                          >
-                            Remove
-                          </Button>
+                        <div className="flex items-center gap-2 hover-reveal transition-opacity">
+                          {tv(
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isUserSyncing ? 'animate-spin' : ''}`} />}
+                              onClick={() => handleSyncUser(user.id, displayName)}
+                              disabled={isUserSyncing}
+                            >
+                              Sync
+                            </Button>,
+                            () => { if (!isUserSyncing) handleSyncUser(user.id, displayName); },
+                          )}
+                          {tv(
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              leftIcon={<UserMinusIcon className="w-4 h-4" />}
+                              onClick={() => handleRemoveUser(user.id, displayName)}
+                              className="text-error hover:bg-error-muted"
+                            >
+                              Remove
+                            </Button>,
+                            () => handleRemoveUser(user.id, displayName),
+                          )}
                         </div>
                       </motion.div>
                     </StaggerItem>
@@ -1303,7 +1345,7 @@ export default function GroupDetailPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {addons.length > 0 && (
+                {addons.length > 0 && tv(
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1312,16 +1354,20 @@ export default function GroupDetailPage() {
                   >
                     <TrashIcon className="w-4 h-4 mr-1" />
                     Clear All
-                  </Button>
+                  </Button>,
+                  () => setIsClearAddonsModalOpen(true),
                 )}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<PlusIcon className="w-4 h-4" />}
-                  onClick={() => setIsAddAddonModalOpen(true)}
-                >
-                  Add Addon
-                </Button>
+                {tv(
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<PlusIcon className="w-4 h-4" />}
+                    onClick={() => setIsAddAddonModalOpen(true)}
+                  >
+                    Add Addon
+                  </Button>,
+                  () => setIsAddAddonModalOpen(true),
+                )}
               </div>
             </div>
 
@@ -1355,9 +1401,10 @@ export default function GroupDetailPage() {
                           >
                             <Bars3Icon className="w-5 h-5 text-subtle" />
                           </div>
-                          <Link
+                          <TVLink
                             href={`/addons/${addon.id}`}
                             className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
+                            focusWrapperClassName="flex-1 min-w-0"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-surface-hover">
@@ -1392,22 +1439,25 @@ export default function GroupDetailPage() {
                                 </div>
                               )}
                             </div>
-                          </Link>
-                          <div className="flex items-center gap-2 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onTouchStart={(e) => e.stopPropagation()}
-                              onClick={() => {
-                                if (addon.id) {
-                                  handleRemoveAddon(addon.id);
-                                }
-                              }}
-                              className="text-error hover:bg-error-muted rounded-lg"
-                            >
-                              <XMarkIcon className="w-5 h-5" />
-                            </Button>
+                          </TVLink>
+                          <div className="flex items-center gap-2 shrink-0 hover-reveal transition-opacity">
+                            {tv(
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                onClick={() => {
+                                  if (addon.id) {
+                                    handleRemoveAddon(addon.id);
+                                  }
+                                }}
+                                className="text-error hover:bg-error-muted rounded-lg"
+                              >
+                                <XMarkIcon className="w-5 h-5" />
+                              </Button>,
+                              () => { if (addon.id) handleRemoveAddon(addon.id); },
+                            )}
                           </div>
                         </motion.div>
                       );
@@ -1419,14 +1469,17 @@ export default function GroupDetailPage() {
               <div className="text-center py-8">
                 <PuzzlePieceIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
                 <p className="text-muted mb-4">No addons in this group</p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<PlusIcon className="w-4 h-4" />}
-                  onClick={() => setIsAddAddonModalOpen(true)}
-                >
-                  Add First Addon
-                </Button>
+                {tv(
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<PlusIcon className="w-4 h-4" />}
+                    onClick={() => setIsAddAddonModalOpen(true)}
+                  >
+                    Add First Addon
+                  </Button>,
+                  () => setIsAddAddonModalOpen(true),
+                )}
           </div>
         )}
       </Card>
@@ -1546,7 +1599,7 @@ export default function GroupDetailPage() {
         variant="danger"
         isLoading={isClearing}
       />
-    </>
+    </Wrapper>
   );
 }
 

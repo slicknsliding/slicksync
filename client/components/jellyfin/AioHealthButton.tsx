@@ -38,7 +38,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
     const at = place();
     if (at) setAnchor(at);
   };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
   // Read when opened (and when the range changes) - it asks AIOStreams.
   useEffect(() => {

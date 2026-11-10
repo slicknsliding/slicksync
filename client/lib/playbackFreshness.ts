@@ -9,7 +9,7 @@
 
 export interface FreshnessRow {
   source?: string;
-  /** Set only when the player itself said paused. */
+  /** Set only when the player said paused, or Stremio's saves show it. */
   paused?: boolean;
   /** The proxy has stopped reconfirming the stream. */
   elapsedFrozen?: boolean;
@@ -35,8 +35,9 @@ export interface Freshness {
 }
 
 /** Sources that keep confirming a viewing while it plays (the server's own
- *  passes: the proxy poll every ~30 s, Jellyfin's sessions every minute). */
-const HEARTBEAT_SOURCES = new Set(['aiostreams-proxy', 'jellyfin']);
+ *  passes: the proxy poll every ~30 s, Jellyfin's sessions every minute, Stremio's
+ *  saves read every 20 s). */
+const HEARTBEAT_SOURCES = new Set(['aiostreams-proxy', 'jellyfin', 'stremio-saves']);
 
 /** Past this without a reconfirmation a row is no longer called live - the
  *  server drops a Jellyfin viewing after the same 150 s. */
@@ -72,7 +73,7 @@ export function playbackFreshness(row: FreshnessRow | null | undefined, now: num
     const when = formatAge(age, true);
     return { state: 'live', live: true, pulse: true, text: `Live · ${when === 'just now' ? 'updated just now' : `updated ${when}`}` };
   }
-  if (row.source === 'aiostreams' && typeof row.playingUntilTimestamp === 'number' && Number.isFinite(row.playingUntilTimestamp) && now <= row.playingUntilTimestamp) {
+  if ((row.source === 'aiostreams' || row.source === 'stremio') && typeof row.playingUntilTimestamp === 'number' && Number.isFinite(row.playingUntilTimestamp) && now <= row.playingUntilTimestamp) {
     return { state: 'playing-estimated', live: false, pulse: true, text: `Playing · started ${formatAge(age, false)}` };
   }
   return { state: 'seen', live: false, pulse: false, text: `Last seen ${formatAge(age, false)}` };

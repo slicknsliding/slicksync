@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BoltIcon,
   PlusIcon,
@@ -9,8 +9,12 @@ import {
   PlayIcon,
   CheckCircleIcon,
   XCircleIcon,
+  BellIcon,
+  GlobeAltIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { Card, Button, Badge, Modal, ConfirmModal, ToggleSwitch } from '@/components/ui';
+import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { AUTOMATION_RECIPES } from './automationRecipes';
@@ -89,6 +93,139 @@ function RuleSentence({ registry, triggerType, conditions, actions }: {
   );
 }
 
+// ---- Test confirm ------------------------------------------------------------
+//
+// Test runs the rule's real actions straight away (server/routes/automation.js),
+// skipping the "when" and using made-up details. One press could push to the
+// household, promote a backup key or deactivate someone, so it asks first,
+// every time: what a rule does can change whenever it is edited. Actions that
+// change something get the amber row. Only "Run test" sends the request.
+
+// Actions that change something in SlickSync rather than just telling someone.
+const CHANGING_ACTIONS = new Set([
+  'addon.disable', 'addon.enable', 'keys.promote_backup',
+  'user.add_to_group', 'user.remove_from_group', 'user.deactivate', 'user.sync',
+]);
+
+type Names = { users: Map<string, string>; groups: Map<string, string>; addons: Map<string, string> };
+
+function TestActionLine({ action, registry, triggerType, names }: {
+  action: AutomationActionConfig;
+  registry: AutomationRegistry;
+  triggerType: string;
+  names: Names;
+}) {
+  const cfg = action.config || {};
+  const label = registry.actions.find((x) => x.type === action.type)?.label || action.type;
+  const fields = registry.triggers.find((t) => t.type === triggerType)?.fields || [];
+  // {{field}} in a message becomes the field's name, since the real value is made up in a test.
+  const fill = (text: string) => text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, f: string) => `[${fields.find((x) => x.name === f)?.label || f}]`);
+  const user = (id?: string) => (id ? <b>{names.users.get(id) || 'the chosen person'}</b> : <>the person in the trigger</>);
+  const group = (id?: string) => <b>{(id && names.groups.get(id)) || 'the chosen group'}</b>;
+  const addon = (id?: string) => (id ? <b>{names.addons.get(id) || 'the chosen addon'}</b> : <>the addon in the trigger</>);
+  const host = (() => { try { return new URL(String(cfg.url || '')).host; } catch { return ''; } })();
+
+  let text: React.ReactNode;
+  switch (action.type) {
+    case 'notify': text = <>Sends a push and a bell notice{cfg.title ? <>: “{fill(cfg.title)}”</> : null}</>; break;
+    case 'webhook': text = <>Calls <b>{host || 'the webhook address'}</b> with made-up details</>; break;
+    case 'addon.disable': text = <>Turns off {addon(cfg.addonId)}</>; break;
+    case 'addon.enable': text = <>Turns on {addon(cfg.addonId)}</>; break;
+    case 'keys.check': text = <>Checks your API keys now</>; break;
+    case 'keys.promote_backup': text = <>Runs <b>{label}</b>: your backup key becomes the main one</>; break;
+    case 'backup.run': text = <>Makes a backup now</>; break;
+    case 'user.add_to_group': text = <>Adds {user(cfg.userId)} to {group(cfg.groupId)}</>; break;
+    case 'user.remove_from_group': text = <>Takes {user(cfg.userId)} out of {group(cfg.groupId)}</>; break;
+    case 'user.deactivate': text = <>Deactivates {user(cfg.userId)}</>; break;
+    case 'user.sync':
+      text = cfg.scope === 'all' ? <>Syncs <b>every active user</b></>
+        : cfg.scope === 'group' ? <>Syncs everyone in {group(cfg.groupId)}</>
+        : cfg.scope === 'user' ? <>Syncs {user(cfg.userId)}</>
+        : <>Syncs the person in the trigger</>;
+      break;
+    default: text = <>Runs <b>{label}</b></>;
+  }
+
+  const changes = CHANGING_ACTIONS.has(action.type);
+  const Icon = changes ? ExclamationTriangleIcon : action.type === 'notify' ? BellIcon : action.type === 'webhook' ? GlobeAltIcon : BoltIcon;
+  return (
+    <div
+      className="flex gap-2.5 items-start px-[11px] py-[9px] rounded-[11px]"
+      style={changes
+        ? { background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)' }
+        : { background: 'var(--color-surface-hover)' }}
+    >
+      <Icon className="w-[18px] h-[18px] shrink-0" style={{ color: changes ? 'var(--color-warning)' : 'var(--color-primary)' }} />
+      <span className="min-w-0 break-words">{text}</span>
+    </div>
+  );
+}
+
+function TestConfirm({ rule, registry, anchorRef, align, onClose, onRun }: {
+  rule: AutomationRule;
+  registry: AutomationRegistry;
+  anchorRef: React.RefObject<HTMLElement | null>;
+  align: 'start' | 'end';
+  onClose: () => void;
+  onRun: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  // Names for any person, group or addon the actions point at, read only when needed.
+  const [names, setNames] = useState<Names>({ users: new Map(), groups: new Map(), addons: new Map() });
+  useEffect(() => {
+    const cfgs = rule.actions.map((a) => a.config || {});
+    const needUsers = cfgs.some((c) => c.userId);
+    const needGroups = cfgs.some((c) => c.groupId);
+    const needAddons = cfgs.some((c) => c.addonId);
+    if (!needUsers && !needGroups && !needAddons) return;
+    let cancelled = false;
+    Promise.all([
+      needUsers ? api.getUsers().catch(() => []) : Promise.resolve([]),
+      needGroups ? api.getGroups().catch(() => []) : Promise.resolve([]),
+      needAddons ? api.getAddons().catch(() => []) : Promise.resolve([]),
+    ]).then(([users, groups, addons]) => {
+      if (cancelled) return;
+      setNames({
+        users: new Map(users.map((u) => [u.id, u.username || u.name || u.email || 'Unnamed user'])),
+        groups: new Map(groups.map((g) => [g.id, g.name])),
+        addons: new Map(addons.map((a) => [a.id, a.name])),
+      });
+    });
+    return () => { cancelled = true; };
+  }, [rule.actions]);
+
+  return (
+    <AnchoredPopup
+      anchorRef={anchorRef}
+      onClose={onClose}
+      title="Run this rule for real now?"
+      width={360}
+      align={align}
+      caret
+      closeButton={false}
+      initialFocusRef={cancelRef}
+    >
+      <p className="text-[13px] text-muted mt-1 mb-2.5">Test skips the &quot;when&quot; and does exactly this, with made-up details:</p>
+      <div className="flex flex-col gap-2 text-[13.5px] text-default">
+        {rule.actions.length === 0
+          ? <p className="text-muted">Nothing - this rule has no actions yet.</p>
+          : rule.actions.map((a, i) => (
+            <TestActionLine key={i} action={a} registry={registry} triggerType={rule.triggerType} names={names} />
+          ))}
+      </div>
+      <p className="text-xs text-subtle mt-2.5">Shows in Run history as a Test run.</p>
+      <div className="flex gap-2 mt-3">
+        <button ref={cancelRef} type="button" className="v2-btn" style={{ flex: 1, justifyContent: 'center', padding: 9 }} onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="v2-btn v2-btn-main" style={{ flex: 1, justifyContent: 'center', padding: 9 }} onClick={onRun}>
+          Run test
+        </button>
+      </div>
+    </AnchoredPopup>
+  );
+}
+
 export function AutomationPanel() {
   // The "new rule" front door: a chooser offering the recipes first, with
   // "start from scratch" as the explicit escape hatch - not the reverse.
@@ -125,6 +262,11 @@ export function AutomationPanel() {
   const [editingRule, setEditingRule] = useState<AutomationRule | 'new' | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AutomationRule | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  // The rule whose Test popup is open, and the Test button it hangs from.
+  const [confirmTestId, setConfirmTestId] = useState<string | null>(null);
+  const testAnchorRef = useRef<HTMLElement | null>(null);
+  // The popup hangs towards the middle of the screen from wherever Test sits.
+  const [testAlign, setTestAlign] = useState<'start' | 'end'>('end');
   // New-rule defaults handed over by another page (e.g. an addon detail
   // page's "Automate" button pre-picking the addon.offline trigger scoped
   // to that addon). Read-and-clear from sessionStorage so a refresh of the
@@ -354,7 +496,19 @@ export function AutomationPanel() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <Button variant="ghost" size="sm" isLoading={testingId === rule.id} leftIcon={<PlayIcon className="w-4 h-4" />} onClick={() => handleTest(rule)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    isLoading={testingId === rule.id}
+                    leftIcon={<PlayIcon className="w-4 h-4" />}
+                    aria-haspopup="dialog"
+                    aria-expanded={confirmTestId === rule.id}
+                    onClick={(e) => {
+                      testAnchorRef.current = e.currentTarget;
+                      setTestAlign(e.currentTarget.getBoundingClientRect().left < window.innerWidth / 2 ? 'start' : 'end');
+                      setConfirmTestId((id) => (id === rule.id ? null : rule.id));
+                    }}
+                  >
                     Test
                   </Button>
                   <Button variant="ghost" size="sm" leftIcon={<PencilIcon className="w-4 h-4" />} onClick={() => setEditingRule(rule)}>
@@ -374,6 +528,21 @@ export function AutomationPanel() {
           ))}
         </div>
       )}
+
+      {(() => {
+        const rule = confirmTestId ? rules.find((r) => r.id === confirmTestId) : null;
+        if (!rule || !registry) return null;
+        return (
+          <TestConfirm
+            rule={rule}
+            registry={registry}
+            anchorRef={testAnchorRef}
+            align={testAlign}
+            onClose={() => setConfirmTestId(null)}
+            onRun={() => { setConfirmTestId(null); handleTest(rule); }}
+          />
+        );
+      })()}
 
       {editingRule && registry && (
         <RuleEditorModal

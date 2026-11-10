@@ -12,6 +12,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, ServerStackIcon } from '@heroicons/react/24/outline';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { useTVStops } from '@/components/tv/useTVModal';
+
+// TV: each field and button is a remote stop - OK on a field opens the TV's
+// keyboard, OK on a button does what a click does. Inside a window (Add
+// User) the window moves between them itself, so they stay plain there.
+function Stop({ on, onEnter, className, children }: { on: boolean; onEnter: () => void; className?: string; children: React.ReactNode }) {
+  return on ? <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable> : <>{children}</>;
+}
+const focusField = (id: string) => () => document.getElementById(id)?.focus();
 
 export type JellyfinServerInfo = {
   serverUrl: string;
@@ -71,6 +81,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
   const [quick, setQuick] = useState<{ code: string; secret: string; device: string; serverUrl: string } | null>(null);
   const [quickStatus, setQuickStatus] = useState<'idle' | 'starting' | 'waiting' | 'approved' | 'expired'>('idle');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tv = useTVStops();
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
@@ -196,6 +207,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
             <label htmlFor="jellyfin-address" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
               Server address
             </label>
+            <Stop on={tv} onEnter={focusField('jellyfin-address')}>
             <input
               id="jellyfin-address"
               type="text"
@@ -207,10 +219,12 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
               className="w-full px-4 py-3 rounded-xl text-sm"
               style={inputStyle}
             />
+            </Stop>
             <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
               The address you open Jellyfin at. For AIOStreams or AIOMetadata, the address shown under Jellyfin apps on its configure page.
             </p>
           </div>
+          <Stop on={tv} onEnter={() => { if (!checking) checkAddress(); }}>
           <button
             type="submit"
             disabled={checking}
@@ -220,6 +234,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
             {checking ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : null}
             {checking ? 'Checking…' : 'Continue'}
           </button>
+          </Stop>
         </form>
       ) : (
         <>
@@ -237,14 +252,17 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
               </div>
               <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{server.display}</p>
             </div>
+            <Stop on={tv} onEnter={changeServer}>
             <button type="button" onClick={changeServer} className="text-xs font-medium px-2 py-1 rounded-lg" style={{ color: 'var(--color-text-muted)' }}>
               Change
             </button>
+            </Stop>
           </div>
 
           {/* How to sign in */}
           {server.quickConnect && (
             <div className="flex gap-2 p-1 rounded-lg bg-bg-subtle">
+              <Stop on={tv} onEnter={() => pickMethod('password')} className="flex-1">
               <button
                 type="button"
                 onClick={() => pickMethod('password')}
@@ -252,6 +270,8 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
               >
                 User and password
               </button>
+              </Stop>
+              <Stop on={tv} onEnter={() => pickMethod('quick')} className="flex-1">
               <button
                 type="button"
                 onClick={() => pickMethod('quick')}
@@ -259,6 +279,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
               >
                 Quick Connect
               </button>
+              </Stop>
             </div>
           )}
 
@@ -271,8 +292,8 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                     {server.users.map((u) => {
                       const selected = loginName === u.name;
                       return (
+                        <Stop key={u.id} on={tv} onEnter={() => { setLoginName(u.name); setError(null); }}>
                         <button
-                          key={u.id}
                           type="button"
                           onClick={() => { setLoginName(u.name); setError(null); }}
                           className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${selected ? 'user-tile-on' : 'user-tile-off'}`}
@@ -282,18 +303,22 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                           </span>
                           <span className="text-xs font-medium truncate max-w-full" style={{ color: 'var(--color-text)' }}>{u.name}</span>
                         </button>
+                        </Stop>
                       );
                     })}
                   </div>
+                  <Stop on={tv} onEnter={() => { setTypingName(true); setLoginName(''); }} className="inline-block">
                   <button type="button" onClick={() => { setTypingName(true); setLoginName(''); }} className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
                     Someone not listed? Type their name
                   </button>
+                  </Stop>
                 </div>
               ) : (
                 <div>
                   <label htmlFor="jellyfin-user" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
                     User name
                   </label>
+                  <Stop on={tv} onEnter={focusField('jellyfin-user')}>
                   <input
                     id="jellyfin-user"
                     type="text"
@@ -304,15 +329,18 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                     className="w-full px-4 py-3 rounded-xl text-sm"
                     style={inputStyle}
                   />
+                  </Stop>
                   {isAio && (
                     <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
                       On this address, sign in with the configuration UUID (or its alias). For someone else in the household, add a slash and their name: UUID/Sam.
                     </p>
                   )}
                   {server.users.length > 0 && (
+                    <Stop on={tv} onEnter={() => setTypingName(false)} className="inline-block">
                     <button type="button" onClick={() => setTypingName(false)} className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
                       Pick from the list instead
                     </button>
+                    </Stop>
                   )}
                 </div>
               )}
@@ -321,25 +349,29 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                 <label htmlFor="jellyfin-password" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
                   Password
                 </label>
-                <div className="relative">
+                <div className={tv ? 'flex items-center gap-2' : 'relative'}>
+                  <Stop on={tv} onEnter={focusField('jellyfin-password')} className="flex-1">
                   <input
                     id="jellyfin-password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-4 pr-12 py-3 rounded-xl text-sm"
+                    className={`w-full pl-4 ${tv ? 'pr-4' : 'pr-12'} py-3 rounded-xl text-sm`}
                     style={inputStyle}
                   />
+                  </Stop>
+                  <Stop on={tv} onEnter={() => setShowPassword((v) => !v)}>
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
+                    className={tv ? 'p-2' : 'absolute right-3 top-1/2 -translate-y-1/2 p-1'}
                     style={{ color: 'var(--color-text-muted)' }}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
                   </button>
+                  </Stop>
                 </div>
                 {(isAio || pinHint) && (
                   <p className={`text-xs mt-2 ${pinHint ? 'pin-hint-on' : 'text-muted'}`}>
@@ -350,6 +382,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
 
               {error && <p className="text-sm" style={{ color: 'var(--color-error, #ef4444)' }}>{error}</p>}
 
+              <Stop on={tv} onEnter={() => { if (!submitting) submitPassword(); }}>
               <button
                 type="submit"
                 disabled={submitting}
@@ -359,6 +392,7 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                 {submitting ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : null}
                 {submitting ? 'Signing in…' : submitLabel}
               </button>
+              </Stop>
             </form>
           ) : (
             <div className="space-y-3 text-center">
@@ -385,9 +419,11 @@ export default function JellyfinSignIn({ api, onSubmit, submitLabel = 'Sign in',
                 </>
               )}
               {quickStatus === 'expired' && (
+                <Stop on={tv} onEnter={startQuick}>
                 <button type="button" onClick={startQuick} className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2" style={{ background: 'var(--color-primary-solid)', color: 'white' }}>
                   <ArrowPathIcon className="w-5 h-5" /> Get a new code
                 </button>
+                </Stop>
               )}
               {error && <p className="text-sm" style={{ color: 'var(--color-error, #ef4444)' }}>{error}</p>}
             </div>

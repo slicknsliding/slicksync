@@ -4,6 +4,8 @@
 
 const { runCheck } = require('./vaultCheckers')
 const { postDiscord } = require('./notify')
+const { updateAccountSyncKey } = require('./accountSyncKey')
+const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 const { notifyPushForType } = require('./pushNotifications')
 
 let vaultTimer = null
@@ -68,11 +70,91 @@ async function notify({ discordWebhookUrl }, { title, message, entryId, actionLa
   }
 }
 
-function wasNotifiedToday(lastNotifiedAt) {
-  if (!lastNotifiedAt) return false
-  const now = new Date()
-  const last = new Date(lastNotifiedAt)
-  return now.toDateString() === last.toDateString()
+// Per-entry alert bookkeeping lives in the account settings (`vaultAlertState`,
+// keyed by entry id) rather than on VaultEntry, so no schema change is needed
+// and the two alert kinds can't suppress each other:
+//   checkFailedDay - account-local day the check-failure alert last went out
+//   expiryWarnDay  - account-local day the pre-expiry warning last went out
+//   expiredFor     - the expiresAt value an "expired" alert was already sent
+//                    for (sent once; a new expiry date makes it eligible again)
+// Days are compared as whole strings (never sliced - the format differs by
+// runtime).
+function readAlertState(cfg, entryId) {
+  const all = cfg && typeof cfg.vaultAlertState === 'object' && cfg.vaultAlertState ? cfg.vaultAlertState : {}
+  return all[entryId] || {}
+}
+
+async function patchAlertState(prisma, accountId, entryId, patch) {
+  try {
+    await updateAccountSyncKey(prisma, accountId, 'vaultAlertState', (cur) => {
+      const all = cur && typeof cur === 'object' ? { ...cur } : {}
+      all[entryId] = { ...(all[entryId] || {}), ...patch }
+      return all
+    })
+  } catch (e) { console.warn('[VaultMonitor] could not save alert state:', e?.message) }
+}
+
+async function accountDay(prisma, accountId) {
+  const tz = await resolveAccountTimezone(prisma, accountId)
+  return getAccountDateString(new Date(), tz)
+}
+
+// The ok -> error edge: notification (throttled once a day) plus the
+// automation events. Shared by the scheduled monitor and the Test button -
+// the Test route overwrites lastCheckStatus, so without calling this too the
+// monitor would never see the edge and a failure found by a manual Test would
+// never alert. Callers decide the edge (previous status ok, now not ok).
+async function raiseCheckFailed({ prisma, accountId, cfg, entry, result }) {
+  const notifyCfg = getNotifyConfig(cfg)
+  const today = await accountDay(prisma, accountId)
+  if (notifyCfg.enabled && readAlertState(cfg, entry.id).checkFailedDay !== today) {
+    await notify(notifyCfg, {
+      title: `⚠️ ${entry.name} check failed`,
+      message: `${entry.provider || entry.category}: ${result.message || 'Check failed'}`,
+      tags: ['warning'],
+      entryId: entry.id,
+    }, { prisma, accountId })
+    await patchAlertState(prisma, accountId, entry.id, { checkFailedDay: today })
+  }
+
+  // Automation rules fire on the raw ok -> error edge, deliberately NOT gated
+  // on the notify toggle: a rule whose action is "move these users to the free
+  // group" must still run on an instance with no Discord webhook configured.
+  try {
+    const { emitAutomationEvent } = require('./automation/engine')
+    // Resolve the backup once, so both events agree on whether a usable spare
+    // actually exists - "has a backup" must mean a real, active, working
+    // entry, not merely a non-null id pointing at something deleted or broken.
+    let backup = null
+    if (entry.backupEntryId) {
+      backup = await prisma.vaultEntry.findFirst({
+        where: { id: entry.backupEntryId, accountId, isActive: true },
+      }).catch(() => null)
+      if (backup && ['failed', 'error', 'expired'].includes(String(backup.lastCheckStatus || '').toLowerCase())) {
+        backup = null
+      }
+    }
+
+    await emitAutomationEvent(prisma, accountId, 'vault.check_failed', {
+      entryName: entry.name,
+      entryId: entry.id,
+      category: entry.category,
+      message: result.message || 'Check failed',
+      hasBackup: !!backup,
+      backupName: backup ? backup.name : '',
+    })
+
+    if (backup) {
+      await emitAutomationEvent(prisma, accountId, 'vault.failover_activated', {
+        entryName: entry.name,
+        entryId: entry.id,
+        category: entry.category,
+        backupName: backup.name,
+        backupId: backup.id,
+        message: result.message || 'Check failed',
+      })
+    }
+  } catch { /* emit never throws; guarding the require itself */ }
 }
 
 async function runVaultChecks({ prisma, decrypt, getAccountId }) {
@@ -134,8 +216,12 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
                     prisma.vaultEntry.update({ where: { id: primaryEntry.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'ok', lastCheckMessage: 'Original key recovered - restored as primary' } }),
                     prisma.vaultEntry.update({ where: { id: entry.id }, data: { encryptedSecret: primaryEntry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Back to being the backup' } }),
                   ])
-                  delete cfg.vaultPromotions[primaryId]
-                  await prisma.appAccount.update({ where: { id: account.id }, data: { sync: JSON.stringify(cfg) } })
+                  // Fresh read: only the vaultPromotions key is ours to change.
+                  await updateAccountSyncKey(prisma, account.id, 'vaultPromotions', (cur) => {
+                    const next = { ...(cur || {}) }
+                    delete next[primaryId]
+                    return next
+                  })
                   if (interimPlain && recoveredPlain && interimPlain !== recoveredPlain) {
                     try {
                       const { propagateSecretRotation } = require('./keyRotation')
@@ -159,63 +245,9 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
               }
             } catch (e) { console.warn('[VaultMonitor] promotion round-trip failed:', e?.message) }
 
-            // Notify on ok -> error transition (not on first-ever check, and throttled to once/day)
-            if (wasOk && !nowOk && hasNotifyChannel && !wasNotifiedToday(entry.lastNotifiedAt)) {
-              await notify(notifyCfg, {
-                title: `⚠️ ${entry.name} check failed`,
-                message: `${entry.provider || entry.category}: ${result.message || 'Check failed'}`,
-                tags: ['warning'],
-                entryId: entry.id,
-              }, { prisma, accountId: account.id })
-              await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
-            }
-
-            // Automation rules fire on the raw ok -> error edge, deliberately
-            // NOT gated on hasNotifyChannel like the notification above: a rule
-            // whose action is "move these users to the free group" must still
-            // run on an instance with no Discord webhook configured. No throttle
-            // needed - this is an edge, so it can't repeat while the entry stays
-            // failing (wasOk is false on every subsequent pass).
+            // ok -> error edge: alert + automation events (see raiseCheckFailed).
             if (wasOk && !nowOk) {
-              try {
-                const { emitAutomationEvent } = require('./automation/engine')
-                // Resolve the backup once, so both events agree on whether
-                // a usable spare actually exists - "has a backup" must mean
-                // a real, active, working entry, not merely a non-null id
-                // pointing at something deleted or equally broken.
-                let backup = null
-                if (entry.backupEntryId) {
-                  backup = await prisma.vaultEntry.findFirst({
-                    where: { id: entry.backupEntryId, accountId: account.id, isActive: true },
-                  }).catch(() => null)
-                  if (backup && ['failed', 'error', 'expired'].includes(String(backup.lastCheckStatus || '').toLowerCase())) {
-                    backup = null
-                  }
-                }
-
-                await emitAutomationEvent(prisma, account.id, 'vault.check_failed', {
-                  entryName: entry.name,
-                  entryId: entry.id,
-                  category: entry.category,
-                  message: result.message || 'Check failed',
-                  hasBackup: !!backup,
-                  backupName: backup ? backup.name : '',
-                })
-
-                // Emitted on the same ok -> error edge, so it can't repeat
-                // while the entry stays failing. Consumers switch to the
-                // backup from here on (see vaultFailover.js).
-                if (backup) {
-                  await emitAutomationEvent(prisma, account.id, 'vault.failover_activated', {
-                    entryName: entry.name,
-                    entryId: entry.id,
-                    category: entry.category,
-                    backupName: backup.name,
-                    backupId: backup.id,
-                    message: result.message || 'Check failed',
-                  })
-                }
-              } catch { /* emit never throws; guarding the require itself */ }
+              await raiseCheckFailed({ prisma, accountId: account.id, cfg, entry, result })
             }
           } catch (err) {
             console.error(`[VaultMonitor] Check failed for entry ${entry.id}:`, err.message)
@@ -226,7 +258,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
         // hasNotifyChannel is NOT part of this outer gate (it used to be) so
         // automation rules still fire on an instance with no notification
         // channel configured - the notify() call below keeps its own gate, and
-        // lastNotifiedAt is only written when something actually happened, so
+        // alert state is only written when something actually happened, so
         // an instance with neither channels nor rules behaves exactly as before.
         if (entry.expiresAt) {
           const msUntilExpiry = new Date(entry.expiresAt).getTime() - Date.now()
@@ -234,14 +266,22 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
           const withinWindow = daysUntilExpiry <= (entry.notifyDaysBefore ?? 3)
           const isSnoozed = entry.snoozedUntil && new Date(entry.snoozedUntil) > new Date()
 
-          if (withinWindow && !isSnoozed && !wasNotifiedToday(entry.lastNotifiedAt)) {
+          const expired = daysUntilExpiry < 0
+          const expiresKey = new Date(entry.expiresAt).toISOString()
+          const state = readAlertState(cfg, entry.id)
+          const today = await accountDay(prisma, account.id)
+          // Expired: announce once per expiry date (not daily forever).
+          // Approaching: at most once a day.
+          const alreadySent = expired ? state.expiredFor === expiresKey : state.expiryWarnDay === today
+
+          if (withinWindow && !isSnoozed && !alreadySent) {
             let didNotify = false
             if (hasNotifyChannel) {
-              const daysText = daysUntilExpiry < 0
+              const daysText = expired
                 ? `expired ${Math.abs(Math.round(daysUntilExpiry))} day(s) ago`
                 : `expires in ${Math.round(daysUntilExpiry)} day(s)`
               await notify(notifyCfg, {
-                title: `⏰ ${entry.name} ${daysUntilExpiry < 0 ? 'has expired' : 'expiring soon'}`,
+                title: `⏰ ${entry.name} ${expired ? 'has expired' : 'expiring soon'}`,
                 message: `${entry.provider || entry.category}: ${daysText}`,
                 tags: ['hourglass'],
                 entryId: entry.id,
@@ -250,10 +290,10 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
               didNotify = true
             }
 
-            // Unlike the check-failure edge above, this condition stays true on
-            // every pass until the credential is rotated, so it relies on the
-            // same once-a-day lastNotifiedAt throttle the notification uses -
-            // otherwise a 6h monitor would fire the rule four times a day.
+            // This condition stays true on every pass until the credential is
+            // rotated, so the rule relies on the same once-a-day / once-ever
+            // bookkeeping as the notification - otherwise a 6h monitor would
+            // fire it four times a day.
             let didFire = false
             try {
               const { emitAutomationEvent } = require('./automation/engine')
@@ -267,7 +307,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
             } catch { /* emit never throws; guarding the require itself */ }
 
             if (didNotify || didFire) {
-              await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
+              await patchAlertState(prisma, account.id, entry.id, expired ? { expiredFor: expiresKey } : { expiryWarnDay: today })
             }
           }
         }
@@ -293,4 +333,4 @@ function scheduleVaultMonitor({ prisma, decrypt, getAccountId }) {
   console.log(`[VaultMonitor] Scheduled every ${intervalHours}h`)
 }
 
-module.exports = { scheduleVaultMonitor, runVaultChecks }
+module.exports = { scheduleVaultMonitor, runVaultChecks, raiseCheckFailed }

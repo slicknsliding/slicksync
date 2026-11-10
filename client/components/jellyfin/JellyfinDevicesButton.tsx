@@ -54,7 +54,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
     setAnchor(at);
     load();
   };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
   useEffect(() => {
     if (!open) return;

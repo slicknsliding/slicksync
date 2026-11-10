@@ -75,6 +75,7 @@ module.exports = ({ imageUpload, prisma }) => {
       }
       const mimetype = MIME_BY_FORMAT[require('../utils/imageEncoder').sniffFormat(req.file.buffer)];
       if (!mimetype) return res.status(400).json({ error: 'That isn’t a JPEG, PNG, GIF or WEBP picture' });
+      if (!require('../utils/imageEncoder').decodableSize(req.file.buffer)) return res.status(400).json({ error: 'That picture’s dimensions are too large' });
       if (!uploadAllowed(req.appAccountId || 'default')) return res.status(429).json({ error: 'That’s a lot of pictures - try again in a while' });
 
       res.status(201).json({ url: saveAvatarFile(req.file.buffer, mimetype) });
@@ -98,7 +99,8 @@ module.exports = ({ imageUpload, prisma }) => {
         const address = `/uploads/avatars/${filename}`;
         const others = { avatarUrl: address, NOT: { accountId: req.appAccountId || 'default' } };
         const inUse = (await prisma.user.count({ where: others })) + (await prisma.group.count({ where: others }))
-          + (await prisma.appAccount.count({ where: { avatarUrl: address, NOT: { id: req.appAccountId || 'default' } } }));
+          + (await prisma.appAccount.count({ where: { avatarUrl: address, NOT: { id: req.appAccountId || 'default' } } }))
+          + (prisma.jellyfinProfile ? await prisma.jellyfinProfile.count({ where: others }) : 0);
         if (inUse) return res.status(403).json({ error: 'That picture is not yours to remove' });
       }
       const filepath = path.join(AVATAR_DIR, filename);

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useTVModal } from '@/components/tv/useTVModal';
 
 interface ContextMenuProps {
   isOpen: boolean;
@@ -13,6 +15,10 @@ interface ContextMenuProps {
 
 export function ContextMenu({ isOpen, position, onClose, children }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  // TV: the remote moves through the menu while it is open, Back closes it,
+  // and the remote goes back to what opened it (useTVModal).
+  const isTV = useIsTV();
+  useTVModal(isTV && isOpen, menuRef, onClose, true);
 
   // Close on click outside
   useEffect(() => {

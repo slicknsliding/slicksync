@@ -1,4 +1,5 @@
-// Debrid keys inside AIOStreams configurations, kept in step with the Vault.
+// Debrid keys and IPTV logins inside AIOStreams configurations, kept in step
+// with the Vault.
 //
 // When a Vault key changes - rotated by hand, a backup taking over from a
 // failing key, or the original swapped back once it recovers - every addon
@@ -64,9 +65,44 @@ async function setEnabled(prisma, accountId, userId, enabled) {
 }
 
 async function rotateInAioConfigs(prisma, decrypt, { accountId, oldSecret, newSecret }) {
+  if (!oldSecret || !newSecret || oldSecret === newSecret) return { updated: [], failed: [] }
+  return changeOptedInConfigs(prisma, decrypt, accountId, (config) => replaceServiceKey(config, oldSecret, newSecret))
+}
+
+// IPTV (Xtream) logins inside a configuration's presets. Only a preset whose
+// server, username and password all match the old login is changed.
+function sameServer(a, b) {
+  const { xtreamBase } = require('./vaultCheckers')
+  const x = xtreamBase(a)
+  return !!x && x.toLowerCase() === String(xtreamBase(b) || '').toLowerCase()
+}
+
+function replaceIptvLogin(config, before, after) {
+  const changed = []
+  for (const preset of Array.isArray(config?.presets) ? config.presets : []) {
+    if (!preset || String(preset.type || '').toLowerCase() !== 'xtream') continue
+    const o = preset.options && typeof preset.options === 'object' ? preset.options : null
+    if (!o || o.username !== before.username || o.password !== before.password || !sameServer(o.server, before.server)) continue
+    if (after.server !== before.server) o.server = after.server
+    o.username = after.username
+    o.password = after.password
+    changed.push(String(o.name || preset.instanceId || 'IPTV'))
+  }
+  return changed
+}
+
+async function rotateIptvInAioConfigs(prisma, decrypt, { accountId, before, after }) {
+  const ok = (l) => l && l.server && l.username && l.password
+  if (!ok(before) || !ok(after)) return { updated: [], failed: [] }
+  if (before.username === after.username && before.password === after.password && before.server === after.server) return { updated: [], failed: [] }
+  return changeOptedInConfigs(prisma, decrypt, accountId, (config) => replaceIptvLogin(config, before, after))
+}
+
+// Every configuration of a person who switched this on, changed by `change`
+// (which returns what it changed; nothing changed = nothing written).
+async function changeOptedInConfigs(prisma, decrypt, accountId, change) {
   const updated = []
   const failed = []
-  if (!oldSecret || !newSecret || oldSecret === newSecret) return { updated, failed }
   const { cfg } = await readSync(prisma, accountId)
   const optedIn = Object.keys(cfg.aioRotateKeys || {}).filter((id) => cfg.aioRotateKeys[id] === true)
   if (!optedIn.length) return { updated, failed }
@@ -89,7 +125,7 @@ async function rotateInAioConfigs(prisma, decrypt, { accountId, oldSecret, newSe
       const config = await readConfig(access)
       // Report anything changed elsewhere before this write is folded into the baseline.
       try { await noteOutsideChanges(prisma, person, config) } catch {}
-      const services = replaceServiceKey(config, oldSecret, newSecret)
+      const services = change(config)
       if (!services.length) continue
       await writeConfig(access, config)
       try { await rebaseline(prisma, person, await readConfig(access)) } catch {}
@@ -101,4 +137,4 @@ async function rotateInAioConfigs(prisma, decrypt, { accountId, oldSecret, newSe
   return { updated, failed }
 }
 
-module.exports = { rotateInAioConfigs, replaceServiceKey, statusFor, setEnabled }
+module.exports = { rotateInAioConfigs, rotateIptvInAioConfigs, replaceServiceKey, replaceIptvLogin, statusFor, setEnabled }

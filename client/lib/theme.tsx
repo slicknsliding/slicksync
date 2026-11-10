@@ -99,9 +99,9 @@ export const THEME_REAL_COLORS: Record<ThemeId, {
   daylight: { text: '#111827', textMuted: '#4b5563', bgMuted: '#e2e8f0', border: '#0f172a', success: '#16a34a', error: '#dc2626' },
 };
 
-// Fonts the user can pick from in "Build your own theme". All preloaded in
-// layout.tsx so switching is instant with no FOUT. Deliberately spans very
-// different aesthetics so no two picks read as "basically the same font."
+// Fonts the user can pick from in "Build your own theme". Loaded by
+// loadOptionalFonts below once one is chosen or the picker is open. Deliberately
+// spans very different aesthetics so no two picks read as "basically the same font."
 export const FONT_OPTIONS = [
   { id: 'default', label: 'Default (Space Grotesk)', family: null },
   { id: 'poppins', label: 'Poppins — rounded sans', family: '"Poppins", system-ui, sans-serif' },
@@ -277,6 +277,19 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
+// The ten non-default families come from Google Fonts. The stylesheet is
+// added once, and only when a custom theme actually uses one of them or the
+// theme picker (which previews them) is open - never on a plain page load.
+const OPTIONAL_FONTS_URL = "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Bungee&family=Bangers&family=Press+Start+2P&family=Permanent+Marker&family=Luckiest+Guy&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap";
+export function loadOptionalFonts() {
+  if (typeof document === 'undefined' || document.getElementById('optional-theme-fonts')) return;
+  const link = document.createElement('link');
+  link.id = 'optional-theme-fonts';
+  link.rel = 'stylesheet';
+  link.href = OPTIONAL_FONTS_URL;
+  document.head.appendChild(link);
+}
+
 function fontFamilyFor(id: FontId | null | undefined): string | null {
   if (!id || id === 'default') return null;
   return FONT_OPTIONS.find((f) => f.id === id)?.family || null;
@@ -353,6 +366,7 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
 
   const family = fontFamilyFor(custom.fontDisplay);
   if (family) {
+    loadOptionalFonts();
     el.style.setProperty('--font-space-grotesk', family);
     el.style.setProperty('--font-outfit', family);
   } else {
@@ -671,6 +685,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyThemeForId(themeId, savedCustomThemes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
+
+  // The browser bar (Android Chrome, an installed app's title bar) takes the
+  // page's theme-color: keep it on the active theme's own background, so a
+  // light theme gets a light bar. Watches <html> itself, which covers built-in
+  // themes (its class), custom ones and live previews (its inline colours).
+  useEffect(() => {
+    const root = document.documentElement;
+    let last = '';
+    const sync = () => {
+      const bg = getComputedStyle(root).getPropertyValue('--color-bg').trim();
+      if (!bg || bg === last) return;
+      last = bg;
+      let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        document.head.appendChild(meta);
+      }
+      meta.content = bg;
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    return () => observer.disconnect();
+  }, []);
 
   const setTheme = (id: string) => {
     if (isBuiltInThemeId(id) || savedCustomThemes.some((t) => t.id === id)) {

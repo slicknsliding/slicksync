@@ -99,7 +99,10 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
           // Nuvio reissues a fresh session token on every successful
           // validate (sliding expiry) - use that going forward, not the
           // one that was just spent.
-          const currentAuthKey = (dataProvider !== 'stremio' && 'sessionToken' in result && result.sessionToken) ? result.sessionToken : data.authKey;
+          // Every provider now hands back a fresh session token; a Stremio
+          // sign-in from before that still holds the Stremio key itself, and
+          // swaps it for the token here.
+          const currentAuthKey = ('sessionToken' in result && result.sessionToken) ? result.sessionToken : data.authKey;
           setUserId(data.userId);
           setProvider(dataProvider);
           setAuthKey(currentAuthKey || null);
@@ -180,19 +183,22 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
       const result = await userAuth.authenticate(newAuthKey);
 
       if (result.success && result.userId && result.userInfo) {
+        // The Stremio key stays on the server; this browser keeps a SlickSync
+        // session token instead (an older server sends none: keep the key).
+        const sessionKey = result.sessionToken || newAuthKey;
         setUserId(result.userId);
         setProvider('stremio');
-        setAuthKey(newAuthKey);
+        setAuthKey(sessionKey);
         setUserInfo(result.userInfo);
 
         // Store in localStorage
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           userId: result.userId,
           provider: 'stremio',
-          authKey: newAuthKey,
+          authKey: sessionKey,
           userInfo: result.userInfo,
         }));
-        void fillInfoAfterSignIn(result.userId, 'stremio', newAuthKey);
+        void fillInfoAfterSignIn(result.userId, 'stremio', sessionKey);
 
         return { success: true };
       } else {

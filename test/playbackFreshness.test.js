@@ -106,7 +106,19 @@ test('a pause shows Paused, then a start after it is Playing again', opts, () =>
   assert.equal(resumed.state, 'playing-estimated')
 })
 
-test('only an AIOStreams-app row can be Playing; other sources ignore the estimate', opts, () => {
+test('only a row from app events can be Playing; other sources ignore the estimate', opts, () => {
   assert.equal(lib.playbackFreshness({ source: 'jellyfin', paused: false, reportedAtTimestamp: ago(MIN), playingUntilTimestamp: NOW + MIN }, NOW).state, 'live')
   assert.equal(lib.playbackFreshness({ reportedAtTimestamp: ago(MIN), playingUntilTimestamp: NOW + MIN }, NOW).state, 'seen')
+})
+
+test('a Stremio player row counts as playing until its runtime, and shows its pause', opts, () => {
+  assert.equal(lib.playbackFreshness({ source: 'stremio', reportedAtTimestamp: ago(MIN), playingUntilTimestamp: NOW + MIN }, NOW).state, 'playing-estimated')
+  assert.equal(lib.playbackFreshness({ source: 'stremio', reportedAtTimestamp: ago(MIN), paused: true }, NOW).state, 'paused')
+  assert.equal(lib.playbackFreshness({ source: 'stremio', reportedAtTimestamp: ago(MIN), playingUntilTimestamp: ago(1) }, NOW).state, 'seen')
+})
+
+test('a row from Stremio saves is live while they are being read, and shows its pause', opts, () => {
+  assert.equal(lib.playbackFreshness({ source: 'stremio-saves', reportedAtTimestamp: ago(20 * 1000) }, NOW).state, 'live')
+  assert.equal(lib.playbackFreshness({ source: 'stremio-saves', reportedAtTimestamp: ago(MIN), paused: true }, NOW).state, 'paused')
+  assert.equal(lib.playbackFreshness({ source: 'stremio-saves', reportedAtTimestamp: ago(5 * MIN) }, NOW).state, 'seen')
 })

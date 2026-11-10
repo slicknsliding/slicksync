@@ -70,6 +70,17 @@ function resolveKeys() {
 
   if (envRaw) {
     current = normalizeToBuffer(envRaw);
+    // A short key is zero-padded to 32 bytes, which leaves far less than 256
+    // bits of strength. Still accepted - existing installs must boot and their
+    // data is under that padded key - but the operator is told.
+    const isBase64Key = /^[A-Za-z0-9+/=]+$/.test(envRaw) && envRaw.length >= 44;
+    if (!isBase64Key && Buffer.byteLength(envRaw, 'utf8') < 32) {
+      console.warn(
+        '[keyManager] ENCRYPTION_KEY is shorter than 32 bytes and is being zero-padded, which weakens it. ' +
+        'Generate a strong one (e.g. `openssl rand -base64 32`); changing it keeps existing data readable ' +
+        '(the old key stays as a decrypt-only fallback).'
+      );
+    }
     if (persisted && !persisted.equals(current)) {
       fallbacks.push(persisted);
       console.warn(
@@ -90,7 +101,7 @@ function resolveKeys() {
     );
   }
 
-  // Legacy fallback — ALWAYS included (deduped against current), so any
+  // Legacy fallback — ALWAYS included (utils/legacyKeySweep.js moves data off it) (deduped against current), so any
   // data encrypted with the pre-v1.25.1 hardcoded default still decrypts.
   const legacyKey = normalizeToBuffer(LEGACY_HARDCODED_DEFAULT);
   if (!current.equals(legacyKey) && !fallbacks.some((f) => f.equals(legacyKey))) {
@@ -105,5 +116,6 @@ const { current, fallbacks } = resolveKeys();
 module.exports = {
   KEY_FILE,
   ENCRYPTION_KEY: current,
-  ENCRYPTION_KEY_FALLBACKS: fallbacks
+  ENCRYPTION_KEY_FALLBACKS: fallbacks,
+  LEGACY_KEY: normalizeToBuffer(LEGACY_HARDCODED_DEFAULT)
 };

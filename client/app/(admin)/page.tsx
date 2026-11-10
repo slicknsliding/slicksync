@@ -7,20 +7,20 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useIsTV } from '@/lib/hooks/useIsTV';
-import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
-import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
-import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
+import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, MediaDetailModal } from '@/components/ui';
+import { UpcomingEpisodesPanel, type UpcomingFollower } from '@/components/ui/UpcomingEpisodesPanel';
+import { ContinueBannerCard, ContinueLeadBanner } from '@/components/dashboard/ContinueBanners';
 import { NowPlayingSection } from '@/components/admin/NowPlayingSection';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem, Invitation, InviteRequest, User, VaultEntry } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { NEEDS_KIND_NAMES, NEEDS_WEEK, useCwTime, useNeedsDismiss, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { NEEDS_KIND_NAMES, NEEDS_WEEK, useCwFirst, useNeedsDismiss, usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangeGrid, ArrangePanel, ArrangeSection, HiddenTray, PanelControls, StretchHandle } from '@/components/ui/Arrange';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { NowPlayingV2, NeedsYouTiles, PersonRow, type NeedsYouItem } from '@/components/v2/DashboardV2';
@@ -39,14 +39,9 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   FireIcon,
-  PlayIcon,
-  XCircleIcon,
-  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import dynamic from 'next/dynamic';
 import type { SyncStatusData } from '@/components/admin/SyncActivityChart';
-import { providerTypeLabel, providerBadgeVariant } from '@/lib/providers';
-import { cachedImageUrl } from '@/lib/posterUrl';
 
 // The chart's library (recharts) is loaded on demand - see the component
 // file for why it is not in the dashboard's first-load bundle.
@@ -123,303 +118,14 @@ const RecentAddonItem = memo(function RecentAddonItem({
         <Button
           variant="ghost"
           size="sm"
-          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-2"
+          className="shrink-0 hover-reveal transition-opacity p-2"
           onClick={onReload}
+          aria-label="Reload"
         >
           <ArrowPathIcon className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
         </Button>
       </motion.div>
     </TVLink>
-  );
-});
-
-// The chip on a v2 card's picture: how long is left when resuming, else Up next.
-function timeLeftChip(item: ContinueWatchingItem): string {
-  if (!item.resume) return 'Up next';
-  const m = item.remainingMinutes;
-  if (m != null) return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''} left` : `${m} min left`;
-  return item.progressPercent != null ? `${item.progressPercent}% watched` : 'Resume';
-}
-
-// Continue Watching card - right-click to remove, and guards its own click
-// against firing right after a drag-to-scroll gesture on the parent row
-// (checked via a shared ref rather than local state, since the drag
-// happens on the scroll container, not the card itself).
-//
-// Navigation is a plain native <a href> with no JS in the way - confirmed
-// working for Stremio's app link (a real click opened the app). An earlier
-// attempt to add a JS-driven fallback (intercepting the click, setting
-// location.href programmatically, timing a fallback) broke that working
-// case: browsers treat a direct anchor click far more reliably for
-// custom-scheme navigation than a script-driven location.href assignment,
-// even from inside a genuine click handler. So: appUrl (Stremio only - see
-// continueWatching.js) opens natively in the same tab; webUrl (everyone
-// else, or Stremio's own fallback if no appUrl) opens as an ordinary link
-// in a new tab. The only JS involved is the drag-cancel.
-const ContinueWatchingCard = memo(function ContinueWatchingCard({
-  item,
-  wasDraggedRef,
-  onRemove,
-  onOpenDetails,
-  isMenuOpen,
-  onMenuOpenChange,
-  priority = false,
-  wide = false,
-}: {
-  item: ContinueWatchingItem;
-  /** Page design v2: a wide 16:9 picture with a time chip, then the title and who. */
-  wide?: boolean;
-  /** The first cards in the row: fetched at once rather than when seen. */
-  priority?: boolean;
-  wasDraggedRef: React.RefObject<boolean>;
-  onRemove: (item: ContinueWatchingItem) => void;
-  onOpenDetails: (item: ContinueWatchingItem) => void;
-  isMenuOpen: boolean;
-  // Receives this card's own composite key so the parent can use ONE stable
-  // useCallback for every card instead of a fresh
-  // `(open) => setOpenMenuKey(open ? key : null)` closure per card per
-  // render - a new function identity every render silently defeats this
-  // component's own React.memo below, which is exactly what was happening at
-  // both call sites (Continue Watching appears twice on this page).
-  onMenuOpenChange: (open: boolean, key: string) => void;
-}) {
-  // Settings → Themes: time left / Up next under the card, with the episode name.
-  const under = useCwTime().where === 'under';
-  // position/preventDefault still come from the hook, but which card's menu
-  // is actually rendered open is driven by isMenuOpen (lifted to the parent)
-  // rather than this hook's own isOpen - each card had its own independent
-  // isOpen before, and right-clicking a second card's own stopPropagation
-  // (needed to suppress the native menu) blocked the FIRST card's "close on
-  // outside click" listener from ever firing, orphaning it open. A single
-  // shared "which card owns the open menu" value fixes that by construction.
-  // Episode still, then the show's artwork, then its poster - the next one
-  // when a picture fails to load, so the card never sits empty.
-  // The wide v2 card leads with the landscape backdrop, as the Now Playing
-  // banner does, and falls back to the still, then the poster.
-  const imdbId = /^tt\d+/.exec(item.showId || '')?.[0] || null;
-  const { url: artwork, onError: onArtworkError } = useArtworkFallback(wide
-    ? [item.background, imdbId ? `https://images.metahub.space/background/medium/${imdbId}/img` : null, item.nextEpisode?.thumbnail, item.poster]
-    : [item.nextEpisode?.thumbnail, item.background, item.poster]);
-  const { position, handleContextMenu, setExternalClose } = useContextMenu();
-  // Registers the REAL close (onClose below) for cross-section/cross-page
-  // closing - onMenuOpenChange is the lifted state that actually drives
-  // isOpen here, so this hook's own internal close wouldn't hide anything.
-  setExternalClose(() => onMenuOpenChange(false, `${item.userId}-${item.showId}`));
-
-  // Long-press → context menu for touch devices. onContextMenu alone (below)
-  // only reliably fires from an actual right-click; mobile browsers don't
-  // consistently synthesize it from a long-press on an arbitrary div/anchor
-  // the way they sometimes do for plain text/images, so it was silently
-  // never opening on phones. Same pattern AddonCard and UpcomingRow already
-  // use: a 500ms timer, cancelled on move/scroll (parent row's drag-to-scroll
-  // shouldn't also trigger this) so a scroll gesture isn't hijacked into a
-  // menu open. Cleared with a longer than typical 10px threshold makes sense
-  // here since this row scrolls horizontally right where you'd press.
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startPos = useRef<{ x: number; y: number } | null>(null);
-  const clearPress = () => {
-    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
-    startPos.current = null;
-  };
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const t = e.touches[0];
-    if (!t) return;
-    startPos.current = { x: t.clientX, y: t.clientY };
-    pressTimer.current = setTimeout(() => {
-      handleContextMenu(e as unknown as Event, t.clientX, t.clientY);
-      onMenuOpenChange(true, `${item.userId}-${item.showId}`);
-      pressTimer.current = null;
-    }, 500);
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!startPos.current || !pressTimer.current) return;
-    const t = e.touches[0];
-    if (!t) return;
-    const dx = Math.abs(t.clientX - startPos.current.x);
-    const dy = Math.abs(t.clientY - startPos.current.y);
-    if (dx > 10 || dy > 10) clearPress();
-  };
-
-  return (
-    <div
-      onContextMenu={(e) => {
-        handleContextMenu(e);
-        onMenuOpenChange(true, `${item.userId}-${item.showId}`);
-      }}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={clearPress}
-      onTouchCancel={clearPress}
-      onTouchMove={handleTouchMove}
-      className={wide ? 'min-w-0 relative' : 'shrink-0 relative'}
-    >
-      <div
-        onClick={() => {
-          // Suppress the click that fires immediately after a long-press
-          // opens the menu - otherwise a long-press both opens the menu AND
-          // the detail modal as soon as the finger lifts.
-          if (wasDraggedRef.current || isMenuOpen) return;
-          onOpenDetails(item);
-        }}
-        draggable={false}
-        onDragStart={(e) => e.preventDefault()}
-        className={wide ? 'group relative block w-full select-none cursor-pointer tap-card' : 'group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card'}
-      >
-        <div className={wide ? 'relative aspect-video rounded-xl overflow-hidden bg-slate-800' : 'relative aspect-video'}>
-          {/* Image priority for this landscape (16:9) frame: episode still
-              first (already 16:9), then the show/movie's landscape backdrop,
-              and only then the portrait poster as a last resort - a portrait
-              poster forced into a 16:9 frame is what caused the "too zoomed
-              in" hard crop. */}
-          {artwork ? (
-            <img
-              // Through the server's image cache at the card's size, like
-              // every poster grid - not the full-size original each launch.
-              src={cachedImageUrl(artwork, wide ? 500 : 342) || ''}
-              onError={onArtworkError}
-              alt={item.showName}
-              draggable={false}
-              loading={priority ? 'eager' : 'lazy'}
-              fetchPriority={priority ? 'high' : undefined}
-              decoding="async"
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-slate-800">
-              <PlayIcon className="w-8 h-8 text-slate-600" />
-            </div>
-          )}
-          {/* ONLY this play button navigates straight to the app/web link -
-              everywhere else on the card opens the detail modal instead
-              (onClick above). Previously the whole card was one <a>, so
-              clicking anywhere - poster art, title, anywhere - launched the
-              app link; only the small (i) button below opened the modal.
-              stopPropagation keeps this click from also bubbling to the
-              card's own onClick and opening the modal right behind it. */}
-          <a
-            href={item.appUrl || item.webUrl}
-            target={item.appUrl ? undefined : '_blank'}
-            rel={item.appUrl ? undefined : 'noopener noreferrer'}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (wasDraggedRef.current || isMenuOpen) e.preventDefault();
-            }}
-            aria-label={`Resume ${item.showName}`}
-            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ background: 'rgba(0,0,0,0.4)' }}
-          >
-            <PlayIcon className="w-8 h-8 text-white" />
-          </a>
-          {/* Netflix-style progress bar for partway-through items - only on
-              resume entries, where progressPercent is real position data from
-              WatchSession (not shown for next-episode cards, which by
-              definition start from 0). Ratings deliberately not shown on this
-              card - they're in the detail modal the info button opens.
-              Fill defaults to the theme's primary→secondary accent gradient
-              (so it re-colors with every theme, not just one) plus a matching
-              glow, but --color-progress (Settings → Themes → Build your own
-              theme → "Progress bar") overrides both with a flat color when
-              set. Over a dark track, so it stays clearly visible against any
-              poster art. Sits in its own thin strip below the thumbnail
-              rather than overlaid on it, so nothing covers it. */}
-          {wide && !under && (
-            <span className="absolute left-2 top-2 z-[1] px-2 py-[3px] rounded-full text-[11px] font-semibold text-white pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)' }}>
-              {timeLeftChip(item)}
-            </span>
-          )}
-          {item.resume && item.progressPercent != null && (
-            <div className={`absolute bottom-0 left-0 right-0 pointer-events-none ${wide ? 'h-[5px]' : 'h-1.5'}`} style={{ background: 'rgba(0,0,0,0.55)' }}>
-              <div
-                className={wide ? 'h-full' : 'h-full rounded-r-full'}
-                style={{
-                  width: `${Math.min(100, Math.max(3, item.progressPercent))}%`,
-                  background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))',
-                  boxShadow: '0 0 6px var(--color-progress, var(--color-primary))',
-                }}
-              />
-            </div>
-          )}
-        </div>
-        {wide ? (
-          <div className="pt-1.5 min-w-0">
-            <p className="text-[13.5px] font-semibold text-default break-words">{item.showName}</p>
-            {under ? (
-              <>
-                <p className="text-xs text-muted break-words">
-                  {item.contentType === 'series' && item.nextEpisode
-                    ? `S${item.nextEpisode.season} E${item.nextEpisode.episode}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
-                    : 'Movie'}
-                </p>
-                <p className="text-xs text-muted break-words">
-                  {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
-                  {' · '}
-                  {item.resume
-                    ? <b className="font-semibold text-default">{timeLeftChip(item)}</b>
-                    : <span className="font-semibold" style={{ color: 'var(--color-primary)' }}>Up next</span>}
-                </p>
-              </>
-            ) : (
-              <p className="text-xs text-muted break-words">
-                {item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}
-                {item.contentType === 'series' && item.nextEpisode ? ` · S${item.nextEpisode.season} E${item.nextEpisode.episode}` : ''}
-              </p>
-            )}
-          </div>
-        ) : (
-        <div className="p-2">
-          <p className="text-xs font-medium text-default break-words">{item.showName}</p>
-          <p className="text-[11px] text-muted break-words">
-            {item.nextEpisode
-              ? `${item.resume ? 'Resume ' : ''}S${String(item.nextEpisode.season).padStart(2, '0')}E${String(item.nextEpisode.episode).padStart(2, '0')}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
-              : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
-          </p>
-          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 mt-0.5">
-            <p className="text-[10px] text-subtle break-words">{item.username}{item.profileLabel ? ` · ${item.profileLabel}` : ''}</p>
-            {item.providerType && (
-              <Badge variant={providerBadgeVariant(item)} size="sm" className="shrink-0">
-                {providerTypeLabel(item.providerType)}
-              </Badge>
-            )}
-          </div>
-        </div>
-        )}
-      </div>
-
-      {/* Now redundant with the card's own default click (which opens this
-          same modal), since only the play button navigates away - kept as a
-          visible, explicit affordance for "view details" rather than
-          removing it, and still useful as the one spot that works even if
-          the play button's target changes. stopPropagation avoids also
-          re-firing the card's own onClick behind it. */}
-      {item.appUrl && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onOpenDetails(item);
-          }}
-          title="View details"
-          aria-label="View details"
-          className="absolute top-1.5 right-1.5 z-10 p-1.5 rounded-md transition-colors"
-          style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
-        >
-          <InformationCircleIcon className="w-5 h-5" />
-        </button>
-      )}
-
-      <ContextMenu isOpen={isMenuOpen} position={position} onClose={() => onMenuOpenChange(false, `${item.userId}-${item.showId}`)}>
-        <button
-          onClick={() => {
-            onMenuOpenChange(false, `${item.userId}-${item.showId}`);
-            onRemove(item);
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          <XCircleIcon className="w-4 h-4" />
-          Remove from Continue Watching
-        </button>
-      </ContextMenu>
-    </div>
   );
 });
 
@@ -451,31 +157,16 @@ export default function DashboardPage() {
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
   // Coming up names the people partway through each show, from Continue Watching.
   const upcomingWatchers = useMemo(() => {
-    const out: Record<string, string> = {};
-    const byShow = new Map<string, string[]>();
+    // Who follows each show, and the episode they're on, for Coming up's tiles.
+    const out: Record<string, UpcomingFollower[]> = {};
     for (const c of continueWatching) {
-      const first = c.username.split(' ')[0];
-      const names = byShow.get(c.showId) || [];
-      if (!names.includes(first)) names.push(first);
-      byShow.set(c.showId, names);
+      const list = out[c.showId] || (out[c.showId] = []);
+      if (list.some((f) => f.userId === c.userId)) continue;
+      list.push({ userId: c.userId, name: c.username.split(' ')[0], season: c.nextEpisode?.season ?? null, episode: c.nextEpisode?.episode ?? null, providerType: c.providerType });
     }
-    byShow.forEach((names, showId) => { out[showId] = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', '); });
     return out;
   }, [continueWatching]);
   const [detailModalItem, setDetailModalItem] = useState<ContinueWatchingItem | null>(null);
-  // Which Continue Watching card's context menu is open, keyed the same way
-  // as each card - shared across all cards so opening one always closes any
-  // other, instead of each card tracking its own independent isOpen.
-  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
-  // One stable identity for every Continue Watching card's onMenuOpenChange
-  // (this row appears twice on this page), rather than each card getting a
-  // fresh `(open) => setOpenMenuKey(...)` closure on every render - a new
-  // function per card per render defeats ContinueWatchingCard's React.memo,
-  // so the whole row re-rendered on any state change at all, including
-  // simply closing the detail modal.
-  const handleMenuOpenChange = useCallback((open: boolean, key: string) => {
-    setOpenMenuKey(open ? key : null);
-  }, []);
 
   // Fetched independently of the main dashboard load - Cinemeta lookups
   // powering this are a nice-to-have, and shouldn't be able to fail the
@@ -698,6 +389,17 @@ export default function DashboardPage() {
     return () => { stopPoll(); if (liveTimer) clearTimeout(liveTimer); window.removeEventListener('slicksync:live-nowplaying', onLive); };
   }, [refreshData]);
 
+  // A pause isn't always pushed (a stream the proxy carries has no such event)
+  // and the card counts on by itself, so while someone is watching it asks
+  // again often enough not to run far ahead of what the server knows.
+  useEffect(() => {
+    if (!hasLivePlayback) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshData(true);
+    }, 20000);
+    return () => clearInterval(id);
+  }, [hasLivePlayback, refreshData]);
+
   // Derived stats with fallbacks
   const stats = useMemo(() => {
     return {
@@ -723,14 +425,26 @@ export default function DashboardPage() {
   const ringCircumference = 2 * Math.PI * 28;
   const ringRatio = stats.totalUsers > 0 ? Math.min(1, activeUsers / stats.totalUsers) : 0;
 
+  // The same as Users' Sync All: each person in turn, and a count once they're done.
   const handleSyncAll = async () => {
     setIsSyncing(true);
     try {
-      await api.syncAllUsers();
-      toast.success('Global sync triggered for all users');
+      const people = await api.getUsers();
+      let success = 0;
+      for (const person of people) {
+        try {
+          await api.syncUser(person.id);
+          success++;
+        } catch (err) {
+          console.error('Failed to sync user:', err);
+        }
+      }
+      if (success > 0) {
+        toast.success(`Synced ${success} user${success !== 1 ? 's' : ''} successfully`);
+      }
       await refreshData();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to trigger global sync');
+      toast.error(err.message || 'Failed to sync all users');
     } finally {
       setIsSyncing(false);
     }
@@ -861,7 +575,17 @@ export default function DashboardPage() {
   // Playing and Continue Watching only exist while there is something in
   // them; the chart and Quick Actions only in the Original layout.
   const hasNowPlaying = !!(metricsData?.nowPlaying && metricsData.nowPlaying.length > 0);
-  const hasContinue = continueWatching.length > 0;
+  // A title someone is playing right now shows in Now Playing, so their own
+  // Continue Watching card for it steps aside until they stop (someone else
+  // partway through the same show keeps theirs).
+  const continueShown = useMemo(() => {
+    const playing = new Set((metricsData?.nowPlaying || []).map((np) => `${np.user.id}::${String(np.item.id || '').split(':')[0]}`));
+    if (playing.size === 0) return continueWatching;
+    return continueWatching.filter((c) => !playing.has(`${c.userId}::${String(c.showId || '').split(':')[0]}`));
+  }, [continueWatching, metricsData?.nowPlaying]);
+  const hasContinue = continueShown.length > 0;
+  // Settings → Themes → Continue Watching first card: the same size as the rest unless Wide is picked.
+  const wideFirst = useCwFirst().first === 'wide';
   const isOriginal = layoutMode !== 'nebula';
 
   // v2: what needs the admin (a sign-in that stopped, someone asking to join,
@@ -936,6 +660,46 @@ export default function DashboardPage() {
   // shows them (Page design v2, Themes). Needs you first, then Now Playing as
   // the big banner from a person's Home, the numbers in one strip, and the
   // rest as sections that move, fold and hide.
+  // Continue Watching as banners (components/dashboard/ContinueBanners.tsx):
+  // the latest title wide as Now Playing's first banner when Wide is picked
+  // (otherwise it is the row's first card), and the rest in a
+  // row that drags sideways and sizes with Arrange's stretch handle.
+  const continueBanners = () => {
+    if (!continueShown.length) return null;
+    const lead = wideFirst ? continueShown[0] : null;
+    const rest = wideFirst ? continueShown.slice(1) : continueShown;
+    const leadCard = lead && <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+    return (
+      <>
+        {lead && (isTV
+          ? <TVFocusable ringInside className={rest.length ? 'mb-3' : ''} onEnterPress={() => setDetailModalItem(lead)}>{leadCard}</TVFocusable>
+          : <div className={rest.length ? 'mb-3' : ''}>{leadCard}</div>)}
+        {rest.length > 0 && (
+          <div
+            {...dashArrange.cardAttrs('continue')}
+            ref={scrollRowRef}
+            onPointerDown={handleRowPointerDown}
+            onPointerMove={handleRowPointerMove}
+            onPointerUp={handleRowPointerUp}
+            onPointerLeave={handleRowPointerUp}
+            className={isTV
+              ? 'flex gap-3 overflow-x-auto pb-1 no-scrollbar paint-isolated'
+              : 'arrange-cardrow grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[82%] min-[640px]:auto-cols-[calc((100%-24px)/3)] min-[1100px]:auto-cols-[calc((100%-36px)/4)] min-[1700px]:auto-cols-[calc((100%-48px)/5)]'}
+          >
+            {rest.map((item, index) => {
+              const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+              const key = `${item.userId}-${item.showId}`;
+              return isTV
+                ? <TVFocusable key={key} ringInside className="w-[300px] shrink-0" onEnterPress={() => setDetailModalItem(item)}>{card}</TVFocusable>
+                : <Fragment key={key}>{card}</Fragment>;
+            })}
+            {!isTV && <StretchHandle arrange={dashArrange} id="continue" kind="row" label="Continue Watching" />}
+          </div>
+        )}
+      </>
+    );
+  };
+
   if (v2) {
     const hm = (minutes: number) => {
       const m = Math.max(0, Math.round(minutes));
@@ -955,7 +719,6 @@ export default function DashboardPage() {
     for (const a of metricsData?.recentActivity || []) if (a.user.providerType && !providerByUser.has(a.user.id)) providerByUser.set(a.user.id, a.user.providerType);
 
     const summary = [
-      `${stats.totalUsers} ${stats.totalUsers === 1 ? 'person' : 'people'}`,
       activeUsers > 0 ? `${activeUsers} watching` : null,
       needsCount > 0 ? `${needsCount} ${needsCount === 1 ? 'thing needs' : 'things need'} you` : null,
     ].filter(Boolean).join(' · ');
@@ -1010,13 +773,13 @@ export default function DashboardPage() {
 
     const syncButton = (
       <Button
-        variant="primary"
+        variant="secondary"
         size={isOriginal ? 'md' : 'sm'}
         leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
         onClick={handleSyncAll}
-        isLoading={isSyncing}
+        disabled={isSyncing}
       >
-        Sync all
+        {isSyncing ? 'Syncing...' : 'Sync All'}
       </Button>
     );
     const v2Actions = (
@@ -1090,33 +853,10 @@ export default function DashboardPage() {
             <div key={id} className={span(id)}>
               <ArrangeSection
                 arrange={dashArrange} id={id} title="Continue Watching" cards
-                meta={dashArrange.isEmpty(id) ? 'empty right now' : 'everyone'}
+                meta={dashArrange.isEmpty(id) ? 'empty right now' : undefined}
                 emptyNote={dashArrange.isEmpty(id) ? 'Continue Watching · shows when someone has something to resume' : undefined}
               >
-                <div
-                  {...dashArrange.cardAttrs(id)}
-                  ref={scrollRowRef}
-                  onPointerDown={handleRowPointerDown}
-                  onPointerMove={handleRowPointerMove}
-                  onPointerUp={handleRowPointerUp}
-                  onPointerLeave={handleRowPointerUp}
-                  className="arrange-cardrow grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]"
-                >
-                  {continueWatching.map((item, index) => (
-                    <ContinueWatchingCard
-                      key={`${item.userId}-${item.showId}`}
-                      item={item}
-                      wide
-                      priority={index < 7}
-                      wasDraggedRef={wasDraggedRef}
-                      onRemove={handleDismissContinueWatching}
-                      onOpenDetails={setDetailModalItem}
-                      isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                      onMenuOpenChange={handleMenuOpenChange}
-                    />
-                  ))}
-                  <StretchHandle arrange={dashArrange} id={id} kind="row" label="Continue Watching" />
-                </div>
+                {continueBanners()}
               </ArrangeSection>
             </div>
           );
@@ -1124,7 +864,7 @@ export default function DashboardPage() {
           return (
             <div key={id} className={span(id)}>
               <ArrangeSection arrange={dashArrange} id={id} title="Coming up">
-                <UpcomingEpisodesPanel className="" v2 watchers={upcomingWatchers} />
+                <UpcomingEpisodesPanel className="" v2 watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
               </ArrangeSection>
             </div>
           );
@@ -1146,7 +886,7 @@ export default function DashboardPage() {
                       >
                         <b>{np.user.username.split(' ')[0]}</b>{' '}
                         <span className="text-muted">
-                          {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                          {np.isLive ? (np.item.guessed ? 'is probably watching' : 'is watching') : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                           {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                             <> {np.item.season !== undefined && np.item.season > 0
                               ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
@@ -1259,13 +999,13 @@ export default function DashboardPage() {
       <>
         {isOriginal ? (
           <>
-            <Header title="Dashboard" subtitle={summary} actions={v2Actions} />
+            <Header title="Dashboard" subtitle={summary || undefined} actions={v2Actions} />
             <div className="p-6 lg:p-8">{body}</div>
           </>
         ) : (
           <div className="px-4 md:px-6 pb-8 pt-6">
             <div className="mx-auto" style={{ maxWidth: 'min(120rem, 92vw)' }}>
-              <NebulaPageHeading title="Dashboard" subtitle={summary} actions={v2Actions} />
+              <NebulaPageHeading title="Dashboard" subtitle={summary || undefined} actions={v2Actions} />
               {body}
             </div>
           </div>
@@ -1304,9 +1044,9 @@ export default function DashboardPage() {
   // recentActivityItems, etc.), just a different arrangement: top nav instead
   // of the sidebar (swapped in by AdminClientLayout based on layoutMode),
   // glass panels, an orbital-style ring stat instead of a flat stat card.
-  // Continue Watching reuses the exact same ContinueWatchingCard + row drag
+  // Continue Watching reuses the exact same continueBanners() + row drag
   // handlers as Current mode - only the wrapping panel is different - so the
-  // carefully-debugged pointer-capture/context-menu/app-link logic isn't
+  // carefully-debugged pointer-capture/app-link logic isn't
   // duplicated.
   if (layoutMode === 'nebula') {
     const Wrapper = isTV ? TVPageProvider : Fragment;
@@ -1324,13 +1064,13 @@ export default function DashboardPage() {
               actions={(() => {
                 const syncBtn = (
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
                     leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
                     onClick={handleSyncAll}
-                    isLoading={isSyncing}
+                    disabled={isSyncing}
                   >
-                    Sync All
+                    {isSyncing ? 'Syncing...' : 'Sync All'}
                   </Button>
                 );
                 return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : <div className="flex items-center gap-2"><ArrangeButton arrange={dashArrange} />{syncBtn}</div>;
@@ -1454,40 +1194,11 @@ export default function DashboardPage() {
                           </div>
                           <PanelControls side="end" />
                         </div>
-                        <div
-                          ref={scrollRowRef}
-                          onPointerDown={handleRowPointerDown}
-                          onPointerMove={handleRowPointerMove}
-                          onPointerUp={handleRowPointerUp}
-                          onPointerLeave={handleRowPointerUp}
-                          className={isTV ? 'flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated' : 'grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]'}
-                        >
-                          {continueWatching.map((item, index) => {
-                            const card = (
-                              <ContinueWatchingCard
-                                item={item}
-                                wide={!isTV}
-                                priority={index < 7}
-                                wasDraggedRef={wasDraggedRef}
-                                onRemove={handleDismissContinueWatching}
-                                onOpenDetails={setDetailModalItem}
-                                isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                                onMenuOpenChange={handleMenuOpenChange}
-                              />
-                            );
-                            return isTV ? (
-                              <TVFocusable key={`${item.userId}-${item.showId}`} onEnterPress={() => setDetailModalItem(item)}>
-                                {card}
-                              </TVFocusable>
-                            ) : (
-                              <Fragment key={`${item.userId}-${item.showId}`}>{card}</Fragment>
-                            );
-                          })}
-                        </div>
+                        {continueBanners()}
                       </div>
                     ))}
                     {dashPanel('upcoming', 'Coming up', 'lg:col-span-2', (
-                      <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} />
+                      <UpcomingEpisodesPanel className="" tiles watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
                     ))}
                     {dashPanel('recent', 'Recent Activity', '', (
                       <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
@@ -1528,7 +1239,7 @@ export default function DashboardPage() {
                                     <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
                                       {np.user.username.split(' ')[0]}
                                     </span>{' '}
-                                    {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                                    {np.isLive ? (np.item.guessed ? 'is probably watching' : 'is watching') : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                                     {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                                       <span className="text-subtle ml-1">
                                         {np.item.season !== undefined && np.item.season > 0
@@ -1689,12 +1400,12 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <ArrangeButton arrange={dashArrange} />
             <Button
-              variant="primary"
+              variant="secondary"
               leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
               onClick={handleSyncAll}
-              isLoading={isSyncing}
+              disabled={isSyncing}
             >
-              Sync All
+              {isSyncing ? 'Syncing...' : 'Sync All'}
             </Button>
           </div>
         }
@@ -1795,33 +1506,12 @@ export default function DashboardPage() {
                         </div>
                         <PanelControls side="end" />
                       </div>
-                      <div
-                        ref={scrollRowRef}
-                        onPointerDown={handleRowPointerDown}
-                        onPointerMove={handleRowPointerMove}
-                        onPointerUp={handleRowPointerUp}
-                        onPointerLeave={handleRowPointerUp}
-                        className={isTV ? 'flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated' : 'grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[calc((100%-12px)/2)] min-[640px]:auto-cols-[calc((100%-36px)/4)] min-[1100px]:auto-cols-[calc((100%-48px)/5)] min-[1700px]:auto-cols-[calc((100%-72px)/7)]'}
-                      >
-                        {continueWatching.map((item, index) => (
-                          <ContinueWatchingCard
-                            key={`${item.userId}-${item.showId}`}
-                            item={item}
-                            wide={!isTV}
-                            priority={index < 7}
-                            wasDraggedRef={wasDraggedRef}
-                            onRemove={handleDismissContinueWatching}
-                            onOpenDetails={setDetailModalItem}
-                            isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                            onMenuOpenChange={handleMenuOpenChange}
-                          />
-                        ))}
-                      </div>
+                      {continueBanners()}
                     </Card>
                   </PageSection>
                 ))}
                 {dashPanel('upcoming', 'Coming up', 'lg:col-span-6', (
-                  <UpcomingEpisodesPanel className="" tiles={!isTV} watchers={upcomingWatchers} />
+                  <UpcomingEpisodesPanel className="" tiles watchers={upcomingWatchers} stretch={{ arrange: dashArrange, id: 'upcoming' }} />
                 ))}
                 {dashPanel('syncActivity', 'Sync Activity', 'lg:col-span-4', (
                   <PageSection delay={0.2}>
@@ -1892,7 +1582,7 @@ export default function DashboardPage() {
                                   <span className="font-medium text-default">
                                     {np.user.username.split(' ')[0]}
                                   </span>{' '}
-                                  {np.isLive ? 'is watching' : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
+                                  {np.isLive ? (np.item.guessed ? 'is probably watching' : 'is watching') : 'watched'} {np.item.titlePending ? 'a title not known yet' : np.item.name}
                                   {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
                                     <span className="text-subtle ml-1">
                                       {np.item.season !== undefined && np.item.season > 0

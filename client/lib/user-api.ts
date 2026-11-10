@@ -114,27 +114,6 @@ export interface StremioAddon {
   };
 }
 
-export interface Share {
-  id: string;
-  itemId: string;
-  itemName: string;
-  itemType: 'movie' | 'series';
-  poster?: string;
-  fromUserId: string;
-  fromUsername?: string;
-  toUserId: string;
-  toUsername?: string;
-  createdAt: string;
-  viewedAt?: string;
-}
-
-export interface GroupMember {
-  id: string;
-  username: string;
-  email: string;
-  colorIndex?: number;
-}
-
 // OAuth API
 export const userOAuth = {
   /**
@@ -197,12 +176,14 @@ export const userAuth = {
     success: boolean;
     userId: string;
     userInfo: UserInfo;
+    sessionToken?: string;
     isNewUser?: boolean;
     error?: string;
     errorCode?: string;
   }> {
     const response = await request<{
       success: boolean;
+      sessionToken?: string;
       user?: {
         id: string;
         username: string;
@@ -238,6 +219,7 @@ export const userAuth = {
           createdAt: response.user.createdAt || new Date().toISOString(),
           expiresAt: response.user.expiresAt,
         },
+        sessionToken: response.sessionToken,
         isNewUser: response.isNewUser,
       };
     }
@@ -265,6 +247,7 @@ export const userAuth = {
       valid?: boolean;
       success?: boolean;
       userId?: string;
+      sessionToken?: string;
       error?: string;
       errorCode?: string;
     }>('/public-library/validate', {
@@ -275,6 +258,7 @@ export const userAuth = {
     return {
       valid: response.valid ?? response.success ?? false,
       userId: response.userId,
+      sessionToken: response.sessionToken,
       error: response.error,
       errorCode: response.errorCode,
     };
@@ -597,6 +581,8 @@ export interface NowPlayingItem {
     episode?: number;
     // A proxy stream whose title isn't known yet - name is plain words.
     titlePending?: boolean;
+    // Their unfinished title, shown while the app hasn't said what's playing.
+    guessed?: boolean;
     episodeTitle?: string;
   };
   startTime: string;
@@ -833,53 +819,6 @@ export const userAddons = {
   },
 };
 
-// Shares API
-export const userShares = {
-  /**
-   * Get user's shares (sent and received)
-   */
-  async getShares(userId: string, authKey?: string): Promise<{ sent: Share[]; received: Share[] }> {
-    const params = new URLSearchParams({ userId });
-    return request(`/public-library/shares?${params.toString()}`, { authKey });
-  },
-
-  /**
-   * Get group members for sharing
-   */
-  async getGroupMembers(userId: string, authKey?: string): Promise<{ members: GroupMember[] }> {
-    const params = new URLSearchParams({ userId });
-    return request(`/public-library/group-members?${params.toString()}`, { authKey });
-  },
-
-  /**
-   * Share items with other users
-   */
-  async shareItems(
-    userId: string,
-    items: Array<{ itemId: string; itemName?: string; itemType?: string; poster?: string }>,
-    targetUserIds: string[]
-  ): Promise<{ success: boolean; shareCount: number }> {
-    return request(`/users/${userId}/shares`, {
-      method: 'POST',
-      body: JSON.stringify({ items, targetUserIds }),
-    });
-  },
-
-  /**
-   * Remove a share
-   */
-  async removeShare(userId: string, shareId: string): Promise<{ success: boolean }> {
-    return request(`/users/${userId}/shares/${shareId}`, { method: 'DELETE' });
-  },
-
-  /**
-   * Mark a share as viewed
-   */
-  async markAsViewed(userId: string, shareId: string): Promise<{ success: boolean }> {
-    return request(`/users/${userId}/shares/${shareId}/viewed`, { method: 'PUT' });
-  },
-};
-
 /**
  * Notifications on the person's own devices (PersonPushSubscription on the
  * server) - off until they turn them on, and never the admin's devices.
@@ -993,6 +932,9 @@ export interface ContinueWatchingCardData {
   resume: boolean;
   progressPercent: number | null;
   remainingMinutes: number | null;
+  /** Where they stopped and how long it is (ms), when resuming. */
+  positionMs?: number | null;
+  durationMs?: number | null;
   lastWatchedAt: string;
   providerType: string;
   /** Nuvio: the profile it is watched under. */
@@ -1065,7 +1007,6 @@ export const userApi = {
   library: userLibrary,
   activity: userActivity,
   addons: userAddons,
-  shares: userShares,
   sync: userSync,
   export: userExport,
 };

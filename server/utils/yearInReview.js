@@ -19,11 +19,23 @@ async function buildYearInReview(prisma, accountId, year, users = []) {
   const y = Number(year) || new Date().getFullYear()
 
   const partsFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit' })
+  // Remembered per quarter-hour: every timezone offset, and so every local
+  // midnight, falls on a quarter-hour, so all moments in one share a month.
+  // formatToParts on each of a year's ~100,000 rows (twice) was most of a
+  // second on every visit.
+  const QUARTER_HOUR_MS = 15 * 60 * 1000
+  const ymMemo = new Map()
   const ymOf = (d) => {
+    const ms = new Date(d).getTime()
+    const slot = Math.floor(ms / QUARTER_HOUR_MS)
+    const hit = ymMemo.get(slot)
+    if (hit) return hit
     const parts = partsFmt.formatToParts(new Date(d))
     const yr = Number(parts.find((p) => p.type === 'year')?.value)
     const mo = Number(parts.find((p) => p.type === 'month')?.value) - 1 // 0-11
-    return { yr, mo }
+    const value = { yr, mo }
+    if (Number.isFinite(slot)) ymMemo.set(slot, value)
+    return value
   }
 
   // A generous UTC window around the target year: a timezone offset can push a

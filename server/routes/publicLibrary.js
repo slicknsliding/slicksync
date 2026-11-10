@@ -18,7 +18,26 @@ const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateU
  */
 module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary, JWT_SECRET }) => {
   const { findLatestEpisode } = require('../utils/libraryHelpers')
-  const { getShares, getGroupMembers } = require('../utils/sharesManager')
+  // The other people in a person's groups (the caller left out)
+  async function getGroupMembers(prisma, accountId, userId) {
+    try {
+      const groups = await prisma.group.findMany({ where: { accountId }, select: { id: true, userIds: true } })
+      const ids = new Set()
+      for (const group of groups) {
+        if (!group.userIds) continue
+        const userIds = JSON.parse(group.userIds)
+        if (userIds.includes(userId)) userIds.forEach(id => { if (id !== userId) ids.add(id) })
+      }
+      if (ids.size === 0) return []
+      return await prisma.user.findMany({
+        where: { id: { in: Array.from(ids) }, accountId, isActive: true },
+        select: { id: true, username: true, email: true, colorIndex: true, activityVisibility: true }
+      })
+    } catch (error) {
+      console.error(`Failed to get group members for user ${userId}:`, error.message)
+      return []
+    }
+  }
   const { getAccountId } = require('../utils/helpers')
   const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId })
   const { imageUpload } = require('../utils/helpers/multer')
@@ -295,6 +314,51 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     return decoded?.provider === 'jellyfin' && decoded?.sub === expectedUserId
   }
 
+  function setPortalImageCookie(req, res, user) {
+    try {
+      const { portalImageCookie, PORTAL_IMAGE_COOKIE } = require('../utils/portalImageCookie')
+      const value = portalImageCookie.sign(user.id, user.accountId || DEFAULT_ACCOUNT_ID, JWT_SECRET)
+      res.cookie(PORTAL_IMAGE_COOKIE, value, { httpOnly: true, sameSite: 'lax', secure: !!req.secure, path: '/api', maxAge: 30 * 24 * 60 * 60 * 1000 })
+    } catch { /* pictures fall back to failing; the page itself still works */ }
+  }
+
+  // Stremio portal sessions work the same way. The person's Stremio key is
+  // checked once, at sign-in, and stays on the server; the browser keeps only
+  // this token, which works nowhere but here and runs out. A browser still
+  // holding the Stremio key itself (signed in before this) swaps it for a
+  // token on its next visit, and the key keeps working until it does.
+  function issueStremioSessionToken(userId) {
+    return jwt.sign({ sub: userId, provider: 'stremio' }, JWT_SECRET, { expiresIn: NUVIO_SESSION_TTL })
+  }
+  function stremioSessionUserId(token) {
+    if (typeof token !== 'string' || token.split('.').length !== 3) return null
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET)
+      return decoded?.provider === 'stremio' && typeof decoded.sub === 'string' ? decoded.sub : null
+    } catch (e) {
+      return null
+    }
+  }
+  // The same checks getPublicUser makes, for someone already signed in.
+  async function getPublicUserBySession(token, targetId = null) {
+    const userId = stremioSessionUserId(token)
+    if (!userId || (targetId && targetId !== userId)) throw new Error('Authentication required')
+    const user = await prisma.user.findFirst({
+      where: { id: userId, providerType: 'stremio' },
+      select: { id: true, username: true, email: true, accountId: true, stremioAuthKey: true, isActive: true, protectedAddons: true }
+    })
+    if (!user) throw new Error('USER_NOT_FOUND')
+    if (!user.isActive) throw new Error('USER_NOT_ACTIVE')
+    const groups = await prisma.group.findMany({ where: { isActive: true }, select: { userIds: true } })
+    const inGroup = groups.some((g) => { try { const ids = JSON.parse(g.userIds || '[]'); return Array.isArray(ids) && ids.includes(user.id) } catch { return false } })
+    if (!inGroup) throw new Error('USER_NOT_IN_GROUP')
+    return user
+  }
+  // A token or, from a browser signed in before tokens, the Stremio key.
+  function getStremioCaller(authKey, req, targetId = null) {
+    return stremioSessionUserId(authKey) ? getPublicUserBySession(authKey, targetId) : getPublicUser(authKey, req, targetId)
+  }
+
   // The person a Jellyfin sign-in belongs to: the same server user, active,
   // and in a group - the same rules getPublicUserNuvio applies. A fresh token
   // from the sign-in replaces the stored one (the server retires the old
@@ -425,7 +489,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     // someone who merely shares their email; only this person's row counts.
     let who;
     try {
-      who = await getPublicUser(authKey, req, user.id);
+      who = await getStremioCaller(authKey, req, user.id);
     } catch (e) {
       throw new Error('Invalid auth key');
     }
@@ -583,7 +647,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(400).json({ error: 'Auth key is required' });
       }
 
-      const user = await getPublicUser(authKey, req);
+      const user = await getStremioCaller(authKey, req);
       
       // Fetch full user details including createdAt and expiresAt
       const fullUser = await prisma.user.findUnique({
@@ -601,6 +665,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // Return user info (without sensitive data)
       res.json({
         success: true,
+        sessionToken: issueStremioSessionToken(fullUser.id),
         user: {
           id: fullUser.id,
           username: fullUser.username,
@@ -658,7 +723,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const authKeyToValidate = authKey;
 
       // Validate using getPublicUser which checks existence, active status, and group membership
-      const user = await getPublicUser(authKeyToValidate, req, userId || null);
+      const user = await getStremioCaller(authKeyToValidate, req, userId || null);
       if (userId && user.id !== userId) {
         return res.status(403).json({ error: 'Session mismatch', message: 'This Stremio session does not match this account' });
       }
@@ -666,6 +731,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       res.json({
         success: true,
         valid: true,
+        sessionToken: issueStremioSessionToken(user.id),
         user: {
           id: user.id,
           username: user.username,
@@ -1067,7 +1133,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       } else if (authKey) {
         // Legacy fallback for a caller with only a Stremio authKey and no
         // userId at all.
-        const publicUser = await getPublicUser(authKey, req);
+        const publicUser = await getStremioCaller(authKey, req);
         const fullUser = await prisma.user.findUnique({
           where: { id: publicUser.id },
           select: {
@@ -1092,6 +1158,12 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         }
         user = fullUser;
       }
+
+      // Posters and profile pictures load through /api/img and /api/poster,
+      // as plain <img> requests that cannot carry the portal's token. This
+      // cookie lets those two - and nothing else - through the sign-in gate
+      // for someone whose identity was just checked above.
+      setPortalImageCookie(req, res, user);
 
       // The groups they are in, by name, for their Settings page.
       const theirGroups = await prisma.group.findMany({
@@ -1368,7 +1440,6 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         }
         
         // Check if requesting user is in the same group and target user is public
-        const { getGroupMembers } = require('../utils/sharesManager');
         const groupMembers = await getGroupMembers(prisma, user.accountId, requestingUserId);
         const requestingUserInGroup = groupMembers.some(m => m.id === userId);
         
@@ -2570,9 +2641,23 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           accountId: user.accountId || DEFAULT_ACCOUNT_ID
         },
         orderBy: { date: 'desc' },
-        take: parseInt(limit) || 100
+        // Watch time is stored a minute or two at a time, so one sitting is
+        // many rows; enough are read for `limit` viewings, not `limit` slices.
+        take: 20000
       });
       console.log('Watch activities found:', watchActivities.length);
+      // One viewing per title (episode, for a show) per day, its time added up.
+      // Each slice used to be its own card and its own "play": a film watched
+      // once showed 27 times.
+      const viewingLimit = Math.min(Math.max(parseInt(limit) || 100, 1), 500)
+      const viewingsByKey = new Map()
+      for (const a of watchActivities) {
+        const key = `${new Date(a.date).toISOString()}|${a.itemId}|${a.videoId || ''}`
+        const seen = viewingsByKey.get(key)
+        if (seen) seen.watchTimeSeconds = (seen.watchTimeSeconds || 0) + (a.watchTimeSeconds || 0)
+        else viewingsByKey.set(key, { ...a })
+      }
+      const viewings = [...viewingsByKey.values()]
 
       // Load library cache to get item names and posters
       console.log('Loading library cache for account:', user.accountId);
@@ -2625,11 +2710,11 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           accountId: user.accountId || DEFAULT_ACCOUNT_ID
         },
         orderBy: { watchedAt: 'desc' },
-        take: parseInt(limit) || 100
+        take: Math.min(Math.max(parseInt(limit) || 100, 1), 500)
       });
 
       // Transform watch activity into activity items (like old slicksync)
-      const activityItems = watchActivities.map(activity => {
+      const activityItems = viewings.slice(0, viewingLimit).map(activity => {
         // Get item details from library cache
         const libraryItem = libraryItemMap.get(activity.itemId);
         const { season, episode } = extractSeasonEpisodeFromId(activity.itemId);
@@ -2717,7 +2802,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const seriesCount = [...uniqueItems.values()].filter(t => t === 'series').length;
 
       // Items watched this week
-      const recentItemsCount = watchActivities
+      const recentItemsCount = viewings
         .filter(a => new Date(a.date) >= oneWeekAgo)
         .length;
 
@@ -2730,7 +2815,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         const dayEnd = new Date(date);
         dayEnd.setHours(23, 59, 59, 999);
 
-        const dayActivities = watchActivities.filter(a => {
+        const dayActivities = viewings.filter(a => {
           const activityDate = new Date(a.date);
           return activityDate >= dayStart && activityDate <= dayEnd;
         });
@@ -2756,7 +2841,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // === ADDITIONAL STATS FOR USER HOME ===
 
       // Watched today count
-      const watchedTodayCount = watchActivities
+      const watchedTodayCount = viewings
         .filter(a => new Date(a.date) >= todayStart)
         .length;
 
@@ -2819,7 +2904,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       // Most watched item
       const itemCounts = new Map();
-      watchActivities.forEach(a => {
+      viewings.forEach(a => {
         const key = a.itemId;
         const libraryItem = libraryItemMap.get(a.itemId);
         if (!itemCounts.has(key)) {
@@ -2854,7 +2939,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const bingeWatches = [];
       const seriesActivitiesByDay = new Map();
       
-      watchActivities.filter(a => a.itemType === 'series').forEach(a => {
+      viewings.filter(a => a.itemType === 'series').forEach(a => {
         const dateKey = new Date(a.date).toISOString().split('T')[0];
         const seriesKey = `${dateKey}:${a.itemId}`;
         const libraryItem = libraryItemMap.get(a.itemId);
@@ -2912,8 +2997,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         const at = Date.parse(item?.state?.lastWatched || '');
         return Number.isFinite(at) ? at : (s.updatedAt ? s.updatedAt.getTime() : null);
       };
+      const { stremioSaveFields } = require('../utils/metricsBuilder');
       const nowPlaying = (user.providerType === 'jellyfin' ? [] : activeSessions)
         .filter(s => !hasReachedEnd(s.lastPosition, s.totalDuration))
+        .filter(s => !stremioSaveFields(user, s, Date.now())?.stremioEnded)
         .filter(s => !(Number(s.totalDuration) > 0 && Number(s.lastPosition) >= Number(s.totalDuration) * 0.92))
         .map(s => ({
         item: {
@@ -2934,22 +3021,37 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           nuvioAppUrl: buildNuvioAppUrl(s.itemType === 'series' ? 'series' : 'movie', s.itemId),
         } : {}),
         ...(nuvioSave(s) !== undefined ? { nuvioSavedAt: nuvioSave(s), ...(nuvioSave(s) != null ? { reportedAtTimestamp: nuvioSave(s) } : {}) }
-          : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {})
+          : s.updatedAt ? { reportedAtTimestamp: s.updatedAt.getTime() } : {}),
+        ...(stremioSaveFields(user, s, Date.now()) || {})
       }));
 
       // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings() -
       // or on a Jellyfin server they sign in to (utils/jellyfinLive.js).
       try {
         const { liveViewings } = require('../utils/watchState');
+        // Stremio's own player events (utils/stremioAddonEvents.js): a title it
+        // said stopped is not playing whatever the library still holds active,
+        // and while it plays its real position replaces the library's checkpoint.
+        const { stremioMark } = require('../utils/stremioAddonEvents');
+        for (let i = nowPlaying.length - 1; i >= 0; i--) {
+          if (stremioMark(userId, nowPlaying[i].item.id) === 'ended') nowPlaying.splice(i, 1);
+        }
         const jellyfinViewings = require('../utils/jellyfinLive').liveViewings([userId]).map(v => ({ ...v, source: 'jellyfin' }));
         for (const v of [...await liveViewings(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [userId]), ...jellyfinViewings]) {
-          if (nowPlaying.some(np => np.item.id === v.itemId)) continue;
+          const fromStremio = v.source !== 'jellyfin' && stremioMark(userId, v.itemId) === 'live';
+          const shown = nowPlaying.findIndex(np => np.item.id === v.itemId);
+          if (shown >= 0) {
+            if (!fromStremio) continue;
+            nowPlaying.splice(shown, 1);
+          }
           nowPlaying.push({
             item: { id: v.itemId, name: v.itemName || v.itemId, type: v.itemType, poster: v.poster, season: v.season, episode: v.episode },
             startTime: v.startedAt,
             videoId: v.videoId,
             // For the cards' "Live / Paused / Last seen" line.
-            source: v.source || 'aiostreams',
+            source: v.source || (fromStremio ? 'stremio' : 'aiostreams'),
+            // The player's own position and the video's length.
+            ...(fromStremio ? { lastPosition: v.positionMs ?? null, totalDuration: v.durationMs ?? null } : {}),
             ...(v.observedAt != null ? { reportedAtTimestamp: new Date(v.observedAt).getTime() } : {}),
             ...(v.paused === true ? { paused: true } : {}),
             ...(typeof v.playingUntil === 'number' ? { playingUntilTimestamp: v.playingUntil } : {})
@@ -2973,7 +3075,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         // login) had nobody else to go to and showed up here as theirs.
         const household = await prisma.user.findMany({
           where: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, isActive: true },
-          select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, useGravatar: true }
+          select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, useGravatar: true, providerType: true }
         });
         const merged = await mergeProxyNowPlaying(prisma, user.accountId || DEFAULT_ACCOUNT_ID, household.length ? household : [user], wrapped);
         nowPlaying.length = 0;
@@ -2992,15 +3094,17 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           ...(m.source ? { source: m.source, elapsedSeconds: m.elapsedSeconds, elapsedFrozen: m.elapsedFrozen } : {}),
           ...(m.stremioAppUrl ? { stremioAppUrl: m.stremioAppUrl } : {}),
           ...(m.nuvioAppUrl ? { nuvioAppUrl: m.nuvioAppUrl } : {}),
-          ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {})
+          ...('nuvioSavedAt' in m ? { nuvioSavedAt: m.nuvioSavedAt } : {}),
+          ...(typeof m.stremioSavedAt === 'number' ? { stremioSavedAt: m.stremioSavedAt } : {}),
+          ...(m.carriedByProxy ? { carriedByProxy: true } : {})
         })));
       } catch (error) {
         console.warn('[PublicLibrary] Failed to merge proxy now playing:', error.message);
       }
       {
         // A card only Nuvio's own saves stand behind: 5 minutes, newest only.
-        const { nuvioOnlyCards } = require('../utils/metricsBuilder');
-        const keep = nuvioOnlyCards(nowPlaying, Date.now());
+        const { nuvioOnlyCards, stremioSaveCards } = require('../utils/metricsBuilder');
+        const keep = stremioSaveCards(nuvioOnlyCards(nowPlaying, Date.now()), Date.now());
         nowPlaying.length = 0;
         nowPlaying.push(...keep);
       }
@@ -3025,7 +3129,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           moviesCount,
           seriesCount,
           recentItemsCount,
-          totalSessions: watchActivities.length,
+          totalSessions: viewings.length,
           currentStreak,
           longestStreak,
           avgWatchTimeSeconds,
@@ -3201,7 +3305,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         }
         let validated
         try {
-          validated = await getPublicUser(authKey, req, userId)
+          validated = await getStremioCaller(authKey, req, userId)
         } catch {
           return res.status(401).json({ error: 'Invalid or expired Stremio session', message: 'Invalid or expired Stremio session - please sign in again before deleting your account' })
         }
@@ -3349,74 +3453,6 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
-  // Public endpoint: Get user shares
-  router.get('/shares', async (req, res) => {
-    try {
-      const { userId } = req.query;
-      const authKey = getAuthKey(req);
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
-
-      // Get user
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
-      });
-
-      if (!user || !user.isActive) {
-        return res.status(404).json({ error: 'User not found or inactive' });
-      }
-
-      try {
-        await verifyProviderIdentity(user, authKey, req);
-      } catch (e) {
-        return res.status(401).json({ error: publicMessage(e, 'Something went wrong') });
-      }
-
-      const shares = getShares(user.accountId, userId);
-      res.json(shares);
-    } catch (error) {
-      console.error(`Failed to get shares for user ${req.query.userId}:`, error);
-      res.status(500).json({ error: 'Failed to get shares', message: publicMessage(error, 'Failed to get shares') });
-    }
-  });
-
-  // Public endpoint: Get user group members
-  router.get('/group-members', async (req, res) => {
-    try {
-      const { userId } = req.query;
-      const authKey = getAuthKey(req);
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
-
-      // Get user
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
-      });
-
-      if (!user || !user.isActive) {
-        return res.status(404).json({ error: 'User not found or inactive' });
-      }
-
-      try {
-        await verifyProviderIdentity(user, authKey, req);
-      } catch (e) {
-        return res.status(401).json({ error: publicMessage(e, 'Something went wrong') });
-      }
-
-      const groupMembers = await getGroupMembers(prisma, user.accountId, userId);
-      res.json({ members: groupMembers });
-    } catch (error) {
-      console.error(`Failed to get group members for user ${req.query.userId}:`, error);
-      res.status(500).json({ error: 'Failed to get group members', message: publicMessage(error, 'Failed to get group members') });
-    }
-  });
-
   // ---- Notifications on the person's own devices ----
   // Turned on from their own Settings page, off by default; sent by
   // utils/pushNotifications.sendPushToPerson - when their sign-in stops
@@ -3483,7 +3519,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     try {
       const user = await personAsking(req, req.body?.userId);
       const { endpoint, keys } = req.body?.subscription || {};
-      if (!endpoint || !keys?.p256dh || !keys?.auth || !/^https:\/\//i.test(String(endpoint))) {
+      if (!endpoint || !keys?.p256dh || !keys?.auth || !require('../utils/pushNotifications').isAllowedPushEndpoint(endpoint)) {
         return res.status(400).json({ error: 'Invalid subscription' });
       }
       const userAgent = req.body?.userAgent ? String(req.body.userAgent).slice(0, 300) : null;
@@ -3618,6 +3654,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         if (!req.file) return res.status(400).json({ error: 'Choose a picture first', message: 'Choose a picture first' });
         const kind = pictureKind(req.file.buffer);
         if (!kind) return res.status(400).json({ error: 'That isn’t a JPEG, PNG, GIF or WEBP picture', message: 'That isn’t a JPEG, PNG, GIF or WEBP picture' });
+        if (!require('../utils/imageEncoder').decodableSize(req.file.buffer)) {
+          const message = 'That picture’s dimensions are too large';
+          return res.status(400).json({ error: message, message });
+        }
         const current = await prisma.user.findUnique({ where: { id: user.id }, select: { avatarUrl: true } });
         const url = saveAvatarFile(req.file.buffer, kind);
         try {
@@ -3758,6 +3798,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           resume: r.resume === true,
           progressPercent: r.progressPercent ?? null,
           remainingMinutes: r.remainingMinutes ?? null,
+          positionMs: r.positionMs ?? null,
+          durationMs: r.durationMs ?? null,
           lastWatchedAt: r.lastWatchedAt,
           providerType: r.providerType,
           profileLabel: r.profileLabel || null,

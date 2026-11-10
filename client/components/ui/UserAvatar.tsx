@@ -34,7 +34,7 @@ export function UserAvatar({
   avatarClassName
 }: UserAvatarProps) {
   const { getUser, fetchUser } = useUserCache();
-  const [userData, setUserData] = useState<{ name: string; email?: string; colorIndex?: number } | null>(null);
+  const [userData, setUserData] = useState<{ name: string; email?: string; colorIndex?: number; avatarUrl?: string | null; useGravatar?: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(!providedEmail);
 
   useEffect(() => {
@@ -85,8 +85,9 @@ export function UserAvatar({
     <Avatar 
       name={displayName} 
       email={email} 
-      src={src}
-      useGravatar={useGravatar}
+      // A caller that passes only the id still gets the person's own picture.
+      src={src ?? ((useGravatar ?? userData?.useGravatar) ? undefined : (userData?.avatarUrl || undefined))}
+      useGravatar={useGravatar ?? userData?.useGravatar}
       size={size}
       showRing={showRing}
       status={status}

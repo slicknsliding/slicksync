@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { api, Addon, Group } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -196,7 +199,20 @@ interface ManifestUrlInputProps {
   onSave: (data: { manifestUrl: string }) => Promise<void>;
 }
 
+// Makes its children reachable by the TV remote (OK = onEnter); a no-op wrapper elsewhere.
+function TVWrap({ isTV, onEnter, className, focusKey, children }: { isTV: boolean; onEnter: () => void; className?: string; focusKey?: string; children: ReactNode }) {
+  return isTV ? <TVFocusable onEnterPress={onEnter} className={className} focusKey={focusKey}>{children}</TVFocusable> : <>{children}</>;
+}
+
+// TV: the remote starts on Reload, not on the Active switch before it.
+const ADDON_RELOAD_KEY = 'addon-reload';
+function AddonTVPage({ children }: { children: ReactNode }) {
+  return <TVPageProvider initialFocusKey={ADDON_RELOAD_KEY}>{children}</TVPageProvider>;
+}
+
 function ManifestUrlInput({ value, onSave }: ManifestUrlInputProps) {
+  const isTV = useIsTV();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
   const [localValue, setLocalValue] = useState(value);
   const [currentSavedUrl, setCurrentSavedUrl] = useState(value);
@@ -324,6 +340,7 @@ function ManifestUrlInput({ value, onSave }: ManifestUrlInputProps) {
   const canRevert = currentSavedUrl !== urlBeforeLastUpdate && urlBeforeLastUpdate !== '' && urlBeforeLastUpdate !== currentSavedUrl;
 
   return (
+    <TVWrap isTV={isTV} onEnter={() => inputRef.current?.focus()} className="flex-1 flex">
     <div
       className={`flex-1 flex items-center gap-3 p-3 rounded-xl border bg-surface-hover transition-all ${
         isFocused ? 'border-theme-secondary' : 'border-default'
@@ -331,6 +348,7 @@ function ManifestUrlInput({ value, onSave }: ManifestUrlInputProps) {
     >
       <LinkIcon className="w-5 h-5 text-muted shrink-0" />
       <input
+        ref={inputRef}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onFocus={() => setIsFocused(true)}
@@ -354,11 +372,13 @@ function ManifestUrlInput({ value, onSave }: ManifestUrlInputProps) {
         </button>
       )}
     </div>
+    </TVWrap>
   );
 }
 
 // Sortable Catalog Item Component
 function SortableCatalogItem({ catalog, isSelected, onToggle }: { catalog: any; isSelected: boolean; onToggle: () => void }) {
+  const isTV = useIsTV();
   const key = getCatalogKey(catalog);
   const {
     attributes,
@@ -377,6 +397,7 @@ function SortableCatalogItem({ catalog, isSelected, onToggle }: { catalog: any; 
   } as React.CSSProperties;
 
   return (
+    <TVWrap isTV={isTV} onEnter={onToggle}>
     <motion.div
       ref={setNodeRef}
       style={style}
@@ -425,6 +446,7 @@ function SortableCatalogItem({ catalog, isSelected, onToggle }: { catalog: any; 
         )}
       </div>
     </motion.div>
+    </TVWrap>
   );
 }
 
@@ -435,6 +457,7 @@ export default function AddonDetailPage() {
   const isTV = useIsTV();
   const { design } = usePageDesign();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? AddonTVPage : Fragment;
   const addonArrange = usePageArrangement('addon', ADDON_V2_KEYS, { defaultFolded: ['address'] });
   // How the last run of health checks reads ("online for 50 checks in a row"), reported by the v2 Health section.
   const [healthMeta, setHealthMeta] = useState('');
@@ -1305,8 +1328,51 @@ export default function AddonDetailPage() {
 
   const anyAddon = addon as any;
 
+  const resetResourcesToManifest = () => {
+    const manifest = originalManifestData || manifestData;
+    const manifestResources = manifest?.resources || [];
+    const resourceNames = manifestResources.map((r: any) =>
+      typeof r === 'string' ? r : r.name
+    ).filter(Boolean);
+
+    const hasSearch = (manifest?.catalogs || []).some((c: any) =>
+      c.extra?.some((e: any) => e.name === 'search')
+    );
+    if (hasSearch && !resourceNames.includes('search')) {
+      resourceNames.push('search');
+    }
+
+    const newSet = new Set<string>(resourceNames);
+    setSelectedResources(newSet);
+    autoSaveResources(newSet);
+    showToast.info('Resources reset to manifest defaults');
+  };
+
+  const resetCatalogsToManifest = () => {
+    const manifest = originalManifestData || manifestData;
+    const catalogs = manifest?.catalogs || [];
+
+    const regularCatalogs = catalogs.filter((c: any) => {
+      if (!c || typeof c !== 'object') return true;
+      return !catalogHasSearch(c);
+    });
+    const searchCatalogs = catalogs.filter((c: any) => {
+      if (!c || typeof c !== 'object') return false;
+      return catalogHasSearch(c);
+    });
+
+    setOrderedRegularCatalogs(regularCatalogs);
+    setOrderedSearchCatalogs(searchCatalogs);
+
+    const allKeys = new Set<string>(catalogs.map((c: Parameters<typeof getCatalogKey>[0]) => getCatalogKey(c)).filter(Boolean));
+    setSelectedCatalogs(allKeys);
+    autoSaveCatalogs(allKeys, regularCatalogs, searchCatalogs);
+    showToast.info('Catalogs reset to manifest defaults');
+  };
+
   const detailActions = (
     <div className="flex items-center gap-3 flex-wrap justify-end">
+      <TVWrap isTV={isTV} onEnter={() => { if (!isTogglingStatus) handleToggleStatus(); }}>
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted">Active</span>
         <ToggleSwitch
@@ -1316,6 +1382,8 @@ export default function AddonDetailPage() {
           disabled={isTogglingStatus}
         />
       </div>
+      </TVWrap>
+      <TVWrap isTV={isTV} onEnter={handleReload} focusKey={ADDON_RELOAD_KEY}>
       <Button
         variant="glass"
         leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
@@ -1324,20 +1392,24 @@ export default function AddonDetailPage() {
       >
         Reload Addon
       </Button>
+      </TVWrap>
       {getConfigureUrl(addon) && (
+        <TVWrap isTV={isTV} onEnter={() => { const u = getConfigureUrl(addon); if (u && /^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); }}>
         <Button
           variant="glass"
           leftIcon={<Cog6ToothIcon className="w-5 h-5" />}
           onClick={() => {
             const configUrl = getConfigureUrl(addon);
             if (configUrl) {
-              window.open(configUrl, '_blank', 'noopener,noreferrer');
+              if (/^https?:\/\//i.test(configUrl)) window.open(configUrl, '_blank', 'noopener,noreferrer');
             }
           }}
         >
           Configure
         </Button>
+        </TVWrap>
       )}
+      <TVWrap isTV={isTV} onEnter={handleResetToManifest}>
       <Button
         variant="glass"
         leftIcon={<ArrowUturnLeftIcon className="w-5 h-5" />}
@@ -1345,6 +1417,8 @@ export default function AddonDetailPage() {
       >
         Reset
       </Button>
+      </TVWrap>
+      <TVWrap isTV={isTV} onEnter={() => setIsDeleteModalOpen(true)}>
       <Button
         variant="danger"
         leftIcon={<TrashIcon className="w-5 h-5" />}
@@ -1352,6 +1426,7 @@ export default function AddonDetailPage() {
       >
         Delete
       </Button>
+      </TVWrap>
     </div>
   );
 
@@ -1455,7 +1530,7 @@ export default function AddonDetailPage() {
         <>
           <ArrangeButton arrange={addonArrange} />
           {getConfigureUrl(addon) && (
-            <V2Button onClick={() => { const u = getConfigureUrl(addon); if (u) window.open(u, '_blank', 'noopener,noreferrer'); }}>Configure</V2Button>
+            <V2Button onClick={() => { const u = getConfigureUrl(addon); if (u && /^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); }}>Configure</V2Button>
           )}
           <V2Button primary onClick={handleReload} disabled={isReloading} icon={<ArrowPathIcon className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />}>
             {isReloading ? 'Reloading...' : 'Reload'}
@@ -1609,7 +1684,7 @@ export default function AddonDetailPage() {
   );
 
   return (
-    <>
+    <Wrapper>
       {v2 ? v2Page : (<>
       {layoutMode !== 'nebula' && (
         <Header
@@ -1643,6 +1718,14 @@ export default function AddonDetailPage() {
                   transition={{ type: 'spring', stiffness: 200 }}
                   className="relative shrink-0"
                 >
+                  <TVWrap isTV={isTV} onEnter={() => {
+                    setEditForm({
+                      name: addon.name,
+                      description: addon.description || '',
+                      customLogo: addon.customLogo || '',
+                    });
+                    setIsEditModalOpen(true);
+                  }}>
                   <div
                     onClick={() => {
                       setEditForm({
@@ -1667,6 +1750,7 @@ export default function AddonDetailPage() {
                       )}
                     </div>
                   </div>
+                  </TVWrap>
                 </motion.div>
 
                 {/* Info */}
@@ -1690,11 +1774,12 @@ export default function AddonDetailPage() {
                       />
                     )}
                     {getConfigureUrl(addon) && (
+                      <TVWrap isTV={isTV} onEnter={() => { const u = getConfigureUrl(addon); if (u && /^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); }}>
                       <button
                         onClick={() => {
                           const configUrl = getConfigureUrl(addon);
                           if (configUrl) {
-                            window.open(configUrl, '_blank', 'noopener,noreferrer');
+                            if (/^https?:\/\//i.test(configUrl)) window.open(configUrl, '_blank', 'noopener,noreferrer');
                           }
                         }}
                         className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
@@ -1702,6 +1787,7 @@ export default function AddonDetailPage() {
                       >
                         <Cog6ToothIcon className="w-5 h-5 text-muted" />
                       </button>
+                      </TVWrap>
                     )}
                   </div>
                   <div className="mb-4">
@@ -1758,7 +1844,7 @@ export default function AddonDetailPage() {
                   {sharedPeers.map((p, i) => (
                     <span key={p.id}>
                       {i > 0 && (i === sharedPeers.length - 1 ? ' and ' : ', ')}
-                      <Link href={`/addons/${p.id}`} className="font-medium text-primary hover:underline">{p.name}</Link>
+                      <TVLink href={`/addons/${p.id}`} className="font-medium text-primary hover:underline">{p.name}</TVLink>
                     </span>
                   ))}
                   . Changing its settings changes {sharedPeers.length > 1 ? 'all of them' : 'both'}. To keep them apart, save it as a new configuration and paste the new link below.
@@ -1790,6 +1876,7 @@ export default function AddonDetailPage() {
                 value={(addon as any).url || (addon as any).manifestUrl || ''}
                 onSave={handleManifestUrlSave}
               />
+              <TVWrap isTV={isTV} onEnter={handleCopyManifestUrl}>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1809,6 +1896,7 @@ export default function AddonDetailPage() {
               >
                 <DocumentDuplicateIcon className="w-4 h-4" />
               </Button>
+              </TVWrap>
               {/* Only rendered when the URL's config actually decodes into
                   editable fields. Opaque/encrypted configs (AIOStreams,
                   UUID-style hosted configs) get NO button here - the page's
@@ -1818,6 +1906,7 @@ export default function AddonDetailPage() {
               {(() => {
                 const u = (addon as unknown as { url?: string }).url || addon.manifestUrl || '';
                 return decodeAddonConfig(u) ? (
+                  <TVWrap isTV={isTV} onEnter={() => setShowConfigEditor(true)}>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1827,6 +1916,7 @@ export default function AddonDetailPage() {
                     <AdjustmentsHorizontalIcon className="w-4 h-4 mr-1.5" />
                     Edit config
                   </Button>
+                  </TVWrap>
                 ) : null;
               })()}
             </div>
@@ -1856,6 +1946,7 @@ export default function AddonDetailPage() {
         {(originalManifestData || manifestData) && (
           <PageSection delay={0.15} className="mb-8">
             <Card padding="lg">
+              <TVWrap isTV={isTV} onEnter={() => setIsManifestExpanded((prev: boolean) => !prev)}>
               <button
                 type="button"
                 onClick={() => setIsManifestExpanded((prev: boolean) => !prev)}
@@ -1876,6 +1967,7 @@ export default function AddonDetailPage() {
                   className={`w-5 h-5 text-muted transition-transform duration-200 ${isManifestExpanded ? 'rotate-180' : ''}`}
                 />
               </button>
+              </TVWrap>
 
               <AnimatePresence>
                 {isManifestExpanded && (
@@ -1943,32 +2035,16 @@ export default function AddonDetailPage() {
                 {isSavingResources && (
                   <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin text-muted" />
                 )}
+                <TVWrap isTV={isTV} onEnter={resetResourcesToManifest}>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    const manifest = originalManifestData || manifestData;
-                    const manifestResources = manifest?.resources || [];
-                    const resourceNames = manifestResources.map((r: any) =>
-                      typeof r === 'string' ? r : r.name
-                    ).filter(Boolean);
-
-                    const hasSearch = (manifest?.catalogs || []).some((c: any) =>
-                      c.extra?.some((e: any) => e.name === 'search')
-                    );
-                    if (hasSearch && !resourceNames.includes('search')) {
-                      resourceNames.push('search');
-                    }
-
-                    const newSet = new Set<string>(resourceNames);
-                    setSelectedResources(newSet);
-                    autoSaveResources(newSet);
-                    showToast.info('Resources reset to manifest defaults');
-                  }}
+                  onClick={resetResourcesToManifest}
                   leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />}
                 >
                   Reset
                 </Button>
+                </TVWrap>
               </div>
             </div>
 
@@ -1979,8 +2055,8 @@ export default function AddonDetailPage() {
                   const isSelected = selectedResources.has(name);
 
                   return (
+                    <TVWrap key={`${name}-${index}`} isTV={isTV} onEnter={() => handleResourceToggle(name)}>
                     <motion.button
-                      key={`${name}-${index}`}
                       onClick={() => handleResourceToggle(name)}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -2009,6 +2085,7 @@ export default function AddonDetailPage() {
                         )}
                       </div>
                     </motion.button>
+                    </TVWrap>
                   );
                 })}
               </div>
@@ -2035,34 +2112,16 @@ export default function AddonDetailPage() {
                 {isSavingCatalogs && (
                   <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin text-muted" />
                 )}
+                <TVWrap isTV={isTV} onEnter={resetCatalogsToManifest}>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    const manifest = originalManifestData || manifestData;
-                    const catalogs = manifest?.catalogs || [];
-
-                    const regularCatalogs = catalogs.filter((c: any) => {
-                      if (!c || typeof c !== 'object') return true;
-                      return !catalogHasSearch(c);
-                    });
-                    const searchCatalogs = catalogs.filter((c: any) => {
-                      if (!c || typeof c !== 'object') return false;
-                      return catalogHasSearch(c);
-                    });
-
-                    setOrderedRegularCatalogs(regularCatalogs);
-                    setOrderedSearchCatalogs(searchCatalogs);
-
-                    const allKeys = new Set<string>(catalogs.map((c: Parameters<typeof getCatalogKey>[0]) => getCatalogKey(c)).filter(Boolean));
-                    setSelectedCatalogs(allKeys);
-                    autoSaveCatalogs(allKeys, regularCatalogs, searchCatalogs);
-                    showToast.info('Catalogs reset to manifest defaults');
-                  }}
+                  onClick={resetCatalogsToManifest}
                   leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />}
                 >
                   Reset
                 </Button>
+                </TVWrap>
               </div>
             </div>
 
@@ -2083,12 +2142,14 @@ export default function AddonDetailPage() {
                           Catalogs
                         </p>
                       </div>
+                      <TVWrap isTV={isTV} onEnter={handleToggleAllRegular}>
                       <button
                         onClick={handleToggleAllRegular}
                         className="text-xs font-medium text-primary hover:text-primary-hover transition-colors px-2 py-1 rounded-lg hover:bg-primary/10"
                       >
                         {allRegularSelected ? 'Deselect All' : 'Select All'}
                       </button>
+                      </TVWrap>
                     </div>
                     <SortableContext
                       items={orderedRegularCatalogs.map((c: any) => getCatalogKey(c) || '')}
@@ -2118,12 +2179,14 @@ export default function AddonDetailPage() {
                           Search Catalogs
                         </p>
                       </div>
+                      <TVWrap isTV={isTV} onEnter={handleToggleAllSearch}>
                       <button
                         onClick={handleToggleAllSearch}
                         className="text-xs font-medium text-primary hover:text-primary-hover transition-colors px-2 py-1 rounded-lg hover:bg-primary/10"
                       >
                         {allSearchSelected ? 'Deselect All' : 'Select All'}
                       </button>
+                      </TVWrap>
                     </div>
                     <SortableContext
                       items={orderedSearchCatalogs.map((c: any) => getCatalogKey(c) || '')}
@@ -2181,6 +2244,7 @@ export default function AddonDetailPage() {
                   </p>
                 </div>
               </div>
+              <TVWrap isTV={isTV} onEnter={() => setIsAddToGroupModalOpen(true)}>
               <Button
                 variant="primary"
                 size="sm"
@@ -2189,17 +2253,22 @@ export default function AddonDetailPage() {
               >
                 Add to Group
               </Button>
+              </TVWrap>
             </div>
 
             <StaggerContainer className="space-y-3">
               {addon.groups && addon.groups.length > 0 ? (
-                addon.groups.map((group) => (
-                  <StaggerItem key={group.id}>
-                     <Link href={`/groups/${group.id}`}>
-                       <motion.div
-                         whileHover={{ x: 4 }}
-                         className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary transition-all group cursor-pointer overflow-hidden"
-                       >
+                addon.groups.map((group) => {
+                  const syncGroupNow = async () => {
+                    try {
+                      await api.syncGroup(group.id);
+                      toast.success(`Synced ${group.name} successfully`);
+                    } catch (err: any) {
+                      toast.error(err.message || `Failed to sync ${group.name}`);
+                    }
+                  };
+                  const groupInfo = (
+                    <>
                          {/* Group colored avatar with first letter */}
                          <div
                            className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
@@ -2218,46 +2287,72 @@ export default function AddonDetailPage() {
                              {group.users || 0} users • {(group as any).addons || 0} addons
                            </p>
                          </div>
+                    </>
+                  );
+                  const groupButtons = (
+                    <div className="flex items-center gap-2 hover-reveal transition-opacity" onClick={(e) => e.preventDefault()}>
+                      <TVWrap isTV={isTV} onEnter={syncGroupNow}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          await syncGroupNow();
+                        }}
+                      >
+                        <ArrowPathIcon className="w-4 h-4" />
+                      </Button>
+                      </TVWrap>
+                      <TVWrap isTV={isTV} onEnter={() => handleRemoveFromGroup(group.id, group.name)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleRemoveFromGroup(group.id, group.name);
+                        }}
+                        className="text-error hover:bg-error-muted"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </Button>
+                      </TVWrap>
+                    </div>
+                  );
+                  return isTV ? (
+                  <StaggerItem key={group.id}>
+                    <motion.div
+                      className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover border border-default overflow-hidden group"
+                    >
+                      <TVLink href={`/groups/${group.id}`} className="flex items-center gap-4 flex-1 min-w-0" focusWrapperClassName="flex-1 min-w-0">
+                        {groupInfo}
+                      </TVLink>
+                      <SyncBadge groupId={group.id} size="sm" />
+                      {groupButtons}
+                    </motion.div>
+                  </StaggerItem>
+                  ) : (
+                  <StaggerItem key={group.id}>
+                     <Link href={`/groups/${group.id}`}>
+                       <motion.div
+                         whileHover={{ x: 4 }}
+                         className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary transition-all group cursor-pointer overflow-hidden"
+                       >
+                         {groupInfo}
 
                          {/* Sync Status Badge */}
                          <SyncBadge groupId={group.id} size="sm" />
 
-                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.preventDefault()}>
-                           <Button
-                             variant="ghost"
-                             size="sm"
-                             onClick={async (e) => {
-                               e.preventDefault();
-                               try {
-                                 await api.syncGroup(group.id);
-                                 toast.success(`Synced ${group.name} successfully`);
-                               } catch (err: any) {
-                                 toast.error(err.message || `Failed to sync ${group.name}`);
-                               }
-                             }}
-                           >
-                             <ArrowPathIcon className="w-4 h-4" />
-                           </Button>
-                           <Button
-                             variant="ghost"
-                             size="sm"
-                             onClick={(e) => {
-                               e.preventDefault();
-                               handleRemoveFromGroup(group.id, group.name);
-                             }}
-                             className="text-error hover:bg-error-muted"
-                           >
-                             <XMarkIcon className="w-4 h-4" />
-                           </Button>
-                         </div>
+                         {groupButtons}
                        </motion.div>
                      </Link>
                   </StaggerItem>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-8">
                   <FolderIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
                   <p className="text-muted mb-4">Not assigned to any groups</p>
+                  <TVWrap isTV={isTV} onEnter={() => setIsAddToGroupModalOpen(true)} className="inline-block">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -2266,6 +2361,7 @@ export default function AddonDetailPage() {
                   >
                     Add to First Group
                   </Button>
+                  </TVWrap>
                 </div>
               )}
             </StaggerContainer>
@@ -2295,6 +2391,7 @@ export default function AddonDetailPage() {
                   </p>
                 </div>
               </div>
+              <TVWrap isTV={isTV} onEnter={() => { if (!isTogglingProxy) handleToggleProxy(); }}>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted">
                   {anyAddon?.proxyEnabled ? 'Enabled' : 'Disabled'}
@@ -2305,6 +2402,7 @@ export default function AddonDetailPage() {
                   disabled={isTogglingProxy}
                 />
               </div>
+              </TVWrap>
             </div>
 
             {/* Vault-injection - the step past proxying: the stored URL
@@ -2318,6 +2416,7 @@ export default function AddonDetailPage() {
                     : 'Replace the key inside the addon URL with a Vault reference. The real key then never appears in the stored URL, synced manifests, or on any device.'}
                 </p>
               </div>
+              <TVWrap isTV={isTV} onEnter={handleToggleVaultify}>
               <Button
                 variant={(anyAddon as any)?.vaultified ? 'ghost' : 'secondary'}
                 size="sm"
@@ -2326,6 +2425,7 @@ export default function AddonDetailPage() {
               >
                 {(anyAddon as any)?.vaultified ? 'Restore plain URL' : 'Vault-inject'}
               </Button>
+              </TVWrap>
             </div>
 
             {anyAddon?.proxyEnabled && (
@@ -2341,6 +2441,10 @@ export default function AddonDetailPage() {
                       <code className="flex-1 p-2 bg-surface-hover rounded-lg text-xs text-subtle break-all font-mono">
                         {proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl)}
                       </code>
+                      <TVWrap isTV={isTV} onEnter={() => {
+                        copyToClipboard(proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) || '');
+                        toast.success('Copied to clipboard');
+                      }}>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -2351,6 +2455,7 @@ export default function AddonDetailPage() {
                       >
                         <DocumentDuplicateIcon className="w-4 h-4" />
                       </Button>
+                      </TVWrap>
                     </div>
                   ) : (
                     <p className="text-sm text-subtle">Proxy URL will be generated when enabled</p>
@@ -2362,6 +2467,7 @@ export default function AddonDetailPage() {
                     <span className="text-xs text-muted">UUID:</span>
                     <code className="text-xs text-subtle font-mono">{anyAddon?.proxyUuid || 'Not generated'}</code>
                   </div>
+                  <TVWrap isTV={isTV} onEnter={handleRegenerateProxyUuid}>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -2372,6 +2478,7 @@ export default function AddonDetailPage() {
                     <ArrowPathIcon className="w-4 h-4 mr-1" />
                     Regenerate
                   </Button>
+                  </TVWrap>
                 </div>
 
                 <div className="text-xs text-subtle">
@@ -2508,7 +2615,7 @@ export default function AddonDetailPage() {
           </div>
         </div>
       </Modal>
-    </>
+    </Wrapper>
   );
 }
 
@@ -2648,6 +2755,7 @@ function BackupAddonPickerModal({ isOpen, onClose, onSelect, currentAddonId, exc
 }
 
 function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; addon: any; onUpdate: () => void }) {
+  const isTV = useIsTV();
   const [loading, setLoading] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
@@ -2861,16 +2969,18 @@ function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; add
                     </span>
                   )}
                 </div>
+                <TVWrap isTV={isTV} onEnter={() => setIsRemoveModalOpen(true)}>
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setIsRemoveModalOpen(true)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg"
+                  className="hover-reveal transition-opacity p-1 rounded-lg"
                   style={{ color: 'var(--color-error)' }}
                   title="Remove backup chain"
                 >
                   <XMarkIcon className="w-4 h-4" />
                 </motion.button>
+                </TVWrap>
               </div>
 
               <div className="flex items-center gap-3">
@@ -2886,13 +2996,13 @@ function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; add
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <Link
+                    <TVLink
                       href={`/addons/${backup.id}`}
                       className="text-sm font-medium truncate hover:underline"
                       style={{ color: 'var(--color-text)' }}
                     >
                       {backup.name || 'Unnamed Addon'}
-                    </Link>
+                    </TVLink>
                     {backup.version && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0" style={{ background: 'var(--color-primaryMuted)', color: 'var(--color-primary)' }}>
                         v{backup.version}
@@ -2925,6 +3035,7 @@ function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; add
           ])}
 
           {/* Add Backup Button - Always at the end */}
+          <TVWrap isTV={isTV} onEnter={() => { if (!loading) openPickerForAddon(lastAddonInChain.id); }}>
           <motion.button
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
@@ -2943,6 +3054,7 @@ function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; add
               {backupChain.length === 0 ? 'Add Backup' : 'Add Another Backup'}
             </span>
           </motion.button>
+          </TVWrap>
         </div>
 
         {/* Info text */}
@@ -2993,6 +3105,7 @@ function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; add
 
 // Addon Health History Section Component
 function AddonHealthHistorySection({ addonId }: { addonId: string }) {
+  const isTV = useIsTV();
   const [history, setHistory] = useState<Array<{
     id: string;
     isOnline: boolean;
@@ -3115,6 +3228,7 @@ function AddonHealthHistorySection({ addonId }: { addonId: string }) {
             </p>
           </div>
         </div>
+        <TVWrap isTV={isTV} onEnter={handleCheckNow}>
         <Button
           variant="glass"
           size="sm"
@@ -3124,6 +3238,7 @@ function AddonHealthHistorySection({ addonId }: { addonId: string }) {
         >
           Check Now
         </Button>
+        </TVWrap>
       </div>
 
       {aiSummary && (

@@ -1,7 +1,7 @@
 const express = require('express');
 const { publicMessage } = require('../utils/publicError');
 const { describeRegistry } = require('../utils/automation/registry');
-const { validateRule, runActions, samplePayloadFor } = require('../utils/automation/engine');
+const { validateRule, runActions, samplePayloadFor, MAX_RULES_PER_ACCOUNT } = require('../utils/automation/engine');
 
 // Automation rules ("when X happens, do Y") - CRUD + test-fire + run history.
 // See server/utils/automation/registry.js for what triggers/actions actually
@@ -75,6 +75,10 @@ module.exports = ({ prisma, getAccountId }) => {
       const accountId = getAccountId(req) || 'default';
       const result = validateRule(req.body);
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const existingCount = await prisma.automationRule.count({ where: { accountId } });
+      if (existingCount >= MAX_RULES_PER_ACCOUNT) {
+        return res.status(400).json({ error: `An account can have at most ${MAX_RULES_PER_ACCOUNT} automation rules - delete one first` });
+      }
       const rule = await prisma.automationRule.create({ data: { accountId, ...result.value } });
       res.status(201).json(shape(rule));
     } catch (e) {
@@ -140,9 +144,21 @@ module.exports = ({ prisma, getAccountId }) => {
   // evaluation (the point is "do my actions work," not "would sample data
   // happen to pass my condition") but the outcome is still written to the run
   // log, tagged so the UI can label it "Test run" rather than a real firing.
+  // A test runs real actions (webhooks, notifications, user changes), so it
+  // is limited per account: 10 a minute.
+  const testHits = new Map(); // accountId -> [timestamps]
   router.post('/:id/test', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
+      const nowMs = Date.now();
+      const recent = (testHits.get(accountId) || []).filter((t) => nowMs - t < 60 * 1000);
+      if (recent.length >= 10) {
+        testHits.set(accountId, recent);
+        res.set('Retry-After', '30');
+        return res.status(429).json({ error: 'Too many test runs - wait a moment and try again' });
+      }
+      recent.push(nowMs);
+      testHits.set(accountId, recent);
       const rule = await prisma.automationRule.findFirst({ where: { id: req.params.id, accountId } });
       if (!rule) return res.status(404).json({ error: 'Rule not found' });
 

@@ -383,8 +383,27 @@ function displayServer(serverUrl) {
  * The identity a server login is stored under: SlickSync keys people by an
  * email, and a server user has none, so one is made from the user's id on
  * the server - unique, and the same every time they reconnect.
+ *
+ * A server answering on another port or under another path is another server,
+ * so those are part of the identity - but only when they are not the default,
+ * which keeps the identity of every server at a plain address as it always
+ * was. A path is kept as a short hash: it can name a configuration.
  */
 function identityEmail(serverUrl, userId) {
+  let host = 'jellyfin'
+  let extra = ''
+  try {
+    const url = new URL(serverUrl)
+    host = url.hostname.toLowerCase()
+    if (url.port) extra += `:${url.port}`
+    const path = url.pathname.replace(/\/+$/, '')
+    if (path) extra += `~${require('crypto').createHash('sha256').update(path).digest('hex').slice(0, 10)}`
+  } catch {}
+  return `${String(userId || '').toLowerCase()}@${host}${extra}`
+}
+
+/** The identity as it was stored before port and path counted (host only). */
+function legacyIdentityEmail(serverUrl, userId) {
   let host = 'jellyfin'
   try { host = new URL(serverUrl).hostname.toLowerCase() } catch {}
   return `${String(userId || '').toLowerCase()}@${host}`
@@ -412,6 +431,7 @@ module.exports = {
   signOut,
   displayServer,
   identityEmail,
+  legacyIdentityEmail,
   restrictsPrivateAddresses,
   guardedFetch,
 }

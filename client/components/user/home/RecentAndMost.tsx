@@ -3,7 +3,7 @@
 // Recently watched (back-to-back episodes folded into one entry) next to the
 // top five Most Watched. Side by side on a computer, stacked on a phone.
 
-import Link from 'next/link';
+import { TVLink } from '@/components/tv/TVLink';
 import { Badge } from '@/components/ui';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
@@ -46,7 +46,7 @@ export function RecentAndMost({ recent, most, provider }: { recent: RecentlyWatc
         <section className="rounded-2xl p-4 sm:p-5" style={box} aria-label="Recently watched">
           <div className="flex items-center mb-1.5">
             <h3 className="font-semibold flex-1" style={{ color: 'var(--color-text)' }}>Recently watched</h3>
-            <Link href="/user/activity" className="text-xs hover:underline" style={{ color: 'var(--color-text-muted)' }}>All history ›</Link>
+            <TVLink href="/user/activity" className="text-xs hover:underline" style={{ color: 'var(--color-text-muted)' }}>All history ›</TVLink>
           </div>
           {recent.map((g) => (
             <div key={`${g.id}-${g.watchedAt}`} className="flex items-center gap-3 py-2">

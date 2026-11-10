@@ -64,6 +64,8 @@ type PillAlign = 'left' | 'center' | 'right';
 type PillRowId = 'left' | 'right' | 'above' | 'below';
 const JUSTIFY: Record<PillAlign, string> = { left: 'justify-start', center: 'justify-center', right: 'justify-end' };
 const SPOT_ALIGNS: PillAlign[] = ['left', 'center', 'right'];
+/** A stacked row lines its pills up the same way, one under the other. */
+const ITEMS: Record<PillAlign, string> = { left: 'items-start', center: 'items-center', right: 'items-end' };
 const SPOT_LABEL: Record<PillAlign, string> = { left: 'Left', center: 'Center', right: 'Right' };
 
 /** One place a dragged pill can land; it lights up while the pill is over it. */
@@ -77,21 +79,37 @@ function PillSpot({ row, align }: { row: PillRowId; align: PillAlign }) {
  * spots to drop on (Left, Center, Right); otherwise just the pills, lined up
  * the way the last drop said. An empty row only shows while dragging.
  */
-function PillRow({ row, align, dragging, wide, empty, children }: {
+function PillRow({ row, align, dragging, wide, empty, stacked, onStack, children }: {
   row: PillRowId;
   align: PillAlign;
   dragging: boolean;
+  /** One pill under the other instead of side by side. */
+  stacked: boolean;
+  /** Set while arranging a row of two or more pills: shows the Side by side / One under the other switch. */
+  onStack?: (stacked: boolean) => void;
   /** A row of its own (left of the title, or a phone): it spans the width, so alignment shows. */
   wide: boolean;
   empty: boolean;
   children: React.ReactNode;
 }) {
   if (empty && !dragging) return null;
-  // Beside the bell (right of the title on a wide screen) the row only spans more than its pills when it isn't pushed right.
-  const width = wide ? 'w-full' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
+  // On a computer the rows sit under the title, left row taking the spare width and the right row at the end.
+  const width = wide ? 'w-full' : row === 'left' ? 'flex-1 min-w-0' : dragging || align !== 'right' ? 'shrink-0 md:w-[clamp(16rem,30vw,32rem)]' : 'shrink-0 md:min-w-max';
   return (
     <div data-ph-keep className={`collection-pills flex flex-col gap-2 ${width}`}>
-      {!empty && <div className={`flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
+      {!empty && <div className={stacked ? `flex flex-col gap-3 ${ITEMS[align]}` : `flex flex-wrap items-start gap-3 ${JUSTIFY[align]}`}>{children}</div>}
+      {onStack && !dragging && (
+        <div role="group" aria-label="How the pills sit" className={`flex ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+          <div className="inline-flex p-[3px] rounded-full border" style={{ borderColor: 'var(--color-surface-border)', background: 'var(--color-surface)' }}>
+            {([[false, '⇆ Side by side'], [true, '⇅ One under the other']] as const).map(([value, label]) => (
+              <button key={label} type="button" aria-pressed={stacked === value} onClick={() => onStack(value)}
+                className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${stacked === value ? 'seg-on' : 'seg-off'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {dragging && <div className="grid grid-cols-3 gap-2 w-full">{SPOT_ALIGNS.map((a) => <PillSpot key={a} row={row} align={a} />)}</div>}
     </div>
   );
@@ -450,13 +468,17 @@ export default function ListsPage() {
   const setPillSize = (key: string, n: number) => collectionArrange.setCardSizing(`pill-${key}`, { w: n >= PILL_MAX ? undefined : n });
   const sideDefaultRow = (key: string): PillRowId => {
     const side = collectionArrange.sideOf(key);
-    return collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, side === 'left' ? 'above' : 'below');
+    // A phone puts both under the title by default, lined up left like a computer.
+    return collectionArrange.placeOf<'above' | 'below'>(`phone-pos-${side}`, 'below');
   };
   const rowOf = (key: string): PillRowId => (phone
     ? collectionArrange.placeOf<PillRowId>(`phone-row-${key}`, sideDefaultRow(key))
     : collectionArrange.sideOf(key));
-  const alignDefault = (row: PillRowId): PillAlign => (row === 'right' || row === 'below' ? 'right' : 'left');
+  const alignDefault = (row: PillRowId): PillAlign => (row === 'right' ? 'right' : 'left');
   const alignOf = (row: PillRowId) => collectionArrange.placeOf<PillAlign>(`${phone ? 'phone-' : ''}align-${row}`, alignDefault(row));
+  // Side by side unless the row was set to one under the other (phone and wider screens saved apart).
+  const stackKey = (row: PillRowId) => `${phone ? 'phone-' : ''}stack-${row}`;
+  const stackedOf = (row: PillRowId) => collectionArrange.placeOf<'side' | 'stack'>(stackKey(row), 'side') === 'stack';
   // While a pill is being dragged, every row shows where it can land.
   const [pillDragging, setPillDragging] = useState(false);
   const pillPrefix = collectionArrange.sort.prefix;
@@ -482,7 +504,7 @@ export default function ListsPage() {
       if (over.startsWith(SPOT)) {
         const [r, a] = over.slice(SPOT.length).split(':') as [PillRowId, PillAlign];
         row = r;
-        arr.setPlace(`${onPhone ? 'phone-' : ''}align-${r}`, a, r === 'right' || r === 'below' ? 'right' : 'left');
+        arr.setPlace(`${onPhone ? 'phone-' : ''}align-${r}`, a, r === 'right' ? 'right' : 'left');
       } else if (over.startsWith(pillPrefix)) {
         row = rowNow(over.slice(pillPrefix.length));
       }
@@ -530,21 +552,29 @@ export default function ListsPage() {
       key={row}
       row={row}
       align={alignOf(row)}
+      stacked={stackedOf(row)}
+      onStack={collectionArrange.arranging && collectionArrange.shown.filter((k) => rowOf(k) === row).length >= 2
+        ? (on) => collectionArrange.setPlace(stackKey(row), on ? 'stack' : 'side', 'side')
+        : undefined}
       dragging={pillDragging && collectionArrange.arranging}
-      wide={phone || row === 'left'}
+      wide={phone}
       empty={!collectionArrange.shown.some((k) => rowOf(k) === row)}
     >
       {collectionArrange.shown.filter((k) => rowOf(k) === row).map(pillItem)}
     </PillRow>
   ));
   const anyIn = (row: PillRowId) => collectionArrange.shown.some((k) => rowOf(k) === row) || (pillDragging && collectionArrange.arranging);
-  const collectionsButtons = !isTV ? (anyIn(phone ? 'above' : 'left') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
+  // A computer keeps the title where every other page has it: the pills get their own line under it.
+  const pillsUnderTitle = !isTV && !phone && (anyIn('left') || anyIn('right'))
+    ? <div className="flex flex-wrap items-start gap-4 mb-5">{rowsOf(['left', 'right'])}</div>
+    : undefined;
+  const collectionsButtons = !isTV ? (phone && anyIn('above') ? <div className="w-full flex flex-col gap-3">{rowsOf([phone ? 'above' : 'left'])}</div> : undefined) : (
     <div className="w-full flex flex-wrap items-center gap-3">
       {onTV(nuvioCollectionsButton, () => router.push('/catalogs/nuvio-collections'))}
       {onTV(aiostreamsCollectionsButton, () => router.push('/catalogs/aiostreams-collections'))}
     </div>
   );
-  const rightPills = !isTV && anyIn(phone ? 'below' : 'right') ? rowsOf([phone ? 'below' : 'right'])[0] : undefined;
+  const rightPills = !isTV && phone && anyIn('below') ? rowsOf(['below'])[0] : undefined;
 
   return (
     <Wrapper>
@@ -558,11 +588,12 @@ export default function ListsPage() {
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} trailing={phone ? undefined : rightPills} />}
-        {layoutMode === 'nebula' && phone && rightPills && <div className="-mt-2 mb-5">{rightPills}</div>}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={collectionsButtons} />}
+        {phone && rightPills && <div className={layoutMode === 'nebula' ? '-mt-2 mb-5' : 'mb-5'}>{rightPills}</div>}
 
         <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>
+          {pillsUnderTitle}
           {/* Wraps on a phone: the three buttons are wider than one line there. */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-2 shrink-0">

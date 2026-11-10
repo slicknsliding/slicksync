@@ -463,3 +463,21 @@ test('cards: a copy names what is specific to it, a plain mark says nothing', ()
   assert.equal(by.b, 'from 12 m')
   assert.equal(by.c, null)
 })
+
+test('Jellyfin undo: what the server refuses is counted and kept for another try', async () => {
+  const calls = []
+  let refuse = true
+  const provider = {
+    setPlayed: async (id) => { if (refuse && id === 'e2') throw new Error('refused'); calls.push(id) },
+    setPosition: async () => { throw new Error('refused') },
+  }
+  const record = { profile: 'Sam', played: ['e1', 'e2'], positions: [{ itemId: 'e3', before: 0, set: 9 }] }
+  const out = await ADAPTERS.jellyfin.undo(provider, record)
+  assert.equal(out.failed, 2)
+  assert.equal(out.restored, 1)
+  assert.deepEqual(out.remaining, { played: ['e2'], positions: [{ itemId: 'e3', before: 0, set: 9 }] })
+  refuse = false
+  const again = await ADAPTERS.jellyfin.undo({ ...provider, setPosition: async () => {} }, { ...record, ...out.remaining })
+  assert.equal(again.failed, 0)
+  assert.deepEqual(calls, ['e1', 'e2'])
+})

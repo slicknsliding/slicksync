@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { Badge } from './Badge';
 import { toast } from './Toast';
+import { useTVStops } from '@/components/tv/useTVModal';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 interface SyncBadgeProps {
   userId?: string;
@@ -221,6 +223,7 @@ export function SyncBadge({
   // While a sync runs, or while the very first check is in flight, the badge
   // says so. Otherwise it shows the last verdict it actually has, including
   // during a background refresh.
+  const isTV = useTVStops();
   const finalStatus = isSyncing ? 'syncing' : ((isLoading && status === 'checking') ? 'checking' : status);
 
   const getStatusConfig = () => {
@@ -284,6 +287,9 @@ export function SyncBadge({
   if (finalStatus === 'unsupported') return null;
 
   const config = getStatusConfig();
+  // TV: a badge that does something on a click is its own remote stop, and
+  // OK does the same thing.
+  const tv = (node: React.ReactNode, onEnter: () => void) => (isTV ? <TVFocusable className="inline-flex rounded-full" onEnterPress={onEnter}>{node}</TVFocusable> : node);
   const isSpinning = finalStatus === 'syncing' || finalStatus === 'checking';
 
   const content = (
@@ -298,7 +304,7 @@ export function SyncBadge({
 
   // Handle reconnect status separately
   if (finalStatus === 'connect' && onReconnect && userId) {
-    return (
+    return tv(
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -307,9 +313,11 @@ export function SyncBadge({
         }}
         className="focus:outline-none border-0 shadow-none ring-0 cursor-pointer relative z-10"
         type="button"
+        tabIndex={isTV ? -1 : undefined}
       >
         {content}
-      </button>
+      </button>,
+      () => onReconnect(userId),
     );
   }
 
@@ -325,29 +333,33 @@ export function SyncBadge({
   // reality, and uses the real per-member error text instead of a generic
   // guess about credentials.
   if (finalStatus === 'error' && groupId) {
-    return (
+    const recheck = async () => {
+      const toastId = `sync-error-${groupId || userId}`;
+      toast.loading('Checking...', { id: toastId });
+      await fetchSyncStatus();
+      if (statusRef.current === 'error' || statusRef.current === 'connect') {
+        toast.error(lastMessageRef.current || 'Fix user credentials to resolve sync errors', { id: toastId });
+      } else {
+        toast.success('Already synced', { id: toastId, line: 'It just hadn’t refreshed yet.' });
+      }
+    };
+    const box = (
       <div
-        onClick={async (e) => {
+        onClick={(e) => {
           e.stopPropagation();
-          const toastId = `sync-error-${groupId || userId}`;
-          toast.loading('Checking...', { id: toastId });
-          await fetchSyncStatus();
-          if (statusRef.current === 'error' || statusRef.current === 'connect') {
-            toast.error(lastMessageRef.current || 'Fix user credentials to resolve sync errors', { id: toastId });
-          } else {
-            toast.success('Already synced', { id: toastId, line: 'It just hadn’t refreshed yet.' });
-          }
+          recheck();
         }}
         className="cursor-pointer"
       >
         {content}
       </div>
     );
+    return isTV ? <TVFocusable className="inline-flex rounded-full" onEnterPress={recheck}>{box}</TVFocusable> : box;
   }
 
   // Only make unsynced clickable, not error
   if (onSync && finalStatus === 'unsynced') {
-    return (
+    return tv(
       <button
         type="button"
         onClick={(e) => {
@@ -356,9 +368,11 @@ export function SyncBadge({
           onSync(userId || groupId!);
         }}
         className="focus:outline-none border-0 shadow-none ring-0 cursor-pointer relative z-10"
+        tabIndex={isTV ? -1 : undefined}
       >
         {content}
-      </button>
+      </button>,
+      () => onSync(userId || groupId!),
     );
   }
 

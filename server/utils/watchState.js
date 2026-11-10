@@ -248,7 +248,9 @@ async function liveViewings(prisma, accountId, userIds = null) {
         season: c.season ?? null,
         episode: c.episode ?? null,
         startedAt: new Date(c.createdAt || pausedAt),
-        positionMs: null,
+        // AIOStreams reports no position on a pause (null); Stremio's player
+        // events (utils/stremioAddonEvents.js) do, and keep it.
+        positionMs: c.startPositionMs ?? null,
         durationMs: c.durationMs || null,
         observedAt: pausedAt,
         paused: true,
@@ -675,6 +677,7 @@ async function buildPull(prisma, user, since) {
 
 module.exports = {
   liveViewings,
+  announceStart,
   PAUSED_KEEP_MS,
   manifestBlock,
   viewerSlug,

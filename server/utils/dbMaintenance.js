@@ -175,18 +175,25 @@ async function pruneLogs(prisma) {
     result.healthHistoryDeleted += count
   }
 
-  const runCutoff = await prisma.automationRun.findMany({
-    orderBy: { createdAt: 'desc' },
-    skip: AUTOMATION_RUN_KEEP,
-    take: 1,
-    select: { createdAt: true },
-  })
-  if (runCutoff.length > 0) {
-    const { count } = await prisma.automationRun.deleteMany({
-      where: { createdAt: { lte: runCutoff[0].createdAt } },
+  // Per account: one account running many rules must not push another
+  // account's run history out.
+  const runAccounts = await prisma.automationRun.groupBy({ by: ['accountId'] })
+  let runsDeleted = 0
+  for (const { accountId } of runAccounts) {
+    const runCutoff = await prisma.automationRun.findMany({
+      where: { accountId },
+      orderBy: { createdAt: 'desc' },
+      skip: AUTOMATION_RUN_KEEP,
+      take: 1,
+      select: { createdAt: true },
     })
-    result.automationRunsDeleted = count
+    if (runCutoff.length === 0) continue
+    const { count } = await prisma.automationRun.deleteMany({
+      where: { accountId, createdAt: { lte: runCutoff[0].createdAt } },
+    })
+    runsDeleted += count
   }
+  if (runsDeleted > 0) result.automationRunsDeleted = runsDeleted
 
   saveSettings({ lastPruneAt: new Date().toISOString() })
   return result

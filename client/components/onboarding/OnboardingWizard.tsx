@@ -390,12 +390,6 @@ export function OnboardingWizard() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-full px-4"
-            // maxWidth has to be an inline style, NOT a Tailwind max-w-*
-            // class: globals.css has an unlayered `* { max-width: 100vw }`
-            // rule which beats any layered utility class regardless of
-            // specificity, so max-w-lg was silently doing nothing and this
-            // modal stretched to the full viewport width on a desktop
-            // monitor (confirmed live 2026-08-20).
             style={{ maxWidth: 'min(42rem, 100%)' }}
           >
             <div

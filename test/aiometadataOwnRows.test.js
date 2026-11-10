@@ -449,6 +449,43 @@ test('a deleted owner whose AIOStreams hangs: the deletion waits a few seconds a
   assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
 })
 
+// The midnight expiry job (utils/userExpiration.js) goes through forgetOwnRows too.
+function expiringPrisma(sync) {
+  const { prisma, state } = fakePrisma({ sync })
+  const deleted = []
+  const removedAt = () => variantOf(state.world.config)
+  prisma.user.findMany = async ({ where = {} } = {}) => (where.expiresAt ? [{ ...owner, email: 'home@example.invalid', isActive: true, expiresAt: new Date(0) }] : [])
+  prisma.user.delete = async ({ where }) => { deleted.push({ id: where.id, variantStillThere: !!removedAt() }) }
+  prisma.group = { findMany: async () => [], update: async () => ({}) }
+  prisma.movieWatchHistory = { deleteMany: async () => ({ count: 0 }) }
+  prisma.episodeWatchHistory = { deleteMany: async () => ({ count: 0 }) }
+  return { prisma, state, deleted }
+}
+
+test('an expired owner: their household loses its rows before the person is deleted', async () => {
+  const { deleteExpiredUsers } = require('../server/utils/userExpiration')
+  const { prisma, state, deleted } = expiringPrisma({ aioAiometadataOwn: { prof_kid: true } })
+  const w = state.world = fakeWorld(baseConfig(), { version: '3.9.0' })
+  await rows.healOwnRows(prisma, decrypt)
+  assert.ok(variantOf(w.config))
+  await deleteExpiredUsers(prisma, decrypt, null, null)
+  assert.deepEqual(deleted, [{ id: 'u1', variantStillThere: false }])
+  assert.equal(variantOf(w.config), undefined)
+  assert.ok(!(personaOf(w.config, 'kid').variants || []).includes(KID_VARIANT))
+  assert.equal(state.sync.aioAiometadataOwn?.prof_kid, undefined)
+})
+
+test('an expired owner whose AIOStreams is unreachable is still deleted, and the choice still goes', async () => {
+  const { deleteExpiredUsers } = require('../server/utils/userExpiration')
+  const { prisma, state, deleted } = expiringPrisma({ aioAiometadataOwn: { prof_kid: true } })
+  state.world = { config: baseConfig() }
+  global.fetch = async () => { throw new Error('connection refused') }
+  await deleteExpiredUsers(prisma, decrypt, null, null)
+  assert.equal(deleted.length, 1)
+  assert.equal(deleted[0].id, 'u1')
+  assert.equal(state.sync.aioAiometadataOwn?.prof_kid, undefined)
+})
+
 test('the 30-minute profile check (healProfileVariants) also looks after these', async () => {
   const { prisma } = fakePrisma({ sync: { aioAiometadataOwn: { prof_kid: true } } })
   const w = fakeWorld(baseConfig(), { version: '3.9.0' })

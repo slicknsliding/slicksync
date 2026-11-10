@@ -169,7 +169,7 @@ const stremio = {
       undo.push({ id: item.id, before, mtime: next._mtime })
     }
     for (let i = 0; i < changes.length; i += 50) await provider.addLibraryItem(changes.slice(i, i + 50))
-    return { undo: { kind: 'stremio', items: undo }, written: undo.length, failed }
+    return { undo: { kind: 'stremio', items: undo }, written: undo.length, failed, own: undo.map((u) => ({ id: u.id, mtime: u.mtime })) }
   },
 
   // Back to exactly how each item was - unless it has changed since the copy
@@ -292,6 +292,8 @@ const nuvio = {
         undo.library.push({ content_id: item.id, content_type: ctype })
       }
     }
+    // What the tracker could read as playing: each resume point as written.
+    const own = progress.map((p) => ({ id: p.content_id, lastWatched: p.last_watched, position: p.position }))
     for (let i = 0; i < watched.length; i += 500) await provider.pushWatchedItems(profileId, watched.slice(i, i + 500))
     for (let i = 0; i < progress.length; i += 200) await provider.pushWatchProgress(profileId, progress.slice(i, i + 200))
     // Nuvio quietly refuses a resume point older than the last time that
@@ -301,11 +303,12 @@ const nuvio = {
     if (progress.length) {
       const landed = new Set(((await provider.getWatchState(profileId).catch(() => null))?.progress || []).map((p) => p.progress_key))
       const refused = progress.filter((p) => !landed.has(p.progress_key)).map((p) => ({ ...p, last_watched: now }))
+      for (const p of refused) { const o = own.find((x) => x.id === p.content_id && x.position === p.position); if (o) o.lastWatched = now }
       for (let i = 0; i < refused.length; i += 200) await provider.pushWatchProgress(profileId, refused.slice(i, i + 200))
     }
     for (let i = 0; i < library.length; i += 200) await provider.pushLibraryItems(profileId, library.slice(i, i + 200))
     undo.at = deps.now || Date.now()
-    return { undo, written: items.length, failed: [] }
+    return { undo, written: items.length, failed: [], own }
   },
 
   // Takes back what the copy wrote - except what they've watched since (a
@@ -455,17 +458,19 @@ const jellyfin = {
     const nowById = new Map((rows || []).map((r) => [r.itemId, r]))
     let kept = 0
     let restored = 0
+    // What the server refused stays in `remaining`, so Undo can be tried again.
+    const remaining = { played: [], positions: [] }
     await mapLimit(record.played || [], 4, async (id) => {
       const cur = nowById.get(id)
       if (cur && changedSince(cur.playedAt, record.at)) { kept++; return }
-      try { await provider.setPlayed(id, false, record.profile); restored++ } catch {}
+      try { await provider.setPlayed(id, false, record.profile); restored++ } catch { remaining.played.push(id) }
     })
     await mapLimit(record.positions || [], 4, async (p) => {
       const cur = nowById.get(p.itemId)
       if (cur && p.set != null && (cur.played || Math.abs((cur.positionMs || 0) - p.set) > 5000)) { kept++; return }
-      try { await provider.setPosition(p.itemId, p.before || 0, record.profile); restored++ } catch {}
+      try { await provider.setPosition(p.itemId, p.before || 0, record.profile); restored++ } catch { remaining.positions.push(p) }
     })
-    return { restored, kept }
+    return { restored, kept, failed: remaining.played.length + remaining.positions.length, remaining }
   },
 }
 

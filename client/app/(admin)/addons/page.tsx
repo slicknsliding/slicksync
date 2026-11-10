@@ -137,7 +137,7 @@ function TagPill({
   return (
     <div
       ref={setNodeRef}
-      className={`group/tag flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
+      className={`group/tag reveal-host flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
         isActive
           ? 'bg-primary-solid text-white border-transparent'
           : tinted
@@ -166,7 +166,7 @@ function TagPill({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className={`p-0.5 rounded-full opacity-0 group-hover/tag:opacity-100 transition-opacity ${isActive ? 'hover:bg-white/20' : 'hover:bg-surface'}`}
+        className={`p-0.5 rounded-full hover-reveal transition-opacity ${isActive ? 'hover:bg-white/20' : 'hover:bg-surface'}`}
         aria-label={`Delete tag ${tag}`}
         title={`Delete tag "${tag}"`}
       >
@@ -884,7 +884,7 @@ export default function AddonsPage() {
           })()}
         />
 
-        <BeginnerHint guideId="addons-overview">Addons are the sources your users stream from. Add one here, then assign it to a user or a group - assigning is what actually pushes it to their Stremio or Nuvio account.</BeginnerHint>
+        <BeginnerHint guideId="sync-mode-basics">Addons are the sources your users stream from. Add one here, then assign it to a user or a group - assigning is what actually pushes it to their Stremio or Nuvio account.</BeginnerHint>
 
         {/* Custom tag pills — drag an addon card onto one to tag it (or click
             to filter by it). Own row below the built-in filter tabs since
@@ -927,14 +927,20 @@ export default function AddonsPage() {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setIsAddingTag(true)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-default text-muted nav-item-hover-pill transition-colors"
-            >
-              <PlusIcon className="w-3.5 h-3.5" />
-              New Tag
-            </button>
+            (() => {
+              const btn = (
+                <button
+                  type="button"
+                  onClick={() => setIsAddingTag(true)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-default text-muted nav-item-hover-pill transition-colors"
+                >
+                  <PlusIcon className="w-3.5 h-3.5" />
+                  New Tag
+                </button>
+              );
+              // TV: a remote stop; OK opens the name field (OK there makes the tag).
+              return isTV ? <TVFocusable className="inline-flex rounded-full" onEnterPress={() => setIsAddingTag(true)}>{btn}</TVFocusable> : btn;
+            })()
           )}
         </div>
 
@@ -1198,6 +1204,7 @@ export default function AddonsPage() {
 
               <button
                 onClick={deselectAll}
+                aria-label="Clear selection"
                 className="p-2 rounded-lg text-muted hover:bg-surface-hover transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />
@@ -1555,7 +1562,7 @@ function AddonCard({
     e.stopPropagation();
     const configUrl = getConfigureUrl(addon);
     if (configUrl) {
-      window.open(configUrl, '_blank', 'noopener,noreferrer');
+      if (/^https?:\/\//i.test(configUrl)) window.open(configUrl, '_blank', 'noopener,noreferrer');
     }
   };
 

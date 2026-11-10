@@ -20,9 +20,12 @@ const express = require('express')
 // just found on /proxy, which was never allowlisted and therefore 401'd
 // every real Stremio fetch on any instance with auth enabled.
 //
-// Deliberately catalog-only: no streams, no meta resource. Streams are the
-// user's own addons' job (and AIOStreams' aggregation job) - this addon adds
-// rows, it never touches playback.
+// No streams, no meta resource. Streams are the user's own addons' job (and
+// AIOStreams' aggregation job) - this addon adds rows, it never touches
+// playback. It does declare Stremio's `player` and `library` resources, which
+// are notifications TO the addon (what the person is playing, what they marked
+// watched or added), answered with an empty object; see
+// utils/stremioAddonEvents.js for what is done with them.
 
 // Bumped whenever the catalog layout changes shape. It rides IN THE
 // TRANSPORT URL PATH (/trax/<token>/v<this>/manifest.json), because Nuvio
@@ -31,7 +34,7 @@ const express = require('express')
 // never reached the device. A version bump changes the URL, sync sees a
 // different addon (fingerprints canonicalize away query strings but not
 // paths) and replaces it on the account, and the client fetches fresh.
-const TRAX_MANIFEST_VERSION = '1.7.0'
+const TRAX_MANIFEST_VERSION = '1.8.0'
 
 const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling snappy without staleness anyone would notice
 
@@ -39,6 +42,10 @@ const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling 
 // each a collection with this id prefix.
 const COLLECTIONS_CATALOG = 'slicksync-collections'
 const COLLECTION_PREFIX = 'slicksync.catalog.'
+
+// Full resource objects (not bare names) so they carry their own types and
+// id prefixes: Stremio only asks an addon about a type and id it declares.
+const STREMIO_EVENT_RESOURCES = ['player', 'library'].map((name) => ({ name, types: ['movie', 'series'], idPrefixes: ['tt'] }))
 
 function metaPreview(id, type, name, poster) {
   return { id, type, name: name || id, poster: poster || undefined }
@@ -172,11 +179,14 @@ function buildTraxManifest(user, lists) {
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
-    // Catalogs only. SlickTrax once also declared a stream resource, which
-    // put mark-watched / watchlist actions into the stream list of a title's
-    // page - the list people open to find something to play. It was removed
-    // rather than left as a toggle.
-    resources: ['catalog'],
+    // Catalogs, plus Stremio's playback and library notifications. SlickTrax
+    // once also declared a stream resource, which put mark-watched / watchlist
+    // actions into the stream list of a title's page - the list people open to
+    // find something to play. It was removed rather than left as a toggle;
+    // player and library add nothing to any page, Stremio just tells them what
+    // is happening. IMDb ids only: those are the titles SlickSync can name and
+    // match to the person's library.
+    resources: ['catalog', ...STREMIO_EVENT_RESOURCES],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
     catalogs,
@@ -501,6 +511,45 @@ module.exports = ({ prisma }) => {
       })
     } catch (e) {
       console.error('[TraxAddon] collection meta failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
+  // --- Stremio's playback and library notifications ------------------------
+  //
+  // Stremio calls these on every addon that declares the resources, as plain
+  // GETs, and ignores the answer (and any failure), so they answer at once with
+  // `{}` and do their work after. Same token, same on/off state as the rest of
+  // the addon: a person whose SlickTrax is off, or a stale token, gets 404.
+  // Never cached: each one is an event.
+  router.get('/:token/player/:type/:videoId/:extra.json', async (req, res) => {
+    noStore(res)
+    try {
+      const user = await resolveUser(req.params.token)
+      // Someone switched off in SlickSync isn't tracked, whatever their addon says.
+      if (!user || user.isActive === false) return res.status(404).json({ error: 'Not found' })
+      const events = require('../utils/stremioAddonEvents')
+      await events.applyPlayerEvent(prisma, user, req.params.type, req.params.videoId, req.params.extra)
+      res.json({})
+    } catch (e) {
+      console.error('[TraxAddon] player event failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
+  router.get('/:token/library/:type/:id/:extra.json', async (req, res) => {
+    noStore(res)
+    try {
+      const user = await resolveUser(req.params.token)
+      // Someone switched off in SlickSync isn't tracked, whatever their addon says.
+      if (!user || user.isActive === false) return res.status(404).json({ error: 'Not found' })
+      const events = require('../utils/stremioAddonEvents')
+      // Nothing is recorded from the event itself: the person's library is
+      // read soon, once, and that read is the record.
+      if (events.parseLibraryAction(req.params.extra)) events.scheduleLibraryRead(user)
+      res.json({})
+    } catch (e) {
+      console.error('[TraxAddon] library event failed:', e?.message)
       res.status(500).json({ error: 'Internal error' })
     }
   })

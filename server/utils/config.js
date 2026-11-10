@@ -105,7 +105,10 @@ if (jwtSecretChoice.source === 'derived') {
 // CORS allowed origins
 // Allow localhost on any port for development (more permissive for local dev)
 // In production, this should be restricted to specific domains
-const isDevelopment = process.env.NODE_ENV !== 'production' || process.env.DEBUG === 'true'
+// Only asked for explicitly: an install with NODE_ENV unset (the usual case in
+// Docker) is not a development machine, and credentialed CORS for every
+// localhost port would let any local web app talk to it as the signed-in person.
+const isDevelopment = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true'
 const allowedOrigins = isDevelopment
   ? [
       /^http:\/\/localhost:\d+$/,  // Allow any localhost port in dev

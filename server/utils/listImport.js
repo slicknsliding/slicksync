@@ -27,6 +27,7 @@
  */
 const { resolveSinglePoster } = require('./libraryHelpers')
 const { safeFetch, instancePolicy } = require('./safeUrl')
+const { readBounded } = require('./boundedBody')
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w342'
 // Real lists are almost always well under this; it exists purely as a
@@ -154,6 +155,16 @@ function detectProvider(url) {
 // Needs no API key: the token is already in the URL the owner shared. What
 // comes back is a title list and nothing else - see routes/federation.js for
 // what the publishing side deliberately does not send.
+// A shared catalog comes from a server someone else controls: cap what is read
+// and how long any one stored text can be.
+const MAX_SHARE_BYTES = 8 * 1024 * 1024
+const MAX_ITEM_NAME = 300
+const MAX_ITEM_POSTER = 2048
+function clipItemText(value, max) {
+  const s = String(value)
+  return s.length > max ? s.slice(0, max) : s
+}
+
 async function importFromSlickSync(url) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000)
@@ -182,7 +193,7 @@ async function importFromSlickSync(url) {
   if (!res.ok) throw new Error(`That instance returned ${res.status}`)
 
   let body
-  try { body = await res.json() } catch { throw new Error('That URL did not return a SlickSync catalog') }
+  try { body = JSON.parse((await readBounded(res, { maxBytes: MAX_SHARE_BYTES, timeoutMs: 20000 })).toString('utf8')) } catch { throw new Error('That URL did not return a SlickSync catalog') }
   if (!body || !Array.isArray(body.items)) throw new Error('That URL did not return a SlickSync catalog')
   if (Number(body.federation) > 1) {
     throw new Error('That catalog was published by a newer version of SlickSync than this instance understands')
@@ -196,9 +207,9 @@ async function importFromSlickSync(url) {
     .map((i) => ({
       id: String(i.id),
       type: i.type === 'series' ? 'series' : 'movie',
-      name: typeof i.name === 'string' ? i.name : String(i.id),
+      name: clipItemText(typeof i.name === 'string' ? i.name : String(i.id), MAX_ITEM_NAME),
       ...(i.year ? { year: Number(i.year) || undefined } : {}),
-      ...(typeof i.poster === 'string' && /^https?:\/\//.test(i.poster) ? { poster: i.poster } : {}),
+      ...(typeof i.poster === 'string' && i.poster.length <= MAX_ITEM_POSTER && /^https?:\/\//.test(i.poster) ? { poster: i.poster } : {}),
     }))
 
   return {
@@ -757,6 +768,17 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   } else if (provider === 'trakt') {
     const clientId = await resolveKeyFromSettings(prisma, noReq, null, 'traktClientId', 'TRAKT_CLIENT_ID', { allowBackup: false })
     result = await importFromTrakt(list.importSourceUrl, clientId)
+  } else if (provider === 'anilist' || provider === 'myanimelist') {
+    // Same calls as the import route: anime lists resolve through TMDb, and
+    // MyAnimeList needs a client id of its own (the account's own Settings
+    // value first, the environment only as a fallback).
+    const tmdbKey = await resolveTmdbKey(prisma, noReq, null)
+    if (provider === 'anilist') {
+      result = await importFromAniList(list.importSourceUrl, tmdbKey)
+    } else {
+      const malClientId = await resolveKeyFromSettings(prisma, noReq, null, 'malClientId', 'MAL_CLIENT_ID', { allowBackup: false })
+      result = await importFromMyAnimeList(list.importSourceUrl, tmdbKey, malClientId)
+    }
   } else {
     const key = await resolveMdblistKey(prisma, noReq, null)
     result = await importFromMdblist(key, list.importSourceUrl)

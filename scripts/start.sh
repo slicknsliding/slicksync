@@ -123,7 +123,9 @@ else
   # The standalone server (output: 'standalone') reads its port from PORT,
   # not a -p flag, and finds its files beside itself.
   if [ -f "/app/client/.next/standalone/server.js" ]; then
-    cd /app/client/.next/standalone && HOSTNAME=0.0.0.0 PORT=${FRONTEND_PORT:-3000} bun server.js &
+    # next-body-cap.js: a body declared over Next's proxy cap gets 413 at once
+    # instead of hanging for a minute (see that file).
+    cd /app/client/.next/standalone && HOSTNAME=0.0.0.0 PORT=${FRONTEND_PORT:-3000} bun --preload /app/scripts/next-body-cap.js server.js &
   else
     cd /app/client && HOSTNAME=0.0.0.0 PORT=${FRONTEND_PORT:-3000} bun run start &
   fi

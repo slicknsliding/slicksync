@@ -251,7 +251,7 @@ async function mergeProfilePerson(prisma, { accountId, survivorId, donorId, prof
 
   fs.writeFileSync(path.join(archiveDir(dataDir), archiveFilename), JSON.stringify({
     kind: 'profile-merge', mergedAt: new Date().toISOString(), survivorId, donorId, donor: donorFull, ...archive,
-  }, null, 2))
+  }, require('./userMerge').bigintAsText, 2))
 
   return { survivorId, donorId, donorUsername: donorFull.username, profileIndex }
 }

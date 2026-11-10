@@ -4,11 +4,10 @@
 // first (a bar along each poster shows how far in), then what they've watched,
 // then what they've only saved. Search, Everything / Shows / Movies and Select
 // sit on one row; picking titles (Select) is how one or many are deleted, so
-// nothing the Classic page could do is lost. Grid or list stays their own
-// switch on this page. Sections can be moved, folded and hidden.
+// nothing the Classic page could do is lost. Grid or list is one choice in
+// Settings -> Page design. Sections can be moved, folded and hidden.
 
 import { ArrowTopRightOnSquareIcon, MagnifyingGlassIcon, TrashIcon, PlayIcon } from '@heroicons/react/24/outline';
-import { ViewModeToggle } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { useBottomBarUp, useIsPhoneWidth } from '@/lib/pageHeader';
@@ -16,6 +15,8 @@ import type { LibraryItem } from '@/lib/user-api';
 import { MeHead, MePoster, MeSeg, POSTER_GRID } from './MeBits';
 import { V2Button, V2List } from './V2Bits';
 import { V2MoreMenu, type V2MenuItem } from './V2Detail';
+import { useRef, useState } from 'react';
+import { AnchoredConfirm, libraryDeleteLine } from '@/components/ui/AnchoredConfirm';
 
 export type LibraryFilter = 'all' | 'series' | 'movie';
 
@@ -49,16 +50,15 @@ function lineOf(item: LibraryItem, watchTime: string | null, kind: string): stri
 }
 
 export function MeLibraryV2({
-  items, total, arrange, view, onView, search, onSearch, filter, onFilter,
+  items, total, arrange, view, search, onSearch, filter, onFilter,
   selecting, onSelecting, selected, onToggle, onSelectAll, onClear, onDeleteSelected, deleting, canDelete, onDeleteOne,
-  linkOf, watchTimeOf, appName, openAppUrl, subtitle,
+  linkOf, watchTimeOf, appName, openAppUrl, subtitle, provider,
 }: {
   /** What the search and the Everything / Shows / Movies switch leave. */
   items: LibraryItem[];
   total: number;
   arrange: PageArrange;
   view: 'grid' | 'list';
-  onView: (v: 'grid' | 'list') => void;
   search: string;
   onSearch: (v: string) => void;
   filter: LibraryFilter;
@@ -79,6 +79,8 @@ export function MeLibraryV2({
   appName: string | null;
   openAppUrl: string | null;
   subtitle: string;
+  /** Their app, for the line under "Delete …?". */
+  provider?: string | null;
 }) {
   const groups: Record<string, LibraryItem[]> = { inprogress: [], watched: [], saved: [] };
   for (const it of items) groups[kindOf(it)].push(it);
@@ -87,13 +89,16 @@ export function MeLibraryV2({
   // bottom of the screen while picking.
   const phone = useIsPhoneWidth();
   useBottomBarUp(selecting);
+  // Deleting several asks first, in a small question above the Delete button.
+  const [askMany, setAskMany] = useState(false);
+  const deleteManyRef = useRef<HTMLSpanElement>(null);
 
   // One title's ⋯: open it in their app, or take it out of the library.
   const menuFor = (it: LibraryItem): V2MenuItem[] => {
     const link = linkOf(it);
     const items: V2MenuItem[] = [];
     if (link && appName) items.push({ label: `Open in ${appName}`, icon: <ArrowTopRightOnSquareIcon className="w-4 h-4" />, onClick: () => { window.location.href = link; } });
-    if (canDelete && onDeleteOne) items.push({ label: 'Delete from library', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDeleteOne(it._id) });
+    if (canDelete && onDeleteOne) items.push({ label: 'Delete from library', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDeleteOne(it._id), confirm: { title: `Delete ${it.name}?`, line: libraryDeleteLine(provider) } });
     return items;
   };
 
@@ -129,6 +134,7 @@ export function MeLibraryV2({
         <div key={it._id} className="relative min-w-0">
         <MePoster
           poster={it.poster}
+          titleId={it._id}
           name={it.name}
           type={it.type}
           line={lineOf(it, watchTimeOf(it), kind)}
@@ -177,14 +183,13 @@ export function MeLibraryV2({
         );
         const seg = <MeSeg value={filter} onChange={onFilter} options={[{ key: 'all', label: 'Everything' }, { key: 'series', label: 'Shows' }, { key: 'movie', label: 'Movies' }]} />;
         const selectBtn = <button type="button" className="v2-btn shrink-0" aria-pressed={selecting} onClick={() => { onSelecting(!selecting); if (selecting) onClear(); }}>{selecting ? 'Done' : 'Select'}</button>;
-        // Row 1: search and the grid / list switch. Row 2: the tabs, Select at the end.
+        // Row 1: search. Row 2: the tabs, Select at the end.
         // (There is nothing else to filter here, so no Filters button.)
         if (phone) {
           return (
             <>
               <div className="flex items-center gap-2 mb-2.5">
                 {searchBox}
-                <ViewModeToggle mode={view} onChange={onView} />
               </div>
               <div className="flex items-center gap-2 mb-2">
                 {seg}
@@ -200,7 +205,6 @@ export function MeLibraryV2({
             <span className="flex-1 max-sm:hidden" />
             {seg}
             {selectBtn}
-            <ViewModeToggle mode={view} onChange={onView} />
           </div>
         );
       })()}
@@ -222,8 +226,19 @@ export function MeLibraryV2({
             <button type="button" className="text-sm underline text-primary" onClick={allPicked ? onClear : onSelectAll}>{allPicked ? 'Pick none' : 'Pick all'}</button>
             <span className="flex-1" />
             {canDelete && (
-              <V2Button primary disabled={selected.length === 0 || deleting} onClick={onDeleteSelected} icon={<TrashIcon className="w-4 h-4" />}>Delete</V2Button>
+              <span ref={deleteManyRef}>
+                <V2Button primary disabled={selected.length === 0 || deleting} onClick={() => setAskMany((v) => !v)} icon={<TrashIcon className="w-4 h-4" />}>Delete</V2Button>
+              </span>
             )}
+            <AnchoredConfirm
+              anchorRef={deleteManyRef}
+              open={askMany && selected.length > 0}
+              ask={selected.length === 1
+                ? { title: 'Delete 1 title?', line: libraryDeleteLine(provider) }
+                : { title: `Delete ${selected.length} titles?`, line: libraryDeleteLine(provider, selected.length), keepLabel: 'Keep them', confirmLabel: `Delete ${selected.length}` }}
+              onKeep={() => setAskMany(false)}
+              onConfirm={() => { setAskMany(false); onDeleteSelected(); }}
+            />
           </div>
         </>
       )}

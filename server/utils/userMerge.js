@@ -148,6 +148,8 @@ function pickSurvivorRow(existing, incoming, recencyField, { preferActive = fals
 // is recorded into `archive.overwrittenSurvivorRows` before it's deleted -
 // together these are exactly what undoMerge() needs to put both accounts
 // back the way they were.
+// WatchSnapshot's counters are BigInt on Postgres, which JSON can't write.
+const bigintAsText = (key, value) => (typeof value === 'bigint' ? value.toString() : value)
 async function migrateTable(tx, modelName, survivorId, donorId, recencyField, findUniqueKey, { preferActive = false, archive }) {
   const donorRows = await tx[modelName].findMany({ where: { userId: donorId } })
   archive.donorRows[modelName] = donorRows
@@ -279,7 +281,7 @@ async function mergeUsers(prisma, survivorId, donorId, accountId, { dataDir = pa
     donorId,
     donor: donorFull,
     ...archive,
-  }, null, 2))
+  }, bigintAsText, 2))
 
   return { ...preview, archivePath }
 }
@@ -386,6 +388,7 @@ async function undoMerge(prisma, survivorId, accountId, { dataDir = path.join(pr
 }
 
 module.exports = {
+  bigintAsText,
   runMembershipTransaction,
   getMergePreview, getUndoInfo, mergeUsers, undoMerge,
   // Shared with nuvioProfiles.js, which merges profile people the same way.

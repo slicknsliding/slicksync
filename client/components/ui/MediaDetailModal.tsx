@@ -9,6 +9,8 @@ import { Badge } from './Badge';
 import { AddToListButton, CatalogPickerMenu } from './AddToListButton';
 import { buildAioStreamsAppUrl } from '@/lib/aiostreamsLink';
 import { OpenWithButton } from './OpenWithButton';
+import { AppOpenNote } from './AppOpenNote';
+import { useAppOpenCheck } from '@/lib/useAppOpenCheck';
 import { CastMenu, type CastMenuTarget } from './CastMenu';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails, DiscoverItem, SeriesSeason, type ContinueWatchingItem } from '@/lib/api';
@@ -990,6 +992,7 @@ export function MediaDetailModal({
   // Open in AIOStreams needs to know which AIOStreams servers people here use.
   const [aioServers, setAioServers] = useState<{ address: string; people: string[] }[]>([]);
   const [aioPickerOpen, setAioPickerOpen] = useState(false);
+  const { watch: watchAio, shown: aioNoteShown, hide: hideAioNote } = useAppOpenCheck(isTV);
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -1604,7 +1607,7 @@ export function MediaDetailModal({
                 );
                 const aioClass = 'flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto';
                 const aioBtn = aioLinks.length === 0 ? null : aioLinks.length === 1 ? (
-                  <a href={aioLinks[0].url} tabIndex={isTV ? -1 : undefined} className={aioClass} style={aioStyle}>{aioLabel}</a>
+                  <a href={aioLinks[0].url} onClick={() => watchAio(aioLinks[0].url)} tabIndex={isTV ? -1 : undefined} className={aioClass} style={aioStyle}>{aioLabel}</a>
                 ) : (
                   <div className="relative w-full sm:w-auto">
                     <button type="button" onClick={() => setAioPickerOpen((o) => !o)} aria-expanded={aioPickerOpen} className={aioClass} style={aioStyle}>{aioLabel}</button>
@@ -1614,7 +1617,7 @@ export function MediaDetailModal({
                         <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] z-50 rounded-xl bg-surface border border-default shadow-xl p-2">
                           <p className="text-sm font-semibold text-default px-1.5 pb-1">Open in AIOStreams on…</p>
                           {aioLinks.map((srv) => (
-                            <a key={srv.address} href={srv.url} onClick={() => setAioPickerOpen(false)} className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover">
+                            <a key={srv.address} href={srv.url} onClick={() => { setAioPickerOpen(false); watchAio(srv.url); }} className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover">
                               <span className="flex-1 min-w-0">
                                 <span className="block text-sm text-default truncate">{srv.people.join(', ') || 'AIOStreams'}</span>
                                 <span className="block text-xs text-muted truncate">{srv.address.replace(/^https?:\/\//, '')}</span>
@@ -1653,10 +1656,11 @@ export function MediaDetailModal({
                         {nuvioBtn}
                       </TVFocusable>
                       {aioLinks.length === 1 && (
-                        <TVFocusable onEnterPress={() => { window.location.href = aioLinks[0].url; }}>
+                        <TVFocusable onEnterPress={() => { watchAio(aioLinks[0].url); window.location.href = aioLinks[0].url; }}>
                           {aioBtn}
                         </TVFocusable>
                       )}
+                      {aioNoteShown && <AppOpenNote onClose={hideAioNote} isTV />}
                     </div>
                   );
                 }

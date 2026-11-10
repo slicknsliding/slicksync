@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect, useRef } from 'react';
-import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+import { FocusContext, doesFocusableExist, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import { initSpatialNav } from './spatialInit';
 
 // Root focus scope for a TV-mode page - establishes the FocusContext every
@@ -73,7 +73,12 @@ function useTVScrollPadding(active: boolean) {
   }, [active]);
 }
 
-export function TVPageProvider({ children }: { children: ReactNode }) {
+export function TVPageProvider({ children, initialFocusKey }: {
+  children: ReactNode;
+  /** The remote stop to start on (its TVFocusable's focusKey), instead of the
+   *  first one on the page - without moving anything around on the page. */
+  initialFocusKey?: string;
+}) {
   // Started while this first renders, not in an effect: a page that knows it
   // is on a TV from its first render (useIsTV's remembered answer) mounts its
   // TVFocusables at once, and React runs their effects before this one's -
@@ -86,7 +91,7 @@ export function TVPageProvider({ children }: { children: ReactNode }) {
   // Focusable, so Down from the top menu can land back in the page: a container
   // marked unfocusable is skipped by the spatial search, and focus stayed stuck
   // in the menu. Landing on it hands focus to the button last used in the page.
-  const { ref, focusKey, focusSelf, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ focusable: true, trackChildren: true, saveLastFocusedChild: true });
+  const { ref, focusKey, focusSelf, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ focusable: true, trackChildren: true, saveLastFocusedChild: true, preferredChildFocusKey: initialFocusKey });
 
   // hasFocusedChild is reactive (triggers a re-render), but the retry
   // timers below are scheduled once on mount and read this via a ref so
@@ -97,12 +102,24 @@ export function TVPageProvider({ children }: { children: ReactNode }) {
   }, [hasFocusedChild]);
 
   useEffect(() => {
+    // A page that names where to start keeps trying for that stop (it may
+    // only appear once the page's data has loaded), until the person
+    // presses a key themselves.
+    let pressed = false;
+    let landed = false;
+    const onKey = () => { pressed = true; };
+    window.addEventListener('keydown', onKey, true);
     const timers = RETRY_DELAYS_MS.map((delay) => setTimeout(() => {
+      if (initialFocusKey && !landed && !pressed && doesFocusableExist(initialFocusKey)) {
+        landed = true;
+        setFocus(initialFocusKey);
+        return;
+      }
       // Stop once something already has focus - either an earlier retry
       // succeeded, or the user already moved focus themselves.
       if (!hasFocusedChildRef.current) focusSelf();
     }, delay));
-    return () => timers.forEach(clearTimeout);
+    return () => { timers.forEach(clearTimeout); window.removeEventListener('keydown', onKey, true); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

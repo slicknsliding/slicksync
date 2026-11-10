@@ -10,6 +10,16 @@ interface TVFocusableProps {
   className?: string;
   style?: CSSProperties;
   focusKey?: string;
+  /** Return false to stop the remote's own move (to send it somewhere else). */
+  onArrowPress?: (direction: string) => boolean;
+  /** A span instead of a div, for a stop inside a line of text (a <p>). */
+  inline?: boolean;
+  /**
+   * Picture cards: focus draws a ring inside the card's own edge and
+   * brightens it, rather than growing it - a wide banner grown 5% ran past
+   * its panel and lost its edges and ... button (.tv-ring-inside, globals.css).
+   */
+  ringInside?: boolean;
   children: ReactNode;
 }
 
@@ -19,7 +29,7 @@ interface TVFocusableProps {
 // picks up the active theme's own accent color instead of a hardcoded one.
 // Enter/OK on the remote fires onEnterPress, same handler the onClick
 // would've called on PC/mobile - no separate TV-only logic to keep in sync.
-export function TVFocusable({ onEnterPress, onFocus, className = '', style, focusKey, children }: TVFocusableProps) {
+export function TVFocusable({ onEnterPress, onFocus, onArrowPress, className = '', style, focusKey, inline = false, ringInside = false, children }: TVFocusableProps) {
   // Norigin moves the focus KEY, not the viewport - nothing scrolls on its
   // own. A poster a few rows down gains focus exactly like one on-screen,
   // just invisibly, which reads as "the remote stopped working" (confirmed:
@@ -28,7 +38,7 @@ export function TVFocusable({ onEnterPress, onFocus, className = '', style, focu
   // time, just never scrolled into view). block/inline: 'nearest' so an
   // already-visible element doesn't get yanked to an edge unnecessarily.
   initSpatialNav();
-  const { ref, focused } = useFocusable<object, HTMLDivElement>({
+  const { ref, focused } = useFocusable<object, HTMLElement>({
     onEnterPress,
     onFocus: () => {
       // 'smooth' looked buttery for a single press, but D-pad repeat-fires
@@ -41,12 +51,28 @@ export function TVFocusable({ onEnterPress, onFocus, className = '', style, focu
       onFocus?.();
     },
     focusKey,
+    onArrowPress: onArrowPress ? (direction) => onArrowPress(direction) : undefined,
   });
 
+  const Tag = inline ? 'span' : 'div';
+  if (ringInside) {
+    return (
+      <Tag
+        ref={ref as React.Ref<HTMLDivElement & HTMLSpanElement>}
+        data-tv-stop=""
+        data-tv-focused={focused ? '' : undefined}
+        className={`tv-ring-inside outline-none ${inline ? 'inline-block' : ''} ${className}`}
+        style={style}
+      >
+        {children}
+      </Tag>
+    );
+  }
   return (
-    <div
-      ref={ref}
-      className={`outline-none transition-transform duration-150 ${focused ? 'scale-105' : ''} ${className}`}
+    <Tag
+      ref={ref as React.Ref<HTMLDivElement & HTMLSpanElement>}
+      data-tv-stop=""
+      className={`outline-none transition-transform duration-150 ${inline ? 'inline-block' : ''} ${focused ? 'scale-105' : ''} ${className}`}
       style={{
         ...style,
         boxShadow: focused ? '0 0 0 4px var(--color-primary)' : 'none',
@@ -54,6 +80,6 @@ export function TVFocusable({ onEnterPress, onFocus, className = '', style, focu
       }}
     >
       {children}
-    </div>
+    </Tag>
   );
 }

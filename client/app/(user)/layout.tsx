@@ -37,7 +37,6 @@ export default function UserLayout({
     if (path.startsWith('/user/library')) section = 'Library';
     else if (path.startsWith('/user/activity')) section = 'Activity';
     else if (path.startsWith('/user/addons')) section = 'Addons';
-    else if (path.startsWith('/user/shares')) section = 'Shares';
     else if (path.startsWith('/user/settings')) section = 'Settings';
 
     document.title = `SlickSync - ${section}`;

@@ -17,6 +17,7 @@ import { searchSettings } from '@/lib/settingsIndex';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useTVModal } from '@/components/tv/useTVModal';
 import { PaletteV2Panel } from '@/components/v2/PaletteV2';
 import type { V2Tone } from '@/components/v2/V2Bits';
 
@@ -128,6 +129,9 @@ export function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [mac, setMac] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // TV: the remote stays in the palette while it is open (its own Up, Down
+  // and OK still pick a result), and Back closes it.
+  const tvPanelRef = useRef<HTMLDivElement>(null);
 
   const [entities, setEntities] = useState<Result[] | null>(null);
   const [loadingEntities, setLoadingEntities] = useState(false);
@@ -175,6 +179,7 @@ export function CommandPalette() {
   const close = useCallback(() => {
     setIsOpen(false);
   }, []);
+  useTVModal(isTV && isOpen, tvPanelRef, close);
 
   // Global trigger - Ctrl+K everywhere except Mac, which gets Cmd+K.
   // Ignored while typing in a real input/textarea/contenteditable elsewhere
@@ -335,15 +340,12 @@ export function CommandPalette() {
               onClick={close}
             />
             <motion.div
+              ref={tvPanelRef}
               initial={{ opacity: 0, y: -12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -12, scale: 0.98 }}
               transition={{ duration: 0.15 }}
               className="fixed top-[15vh] left-1/2 -translate-x-1/2 z-[101] w-full px-4"
-              // Inline maxWidth, not a Tailwind max-w-* class: globals.css
-              // has an unlayered `* { max-width: 100vw }` rule that beats
-              // any layered utility, so max-w-lg was doing nothing and the
-              // palette stretched the full width of a desktop monitor.
               style={{ maxWidth: 'min(38rem, 100%)' }}
             >
               {v2 ? (

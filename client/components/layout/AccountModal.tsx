@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
     XMarkIcon,
@@ -85,6 +85,24 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
         resetState();
         onClose();
     };
+
+    // Dialog a11y: Escape closes, focus moves in on open and back on close.
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const handleCloseRef = useRef(handleClose);
+    handleCloseRef.current = handleClose;
+    useEffect(() => {
+        if (!isOpen) return;
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        dialogRef.current?.focus();
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') handleCloseRef.current();
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+            previouslyFocused?.focus?.();
+        };
+    }, [isOpen]);
 
     // Keep UUID only — remove Stremio
     const handleUnlinkStremio = async () => {
@@ -603,7 +621,12 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                         className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none"
                     >
                         <div
-                            className="w-full rounded-2xl overflow-hidden shadow-2xl pointer-events-auto"
+                            ref={dialogRef}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label={getTitle()}
+                            tabIndex={-1}
+                            className="w-full rounded-2xl overflow-hidden shadow-2xl pointer-events-auto outline-none"
                             style={{
                                 backgroundColor: 'var(--color-surface)',
                                 border: '1px solid var(--color-surface-border)',
@@ -618,6 +641,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                                 </h3>
                                 <button
                                     onClick={handleClose}
+                                    aria-label="Close"
                                     className="p-1.5 rounded-lg transition-all hov-surface"
                                     style={{ color: 'var(--color-text-muted)' }}
                                 >

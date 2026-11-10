@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -18,7 +18,10 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useNameFolds, usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { NuvioCollectionsV2 } from '@/components/v2/NuvioCollectionsV2';
+import { V2MoreMenu } from '@/components/v2/V2Detail';
 import { toast } from '@/components/ui/Toast';
 import { encodeNuvioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
@@ -224,6 +227,22 @@ type PreviewFolderItems = { id: string; type: string; name: string; poster: stri
 // the same structure) - drag reorder and the open-folder click coexist
 // safely because useSortableSensors' PointerSensor has an 8px activation
 // distance, so a plain click never crosses the threshold to start a drag.
+// TV: one D-pad stop around a button / input; OK calls the same handler the
+// click does. Renders its children untouched (no wrapper) off TV.
+function TV({ onEnter, className, off, children }: { onEnter: () => void; className?: string; off?: boolean; children: React.ReactNode }) {
+  const isTV = useIsTV();
+  if (!isTV || off) return <>{children}</>;
+  return <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable>;
+}
+
+function TVField({ wrapClassName, className = '', ...rest }: React.InputHTMLAttributes<HTMLInputElement> & { wrapClassName?: string }) {
+  const isTV = useIsTV();
+  const ref = useRef<HTMLInputElement>(null);
+  const input = <input ref={ref} className={isTV ? `${className} w-full` : className} {...rest} />;
+  if (!isTV) return input;
+  return <TVFocusable onEnterPress={() => ref.current?.focus()} className={wrapClassName}>{input}</TVFocusable>;
+}
+
 function FolderTile({
   folder, previewItems, heroItem, previewLoading, hasBrokenSource, coverOverride, onOpen, onDelete,
 }: {
@@ -253,6 +272,7 @@ function FolderTile({
 
   return (
     <div ref={setNodeRef} style={style} className={`relative group ${isDragging ? 'opacity-50' : ''}`}>
+      <TV onEnter={onOpen}>
       <button
         type="button"
         onClick={onOpen}
@@ -317,14 +337,18 @@ function FolderTile({
           )}
         </div>
       </button>
-      <button
-        type="button"
-        title="Delete folder"
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="absolute top-1.5 right-1.5 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-error"
-      >
-        <TrashIcon className="w-4 h-4" />
-      </button>
+      </TV>
+      {/* Always showing, on every screen: a hover-only bin could not be
+          found on a phone or reached with a TV remote. */}
+      <span className="absolute top-1.5 right-1.5 [&_button]:!p-1.5 [&_button]:!rounded-full [&_button]:!bg-black/65 [&_button]:!border-transparent [&_button]:!text-white">
+        <V2MoreMenu
+          label={`${folder.title} options`}
+          items={[
+            { label: 'Open', icon: <EyeIcon className="w-4 h-4" />, onClick: onOpen },
+            { label: 'Delete folder', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: onDelete },
+          ]}
+        />
+      </span>
     </div>
   );
 }
@@ -360,27 +384,31 @@ function CollectionActionsMenu({
   }, [open]);
 
   const item = (label: string, icon: React.ReactNode, onClick: () => void, opts?: { disabled?: boolean; danger?: boolean }) => (
-    <button
-      type="button"
-      disabled={opts?.disabled}
-      onClick={() => { onClick(); setOpen(false); }}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none ${opts?.danger ? 'text-error hover:bg-error/10' : 'text-default hover:bg-surface-hover'}`}
-    >
-      {icon}
-      {label}
-    </button>
+    <TV key={label} onEnter={() => { onClick(); setOpen(false); }} off={opts?.disabled}>
+      <button
+        type="button"
+        disabled={opts?.disabled}
+        onClick={() => { onClick(); setOpen(false); }}
+        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none ${opts?.danger ? 'text-error hover:bg-error/10' : 'text-default hover:bg-surface-hover'}`}
+      >
+        {icon}
+        {label}
+      </button>
+    </TV>
   );
 
   return (
     <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        title="Collection actions"
-        onClick={() => setOpen((v) => !v)}
-        className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
-      >
-        <EllipsisVerticalIcon className="w-5 h-5" />
-      </button>
+      <TV onEnter={() => setOpen((v) => !v)}>
+        <button
+          type="button"
+          title="Collection actions"
+          onClick={() => setOpen((v) => !v)}
+          className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
+        >
+          <EllipsisVerticalIcon className="w-5 h-5" />
+        </button>
+      </TV>
       {open && (
         <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-default bg-surface shadow-xl z-20 p-1.5">
           {item(isPinned ? 'Unpin from top' : 'Pin to top of home screen', isPinned ? <MapPinIconSolid className="w-4 h-4 text-primary" /> : <MapPinIcon className="w-4 h-4" />, onTogglePin)}
@@ -460,7 +488,8 @@ function CollectionSection({
             etc - see FolderTile's own cover picker for that). Removed
             2026-08-05, not just restyled - a folder-level-only earlier
             pass here missed the actual ask twice before landing on this. */}
-        <input
+        <TVField
+          wrapClassName="flex-1 min-w-0"
           value={collection.title}
           onChange={(e) => onRename(e.target.value)}
           className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-transparent text-base font-semibold text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
@@ -485,7 +514,9 @@ function CollectionSection({
       {folders.length === 0 ? (
         <div className="rounded-xl border border-dashed border-default p-6 text-center">
           <p className="text-sm text-muted mb-3">No folders yet.</p>
-          <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={onAddFolder}>Add folder</Button>
+          <TV onEnter={onAddFolder} className="inline-block">
+            <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={onAddFolder}>Add folder</Button>
+          </TV>
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onFolderDragEnd} modifiers={[restrictToParentElement]}>
@@ -504,14 +535,16 @@ function CollectionSection({
                   onDelete={() => onDeleteFolder(folder.id)}
                 />
               ))}
-              <button
-                type="button"
-                onClick={onAddFolder}
-                className="aspect-[4/3] rounded-xl border border-dashed border-default hover:border-primary/50 flex flex-col items-center justify-center gap-1.5 text-subtle hover:text-default transition-colors"
-              >
-                <PlusIcon className="w-6 h-6" />
-                <span className="text-xs font-medium">Add folder</span>
-              </button>
+              <TV onEnter={onAddFolder}>
+                <button
+                  type="button"
+                  onClick={onAddFolder}
+                  className="w-full aspect-[4/3] rounded-xl border border-dashed border-default hover:border-primary/50 flex flex-col items-center justify-center gap-1.5 text-subtle hover:text-default transition-colors"
+                >
+                  <PlusIcon className="w-6 h-6" />
+                  <span className="text-xs font-medium">Add folder</span>
+                </button>
+              </TV>
             </div>
           </SortableContext>
         </DndContext>
@@ -529,6 +562,7 @@ export default function NuvioCollectionsPage() {
   const nameTap = useNameFolds().on;
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   // Shared app-wide grid/list preference (Settings -> Themes), same hook
   // Activity/Addons/Users/etc. already use - defaults to 'grid' when unset.
   // Deliberately no page-level toggle for it here - it follows the global
@@ -1249,15 +1283,19 @@ export default function NuvioCollectionsPage() {
   // --- Layout ---
 
   const backButton = (
-    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
-      Back
-    </Button>
+    <TV onEnter={() => router.push('/catalogs')}>
+      <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
+        Back
+      </Button>
+    </TV>
   );
 
   const saveAction = (
-    <Button variant="primary" size="sm" onClick={handleSave} isLoading={saving} disabled={!isDirty || selectedProfileIndex === null}>
-      Save changes
-    </Button>
+    <TV onEnter={handleSave} off={!isDirty || selectedProfileIndex === null}>
+      <Button variant="primary" size="sm" onClick={handleSave} isLoading={saving} disabled={!isDirty || selectedProfileIndex === null}>
+        Save changes
+      </Button>
+    </TV>
   );
 
   const detailActions = (
@@ -1268,7 +1306,7 @@ export default function NuvioCollectionsPage() {
   );
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Nuvio Collections' }]} className="text-xl font-semibold" />}
@@ -1381,11 +1419,11 @@ export default function NuvioCollectionsPage() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {nuvioUsers.map((u) => (
+                    <TV key={u.id} onEnter={() => handleSelectUser(u.id)}>
                     <button
-                      key={u.id}
                       type="button"
                       onClick={() => handleSelectUser(u.id)}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
+                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
                     >
                       <Avatar name={u.name || u.email || u.id} email={u.email} src={u.avatarUrl || undefined} useGravatar={u.useGravatar} colorIndex={u.colorIndex} size="md" />
                       <div className="min-w-0">
@@ -1394,6 +1432,7 @@ export default function NuvioCollectionsPage() {
                         <Badge variant="nuvio" size="sm" className="mt-1">Nuvio</Badge>
                       </div>
                     </button>
+                    </TV>
                   ))}
                 </div>
               )}
@@ -1401,6 +1440,7 @@ export default function NuvioCollectionsPage() {
           ) : (
             <Card padding="lg" className="mb-6">
               <div className="flex flex-wrap gap-3 items-end">
+                <TV onEnter={() => handleSelectUser('')}>
                 <button
                   type="button"
                   onClick={() => handleSelectUser('')}
@@ -1413,6 +1453,7 @@ export default function NuvioCollectionsPage() {
                     <p className="text-xs text-primary">Switch account</p>
                   </div>
                 </button>
+                </TV>
 
                 {(profiles.length > 1 || profilesLoading) && (
                   <div>
@@ -1426,8 +1467,8 @@ export default function NuvioCollectionsPage() {
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {profiles.map((p) => (
+                          <TV key={p.profile_index} onEnter={() => handleSelectProfile(selectedUserId, p.profile_index)}>
                           <button
-                            key={p.profile_index}
                             type="button"
                             onClick={() => handleSelectProfile(selectedUserId, p.profile_index)}
                             className={`flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-lg border text-sm transition-colors ${
@@ -1442,6 +1483,7 @@ export default function NuvioCollectionsPage() {
                             />
                             <span className="truncate" style={{ maxWidth: '120px' }}>{p.name || `Profile ${p.profile_index}`}</span>
                           </button>
+                          </TV>
                         ))}
                       </div>
                     )}
@@ -1485,6 +1527,7 @@ export default function NuvioCollectionsPage() {
                         visual language the logo badge already uses
                         elsewhere, makes them read as "worth a tap" instead
                         of blending into the muted icon row around them. */}
+                    <TV onEnter={() => setTipsInfoOpen(true)}>
                     <button
                       type="button"
                       onClick={() => setTipsInfoOpen(true)}
@@ -1494,6 +1537,7 @@ export default function NuvioCollectionsPage() {
                     >
                       <QuestionMarkCircleIcon className="w-4 h-4" />
                     </button>
+                    </TV>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -1515,28 +1559,40 @@ export default function NuvioCollectionsPage() {
                         home-screen rows under "Home rows" - leaving the two
                         genuinely primary actions visible. */}
                     <div className="relative">
-                      <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => { setTransferMenuOpen((v) => !v); setHomeRowsMenuOpen(false); }}>
-                        Transfer
-                      </Button>
+                      <TV onEnter={() => { setTransferMenuOpen((v) => !v); setHomeRowsMenuOpen(false); }}>
+                        <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => { setTransferMenuOpen((v) => !v); setHomeRowsMenuOpen(false); }}>
+                          Transfer
+                        </Button>
+                      </TV>
                       {transferMenuOpen && (
                         <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
                           <p className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a file</p>
-                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
-                            Import from JSON…
-                          </button>
-                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
-                            Export as JSON
-                          </button>
+                          <TV onEnter={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
+                            <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
+                              Import from JSON…
+                            </button>
+                          </TV>
+                          <TV onEnter={() => { setTransferMenuOpen(false); exportCollectionsJson(); }} off={collections.length === 0}>
+                            <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
+                              Export as JSON
+                            </button>
+                          </TV>
                           <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a share code</p>
-                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
-                            Paste a code…
-                          </button>
-                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
-                            Create a code…
-                          </button>
-                          <button type="button" className="w-full text-left px-3 py-2 mt-1 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(147,197,253)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
-                            Where do I use these?
-                          </button>
+                          <TV onEnter={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
+                            <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
+                              Paste a code…
+                            </button>
+                          </TV>
+                          <TV onEnter={() => { setTransferMenuOpen(false); openShareCode(); }} off={collections.length === 0}>
+                            <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
+                              Create a code…
+                            </button>
+                          </TV>
+                          <TV onEnter={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
+                            <button type="button" className="w-full text-left px-3 py-2 mt-1 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(147,197,253)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
+                              Where do I use these?
+                            </button>
+                          </TV>
                         </div>
                       )}
                     </div>
@@ -1548,6 +1604,7 @@ export default function NuvioCollectionsPage() {
                           account's real home screen, and as a plain ghost
                           button it read as an afterthought - same feedback
                           that pill was built from. */}
+                      <TV onEnter={() => { setHomeRowsMenuOpen((v) => !v); setTransferMenuOpen(false); setHomeRowsArmed(null); }}>
                       <button
                         type="button"
                         onClick={() => { setHomeRowsMenuOpen((v) => !v); setTransferMenuOpen(false); setHomeRowsArmed(null); }}
@@ -1573,17 +1630,20 @@ export default function NuvioCollectionsPage() {
                           Home rows
                         </span>
                       </button>
+                      </TV>
                       {homeRowsMenuOpen && (
                         <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
-                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
-                            Edit this profile&apos;s rows…
-                          </button>
+                          <TV onEnter={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
+                            <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
+                              Edit this profile&apos;s rows…
+                            </button>
+                          </TV>
                           {otherProfiles.length > 0 && (
                             <>
                               <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>Copy rows onto…</p>
                               {otherProfiles.map((p) => (
+                                <TV key={p.profile_index} onEnter={() => copyHomeRows(p.profile_index)} off={homeRowsBusy}>
                                 <button
-                                  key={p.profile_index}
                                   type="button"
                                   disabled={homeRowsBusy}
                                   onClick={() => copyHomeRows(p.profile_index)}
@@ -1595,6 +1655,7 @@ export default function NuvioCollectionsPage() {
                                       ? `Click again to overwrite ${p.name || `Profile ${p.profile_index}`}`
                                       : (p.name || `Profile ${p.profile_index}`)}
                                 </button>
+                                </TV>
                               ))}
                             </>
                           )}
@@ -1602,12 +1663,16 @@ export default function NuvioCollectionsPage() {
                       )}
                     </div>
                     </div>
-                    <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
-                      Use a template
-                    </Button>
-                    <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={addCollection}>
-                      Add collection
-                    </Button>
+                    <TV onEnter={() => setTemplatesOpen(true)}>
+                      <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
+                        Use a template
+                      </Button>
+                    </TV>
+                    <TV onEnter={addCollection}>
+                      <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={addCollection}>
+                        Add collection
+                      </Button>
+                    </TV>
                   </div>
                 </div>
 
@@ -1653,24 +1718,29 @@ export default function NuvioCollectionsPage() {
                           className={`flex items-center gap-2${nameTap ? ' cursor-pointer' : ''}`}
                           onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; toggleExpanded(collection.id); } : undefined}
                         >
-                          <button type="button" onClick={() => toggleExpanded(collection.id)} className="p-1 text-subtle hover:text-default">
-                            {expanded[collection.id] ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
-                          </button>
-                          <input
+                          <TV onEnter={() => toggleExpanded(collection.id)}>
+                            <button type="button" onClick={() => toggleExpanded(collection.id)} className="p-1 text-subtle hover:text-default">
+                              {expanded[collection.id] ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
+                            </button>
+                          </TV>
+                          <TVField
+                            wrapClassName="flex-1 min-w-0"
                             value={collection.title}
                             onChange={(e) => updateCollection(collection.id, { title: e.target.value })}
                             className="flex-1 px-2 py-1 rounded-lg bg-transparent text-sm font-semibold text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
                           />
                           <span className="text-xs text-subtle shrink-0">{(collection.folders || []).length} folder{(collection.folders || []).length !== 1 ? 's' : ''}</span>
-                          <button
-                            type="button"
-                            title="Preview layout"
-                            onClick={() => setPreviewCollection(collection)}
-                            disabled={(collection.folders || []).every((f) => (f.catalogSources || []).length === 0)}
-                            className="p-1 text-subtle hover:text-default disabled:opacity-30"
-                          >
-                            <EyeIcon className="w-3.5 h-3.5" />
-                          </button>
+                          <TV onEnter={() => setPreviewCollection(collection)} off={(collection.folders || []).every((f) => (f.catalogSources || []).length === 0)}>
+                            <button
+                              type="button"
+                              title="Preview layout"
+                              onClick={() => setPreviewCollection(collection)}
+                              disabled={(collection.folders || []).every((f) => (f.catalogSources || []).length === 0)}
+                              className="p-1 text-subtle hover:text-default disabled:opacity-30"
+                            >
+                              <EyeIcon className="w-3.5 h-3.5" />
+                            </button>
+                          </TV>
                           <CollectionActionsMenu
                             isPinned={!!collection.pinToTop}
                             canMoveUp={cIndex > 0}
@@ -1692,9 +1762,11 @@ export default function NuvioCollectionsPage() {
                                   className={`flex items-center gap-2${nameTap ? ' cursor-pointer' : ''}`}
                                   onClick={nameTap ? (e) => { if ((e.target as HTMLElement).closest('a, button, input, select, textarea, [role=menu]')) return; toggleExpanded(folder.id); } : undefined}
                                 >
-                                  <button type="button" onClick={() => toggleExpanded(folder.id)} className="p-1 text-subtle hover:text-default">
-                                    {expanded[folder.id] ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
-                                  </button>
+                                  <TV onEnter={() => toggleExpanded(folder.id)}>
+                                    <button type="button" onClick={() => toggleExpanded(folder.id)} className="p-1 text-subtle hover:text-default">
+                                      {expanded[folder.id] ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </TV>
                                   {brokenFolderIds.has(folder.id) ? (
                                     <span title="A source in this folder no longer resolves" className="shrink-0">
                                       <ExclamationTriangleIcon className="w-4 h-4 text-warning" />
@@ -1706,7 +1778,8 @@ export default function NuvioCollectionsPage() {
                                   ) : (
                                     <FolderIcon className="w-4 h-4 text-subtle shrink-0" />
                                   )}
-                                  <input
+                                  <TVField
+                                    wrapClassName="flex-1 min-w-0"
                                     value={folder.title}
                                     onChange={(e) => updateFolder(collection.id, folder.id, { title: e.target.value })}
                                     className="flex-1 px-2 py-1 rounded-lg bg-transparent text-sm text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
@@ -1714,15 +1787,21 @@ export default function NuvioCollectionsPage() {
                                   <span className={`text-xs shrink-0 ${(folder.catalogSources || []).length === 0 ? 'text-warning' : 'text-subtle'}`}>
                                     {(folder.catalogSources || []).length} source{(folder.catalogSources || []).length !== 1 ? 's' : ''}
                                   </span>
-                                  <button type="button" onClick={() => reorderFolder(collection.id, fIndex, -1)} disabled={fIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
-                                    <ArrowUpIcon className="w-3 h-3" />
-                                  </button>
-                                  <button type="button" onClick={() => reorderFolder(collection.id, fIndex, 1)} disabled={fIndex === (collection.folders || []).length - 1} className="p-1 text-subtle hover:text-default disabled:opacity-30">
-                                    <ArrowDownIcon className="w-3 h-3" />
-                                  </button>
-                                  <button type="button" onClick={() => setDeleting({ kind: 'folder', collectionId: collection.id, folderId: folder.id })} className="p-1 text-subtle hover:text-error">
-                                    <TrashIcon className="w-3 h-3" />
-                                  </button>
+                                  <TV onEnter={() => reorderFolder(collection.id, fIndex, -1)} off={fIndex === 0}>
+                                    <button type="button" onClick={() => reorderFolder(collection.id, fIndex, -1)} disabled={fIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
+                                      <ArrowUpIcon className="w-3 h-3" />
+                                    </button>
+                                  </TV>
+                                  <TV onEnter={() => reorderFolder(collection.id, fIndex, 1)} off={fIndex === (collection.folders || []).length - 1}>
+                                    <button type="button" onClick={() => reorderFolder(collection.id, fIndex, 1)} disabled={fIndex === (collection.folders || []).length - 1} className="p-1 text-subtle hover:text-default disabled:opacity-30">
+                                      <ArrowDownIcon className="w-3 h-3" />
+                                    </button>
+                                  </TV>
+                                  <TV onEnter={() => setDeleting({ kind: 'folder', collectionId: collection.id, folderId: folder.id })}>
+                                    <button type="button" onClick={() => setDeleting({ kind: 'folder', collectionId: collection.id, folderId: folder.id })} className="p-1 text-subtle hover:text-error">
+                                      <TrashIcon className="w-3 h-3" />
+                                    </button>
+                                  </TV>
                                 </div>
 
                                 {expanded[folder.id] && (
@@ -1744,22 +1823,28 @@ export default function NuvioCollectionsPage() {
                                               <span className="text-warning">Source not found <span className="text-subtle">· addon removed or catalog no longer exists</span></span>
                                             )}
                                           </span>
-                                          <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
-                                            <TrashIcon className="w-3 h-3" />
-                                          </button>
+                                          <TV onEnter={() => removeSource(collection.id, folder.id, sIndex)}>
+                                            <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
+                                              <TrashIcon className="w-3 h-3" />
+                                            </button>
+                                          </TV>
                                         </div>
                                       );
                                     })}
-                                    <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-3.5 h-3.5" />} onClick={() => openPicker(collection.id, folder.id)}>
-                                      Add source
-                                    </Button>
+                                    <TV onEnter={() => openPicker(collection.id, folder.id)} className="inline-block">
+                                      <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-3.5 h-3.5" />} onClick={() => openPicker(collection.id, folder.id)}>
+                                        Add source
+                                      </Button>
+                                    </TV>
                                   </div>
                                 )}
                               </div>
                             ))}
-                            <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => addFolder(collection.id)}>
-                              Add folder
-                            </Button>
+                            <TV onEnter={() => addFolder(collection.id)} className="inline-block">
+                              <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => addFolder(collection.id)}>
+                                Add folder
+                              </Button>
+                            </TV>
                           </div>
                         )}
                       </Card>
@@ -1790,17 +1875,21 @@ export default function NuvioCollectionsPage() {
             <div className="flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl bg-surface border border-default backdrop-blur-xl">
               <span className="text-sm text-warning">Unsaved changes</span>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCollections(JSON.parse(savedSnapshot))}
-                  disabled={saving}
-                >
-                  Discard
-                </Button>
-                <Button variant="primary" size="sm" onClick={handleSave} isLoading={saving}>
-                  Save changes
-                </Button>
+                <TV onEnter={() => setCollections(JSON.parse(savedSnapshot))} off={saving}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCollections(JSON.parse(savedSnapshot))}
+                    disabled={saving}
+                  >
+                    Discard
+                  </Button>
+                </TV>
+                <TV onEnter={handleSave}>
+                  <Button variant="primary" size="sm" onClick={handleSave} isLoading={saving}>
+                    Save changes
+                  </Button>
+                </TV>
               </div>
             </div>
           </motion.div>
@@ -2430,6 +2519,6 @@ export default function NuvioCollectionsPage() {
           fallbackPoster={detail.poster || undefined}
         />
       )}
-    </>
+    </Wrapper>
   );
 }

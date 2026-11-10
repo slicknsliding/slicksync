@@ -6,13 +6,9 @@
 // and that an addon address is held to the install's rule.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
 const dns = require('node:dns').promises
 const jwt = require('jsonwebtoken')
 
-process.env.SHARES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'slicksync-shares-'))
 
 // A Stremio key is "key-for-<email>" here; the real call goes to Stremio.
 const stremio = require('../server/utils/stremio')
@@ -102,7 +98,6 @@ test.before(async () => {
 })
 test.after(() => {
   server.close()
-  fs.rmSync(process.env.SHARES_DIR, { recursive: true, force: true })
 })
 
 const session = (id, provider) => jwt.sign({ sub: id, provider }, SECRET, { expiresIn: '1h' })
@@ -127,12 +122,10 @@ const BY_ID_ROUTES = [
   ['GET', '/user-api-key-status'],
   ['GET', '/activity'],
   ['GET', '/export'],
-  ['GET', '/shares'],
-  ['GET', '/group-members'],
 ]
 const asking = (method, userId) => (method === 'GET' ? { query: { userId } } : { body: { userId } })
 
-test('a Stremio key opens none of the eight pages of a different person', async () => {
+test('a Stremio key opens none of the six pages of a different person', async () => {
   const before = JSON.stringify(data.user.rows.find((u) => u.id === 'sB'))
   // sA's own key, asking about sB - who is in the same household and whose id is
   // visible in the group list.
@@ -151,7 +144,6 @@ test('the same key still opens its own person', async () => {
   assert.equal(info.status, 200)
   assert.equal(info.body.id, 'sA')
   assert.equal((await call('GET', '/user-api-key-status', { key, query: { userId: 'sA' } })).status, 200)
-  assert.deepEqual((await call('GET', '/group-members', { key, query: { userId: 'sA' } })).body.members.map((m) => m.id).sort(), ['jA', 'jB', 'nA', 'sB'])
   assert.equal((await call('GET', '/export', { key, query: { userId: 'sA' } })).status, 200)
 })
 
@@ -406,4 +398,40 @@ test('outage or refusal: what counts as could-not-check', () => {
   assert.ok(!isOutage(new Error('USER_NOT_FOUND')))
   assert.ok(!isOutage(Object.assign(new Error('x'), { code: 'P2025' })))
   assert.ok(!isOutage(Object.assign(new Error('x'), { status: 401 })))
+})
+
+test('a Stremio sign-in hands back a session token, and the browser needs nothing else', async () => {
+  const signedIn = await call('POST', '/authenticate', { body: { authKey: stremioKey('b@example.com') } })
+  assert.equal(signedIn.status, 200)
+  const token = signedIn.body.sessionToken
+  assert.ok(token && !token.includes('key-for-'), 'a SlickSync token, not the Stremio key')
+  assert.equal((await call('GET', '/user-info', { key: token, query: { userId: 'sB' } })).status, 200)
+  const again = await call('POST', '/validate', { body: { authKey: token, userId: 'sB' } })
+  assert.equal(again.status, 200)
+  assert.ok(again.body.sessionToken, 'validating hands back a fresh token')
+})
+
+test('a browser still holding the Stremio key swaps it for a token on validate', async () => {
+  const res = await call('POST', '/validate', { body: { authKey: stremioKey('a@example.com'), userId: 'sA' } })
+  assert.equal(res.status, 200)
+  assert.equal(jwt.verify(res.body.sessionToken, SECRET).sub, 'sA')
+})
+
+test('a Stremio session token speaks only for its own person', async () => {
+  assert.equal((await call('GET', '/user-info', { key: session('sA', 'stremio'), query: { userId: 'sB' } })).status, 401)
+  assert.equal((await call('POST', '/validate', { body: { authKey: session('sA', 'stremio'), userId: 'sB' } })).status, 401)
+  assert.equal((await call('GET', '/user-info', { key: session('nA', 'nuvio'), query: { userId: 'sA' } })).status, 401, 'a Nuvio token is no Stremio session')
+  assert.equal((await call('GET', '/user-info', { key: jwt.sign({ sub: 'sA', provider: 'stremio' }, 'some-other-secret'), query: { userId: 'sA' } })).status, 401, 'a forged token')
+})
+
+test('a Stremio session token stops working when the person is switched off', async () => {
+  const token = session('sB', 'stremio')
+  const row = data.user.rows.find((u) => u.id === 'sB')
+  row.isActive = false
+  try {
+    assert.ok([401, 403].includes((await call('GET', '/user-info', { key: token, query: { userId: 'sB' } })).status))
+    assert.equal((await call('POST', '/validate', { body: { authKey: token, userId: 'sB' } })).status, 403)
+  } finally {
+    row.isActive = true
+  }
 })

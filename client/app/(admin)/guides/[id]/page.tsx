@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, Fragment } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { guideReturn } from '@/lib/guideReturn';
 import { Modal } from '@/components/ui';
@@ -14,6 +13,9 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { GuideTopicV2, GUIDE_TOPIC_SECTIONS } from '@/components/v2/GuideTopicV2';
 import { V2Button } from '@/components/v2/V2Bits';
@@ -49,6 +51,8 @@ export default function GuideTopicPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+  const goBack = () => (back ? back.go() : router.push('/guides'));
   const arrange = usePageArrangement('guide-topic', GUIDE_TOPIC_SECTIONS.map((x) => x.key));
   const v2Actions = entry ? (
     <div className="flex items-center gap-2 flex-wrap">
@@ -77,7 +81,7 @@ export default function GuideTopicPage() {
   );
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={
@@ -96,14 +100,19 @@ export default function GuideTopicPage() {
           )}
 
           {!(v2 && entry) && <PageSection delay={0.05} className="mb-4">
-            <button
-              onClick={() => (back ? back.go() : router.push('/guides'))}
-              className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
-              style={{ color: 'var(--color-secondary)' }}
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              {back ? back.label : 'All guides'}
-            </button>
+            {(() => {
+              const backButton = (
+                <button
+                  onClick={goBack}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
+                  style={{ color: 'var(--color-secondary)' }}
+                >
+                  <ArrowLeftIcon className="w-4 h-4" />
+                  {back ? back.label : 'All guides'}
+                </button>
+              );
+              return isTV ? <div className="inline-block"><TVFocusable onEnterPress={goBack}>{backButton}</TVFocusable></div> : backButton;
+            })()}
           </PageSection>}
 
           {v2 && entry && <ArrangeBar arrange={arrange} />}
@@ -114,9 +123,14 @@ export default function GuideTopicPage() {
                 <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
                   There&apos;s no help topic with the id &quot;{id}&quot;. It may have been renamed or removed.
                 </p>
-                <Button variant="primary" size="sm" onClick={() => router.push('/guides')}>
-                  Browse all topics
-                </Button>
+                {(() => {
+                  const browse = (
+                    <Button variant="primary" size="sm" onClick={() => router.push('/guides')}>
+                      Browse all topics
+                    </Button>
+                  );
+                  return isTV ? <div className="inline-block"><TVFocusable onEnterPress={() => router.push('/guides')}>{browse}</TVFocusable></div> : browse;
+                })()}
               </Card>
             </PageSection>
           ) : v2 ? (
@@ -158,28 +172,38 @@ export default function GuideTopicPage() {
                       deep-link. */}
                   {entry.embed ? (
                     <div className="mt-5">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        leftIcon={<BoltIcon className="w-4 h-4" />}
-                        onClick={() => setEmbedOpen(true)}
-                      >
-                        Open Automation here
-                      </Button>
+                      {(() => {
+                        const open = (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            leftIcon={<BoltIcon className="w-4 h-4" />}
+                            onClick={() => setEmbedOpen(true)}
+                          >
+                            Open Automation here
+                          </Button>
+                        );
+                        return isTV ? <div className="inline-block"><TVFocusable onEnterPress={() => setEmbedOpen(true)}>{open}</TVFocusable></div> : open;
+                      })()}
                       <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
                         Opens on this page, so the steps below stay visible.
                       </p>
                     </div>
                   ) : entry.href ? (
                     <div className="mt-5">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        rightIcon={<ArrowTopRightOnSquareIcon className="w-4 h-4" />}
-                        onClick={() => router.push(entry.href!)}
-                      >
-                        {entry.linkLabel || 'Go there'}
-                      </Button>
+                      {(() => {
+                        const go = (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            rightIcon={<ArrowTopRightOnSquareIcon className="w-4 h-4" />}
+                            onClick={() => router.push(entry.href!)}
+                          >
+                            {entry.linkLabel || 'Go there'}
+                          </Button>
+                        );
+                        return isTV ? <div className="inline-block"><TVFocusable onEnterPress={() => router.push(entry.href!)}>{go}</TVFocusable></div> : go;
+                      })()}
                     </div>
                   ) : null}
                 </Card>
@@ -259,7 +283,7 @@ export default function GuideTopicPage() {
                     <h2 className="text-base font-semibold font-display text-default mb-4">Related</h2>
                     <div className="flex flex-col gap-1">
                       {related.map((r) => (
-                        <Link
+                        <TVLink
                           key={r.id}
                           href={`/guides/${r.id}`}
                           className="group flex items-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-surface-hover"
@@ -274,7 +298,7 @@ export default function GuideTopicPage() {
                             className="w-4 h-4 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                             style={{ color: 'var(--color-text-muted)' }}
                           />
-                        </Link>
+                        </TVLink>
                       ))}
                     </div>
                   </Card>
@@ -283,14 +307,15 @@ export default function GuideTopicPage() {
 
               {hasLongContent && (
                 <PageSection delay={0.3} className="mt-5">
-                  <Link
+                  <TVLink
                     href="/guides"
+                    focusWrapperClassName="inline-block"
                     className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
                     style={{ color: 'var(--color-secondary)' }}
                   >
                     Browse all guides
                     <ArrowRightIcon className="w-4 h-4" />
-                  </Link>
+                  </TVLink>
                 </PageSection>
               )}
             </>
@@ -311,6 +336,6 @@ export default function GuideTopicPage() {
           <AutomationPanel />
         </Modal>
       )}
-    </>
+    </Wrapper>
   );
 }

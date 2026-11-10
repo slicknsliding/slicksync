@@ -75,10 +75,13 @@ async function computeUserVectors(prisma, accountId) {
       where: { accountId },
       select: { userId: true, showId: true, showName: true, poster: true },
     }),
-    prisma.watchActivity.findMany({
+    // Summed by the database: one row per person and title rather than one
+    // per day it was watched (two years of a big household is 200,000 rows).
+    prisma.watchActivity.groupBy({
+      by: ['userId', 'itemId', 'itemType'],
       where: { accountId },
-      select: { userId: true, itemId: true, itemType: true, watchTimeSeconds: true },
-    }),
+      _sum: { watchTimeSeconds: true },
+    }).then((rows) => rows.map((r) => ({ userId: r.userId, itemId: r.itemId, itemType: r.itemType, watchTimeSeconds: r._sum?.watchTimeSeconds || 0 }))),
   ])
 
   const vectors = new Map()
@@ -113,9 +116,30 @@ async function computeUserVectors(prisma, accountId) {
  * rewatch-heavy person can't alone inflate a title the other side barely
  * watched.
  */
+// The answer for a given set of vectors, kept as long as those vectors are
+// (buildUserVectors keeps them a minute): the pages that ask for it - taste
+// overlap, taste profiles, recommendations - would otherwise redo every pair
+// on each visit. Callers only read the result.
+const overlapMemo = new WeakMap() // vectors -> Map(itemMeta -> Map(topN -> pairs))
 function computePairwiseOverlap(vectors, itemMeta, { topN = 5 } = {}) {
+  let byMeta = overlapMemo.get(vectors)
+  if (!byMeta) { byMeta = new WeakMap(); overlapMemo.set(vectors, byMeta) }
+  let byTop = byMeta.get(itemMeta)
+  if (!byTop) { byTop = new Map(); byMeta.set(itemMeta, byTop) }
+  if (!byTop.has(topN)) byTop.set(topN, pairwiseOverlap(vectors, itemMeta, topN))
+  return byTop.get(topN)
+}
+
+function pairwiseOverlap(vectors, itemMeta, topN) {
   const userIds = [...vectors.keys()]
   const pairs = []
+  // Each person's magnitude once, not once per pair they are in.
+  const magnitude = new Map()
+  for (const [id, v] of vectors) {
+    let m = 0
+    for (const sec of v.values()) m += sec * sec
+    magnitude.set(id, m)
+  }
 
   for (let i = 0; i < userIds.length; i++) {
     for (let j = i + 1; j < userIds.length; j++) {
@@ -125,20 +149,17 @@ function computePairwiseOverlap(vectors, itemMeta, { topN = 5 } = {}) {
       const vb = vectors.get(b)
 
       let dot = 0
-      let magA = 0
-      let magB = 0
+      const magA = magnitude.get(a)
+      const magB = magnitude.get(b)
       const shared = []
 
       for (const [key, secA] of va) {
-        magA += secA * secA
         if (vb.has(key)) {
           const secB = vb.get(key)
           dot += secA * secB
           shared.push({ key, weight: Math.min(secA, secB) })
         }
       }
-      for (const secB of vb.values()) magB += secB * secB
-
       if (shared.length === 0) continue
 
       const similarity = magA > 0 && magB > 0 ? dot / (Math.sqrt(magA) * Math.sqrt(magB)) : 0

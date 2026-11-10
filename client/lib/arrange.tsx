@@ -579,7 +579,77 @@ export function useCwTime() {
   return { where, setWhere };
 }
 
+/** Continue Watching: who is watching under the card (the default), or on its picture. */
+export function useCwWho() {
+  const { arrangement, update } = useArrangement();
+  const where: 'on' | 'under' = arrangement.cwWho === 'on' ? 'on' : 'under';
+  const setWhere = useCallback((w: 'on' | 'under') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cwWho: 'on' };
+      if (w === 'under') delete out.cwWho;
+      return out;
+    });
+  }, [update]);
+  return { where, setWhere };
+}
+
+/** Continue Watching: the bar and where they stopped under the card (the default), or on its picture. */
+export function useCwProgress() {
+  const { arrangement, update } = useArrangement();
+  const where: 'on' | 'under' = arrangement.cwProgress === 'on' ? 'on' : 'under';
+  const setWhere = useCallback((w: 'on' | 'under') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cwProgress: 'on' };
+      if (w === 'under') delete out.cwProgress;
+      return out;
+    });
+  }, [update]);
+  return { where, setWhere };
+}
+
+/** Continue Watching: the latest title the same size as the rest (the default), or one wide banner. */
+export function useCwFirst() {
+  const { arrangement, update } = useArrangement();
+  const first: 'wide' | 'same' = arrangement.cwFirst === 'wide' ? 'wide' : 'same';
+  const setFirst = useCallback((f: 'wide' | 'same') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cwFirst: 'wide' };
+      if (f === 'same') delete out.cwFirst;
+      return out;
+    });
+  }, [update]);
+  return { first, setFirst };
+}
+
+/** Coming up: an episode that is out gets a tag in the card's corner (the default), or a label above the poster. */
+export function useOutNow() {
+  const { arrangement, update } = useArrangement();
+  const place: 'corner' | 'above' = arrangement.outNow === 'above' ? 'above' : 'corner';
+  const setPlace = useCallback((p: 'corner' | 'above') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, outNow: 'above' };
+      if (p === 'corner') delete out.outNow;
+      return out;
+    });
+  }, [update]);
+  return { place, setPlace };
+}
+
 /** Where SlickSync opens for this account (Themes → Layout). '/' is the Dashboard. */
+/** Settings → Themes → Card backgrounds: the show's picture behind the words (the default), or plain. */
+export function useCardBackground() {
+  const { arrangement, update } = useArrangement();
+  const bg: 'picture' | 'plain' = arrangement.cardBg === 'plain' ? 'plain' : 'picture';
+  const setBg = useCallback((b: 'picture' | 'plain') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, cardBg: 'plain' };
+      if (b === 'picture') delete out.cardBg;
+      return out;
+    });
+  }, [update]);
+  return { bg, setBg };
+}
+
 export function useStartPage() {
   const { arrangement, update } = useArrangement();
   const startPage = arrangement.startPage || '/';

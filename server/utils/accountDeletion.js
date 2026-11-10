@@ -58,6 +58,8 @@ async function deleteAccountCascade(prisma, accountId) {
     prisma.user.deleteMany({ where }),
     prisma.appAccount.delete({ where: { id: accountId } }),
   ]);
+  // Its backup files hold its sign-ins; they go with it.
+  try { require('./backup').removeAccountBackups(accountId); } catch { /* best effort */ }
   return existing;
 }
 
@@ -112,6 +114,7 @@ async function deleteUserCascade(prisma, userId) {
   ])
   })
   await require('./jellyfinProfiles').forgetPersonHousehold(prisma, userId)
+  await require('./watchTogether').removeUserFromPacts(prisma, existing.accountId, userId)
   return existing
 }
 

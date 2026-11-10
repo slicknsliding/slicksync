@@ -336,12 +336,7 @@ export function NebulaBar({
           app NARROWER at full window width than at half-width (Tailwind's
           grid-cols-N breakpoints key off viewport width, not this capped
           container's actual width, so a wider viewport was picking a
-          higher column count within the exact same ~72rem box). Set
-          inline, not via the max-w-6xl class - globals.css has a global
-          `* { max-width: 100vw }` (unlayered, so it beats ANY Tailwind
-          utility class regardless of specificity per the CSS Cascade
-          Layers spec) that silently no-ops every max-w-* class in the
-          app. An inline style always wins over both. */}
+          higher column count within the exact same ~72rem box). */}
       <div
         // nebula-bar-panel: solid on touch screens (globals.css), where the blur is off.
         className={isTV ? 'nebula-bar-panel mx-auto rounded-2xl p-2' : 'nebula-bar-panel mx-auto rounded-3xl p-5 md:p-6'}

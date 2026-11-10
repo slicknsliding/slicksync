@@ -261,11 +261,16 @@ async function refreshHousehold(prisma, decrypt, encrypt, owner, { minIntervalMs
 }
 
 let refreshTimer = null
+let refreshing = false
 function scheduleHouseholdRefresh(prisma, decrypt, encrypt) {
   if (refreshTimer) clearInterval(refreshTimer)
   const run = async () => {
+    if (refreshing) return
+    refreshing = true
     try {
-      const owners = await prisma.user.findMany({ where: { providerType: 'jellyfin', isActive: true, jellyfinToken: { not: null }, jellyfinServerKind: { in: [...HOUSEHOLD_KINDS] } } })
+      const owners = await prisma.user.findMany({
+        where: { providerType: 'jellyfin', isActive: true, jellyfinToken: { not: null }, jellyfinServerKind: { in: [...HOUSEHOLD_KINDS] } },
+      })
       for (const accountId of new Set(owners.map((o) => o.accountId || 'default'))) {
         try {
           const n = await repairEchoedHouseholds(prisma, accountId)
@@ -279,13 +284,13 @@ function scheduleHouseholdRefresh(prisma, decrypt, encrypt) {
           if (n) console.log(`[JellyfinProfiles] ${n} new household user(s) for ${o.username}`)
         } catch (e) { console.warn(`[JellyfinProfiles] household check for ${o.username} failed:`, e?.message) }
       }
-    } catch (e) { console.warn('[JellyfinProfiles] household check failed:', e?.message) }
+    } catch (e) { console.warn('[JellyfinProfiles] household check failed:', e?.message) } finally { refreshing = false }
   }
-  // Every 20 seconds: someone added on the server's own page, or a renamed
-  // main user, shows up here almost at once. One small read of the server's
-  // user list per person - nobody is signed in again unless they're new.
+  // Every minute: someone added on the server's own page, or a renamed main
+  // user, shows up here. One small read of the server's user list per person -
+  // nobody is signed in again unless they're new.
   setTimeout(run, 20 * 1000)
-  refreshTimer = setInterval(run, 20 * 1000)
+  refreshTimer = setInterval(run, 60 * 1000)
 }
 
 /**

@@ -46,7 +46,7 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
       api.getHousehold(userId).then((h) => setProfiles(h.profiles || [])).catch(() => setProfiles([]));
     }
   };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
   useEffect(() => {
     if (!open) return;

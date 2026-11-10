@@ -1,5 +1,6 @@
 // Auth and CSRF middlewares (factory-style for DI/testing)
 const { checkAccountClaims, pathNeedsLiveAccount } = require('../utils/auth')
+const { portalImageCookie, PORTAL_IMAGE_COOKIE } = require('../utils/portalImageCookie')
 
 module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, jsonwebtoken, prisma, DEFAULT_ACCOUNT_ID }) {
   const jwt = jsonwebtoken || require('jsonwebtoken')
@@ -154,6 +155,15 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
 
     // If no token (or failed token) but path is allowlisted, allow access
     if (allowlisted) return next();
+
+    // A person signed in to their own portal: pictures only.
+    if (prisma && portalImageCookie.covers(req.path)) {
+      const accId = await portalImageCookie.account(cookies[PORTAL_IMAGE_COOKIE], JWT_SECRET, prisma)
+      if (accId && (INSTANCE_TYPE === 'public' || accId === (DEFAULT_ACCOUNT_ID || require('../utils/config').DEFAULT_ACCOUNT_ID))) {
+        req.appAccountId = accId
+        return next()
+      }
+    }
 
     // If token verification fails and path is NOT allowlisted, 401
     if (token) return res.status(401).json({ message: 'Invalid or expired token' });

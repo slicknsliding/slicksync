@@ -8,6 +8,15 @@ const { assertSafeUrl, safeFetch, instancePolicy } = require('../utils/safeUrl')
 // (as opposed to the host being slow or down).
 const REFUSED_ADDRESS = new Set(['blocked host', 'unsupported protocol', 'invalid url']);
 
+// Debrid links carry the token in the path or query, so console output keeps the host only.
+function safeOrigin(value) {
+  try {
+    return new URL(value).origin;
+  } catch (e) {
+    return '(unparseable)';
+  }
+}
+
 /**
  * Set CORS headers for Stremio/streaming compatibility
  */
@@ -171,6 +180,22 @@ async function getRedirectedUrl(url) {
   }
 }
 
+// A reply can list thousands of streams; their links are followed a few at
+// a time, in order, instead of all at once.
+const STREAM_LOOKUPS_AT_ONCE = 8;
+async function mapLimited(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 /**
  * Process a stream response to encrypt stream URLs
  * This transforms the streams array to use encrypted proxy URLs
@@ -187,7 +212,7 @@ async function processStreamResponse(data, serverKey, proxyBaseUrl) {
     // Handle streams array
     if (Array.isArray(json.streams)) {
       // Process streams in parallel
-      json.streams = await Promise.all(json.streams.map(async (stream) => {
+      json.streams = await mapLimited(json.streams, STREAM_LOOKUPS_AT_ONCE, async (stream) => {
         if (!stream || typeof stream !== 'object') {
           return stream;
         }
@@ -195,13 +220,13 @@ async function processStreamResponse(data, serverKey, proxyBaseUrl) {
         // Encrypt the URL field if present
         if (stream.url && typeof stream.url === 'string') {
           try {
-            console.log(`[StreamProxy] Resolving redirect for URL: ${stream.url.substring(0, 100)}...`);
+            console.log(`[StreamProxy] Resolving redirect for URL on: ${safeOrigin(stream.url)}`);
             // Resolve the final URL (follow redirects)
             const resolvedUrl = await getRedirectedUrl(stream.url);
             // An address this install will not fetch keeps the link the addon
             // gave, so the player can still try it from its own network.
             if (resolvedUrl) {
-              console.log(`[StreamProxy] Resolved to: ${resolvedUrl.substring(0, 100)}...`);
+              console.log(`[StreamProxy] Resolved to: ${safeOrigin(resolvedUrl)}`);
 
               const encryptedUrl = encryptStreamUrl(resolvedUrl, serverKey);
               stream.url = `${proxyBaseUrl}/stream/${encryptedUrl}`;
@@ -229,7 +254,7 @@ async function processStreamResponse(data, serverKey, proxyBaseUrl) {
         }
         
         return stream;
-      }));
+      });
     }
     
     return JSON.stringify(json);
@@ -297,7 +322,7 @@ module.exports = ({ getServerKey }) => {
       // Decrypt the target URL
       try {
         targetUrl = decryptStreamUrl(encryptedUrl, serverKey);
-        console.log(`[StreamProxy] Decrypted URL: ${targetUrl.substring(0, 100)}...`);
+        console.log(`[StreamProxy] Decrypted URL on: ${safeOrigin(targetUrl)}`);
       } catch (e) {
         errorMessage = 'Invalid or expired stream URL';
         console.error('[StreamProxy] Error decrypting stream URL:', e.message);
@@ -305,7 +330,7 @@ module.exports = ({ getServerKey }) => {
       }
 
       // Proxy the request to the target URL
-      console.log(`[StreamProxy] Proxying content from: ${targetUrl.substring(0, 100)}...`);
+      console.log(`[StreamProxy] Proxying content from: ${safeOrigin(targetUrl)}`);
 
       const fetchHeaders = {
         'User-Agent': req.get('User-Agent') || 'SlickSync-Proxy/1.0',
@@ -347,7 +372,7 @@ module.exports = ({ getServerKey }) => {
         // Capture the final URL (after redirects)
         resolvedUrl = upstreamResponse.url;
         if (resolvedUrl !== targetUrl) {
-           console.log(`[StreamProxy] Redirected to: ${resolvedUrl.substring(0, 100)}...`);
+           console.log(`[StreamProxy] Redirected to: ${safeOrigin(resolvedUrl)}`);
         }
 
         // Forward status code

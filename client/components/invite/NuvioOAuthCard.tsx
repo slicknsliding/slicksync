@@ -6,6 +6,8 @@ import { PubButton, PubCode, PubHeading, PubLink, PubQr, PubWaiting } from '@/co
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { inviteApi } from '@/lib/invite-api';
 import { copyToClipboard } from '@/lib/clipboard';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 interface NuvioOAuthCardProps {
   /** The invitation this sign-in belongs to - the flow is gated on it. */
@@ -43,6 +45,8 @@ export function NuvioOAuthCard({
   const [isWaiting, setIsWaiting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  // TV remote: OK on the buttons does what a click does.
+  const isTV = useIsTV();
 
   // Held in a ref rather than state: the poll loop reads them and they must
   // never trigger a re-render, and they must never reach anything rendered.
@@ -120,9 +124,14 @@ export function NuvioOAuthCard({
       <PubHeading title={title} line={description} />
 
       {!code ? (
-        <PubButton primary onClick={start} disabled={busy}>
-          {isStarting ? 'Starting…' : 'Get a sign-in code'}
-        </PubButton>
+        (() => {
+          const getCode = (
+            <PubButton primary onClick={start} disabled={busy}>
+              {isStarting ? 'Starting…' : 'Get a sign-in code'}
+            </PubButton>
+          );
+          return isTV ? <TVFocusable onEnterPress={() => { if (!busy) start(); }}>{getCode}</TVFocusable> : getCode;
+        })()
       ) : (
         <>
           {webUrl && !expired && <PubQr data={webUrl} alt="Scan with your phone to open Nuvio" />}
@@ -135,23 +144,30 @@ export function NuvioOAuthCard({
               : <p className="text-sm" style={{ color: 'var(--color-text-subtle)' }}>Approved.</p>}
 
           <div className="grid gap-2">
-            {webUrl && (
-              <a
-                href={webUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2"
-                style={{ background: 'var(--color-primary-solid)', color: 'var(--color-on-primary-solid, #fff)' }}
-              >
-                <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                Open Nuvio to enter it
-              </a>
-            )}
-            {expired && (
-              <PubLink onClick={start} disabled={busy} icon={<ArrowPathIcon className="w-4 h-4" />} className="py-2">
-                Get a new code
-              </PubLink>
-            )}
+            {webUrl && (() => {
+              const openLink = (
+                <a
+                  href={webUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  tabIndex={isTV ? -1 : undefined}
+                  className="w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2"
+                  style={{ background: 'var(--color-primary-solid)', color: 'var(--color-on-primary-solid, #fff)' }}
+                >
+                  <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                  Open Nuvio to enter it
+                </a>
+              );
+              return isTV ? <TVFocusable onEnterPress={() => window.open(webUrl, '_blank', 'noopener,noreferrer')}>{openLink}</TVFocusable> : openLink;
+            })()}
+            {expired && (() => {
+              const newCode = (
+                <PubLink onClick={start} disabled={busy} icon={<ArrowPathIcon className="w-4 h-4" />} className="py-2">
+                  Get a new code
+                </PubLink>
+              );
+              return isTV ? <TVFocusable className="flex justify-center" onEnterPress={() => { if (!busy) start(); }}>{newCode}</TVFocusable> : newCode;
+            })()}
           </div>
         </>
       )}

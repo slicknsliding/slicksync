@@ -18,6 +18,14 @@ test('parseDisplayName: non-parenthesized year with trailing release tags', () =
   assert.equal(parseDisplayName('Send.Help.2026.WEB-DL.mkv'), 'Send Help (2026)')
 })
 
+test('parseDisplayName: underscores separate words like dots do', () => {
+  // Read as a film called "Resident Evil 2026": no poster, no details.
+  assert.equal(parseDisplayName('Resident_Evil_2026_2160p_MA_WEB-DL_H265_SDR_DDP_Atmos_5_1_English-HONE.mkv'), 'Resident Evil (2026)')
+  assert.equal(parseDisplayName('Blade_Runner_2049_2017_1080p_BluRay.mkv'), 'Blade Runner 2049 (2017)')
+  assert.equal(parseDisplayName('Some_Film_1979_2024_Remastered_1080p.mkv'), 'Some Film (1979)')
+  assert.equal(parseDisplayName('Resident.Evil.2026.MULTI.1080p.mkv'), 'Resident Evil (2026)')
+})
+
 test('parseDisplayName: parenthesized year with nothing after it', () => {
   assert.equal(parseDisplayName('Movie.Title.(2020).mkv'), 'Movie Title (2020)')
 })

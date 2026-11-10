@@ -2,8 +2,11 @@
 // watching anything (utils/lastSeen.js - the "Last seen" on their card) for
 // at least the rule's number of days. Checked hourly from scheduler.js.
 //
-// Once per quiet stretch: a run is recorded with the person's last-seen
-// moment, and the same stretch never fires the same rule twice. When they
+// Once per quiet stretch: the person's last-seen moment is remembered per
+// rule (account settings, `automationInactivityFired`), and the same stretch
+// never fires the same rule twice. It is kept there rather than looked up in
+// the run log because the log is pruned, and a pruned entry made the rule
+// fire all over again on the next hourly pass. When they
 // watch something again, their last seen moves on, and a later quiet stretch
 // can fire again.
 //
@@ -20,12 +23,31 @@ function parseJson(raw, fallback) {
   } catch { return fallback }
 }
 
-async function alreadyFired(prisma, ruleId, userId, marker) {
-  const run = await prisma.automationRun.findFirst({
-    where: { ruleId, triggerType: 'user.inactive', AND: [{ payload: { contains: `"userId":"${userId}"` } }, { payload: { contains: `"lastSeen":"${marker}"` } }] },
-    select: { id: true },
+const SYNC_KEY = 'automationInactivityFired'
+
+async function readFired(prisma, accountId) {
+  try {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') cfg = JSON.parse(cfg)
+    const state = cfg && cfg[SYNC_KEY]
+    return state && typeof state === 'object' ? state : {}
+  } catch { return {} }
+}
+
+// Merge what this pass fired into a fresh read of the stored state, and drop
+// entries for rules that no longer exist.
+async function saveFired(prisma, accountId, newlyFired, liveRuleIds) {
+  const { updateAccountSyncKey } = require('../accountSyncKey')
+  await updateAccountSyncKey(prisma, accountId, SYNC_KEY, (cur) => {
+    const next = {}
+    const base = cur && typeof cur === 'object' ? cur : {}
+    for (const ruleId of liveRuleIds) {
+      const merged = { ...(base[ruleId] || {}), ...(newlyFired[ruleId] || {}) }
+      if (Object.keys(merged).length) next[ruleId] = merged
+    }
+    return next
   })
-  return !!run
 }
 
 async function runInactivityCheck(prisma, { now = Date.now(), emit } = {}) {
@@ -47,6 +69,8 @@ async function runInactivityCheck(prisma, { now = Date.now(), emit } = {}) {
         select: { id: true, username: true, email: true, providerType: true, expiresAt: true, createdAt: true },
       })
       const seen = await lastSeenByUser(prisma, accountId, users)
+      const firedState = await readFired(prisma, accountId)
+      const newlyFired = {}
       for (const rule of accountRules) {
         const days = Number(parseJson(rule.triggerConfig, {}).days)
         if (!(days >= 1)) continue
@@ -58,7 +82,7 @@ async function runInactivityCheck(prisma, { now = Date.now(), emit } = {}) {
           const daysInactive = Math.floor((now - last.getTime()) / DAY_MS)
           if (daysInactive < days) continue
           const marker = last.toISOString()
-          if (await alreadyFired(prisma, rule.id, user.id, marker)) continue
+          if (firedState[rule.id] && firedState[rule.id][user.id] === marker) continue
           const result = await fire(prisma, accountId, 'user.inactive', {
             username: user.username,
             userId: user.id,
@@ -68,8 +92,15 @@ async function runInactivityCheck(prisma, { now = Date.now(), emit } = {}) {
             lastSeen: marker,
             neverSeen: !seen.has(user.id),
           }, { ruleId: rule.id })
-          if (result?.fired) fired++
+          if (result?.fired) {
+            fired++
+            ;(newlyFired[rule.id] = newlyFired[rule.id] || {})[user.id] = marker
+          }
         }
+      }
+      if (Object.keys(newlyFired).length) {
+        const allRules = await prisma.automationRule.findMany({ where: { accountId, triggerType: 'user.inactive' }, select: { id: true } })
+        await saveFired(prisma, accountId, newlyFired, allRules.map((r) => r.id))
       }
     } catch (e) {
       console.warn(`[AutomationInactivity] ${accountId}:`, e?.message || e)

@@ -15,6 +15,8 @@ import { providerTypeLabel } from '@/lib/providers';
 import type { NowPlayingItem } from '@/lib/user-api';
 import { useNowPlayingProgress, useNowPlayingWho } from '@/lib/arrange';
 import { MediaDetailModal } from '@/components/ui/MediaDetailModal';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // Only the two apps' own addresses may open from here.
 const safeAppUrl = (u: string | null | undefined) => (u && /^(stremio|nuvio):/i.test(u) ? u : null);
@@ -102,6 +104,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
   // Who and where: on a line under the picture (the default) or on it.
   const under = useNowPlayingWho().where === 'under';
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const isTV = useIsTV();
   const baseId = (row.item.id || '').split(':')[0];
   const canOpen = !!baseId && !row.item.titlePending;
   const mediaType: 'movie' | 'series' = row.item.type === 'movie' ? 'movie' : 'series';
@@ -123,7 +126,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
       className={`relative flex flex-col rounded-[20px] overflow-hidden ${canOpen ? 'cursor-pointer ' : ''}${flush || under || progressUnder ? '' : 'mb-8 '}${compact ? 'min-h-[176px]' : 'min-h-[230px] sm:min-h-[300px] min-[2000px]:min-h-[340px]'}`} style={{ border: '1px solid var(--color-surface-border)', background: 'var(--color-surface)' }}>
       {art && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center' }} />
+        <img src={cachedImageUrl(art, 780) || art} onError={onError} alt="" className="art-fill absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'right center', ['--art-r' as string]: '20px' }} />
       )}
       {/* Dark on the side the words sit on, so they read on every theme. */}
       <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.96) 0%, rgba(10,12,20,.85) 45%, rgba(10,12,20,.15) 100%)' }} />
@@ -131,15 +134,22 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
         {!under && whoLine}
         <h2 className={`font-bold leading-tight text-white line-clamp-3 ${compact ? 'text-lg' : 'text-2xl sm:text-[34px]'}`}>{row.item.name}</h2>
         {episode && <p className="text-sm" style={{ color: '#d1d5db' }}>{episode}</p>}
+        {/* The app hasn't said yet: their unfinished title, until it does. */}
+        {row.item.guessed && <p className="text-sm font-medium" style={{ color: '#d1d5db' }}>Probably - resumed from Continue Watching</p>}
         {!progressUnder && progressBlock(true)}
-        {resumeUrl && (
-          <div className={`flex gap-2 ${compact ? 'mt-0.5' : 'mt-1.5'}`}>
-            <a href={resumeUrl} className={`inline-flex items-center gap-2 rounded-full font-semibold text-white ${compact ? 'px-3 py-1 text-xs' : 'px-4 py-2 text-sm'}`} style={{ background: 'var(--color-primary)' }}>
+        {resumeUrl && (() => {
+          const resume = (
+            <a href={resumeUrl} tabIndex={isTV ? -1 : undefined} className={`inline-flex items-center gap-2 rounded-full font-semibold text-white ${compact ? 'px-3 py-1 text-xs' : 'px-4 py-2 text-sm'}`} style={{ background: 'var(--color-primary)' }}>
               <PlayIcon className="w-4 h-4" />
               Resume in {app}
             </a>
-          </div>
-        )}
+          );
+          return (
+            <div className={`flex gap-2 ${compact ? 'mt-0.5' : 'mt-1.5'}`}>
+              {isTV ? <TVFocusable onEnterPress={() => { window.location.href = resumeUrl; }}>{resume}</TVFocusable> : resume}
+            </div>
+          );
+        })()}
       </div>
     </section>
   );

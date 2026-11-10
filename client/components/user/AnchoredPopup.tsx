@@ -12,12 +12,16 @@
 // whole on screen (left/right edges, flips above when there is no room below,
 // scrolls inside when taller than the screen) and puts focus back on the
 // trigger when it goes.
+//
+// Optional extras for a confirm-style popup (Automations' Test): a small
+// caret pointing at the trigger, no X (the popup's own Cancel closes it), and
+// which control takes focus first.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
-export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 'start', label, children }: {
+export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 'start', label, caret = false, closeButton = true, initialFocusRef, children }: {
   /** The thing it opens from. */
   anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
@@ -28,10 +32,16 @@ export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 
   align?: 'start' | 'end';
   /** What a screen reader calls it, when there is no title text. */
   label?: string;
+  /** A small arrow pointing at the trigger. */
+  caret?: boolean;
+  /** The X in the corner. Turned off, the content needs its own way to close. */
+  closeButton?: boolean;
+  /** What takes focus when it opens, instead of the panel itself. */
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
   children: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
+  const [place, setPlace] = useState<{ left: number; top: number; maxHeight: number; tail: number; above: boolean; height: number } | null>(null);
   // The latest close, so the listeners below are set up once.
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; });
@@ -54,7 +64,11 @@ export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 
     const above = h > room.below && room.above > room.below;
     const maxHeight = Math.max(160, above ? room.above : room.below);
     const top = above ? Math.max(pad, a.top - gap - Math.min(h, maxHeight)) : a.bottom + gap;
-    setPlace((prev) => (prev && prev.left === left && prev.top === top && prev.maxHeight === maxHeight ? prev : { left, top, maxHeight }));
+    // Where the caret sits along the panel's edge: under the trigger's middle, kept off the rounded corners.
+    const tail = Math.max(14, Math.min(a.left + a.width / 2 - left - 7, w - 28));
+    const height = Math.min(h, maxHeight);
+    setPlace((prev) => (prev && prev.left === left && prev.top === top && prev.maxHeight === maxHeight && prev.tail === tail && prev.above === above && prev.height === height
+      ? prev : { left, top, maxHeight, tail, above, height }));
   }, [anchorRef, align]);
 
   useLayoutEffect(() => { fit(); });
@@ -94,12 +108,16 @@ export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 
   // Focus goes in, and back to the trigger afterwards.
   useEffect(() => {
     const anchor = anchorRef.current;
-    panelRef.current?.focus({ preventScroll: true });
-    return () => { anchor?.focus?.({ preventScroll: true }); };
+    // Next frame: on the first pass the panel is still hidden while it is
+    // measured, and a hidden element can't take focus.
+    const frame = requestAnimationFrame(() => (initialFocusRef?.current || panelRef.current)?.focus({ preventScroll: true }));
+    return () => { cancelAnimationFrame(frame); anchor?.focus?.({ preventScroll: true }); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- first focus only, on open
   }, [anchorRef]);
 
   if (typeof document === 'undefined') return null;
   return createPortal(
+    <>
     <div
       ref={panelRef}
       role="dialog"
@@ -115,19 +133,38 @@ export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 
         visibility: place ? 'visible' : 'hidden',
       }}
     >
-      <div className="flex items-center justify-between gap-2 pl-4 pr-2 pt-2.5 pb-1 min-h-[44px]">
-        <div className="min-w-0 text-sm font-semibold text-default truncate">{title}</div>
-        <button
-          type="button"
-          onClick={() => closeRef.current()}
-          aria-label="Close"
-          className="shrink-0 w-9 h-9 -mr-0.5 rounded-full flex items-center justify-center text-muted hover:text-default hover:bg-surface-hover transition-colors"
-        >
-          <XMarkIcon className="w-5 h-5" />
-        </button>
-      </div>
-      <div className="px-4 pb-4">{children}</div>
-    </div>,
+      {closeButton ? (
+        <>
+          <div className="flex items-center justify-between gap-2 pl-4 pr-2 pt-2.5 pb-1 min-h-[44px]">
+            <div className="min-w-0 text-sm font-semibold text-default truncate">{title}</div>
+            <button
+              type="button"
+              onClick={() => closeRef.current()}
+              aria-label="Close"
+              className="shrink-0 w-9 h-9 -mr-0.5 rounded-full flex items-center justify-center text-muted hover:text-default hover:bg-surface-hover transition-colors"
+            >
+              <XMarkIcon className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="px-4 pb-4">{children}</div>
+        </>
+      ) : (
+        <div className="p-4">
+          {title && <div className="text-[15px] font-bold text-default">{title}</div>}
+          {children}
+        </div>
+      )}
+    </div>
+    {caret && place && (
+      <span
+        aria-hidden
+        className="popup-caret fixed z-[10000] w-3.5 h-3.5 bg-surface pointer-events-none"
+        style={place.above
+          ? { left: place.left + place.tail, top: place.top + place.height - 7, borderRightWidth: 1, borderBottomWidth: 1, transform: 'rotate(45deg)' }
+          : { left: place.left + place.tail, top: place.top - 7, borderLeftWidth: 1, borderTopWidth: 1, transform: 'rotate(45deg)' }}
+      />
+    )}
+    </>,
     document.body,
   );
 }

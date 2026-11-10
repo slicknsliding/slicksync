@@ -3035,12 +3035,18 @@ class ApiClient {
   }
 
   // Metrics
-  // `deep` lifts the caps on the reads the Activity feed is built from. It is
-  // a heavier build and is never cached, so it is only worth asking for once
-  // a reader has actually reached the end of the ordinary feed.
-  async getMetrics(period: string = '30d', opts: { deep?: boolean } = {}) {
-    const deep = opts.deep ? '&deep=1' : '';
+  // `deep` lifts the caps on the reads the Activity feed is built from, one
+  // step further back each time (1, 2, 3...; true is step 1). It is a heavier
+  // build and is never cached, so it is only worth asking for once a reader
+  // has actually reached the end of the feed they already have.
+  async getMetrics(period: string = '30d', opts: { deep?: boolean | number } = {}) {
+    const step = opts.deep === true ? 1 : Number(opts.deep) || 0;
+    const deep = step >= 1 ? `&deep=${Math.floor(step)}` : '';
     return this.fetch<MetricsData>(`/users/metrics?period=${period}${deep}`);
+  }
+  // Only who is watching now, plus the stamp of the cached feed build it goes with.
+  async getNowPlaying(period: string = 'all') {
+    return this.fetch<{ nowPlaying: MetricsData['nowPlaying']; buildStamp: number | null }>(`/users/metrics/now-playing?period=${period}`);
   }
   async getYearInReview(year?: number) {
     const q = year ? `?year=${year}` : '';
@@ -4342,9 +4348,9 @@ export interface CreateGroupData {
 
 export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
-  | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
+  | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth';
 
 export interface VaultEntry {
   id: string;
@@ -5438,6 +5444,9 @@ export interface ContinueWatchingItem {
   progressPercent?: number | null;
   /** Minutes left when resuming (from the saved position and length). */
   remainingMinutes?: number | null;
+  /** Where they stopped and how long it is (ms), when resuming. */
+  positionMs?: number | null;
+  durationMs?: number | null;
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;
@@ -5582,7 +5591,7 @@ export interface MetricsData {
   };
   nowPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
-    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean; episodeTitle?: string };
+    item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number; titlePending?: boolean; guessed?: boolean; episodeTitle?: string };
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)
@@ -5632,6 +5641,10 @@ export interface MetricsData {
   }>;
   /** True when the feed was capped and older history can still be asked for. */
   activityTruncated?: boolean;
+  /** On a deep read: true once it reached the furthest step there is. */
+  activityDeepLast?: boolean;
+  /** When the server built the cached feed this came from; changes only when the feed does. */
+  buildStamp?: number | null;
   recentActivity?: Array<{
     user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean; providerType?: 'stremio' | 'nuvio' | 'jellyfin' };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };

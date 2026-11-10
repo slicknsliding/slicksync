@@ -10,8 +10,9 @@ import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, posterSrcSet, isRpdbPoster } from '@/lib/posterUrl';
 import {
   FilmIcon, TvIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon,
-  XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon, TrashIcon,
+  XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon, TrashIcon, EllipsisHorizontalIcon,
 } from '@heroicons/react/24/outline';
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 
@@ -313,5 +314,45 @@ export const PosterCard = memo(function PosterCard({
   );
 
   if (!focusable) return card;
-  return <TVFocusable onEnterPress={() => onOpenDetails(item)}>{card}</TVFocusable>;
+  if (!onRemoveFromCatalog) return <TVFocusable onEnterPress={() => onOpenDetails(item)}>{card}</TVFocusable>;
+
+  // TV, on a catalog or collection: the remote has no long-press or
+  // right-click, so the poster gets an always-visible ⋯ - its own remote stop
+  // (Right from the poster lands on it) - opening the same menu.
+  const moreKey = `poster-more-${menuKey ?? item.id}`;
+  const openMenuFromMore = () => {
+    const r = document.querySelector<HTMLElement>(`[data-poster-more="${CSS.escape(moreKey)}"]`)?.getBoundingClientRect();
+    handleContextMenu(new Event('contextmenu'), r ? r.right : 0, r ? r.bottom + 6 : 0);
+    onMenuOpenChange?.(true, menuKey ?? item.id);
+  };
+  return (
+    <div className="relative">
+      <TVFocusable
+        onEnterPress={() => onOpenDetails(item)}
+        onArrowPress={(dir) => {
+          if (dir !== 'right') return true;
+          setFocus(moreKey);
+          return false;
+        }}
+      >
+        {card}
+      </TVFocusable>
+      <div className="absolute inset-x-0 top-0 aspect-[2/3] pointer-events-none">
+        <span className="absolute bottom-2 right-2 pointer-events-auto">
+          <TVFocusable focusKey={moreKey} className="rounded-full" onEnterPress={openMenuFromMore}>
+            <button
+              type="button"
+              tabIndex={-1}
+              data-poster-more={moreKey}
+              onClick={(e) => { e.stopPropagation(); openMenuFromMore(); }}
+              aria-label={`${item.name} options`}
+              className="flex items-center justify-center p-1.5 rounded-full bg-black/65 text-white"
+            >
+              <EllipsisHorizontalIcon className="w-5 h-5" />
+            </button>
+          </TVFocusable>
+        </span>
+      </div>
+    </div>
+  );
 });

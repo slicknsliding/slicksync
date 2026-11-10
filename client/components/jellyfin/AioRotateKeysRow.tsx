@@ -44,15 +44,15 @@ export function AioRotateKeysRow({ userId, name }: { userId: string; name: strin
             <KeyIcon className="w-5 h-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h4 className="font-semibold text-default">Update debrid keys in AIOStreams</h4>
+            <h4 className="font-semibold text-default">Update keys and logins in AIOStreams</h4>
             <p className="text-sm text-muted">
               {state.canWrite
-                ? `When a debrid key changes in the Vault - rotated, or a backup taking over - swap it inside ${name}'s AIOStreams setup too. Nothing else there is touched.`
+                ? `When a debrid key or an IPTV login changes in the Vault - rotated, a backup taking over, or a new password - change it inside ${name}'s AIOStreams setup too. Nothing else there is touched.`
                 : `Needs ${name}'s AIOStreams configuration password - sign them in again with it to use this.`}
             </p>
           </div>
         </div>
-        <ToggleSwitch checked={!!state.enabled} onChange={toggle} disabled={saving || !state.canWrite} title="Update debrid keys in AIOStreams" />
+        <ToggleSwitch checked={!!state.enabled} onChange={toggle} disabled={saving || !state.canWrite} title="Update keys and logins in AIOStreams" />
       </div>
     </>
   );

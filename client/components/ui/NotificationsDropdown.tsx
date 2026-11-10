@@ -11,6 +11,8 @@ import { toast } from '@/components/ui/Toast';
 import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
 import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { useTVModal } from '@/components/tv/useTVModal';
 import { usePageDesign } from '@/lib/arrange';
 import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 
@@ -82,6 +84,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // TV: the open panel keeps the remote inside it; Back closes it.
+  const tvPanelRef = useRef<HTMLDivElement | null>(null);
   const [lastChecked, setLastChecked] = useState<Date>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('notifications-last-checked');
@@ -101,6 +105,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // can't swipe, so they keep the button.
   const coarse = useCoarsePointer();
   const isTV = useIsTV();
+  useTVModal(isTV && isOpen, tvPanelRef, () => setIsOpen(false));
   const swipeToDismiss = coarse && !isTV;
   // v2 (Themes → Page design): Today and Earlier, an icon per kind, links in
   // the foot; a bottom sheet on a phone. TV keeps Classic.
@@ -616,10 +621,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     };
   }, [isOpen]);
 
-  return (
-    <div className="relative" ref={containerRef}>
+  const bell = (
       <motion.button
         ref={buttonRef}
+        tabIndex={isTV ? -1 : undefined}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
@@ -639,6 +644,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
           </span>
         )}
       </motion.button>
+  );
+
+  return (
+    <div className="relative" ref={containerRef}>
+      {isTV ? <TVFocusable className="inline-flex rounded-lg" onEnterPress={() => setIsOpen((o) => !o)}>{bell}</TVFocusable> : bell}
 
       <AnimatePresence>
         {isOpen && (
@@ -651,6 +661,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
             
             {/* Dropdown */}
             <motion.div
+              ref={tvPanelRef}
               initial={{ opacity: 0, scale: 0.95, y: -10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}

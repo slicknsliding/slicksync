@@ -10,7 +10,6 @@ const os = require('node:os')
 const path = require('node:path')
 const jwt = require('jsonwebtoken')
 
-process.env.SHARES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'slicksync-shares-'))
 const WORK_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'slicksync-opentargets-'))
 process.chdir(WORK_DIR)
 
@@ -87,7 +86,6 @@ test.before(async () => {
 test.after(() => {
   server.close()
   global.fetch = realFetch
-  fs.rmSync(process.env.SHARES_DIR, { recursive: true, force: true })
   process.chdir(os.tmpdir())
   fs.rmSync(WORK_DIR, { recursive: true, force: true })
 })

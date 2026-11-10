@@ -16,7 +16,7 @@
 // used. Served through the AIOStreams link - see server/utils/aioCollections.js
 // and routes/traxAddon.js. A tile opens its own page ([collectionId]/page.tsx).
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -31,6 +31,9 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageDesign, usePageArrangement } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { V2DetailHead, V2Tiles, type V2MenuItem } from '@/components/v2/V2Detail';
 import { V2Button, V2Status } from '@/components/v2/V2Bits';
 import { ArrangeBar, ArrangeButton, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
@@ -50,6 +53,14 @@ import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
 import { api, type AioCollection, type AioCollectionAccount, type AioCollectionsView, type AioCollectionsExport, type JellyfinCollectionServer } from '@/lib/api';
 
 const LIST = '/catalogs/aiostreams-collections';
+
+// TV: one D-pad stop around a button; OK calls the same handler the click does.
+// Renders its children untouched (no wrapper) off TV.
+function TV({ onEnter, className, off, children }: { onEnter: () => void; className?: string; off?: boolean; children: ReactNode }) {
+  const isTV = useIsTV();
+  if (!isTV || off) return <>{children}</>;
+  return <TVFocusable onEnterPress={onEnter} className={className}>{children}</TVFocusable>;
+}
 
 function Tile({ c, onOpen, onToggle, onRemove }: {
   c: AioCollection;
@@ -75,6 +86,7 @@ function Tile({ c, onOpen, onToggle, onRemove }: {
       title="Open, or drag to reorder"
       className={`group rounded-2xl overflow-hidden bg-surface-hover border border-default hover:border-primary/50 transition-colors cursor-pointer active:cursor-grabbing ${c.hidden ? 'opacity-50' : ''}`}
     >
+      <TV onEnter={onOpen}>
       <div className="relative aspect-[2/3] bg-surface">
         {coverSrc
           // eslint-disable-next-line @next/next/no-img-element
@@ -84,18 +96,23 @@ function Tile({ c, onOpen, onToggle, onRemove }: {
           <span className="absolute inset-0 flex items-center justify-center bg-black/40"><EyeSlashIcon className="w-8 h-8 text-white" /></span>
         )}
       </div>
+      </TV>
       <div className="p-2.5">
         <p className="text-sm font-medium text-default truncate">{c.name}</p>
         <p className="text-[11px] text-muted truncate">
           {c.titles} title{c.titles === 1 ? '' : 's'}{c.catalogIds.length > 1 ? ` · ${c.catalogIds.length} catalogs` : ''}
         </p>
         <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-          <button type="button" onClick={onToggle} className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface" title={c.hidden ? 'Show' : 'Hide'} aria-label={c.hidden ? `Show ${c.name}` : `Hide ${c.name}`}>
-            {c.hidden ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
-          </button>
-          <button type="button" onClick={onRemove} className="p-1.5 rounded-lg text-muted hover:text-error hover:bg-surface ml-auto" title="Remove" aria-label={`Remove ${c.name}`}>
-            <TrashIcon className="w-4 h-4" />
-          </button>
+          <TV onEnter={onToggle}>
+            <button type="button" onClick={onToggle} className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface" title={c.hidden ? 'Show' : 'Hide'} aria-label={c.hidden ? `Show ${c.name}` : `Hide ${c.name}`}>
+              {c.hidden ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
+            </button>
+          </TV>
+          <TV onEnter={onRemove} className="ml-auto">
+            <button type="button" onClick={onRemove} className="p-1.5 rounded-lg text-muted hover:text-error hover:bg-surface ml-auto" title="Remove" aria-label={`Remove ${c.name}`}>
+              <TrashIcon className="w-4 h-4" />
+            </button>
+          </TV>
         </div>
       </div>
     </div>
@@ -112,6 +129,7 @@ export default function AiostreamsCollectionsPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const [accounts, setAccounts] = useState<AioCollectionAccount[] | null>(
     () => api.peekGet<{ accounts: AioCollectionAccount[] }>('/jellyfin/collections/accounts')?.accounts ?? null,
   );
@@ -152,9 +170,11 @@ export default function AiostreamsCollectionsPage() {
     router.replace(`${LIST}?user=${encodeURIComponent(userId)}${id ? `&profile=${encodeURIComponent(id)}` : ''}`);
 
   const backButton = (
-    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
-      Back
-    </Button>
+    <TV onEnter={() => router.push('/catalogs')}>
+      <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
+        Back
+      </Button>
+    </TV>
   );
   const subtitle = 'Which catalogs show up as collections in AIOStreams’ apps and on your own Jellyfin server';
   const switcher = (
@@ -171,7 +191,7 @@ export default function AiostreamsCollectionsPage() {
   );
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs', href: '/catalogs' }, { label: 'Jellyfin Collections' }]} className="text-xl font-semibold" />}
@@ -228,13 +248,13 @@ export default function AiostreamsCollectionsPage() {
                 ) : choices === 0 ? (
                   <p className="text-xs text-subtle">
                     Nobody here signs in with AIOStreams or to a Jellyfin server of their own yet. Add someone with Users &rarr; Add &rarr; Jellyfin.{' '}
-                    <Link href="/guides/add-jellyfin-account" className="text-primary hover:underline">How</Link>
+                    <TVLink inline href="/guides/add-jellyfin-account" className="text-primary hover:underline">How</TVLink>
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {(servers || []).map((s) => (
+                      <TV key={s.key} onEnter={() => pickServer(s.key)} className="[&>button]:w-full">
                       <button
-                        key={s.key}
                         type="button"
                         onClick={() => pickServer(s.key)}
                         className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
@@ -246,10 +266,11 @@ export default function AiostreamsCollectionsPage() {
                           <Badge variant="jellyfin" size="sm" className="mt-1">Jellyfin</Badge>
                         </div>
                       </button>
+                      </TV>
                     ))}
                     {(accounts || []).map((a) => (
+                      <TV key={a.id} onEnter={() => pick(a.id)} className="[&>button]:w-full">
                       <button
-                        key={a.id}
                         type="button"
                         onClick={() => pick(a.id)}
                         className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
@@ -261,6 +282,7 @@ export default function AiostreamsCollectionsPage() {
                           <Badge variant="aiostreams" size="sm" className="mt-1">AIOStreams</Badge>
                         </div>
                       </button>
+                      </TV>
                     ))}
                   </div>
                 )}
@@ -268,6 +290,7 @@ export default function AiostreamsCollectionsPage() {
             ) : (
               <Card padding="lg" className="mb-6">
                 <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
+                  <TV onEnter={() => (choices > 1 ? pick('') : undefined)} off={choices <= 1}>
                   <button
                     type="button"
                     onClick={() => (choices > 1 ? pick('') : undefined)}
@@ -283,6 +306,7 @@ export default function AiostreamsCollectionsPage() {
                       {choices > 1 && <p className="text-xs text-primary">Switch account</p>}
                     </div>
                   </button>
+                  </TV>
 
                   {selected.profiles.length > 0 && (
                     <div>
@@ -293,8 +317,8 @@ export default function AiostreamsCollectionsPage() {
                         {[{ id: null as string | null, name: selected.name, own: true }, ...selected.profiles].map((p) => {
                           const on = (p.id || null) === (profile?.id || null);
                           return (
+                            <TV key={p.id || 'main'} onEnter={() => pickProfile(p.id)}>
                             <button
-                              key={p.id || 'main'}
                               type="button"
                               onClick={() => pickProfile(p.id)}
                               aria-pressed={on}
@@ -306,6 +330,7 @@ export default function AiostreamsCollectionsPage() {
                               <span className="truncate" style={{ maxWidth: '120px' }}>{p.name}</span>
                               {p.id && !p.own && <span className="text-[10px] text-muted whitespace-nowrap">shared</span>}
                             </button>
+                            </TV>
                           );
                         })}
                       </div>
@@ -328,7 +353,7 @@ export default function AiostreamsCollectionsPage() {
           </PageSection>}
         </div>
       </div>
-    </>
+    </Wrapper>
   );
 }
 
@@ -646,7 +671,7 @@ function AccountCollections({ account, profile, accounts, onProfileChanged, v2 =
               <Card padding="md" className="mb-4">
                 <p className="text-sm text-default">
                   These reach AIOStreams through this account&rsquo;s AIOStreams watch history link. Turn it on (their page &rarr; Watch-tracking integrations) and add its link to AIOStreams.{' '}
-                  <Link href="/guides/aiostreams-watch-history" className="text-primary hover:underline">How</Link>
+                  <TVLink inline href="/guides/aiostreams-watch-history" className="text-primary hover:underline">How</TVLink>
                 </p>
               </Card>
             )}
@@ -671,14 +696,18 @@ function AccountCollections({ account, profile, accounts, onProfileChanged, v2 =
               <div className="flex items-center gap-2">
                 {profile ? (
                   !shared && view?.profile && (
-                    <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => setConfirmReset(true)}>
-                      Use {account.name}&rsquo;s
-                    </Button>
+                    <TV onEnter={() => setConfirmReset(true)}>
+                      <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => setConfirmReset(true)}>
+                        Use {account.name}&rsquo;s
+                      </Button>
+                    </TV>
                   )
                 ) : view?.configured && (
-                  <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => setConfirmReset(true)}>
-                    One per catalog
-                  </Button>
+                  <TV onEnter={() => setConfirmReset(true)}>
+                    <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => setConfirmReset(true)}>
+                      One per catalog
+                    </Button>
+                  </TV>
                 )}
                 <input
                   ref={fileRef}
@@ -688,27 +717,41 @@ function AccountCollections({ account, profile, accounts, onProfileChanged, v2 =
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }}
                 />
                 <div className="relative" ref={transferRef}>
-                  <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={toggleTransfer} aria-expanded={transferOpen}>
-                    Transfer
-                  </Button>
+                  <TV onEnter={toggleTransfer}>
+                    <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={toggleTransfer} aria-expanded={transferOpen}>
+                      Transfer
+                    </Button>
+                  </TV>
                   {transferOpen && (
                     <div className="absolute top-full mt-2 z-20 w-60 rounded-xl border border-default bg-surface shadow-xl p-1.5" style={{ left: transferLeft }}>
+                      <TV onEnter={() => { setTransferOpen(false); setCopyOpen(true); }} off={collections.length === 0 || targets.length === 0}>
                       <button type="button" disabled={collections.length === 0 || targets.length === 0} onClick={() => { setTransferOpen(false); setCopyOpen(true); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">
                         <DocumentDuplicateIcon className="w-4 h-4" /> Copy to another profile…
                       </button>
+                      </TV>
                       <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted">As a file</p>
-                      <button type="button" onClick={() => { setTransferOpen(false); fileRef.current?.click(); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover">Import from a file…</button>
-                      <button type="button" disabled={collections.length === 0} onClick={() => { setTransferOpen(false); exportFile(); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">Export to a file</button>
+                      <TV onEnter={() => { setTransferOpen(false); fileRef.current?.click(); }}>
+                        <button type="button" onClick={() => { setTransferOpen(false); fileRef.current?.click(); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover">Import from a file…</button>
+                      </TV>
+                      <TV onEnter={() => { setTransferOpen(false); exportFile(); }} off={collections.length === 0}>
+                        <button type="button" disabled={collections.length === 0} onClick={() => { setTransferOpen(false); exportFile(); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">Export to a file</button>
+                      </TV>
                       <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted">As a share code</p>
-                      <button type="button" onClick={() => { setTransferOpen(false); setPasteOpen(true); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover">Paste a code…</button>
-                      <button type="button" disabled={collections.length === 0} onClick={() => { setTransferOpen(false); setShareOpen(true); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">Create a code…</button>
+                      <TV onEnter={() => { setTransferOpen(false); setPasteOpen(true); }}>
+                        <button type="button" onClick={() => { setTransferOpen(false); setPasteOpen(true); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover">Paste a code…</button>
+                      </TV>
+                      <TV onEnter={() => { setTransferOpen(false); setShareOpen(true); }} off={collections.length === 0}>
+                        <button type="button" disabled={collections.length === 0} onClick={() => { setTransferOpen(false); setShareOpen(true); }} className="w-full px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">Create a code…</button>
+                      </TV>
                     </div>
                   )}
                 </div>
-                <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => open('new')}>
-                  New collection
-                </Button>
+                <TV onEnter={() => open('new')}>
+                  <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => open('new')}>
+                    New collection
+                  </Button>
+                </TV>
               </div>
             </div>
 

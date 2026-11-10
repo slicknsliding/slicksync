@@ -1,5 +1,41 @@
 [
   {
+    "version": "1.104.0",
+    "date": "2026-11-10",
+    "title": "1.104.0 - Live Stremio pauses, Continue Watching and Coming up as banners, tidier personal pages, and security fixes",
+    "features": [
+      "Now Playing: with SlickTrax on, recent Stremio apps report play, pause and stop the moment they happen, with the real position; without it, a Stremio card reads pause and play from the saves Stremio makes to the account.",
+      "Now Playing: on a shared AIOStreams login, a stream goes to the person really watching; unclear or hidden file names show the person’s unfinished title as a guess, and \"aka\" titles are looked up under both names.",
+      "Watch time: Stremio viewing counts the time each video really played; watching a film or episode again for a minute or more moves its date to the new viewing.",
+      "Continue Watching and Coming up as picture banners, with a Plain background choice, and switches for what sits under the card or on its picture and the size of the first card (Settings → Themes, and each person’s own Settings).",
+      "Coming up: an aired episode gets a green Out now tag in its card’s corner, with a button to play it in Stremio or Nuvio; Settings → Out now → Above the poster puts the label over the poster instead.",
+      "Continue Watching: a title played again comes back; card menus open where you right-click or press and hold.",
+      "A person’s Activity: one card per viewing, and a foldable This week panel in place of the two charts.",
+      "Grid or list in a person’s Settings → Page design decides Activity and Library (grid to start; phones always grid); missing Library posters fill in from the title’s IMDb id.",
+      "Catalogs: the title sits where every other page has it, with the Collections pills on their own line; a pill row can sit one under the other.",
+      "Vault IPTV logins: Test signs in and fills in the end date; a person’s AIOStreams switch also updates their IPTV login.",
+      "Open in AIOStreams says when nothing opened: it needs the AIOStreams app (2.37 or newer) on that device.",
+      "Dashboard Sync All syncs each person in turn and says how many synced, like Users.",
+      "Security: sign-ins can’t take over an email linked through another provider; Stremio sign-ins to a person’s page keep a SlickSync session, not the Stremio key; request and upload limits; pages can’t be framed; Next.js 16.4.3 and package security updates.",
+      "Data safety: restore from a file keeps a safety copy and puts the old setup back if it fails; long backup schedules no longer fire at once; proxy logs no longer keep debrid keys.",
+      "Behind Cloudflare: set TRUST_CLOUDFLARE=true so request limits count each real visitor."
+    ],
+    "bugFixes": [
+      "A Stremio title back at 0 counts as ended, however far the last save was.",
+      "A paused stream with a hidden file name keeps its title, and started-watching alerts name it.",
+      "Nuvio: Live TV and the Playlists folder from a person’s server no longer reach their Nuvio app as a broken library.",
+      "Shares is removed, since nothing could create a share any more; group members still see each other’s libraries.",
+      "Posters and profile pictures load for people signed in to their own page, and the streak badge says what it means.",
+      "Deleting from a Library asks first; hover-only buttons are reachable by touch and keyboard; new page-not-found and offline pages.",
+      "Phone sheets clear the iPhone home bar, wide pages keep their width limits, and Android installs get a proper icon.",
+      "Uploads over the limit get an answer at once instead of hanging.",
+      "Automations fire daily rules once a day; Lists refresh AniList and MyAnimeList and don’t wipe on an empty answer.",
+      "Copy watch history and Keep in step no longer show as someone watching now.",
+      "Large households: faster library reads, lighter polling, charts that load only when shown.",
+      "Sync dots: green synced, red unsynced, grey while syncing; the Dashboard sync button matches Users."
+    ]
+  },
+  {
     "version": "1.103.0",
     "date": "2026-10-29",
     "title": "1.103.0 - Make every page your own, a first look at page design v2, and security fixes",

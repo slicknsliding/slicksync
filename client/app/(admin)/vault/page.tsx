@@ -53,6 +53,7 @@ const CATEGORY_LABELS: Record<VaultCategory, string> = {
   metadata: 'Metadata & Trackers',
   ai: 'AI Services',
   vpn: 'VPN',
+  iptv: 'IPTV',
   aiostreams: 'AIOStreams',
   custom: 'Custom',
 };
@@ -77,6 +78,7 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   stremio_auth: 'Stremio login',
   nuvio_auth: 'Nuvio login',
   openai_compatible: 'AI provider (OpenAI-compatible)',
+  xtream_auth: 'IPTV login',
 };
 
 // Common currency codes for the Vault cost selector. Intl.NumberFormat
@@ -315,8 +317,9 @@ const EMPTY_FORM: EntryFormState = {
 };
 
 // Which specialized form to show for a given category
-function categoryFieldMode(category: VaultCategory): 'credentials' | 'indexer' | 'provider' | 'generic' {
+function categoryFieldMode(category: VaultCategory): 'credentials' | 'indexer' | 'provider' | 'iptv' | 'generic' {
   if (category === 'stremio' || category === 'nuvio') return 'credentials';
+  if (category === 'iptv') return 'iptv';
   if (category === 'usenet_indexer') return 'indexer';
   if (category === 'usenet_provider') return 'provider';
   return 'generic';
@@ -332,6 +335,8 @@ function categoryDefaults(category: VaultCategory): Partial<EntryFormState> {
       return { testType: 'newznab_caps', secretLabel: 'API Key' };
     case 'provider':
       return { testType: 'tcp_reachability', secretLabel: 'Password' };
+    case 'iptv':
+      return { testType: 'xtream_auth', secretLabel: 'Password' };
     default:
       return {};
   }
@@ -651,8 +656,8 @@ function VaultPageContent() {
         ? { baseUrl: f.aiBaseUrl.trim() || undefined, model: f.aiModel.trim() || undefined }
         : undefined;
     }
-    if (mode === 'indexer') {
-      return f.testUrl ? { url: f.testUrl } : undefined;
+    if (mode === 'indexer' || mode === 'iptv') {
+      return f.testUrl ? { url: f.testUrl.trim() } : undefined;
     }
     if (mode === 'provider') {
       return (f.testHost && f.testPort)
@@ -683,6 +688,10 @@ function VaultPageContent() {
     }
     if (mode === 'provider' && !editingId && (!form.testHost.trim() || !form.testPort.trim() || !form.secretUsername.trim() || !form.secret.trim())) {
       toast.error('Host, port, username, and password are required');
+      return;
+    }
+    if (mode === 'iptv' && (!form.testUrl.trim() || !form.provider.trim() || (!editingId && !form.secret.trim()))) {
+      toast.error('Server address, username and password are required');
       return;
     }
     if (mode === 'indexer' && !editingId && (!form.testUrl.trim() || !form.secret.trim())) {
@@ -1343,6 +1352,26 @@ function VaultPageContent() {
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
                 onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
+            </>
+          )}
+
+          {categoryFieldMode(form.category) === 'iptv' && (
+            <>
+              <Input label="Server address" placeholder="http://iptv.example.com:8080" value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input label="Username" placeholder="Your IPTV username" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
+                <Input
+                  label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
+                  type="password"
+                  placeholder={editingId ? '••••••••' : 'Your IPTV password'}
+                  value={form.secret}
+                  onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                  onRevealClick={editingId ? handleRevealInEditForm : undefined}
+                />
+              </div>
+              <p className="p-3 rounded-xl text-sm" style={{ background: 'var(--color-subtle)', color: 'var(--color-text)' }}>
+                Test signs in to the server to check the login works, and fills in the end date from it, so you get the usual reminder before it runs out.
+              </p>
             </>
           )}
 

@@ -14,6 +14,8 @@ const { resolveAccountTimezone, getAccountDayNumber } = require('./dateUtils')
 const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { resolveSinglePoster } = require('./libraryHelpers')
+const stremioSaves = require('./stremioSaves')
+const ownWrites = require('./ownWrites')
 
 // Shares the same debug log file as activityMonitor.js's heartbeat() - one
 // combined trace of the whole pipeline from library fetch through gating.
@@ -341,8 +343,19 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
   // at the session-create site below).
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, username: true, email: true, colorIndex: true, discordWebhookUrl: true }
+    select: { id: true, username: true, email: true, colorIndex: true, discordWebhookUrl: true, providerType: true }
   })
+  const readsStremioSaves = (user?.providerType || 'stremio') === 'stremio'
+  // The newest opening in the whole library: lets a stream elsewhere be ruled
+  // out as this app's (stremioSaves.openedNothingSince).
+  if (readsStremioSaves) {
+    let newestOpenedAt = null
+    for (const it of library) {
+      const t = Date.parse(it?.state?.lastWatched || '')
+      if (Number.isFinite(t) && (newestOpenedAt == null || t > newestOpenedAt)) newestOpenedAt = t
+    }
+    stremioSaves.libraryRead(userId, newestOpenedAt, nowMs)
+  }
 
   // Get all active sessions for this user
   const activeSessions = await prisma.watchSession.findMany({
@@ -461,6 +474,19 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     if (watchDate) {
       lastActivityByItemId.set(itemId, watchDate)
     }
+    // Stremio's lastWatched stays at the moment a title was opened, so it says
+    // nothing about a viewing that is still going. Its saves do (stremioSaves.js):
+    // the same window, counted from the last real save.
+    let savedRecently = false
+    if (readsStremioSaves) {
+      stremioSaves.observe(userId, itemId, item, nowMs)
+      const lastSave = stremioSaves.lastSaveAt(userId, itemId, nowMs)
+      savedRecently = lastSave != null && (nowMs - lastSave) < (CHECK_INTERVAL_MS * 3.6)
+        && !stremioSaves.viewing(userId, itemId, null, nowMs)?.ended
+      if (lastSave != null && (!watchDate || lastSave > watchDate.getTime())) {
+        lastActivityByItemId.set(itemId, new Date(lastSave))
+      }
+    }
     // state.timeOffset only, never state.overallTimeWatched here - the latter
     // is a lifetime-cumulative counter that can run to absurd values (see the
     // CLAUDE.md note this file already documents elsewhere), unsafe to treat
@@ -473,7 +499,10 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       lastPositionByItemId.set(itemId, currentPositionForItem)
     }
 
-    const isActive = isActivelyWatching(item, userId, nowMs)
+    // A copy SlickSync made (Copy watch history, Keep in step) carries the
+    // source's real date and a new position, but nobody is playing it here.
+    // Only while the item is still exactly as written: real playback changes it.
+    const isActive = !ownWrites.isOwn(userId, itemId, item) && (isActivelyWatching(item, userId, nowMs) || savedRecently)
     // Playback that ran to the end still gets its session created or
     // updated below, so the duration and the History row are recorded as
     // for any other checkpoint - it just is not kept open afterwards: it
@@ -707,7 +736,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // the end on the FIRST-ever observation is far more likely to mean
           // "this was finished at some earlier, untracked time and we're only
           // just now seeing that state" than "watched start-to-finish in the
-          // instant between polls" - same principle as getMaxOverallTimeWatched
+          // instant between polls" - same principle as getMaxSeen
           // (metricsProcessor.js): recovering to/starting at an already-complete
           // value must never register as fresh progress. Don't seed in that case;
           // let it accrue from here via the normal incremental delta instead.
@@ -938,15 +967,15 @@ async function getRecentSessions(prisma, accountId, since, limit = 100) {
 async function getActiveSessions(prisma, accountId) {
   const accountIdValue = accountId || 'default'
 
-  return prisma.watchSession.findMany({
+  // Sorted in JS, not SQL - see buildNowPlaying in metricsBuilder.js: the
+  // ORDER BY made SQLite scan every session the account ever had.
+  const sessions = await prisma.watchSession.findMany({
     where: {
       accountId: accountIdValue,
       isActive: true
-    },
-    orderBy: {
-      startTime: 'desc'
     }
   })
+  return sessions.sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
 }
 
 module.exports = {

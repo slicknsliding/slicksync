@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Badge } from '@/components/ui';
@@ -9,6 +9,8 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { ChangelogV2 } from '@/components/v2/ChangelogV2';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
@@ -236,6 +238,7 @@ export default function ChangelogPage() {
   const { design } = usePageDesign();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const appVersion = (process.env.NEXT_PUBLIC_APP_VERSION as string) || 'dev';
   const INSTANCE_TYPE = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') as 'public' | 'private';
   const [releases, setReleases] = useState<Release[]>([]);
@@ -311,7 +314,7 @@ export default function ChangelogPage() {
   const errorMessage = error instanceof Error ? error.message : 'Failed to load changelog.';
 
   return (
-    <>
+    <Wrapper>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: "What's New" }]} className="text-xl font-semibold" />}
@@ -352,14 +355,19 @@ export default function ChangelogPage() {
               <p className="text-muted mb-4">
                 Could not load the changelog. {errorMessage}
               </p>
-              <Button
-                variant="secondary"
-                leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-                onClick={fetchData}
-                isLoading={isLoading}
-              >
-                Retry
-              </Button>
+              {(() => {
+                const retry = (
+                  <Button
+                    variant="secondary"
+                    leftIcon={<ArrowPathIcon className="w-4 h-4" />}
+                    onClick={fetchData}
+                    isLoading={isLoading}
+                  >
+                    Retry
+                  </Button>
+                );
+                return isTV ? <div className="flex justify-center"><TVFocusable onEnterPress={fetchData}>{retry}</TVFocusable></div> : retry;
+              })()}
             </Card>
           </PageSection>
         )}
@@ -391,7 +399,7 @@ export default function ChangelogPage() {
                 const isCurrentVersion = release.version === appVersion;
                 const isLatest = index === 0;
 
-                return (
+                const card = (
                   <Card
                     key={release.tagName || release.version}
                     padding="none"
@@ -575,6 +583,9 @@ export default function ChangelogPage() {
                     </AnimatePresence>
                   </Card>
                 );
+                return isTV ? (
+                  <TVFocusable key={release.tagName || release.version} onEnterPress={() => toggleVersion(release.version)}>{card}</TVFocusable>
+                ) : card;
               })}
             </div>
           </PageSection>
@@ -585,19 +596,26 @@ export default function ChangelogPage() {
           <Card padding="lg" className="text-center">
             <p className="text-sm text-muted">
               View all releases on{' '}
-              <a
-                href="https://github.com/slicknsliding/slicksync/releases"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:text-primary-hover underline font-medium"
-              >
-                GitHub
-              </a>
+              {(() => {
+                const link = (
+                  <a
+                    href="https://github.com/slicknsliding/slicksync/releases"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    tabIndex={isTV ? -1 : undefined}
+                    className="text-primary hover:text-primary-hover underline font-medium"
+                  >
+                    GitHub
+                  </a>
+                );
+                // TV: a remote stop of its own; OK opens it like a click.
+                return isTV ? <TVFocusable inline onEnterPress={() => window.open('https://github.com/slicknsliding/slicksync/releases', '_blank', 'noopener,noreferrer')}>{link}</TVFocusable> : link;
+              })()}
             </p>
           </Card>
         </PageSection>
       </div>
       </div>
-    </>
+    </Wrapper>
   );
 }

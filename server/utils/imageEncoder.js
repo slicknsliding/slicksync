@@ -83,13 +83,36 @@ function webpDimensions(buf) {
   return null
 }
 
+// PNG: the IHDR chunk is always first.
+function pngDimensions(buf) {
+  if (buf.length < 24) return null
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+
+// GIF: the logical screen, right after the signature.
+function gifDimensions(buf) {
+  if (buf.length < 10) return null
+  return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) }
+}
+
 function sourceDimensions(buf) {
   const fmt = sniffFormat(buf)
   try {
     if (fmt === 'jpeg') return jpegDimensions(buf)
     if (fmt === 'webp') return webpDimensions(buf)
+    if (fmt === 'png') return pngDimensions(buf)
+    if (fmt === 'gif') return gifDimensions(buf)
   } catch { /* a malformed header just means "decode it properly" */ }
   return null
+}
+
+// A few KB can declare a picture that takes gigabytes to decode, so nothing is
+// decoded until its header says it is a sane size. 40 MP is far past any poster
+// or profile picture. One whose size can't be read is refused the same way.
+const MAX_SOURCE_PIXELS = 40 * 1000 * 1000
+function decodableSize(buf) {
+  const dims = sourceDimensions(buf)
+  return !!dims && dims.width > 0 && dims.height > 0 && dims.width * dims.height <= MAX_SOURCE_PIXELS
 }
 
 /**
@@ -117,4 +140,5 @@ async function encode(buf, { w, format }) {
   return { buf: await img.getBuffer('image/jpeg', { quality: 80 }), format: 'jpeg' }
 }
 
-module.exports = { getEncoder, sniffFormat, jpegDimensions, webpDimensions, sourceDimensions, encode }
+module.exports = {
+  decodableSize, getEncoder, sniffFormat, jpegDimensions, webpDimensions, sourceDimensions, encode }

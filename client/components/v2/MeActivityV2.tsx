@@ -7,7 +7,6 @@
 
 import type { ReactNode } from 'react';
 import { ClockIcon, FilmIcon, MagnifyingGlassIcon, TvIcon } from '@heroicons/react/24/outline';
-import { ViewModeToggle } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangePanel, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
 import type { PageArrange } from '@/lib/arrange';
@@ -46,7 +45,7 @@ function episodeOf(s: WatchSession): string | null {
 
 export function MeActivityV2({
   arrange, shown, nowPlaying, provider, profileLabel, numbers, charts, groups, empty,
-  search, onSearch, view, onView, onFilterByContent,
+  search, onSearch, view, onFilterByContent,
 }: {
   arrange: PageArrange;
   /** Keys the page offers, in default order. */
@@ -62,7 +61,6 @@ export function MeActivityV2({
   search: string;
   onSearch: (v: string) => void;
   view: 'grid' | 'list';
-  onView: (v: 'grid' | 'list') => void;
   onFilterByContent: (name: string) => void;
 }) {
   const count = groups.reduce((n, g) => n + g.sessions.length, 0);
@@ -98,6 +96,7 @@ export function MeActivityV2({
       <MePoster
         key={s.id}
         poster={s.poster}
+        titleId={s.itemId}
         name={s.itemName}
         type={s.itemType}
         line={[ep, !s.isSynthetic && s.durationSeconds > 0 ? duration(s.durationSeconds) : null, clock(new Date(s.startTime))].filter(Boolean).join(' · ')}
@@ -157,8 +156,6 @@ export function MeActivityV2({
                     style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                   />
                 </label>
-                <span className="flex-1 max-sm:hidden" />
-                <ViewModeToggle mode={view} onChange={onView} />
               </div>
               {groups.map((g) => (
                 <div key={g.dateKey} className="mb-5">

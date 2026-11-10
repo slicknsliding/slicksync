@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { InviteLayout } from '@/components/invite/InviteLayout';
 import { StatusCards } from '@/components/invite/StatusCard';
 import { StremioOAuthCard } from '@/components/invite/StremioOAuthCard';
@@ -12,6 +12,9 @@ import { inviteApi, InviteApiError } from '@/lib/invite-api';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { PubCard, PubField, PubButton, PubSeg } from '@/components/v2/PublicV2';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 /**
  * Invite state machine states
@@ -34,6 +37,11 @@ type InviteState =
 export default function InviteRequestPage() {
   const params = useParams();
   const inviteCode = params?.inviteCode as string;
+
+  // TV remote: the page has no top bar, so the name field is where focus
+  // lands. OK on it opens the TV keyboard; OK on a button does what a click does.
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
 
   // Core state
   const [state, setState] = useState<InviteState>('loading');
@@ -474,6 +482,8 @@ export default function InviteRequestPage() {
               {/* Step 1: your name */}
               <div className="space-y-4">
                 <PubField label="Your name" htmlFor="invite-username">
+                  {(() => {
+                    const nameField = (
                   <input
                     id="invite-username"
                     type="text"
@@ -498,6 +508,9 @@ export default function InviteRequestPage() {
                       color: 'var(--color-text)',
                     }}
                   />
+                    );
+                    return isTV ? <TVFocusable onEnterPress={() => document.getElementById('invite-username')?.focus()}>{nameField}</TVFocusable> : nameField;
+                  })()}
                   {usernameError && (
                     <motion.p
                       className="mt-2 text-sm"
@@ -512,9 +525,14 @@ export default function InviteRequestPage() {
 
                 {/* Step 2: sign in with your app (shown after the name is confirmed) */}
                 {!usernameConfirmed ? (
-                  <PubButton primary onClick={handleConfirmUsername} disabled={!username.trim() || isSubmitting}>
-                    Continue
-                  </PubButton>
+                  (() => {
+                    const continueButton = (
+                      <PubButton primary onClick={handleConfirmUsername} disabled={!username.trim() || isSubmitting}>
+                        Continue
+                      </PubButton>
+                    );
+                    return isTV ? <TVFocusable onEnterPress={() => { if (username.trim() && !isSubmitting) handleConfirmUsername(); }}>{continueButton}</TVFocusable> : continueButton;
+                  })()
                 ) : (
                   <motion.div
                     className="space-y-4"
@@ -536,21 +554,35 @@ export default function InviteRequestPage() {
                     )}
                     {/* Either provider can join, and the one picked here
                         decides what kind of user the invite creates. */}
-                    <PubSeg
-                      value={joinProvider}
-                      onChange={setJoinProvider}
-                      options={[{ value: 'stremio', label: 'Stremio' }, { value: 'nuvio', label: 'Nuvio' }, { value: 'jellyfin', label: 'Jellyfin' }]}
-                    />
+                    {(() => {
+                      const providers = ['stremio', 'nuvio', 'jellyfin'] as const;
+                      const providerSeg = (
+                        <PubSeg
+                          value={joinProvider}
+                          onChange={setJoinProvider}
+                          options={[{ value: 'stremio', label: 'Stremio' }, { value: 'nuvio', label: 'Nuvio' }, { value: 'jellyfin', label: 'Jellyfin' }]}
+                        />
+                      );
+                      // One stop on the remote: OK moves to the next app.
+                      return isTV
+                        ? <TVFocusable onEnterPress={() => setJoinProvider(providers[(providers.indexOf(joinProvider) + 1) % providers.length])}>{providerSeg}</TVFocusable>
+                        : providerSeg;
+                    })()}
                     <p className="text-xs text-center -mt-2" style={{ color: 'var(--color-text-subtle)' }}>Jellyfin also covers AIOStreams and AIOMetadata.</p>
 
                     {joinProvider === 'jellyfin' ? (
                       <div className="space-y-3">
                         {jellyfinOffer && (
-                          <PubSeg
-                            value={jellyfinMode}
-                            onChange={setJellyfinMode}
-                            options={[{ value: 'new', label: 'Make me an account' }, { value: 'existing', label: 'I already have one' }]}
-                          />
+                          (() => {
+                            const modeSeg = (
+                              <PubSeg
+                                value={jellyfinMode}
+                                onChange={setJellyfinMode}
+                                options={[{ value: 'new', label: 'Make me an account' }, { value: 'existing', label: 'I already have one' }]}
+                              />
+                            );
+                            return isTV ? <TVFocusable onEnterPress={() => setJellyfinMode(jellyfinMode === 'new' ? 'existing' : 'new')}>{modeSeg}</TVFocusable> : modeSeg;
+                          })()
                         )}
                         {jellyfinOffer && jellyfinMode === 'new' ? (
                           <NewJellyfinAccountForm server={jellyfinOffer.server} username={username.trim()} onSubmit={handleNewJellyfinAccount} />
@@ -612,11 +644,13 @@ export default function InviteRequestPage() {
   };
 
   return (
-    <InviteLayout
-      showNewRequestButton={showNewRequestButton}
-      onNewRequest={handleNewRequest}
-    >
-      {renderContent()}
-    </InviteLayout>
+    <Wrapper>
+      <InviteLayout
+        showNewRequestButton={showNewRequestButton}
+        onNewRequest={handleNewRequest}
+      >
+        {renderContent()}
+      </InviteLayout>
+    </Wrapper>
   );
 }

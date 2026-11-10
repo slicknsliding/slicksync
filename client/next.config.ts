@@ -73,6 +73,11 @@ const nextConfig: NextConfig = {
   // backend request rather than the other way round.
   experimental: {
     proxyTimeout: 60_000,
+    // Next hands the backend only the first 10 MB of a request by default, so
+    // a bigger upload hung or came back as a bare 500 before the backend could
+    // answer. Just above the largest upload it accepts (50 MB), so it is the
+    // backend that says a file is too big.
+    proxyClientMaxBodySize: '55mb',
   },
   env: {
     NEXT_PUBLIC_INSTANCE_TYPE: process.env.INSTANCE || 'private',
@@ -160,6 +165,21 @@ const nextConfig: NextConfig = {
       {
         source: '/invite/delete-user',
         destination: 'http://localhost:4000/invite/delete-user',
+      },
+    ];
+  },
+  // Nothing legitimately frames the app (it only embeds, never is embedded),
+  // so no page may be shown inside another site.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
       },
     ];
   },

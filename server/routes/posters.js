@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 
 // RatingPosterDB (RPDB) poster proxy. RPDB's whole design is a hotlinked
 // image URL with the API key embedded in the path - there's no way around
@@ -36,7 +37,25 @@ module.exports = ({ prisma, getAccountId }) => {
     const key = await resolveRpdbKey(req);
     if (!key) return res.status(404).json({ error: 'RPDB not configured' });
 
-    res.redirect(302, `https://api.ratingposterdb.com/${encodeURIComponent(key)}/imdb/poster-default/${imdbId}.jpg?fallback=true`);
+    // Fetched here and sent as a picture: a redirect would put the key in
+    // front of every viewer, and on a shared instance the key can be the
+    // operator's own. Kept in the poster cache like any other poster.
+    const src = `https://api.ratingposterdb.com/${encodeURIComponent(key)}/imdb/poster-default/${imdbId}.jpg?fallback=true`;
+    try {
+      const core = require('../utils/imageCacheCore');
+      const w = core.snapWidth(req.query.w);
+      const encoder = await core.getEncoder();
+      const wantsWebp = encoder.webp && /image\/webp/i.test(String(req.get('accept') || ''));
+      res.setHeader('Vary', 'Accept');
+      const hit = (await core.findCached(src, w, wantsWebp)) || (await core.produce(src, { w, wantsWebp }));
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Content-Type', hit.contentType);
+      if (hit.buf) return res.end(hit.buf);
+      return fs.createReadStream(hit.path).pipe(res);
+    } catch {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(404).json({ error: 'Poster not available' });
+    }
   });
 
   return router;

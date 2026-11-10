@@ -59,6 +59,9 @@ export function useIsTV(): boolean {
   const [isTV, setIsTV] = useState(() => known ?? false);
   useEffect(() => {
     known = detectTV();
+    // Lets CSS tell a TV apart (globals.css .hover-reveal): some TV browsers
+    // report a mouse, so (hover: hover) alone can't.
+    if (known) document.documentElement.setAttribute('data-tv', '');
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the browser once hydrated is the point
     setIsTV(known);
   }, []);

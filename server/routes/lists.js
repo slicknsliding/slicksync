@@ -22,6 +22,17 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
   // ever shape a caller's own list (isOwner would always be true there
   // anyway). GET / is the only place that shapes a possibly-not-owned
   // (shared) list, so it's the only caller that needs to pass it.
+  // The source URL can carry the importer's own API key (?key=...), and a
+  // shared catalog is listed to every account on the instance - so only the
+  // owner sees it, and the key parameter is removed even then.
+  const publicSourceUrl = (url) => {
+    if (!url) return null;
+    try {
+      const u = new URL(url);
+      for (const k of ['key', 'apikey', 'api_key']) u.searchParams.delete(k);
+      return u.toString();
+    } catch { return null; }
+  };
   const shape = (list, viewerAccountId) => ({
     id: list.id,
     name: list.name,
@@ -29,7 +40,7 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
     items: parseItems(list.itemsJson),
     coverImageUrl: list.coverImageUrl || null,
     coverColorIndex: list.coverColorIndex ?? null,
-    importSourceUrl: list.importSourceUrl || null,
+    importSourceUrl: (viewerAccountId === undefined || list.accountId === viewerAccountId) ? publicSourceUrl(list.importSourceUrl) : null,
     autoRefresh: !!list.autoRefresh,
     autoRefreshFrequency: list.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily',
     lastAutoRefreshAt: list.lastAutoRefreshAt || null,
@@ -55,8 +66,39 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
     const name = body?.name;
     if (!id || !name) return null;
     if (type !== 'movie' && type !== 'series') return null;
-    return { id: String(id), type, name: String(name), poster: body.poster || null, year: body.year || null };
+    // Bounded so one request can't store an arbitrarily large blob per title.
+    const poster = typeof body.poster === 'string' && body.poster.length <= 2048 ? body.poster : null;
+    return { id: String(id).slice(0, 200), type, name: String(name).slice(0, 300), poster, year: body.year || null };
   };
+
+  // Edits to one list read its items, change them and write the whole blob
+  // back, so two overlapping requests lose one of the changes. Mutating
+  // requests for the same list run one after another (per account + list id,
+  // in this process). Creating/importing lists (a single POST segment) has no
+  // list to protect and is not queued.
+  const listQueues = new Map();
+  router.use('/:id', (req, res, next) => {
+    // req.path is what follows the id. A bare POST /:id is a create/import
+    // call (/import, /describe-preview...), not an edit of list ":id".
+    const rest = req.path.split('/').filter(Boolean);
+    if (req.method === 'GET' || req.method === 'HEAD' || (rest.length === 0 && req.method === 'POST')) return next();
+    const key = `${getAccountId(req) || 'default'}:${req.params.id}`;
+    const prev = listQueues.get(key) || Promise.resolve();
+    let release;
+    const mine = new Promise((resolve) => { release = resolve; });
+    const tail = prev.then(() => mine);
+    listQueues.set(key, tail);
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      release();
+      if (listQueues.get(key) === tail) listQueues.delete(key);
+    };
+    res.on('finish', finish);
+    res.on('close', finish);
+    prev.then(() => next());
+  });
 
   // GET /api/lists — this account's own lists, newest-updated first, plus
   // any OTHER account's catalogs shared with the whole instance (shared:

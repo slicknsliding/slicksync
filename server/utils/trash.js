@@ -426,6 +426,7 @@ async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
       const partner = await prisma.vaultEntry.findUnique({ where: { id: data.backupEntryId } }).catch(() => null)
       if (!partner) data.backupEntryId = null
     }
+    require('./vaultFields').sanitizeRestoredEntry(data)
     await prisma.vaultEntry.create({ data })
     return { kind: 'vault', label: item.label }
   }

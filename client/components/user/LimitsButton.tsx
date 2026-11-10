@@ -56,17 +56,18 @@ export function LimitsButton({ id, name, summary, size = 'sm', onPickGroup, onRe
     const at = place();
     if (at) setAnchor(at);
   };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); });
+  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     const onMove = () => { const at = place(); if (at) setAnchor(at); };
-    window.addEventListener('keydown', onKey);
+    // On the way down: the wrapper below stops keys on their way back up.
+    window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', onMove);
     window.addEventListener('scroll', onMove, true);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', onMove);
       window.removeEventListener('scroll', onMove, true);
     };
