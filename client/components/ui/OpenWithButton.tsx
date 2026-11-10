@@ -10,7 +10,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PlayIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { ContextMenu } from '@/components/ui/ContextMenu';
 import { OpenWithPicker } from '@/components/ui/OpenWithPicker';
+import { AppOpenNote } from '@/components/ui/AppOpenNote';
 import { toast } from '@/components/ui/Toast';
+import { useAppOpenCheck } from '@/lib/useAppOpenCheck';
 import { api } from '@/lib/api';
 import {
   availableApps, linksFor, rememberApp, rememberedApp, rememberedShortcut, type OpenTargets, type OpenWithAppId,
@@ -38,6 +40,7 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
   const [scSaved, setScSaved] = useState(0);
   const arrowRef = useRef<HTMLButtonElement>(null);
   const mainRef = useRef<HTMLButtonElement>(null);
+  const { watch, shown: noteShown, hide: hideNote } = useAppOpenCheck(isTV);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +55,8 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
   // This device's pick when it can open this title; otherwise the first that can.
   const current = apps.find((a) => a.id === chosen) || apps[0] || null;
   const links = current ? linksFor(current.id, targets, type) : [];
-  const go = (url: string) => { window.location.href = url; };
+  const go = (url: string) => { watch(url); window.location.href = url; };
+  const note = noteShown ? <AppOpenNote onClose={hideNote} isTV={isTV} /> : null;
   const openMenuAt = (el: HTMLElement | null, mode: 'apps' | 'which') => {
     const r = el?.getBoundingClientRect();
     setMenu({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80, mode });
@@ -82,9 +86,12 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
   if (isTV) {
     if (!links.length) return null;
     return (
-      <a href={links[0].url} tabIndex={-1} className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium" style={STYLE}>
-        <PlayIcon className="w-4 h-4" /><span>{label}</span>
-      </a>
+      <>
+        <a href={links[0].url} onClick={() => watch(links[0].url)} tabIndex={-1} className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium" style={STYLE}>
+          <PlayIcon className="w-4 h-4" /><span>{label}</span>
+        </a>
+        {note}
+      </>
     );
   }
 
@@ -144,6 +151,7 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
           )}
         </div>
       </ContextMenu>
+      {note}
     </>
   );
 }

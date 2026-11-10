@@ -6,13 +6,9 @@
 // and that an addon address is held to the install's rule.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
 const dns = require('node:dns').promises
 const jwt = require('jsonwebtoken')
 
-process.env.SHARES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'slicksync-shares-'))
 
 // A Stremio key is "key-for-<email>" here; the real call goes to Stremio.
 const stremio = require('../server/utils/stremio')
@@ -102,7 +98,6 @@ test.before(async () => {
 })
 test.after(() => {
   server.close()
-  fs.rmSync(process.env.SHARES_DIR, { recursive: true, force: true })
 })
 
 const session = (id, provider) => jwt.sign({ sub: id, provider }, SECRET, { expiresIn: '1h' })
@@ -127,12 +122,10 @@ const BY_ID_ROUTES = [
   ['GET', '/user-api-key-status'],
   ['GET', '/activity'],
   ['GET', '/export'],
-  ['GET', '/shares'],
-  ['GET', '/group-members'],
 ]
 const asking = (method, userId) => (method === 'GET' ? { query: { userId } } : { body: { userId } })
 
-test('a Stremio key opens none of the eight pages of a different person', async () => {
+test('a Stremio key opens none of the six pages of a different person', async () => {
   const before = JSON.stringify(data.user.rows.find((u) => u.id === 'sB'))
   // sA's own key, asking about sB - who is in the same household and whose id is
   // visible in the group list.
@@ -151,7 +144,6 @@ test('the same key still opens its own person', async () => {
   assert.equal(info.status, 200)
   assert.equal(info.body.id, 'sA')
   assert.equal((await call('GET', '/user-api-key-status', { key, query: { userId: 'sA' } })).status, 200)
-  assert.deepEqual((await call('GET', '/group-members', { key, query: { userId: 'sA' } })).body.members.map((m) => m.id).sort(), ['jA', 'jB', 'nA', 'sB'])
   assert.equal((await call('GET', '/export', { key, query: { userId: 'sA' } })).status, 200)
 })
 

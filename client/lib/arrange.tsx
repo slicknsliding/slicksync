@@ -621,6 +621,20 @@ export function useCwFirst() {
   return { first, setFirst };
 }
 
+/** Coming up: an episode that is out gets a tag in the card's corner (the default), or a label above the poster. */
+export function useOutNow() {
+  const { arrangement, update } = useArrangement();
+  const place: 'corner' | 'above' = arrangement.outNow === 'above' ? 'above' : 'corner';
+  const setPlace = useCallback((p: 'corner' | 'above') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev, outNow: 'above' };
+      if (p === 'corner') delete out.outNow;
+      return out;
+    });
+  }, [update]);
+  return { place, setPlace };
+}
+
 /** Where SlickSync opens for this account (Themes → Layout). '/' is the Dashboard. */
 /** Settings → Themes → Card backgrounds: the show's picture behind the words (the default), or plain. */
 export function useCardBackground() {

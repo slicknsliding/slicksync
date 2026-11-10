@@ -4,7 +4,7 @@
 // pages use, with their links and their account at its foot.
 
 import { usePathname } from 'next/navigation';
-import { HomeIcon, FilmIcon, ClockIcon, ShareIcon, PuzzlePieceIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
+import { HomeIcon, FilmIcon, ClockIcon, PuzzlePieceIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import { SidebarFrame } from '@/components/layout/Sidebar';
 import { PanelSwitcher } from '@/components/layout/PanelSwitcher';
 import { useUserAuth } from '@/lib/hooks/useUserAuth';
@@ -14,7 +14,6 @@ const ITEMS = [
   { name: 'Library', href: '/user/library', icon: FilmIcon },
   { name: 'Activity', href: '/user/activity', icon: ClockIcon },
   { name: 'Addons', href: '/user/addons', icon: PuzzlePieceIcon },
-  { name: 'Shares', href: '/user/shares', icon: ShareIcon },
   { name: 'Settings', href: '/user/settings', icon: Cog6ToothIcon },
 ];
 

@@ -4,11 +4,10 @@
 // first (a bar along each poster shows how far in), then what they've watched,
 // then what they've only saved. Search, Everything / Shows / Movies and Select
 // sit on one row; picking titles (Select) is how one or many are deleted, so
-// nothing the Classic page could do is lost. Grid or list stays their own
-// switch on this page. Sections can be moved, folded and hidden.
+// nothing the Classic page could do is lost. Grid or list is one choice in
+// Settings -> Page design. Sections can be moved, folded and hidden.
 
 import { ArrowTopRightOnSquareIcon, MagnifyingGlassIcon, TrashIcon, PlayIcon } from '@heroicons/react/24/outline';
-import { ViewModeToggle } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import { useBottomBarUp, useIsPhoneWidth } from '@/lib/pageHeader';
@@ -51,7 +50,7 @@ function lineOf(item: LibraryItem, watchTime: string | null, kind: string): stri
 }
 
 export function MeLibraryV2({
-  items, total, arrange, view, onView, search, onSearch, filter, onFilter,
+  items, total, arrange, view, search, onSearch, filter, onFilter,
   selecting, onSelecting, selected, onToggle, onSelectAll, onClear, onDeleteSelected, deleting, canDelete, onDeleteOne,
   linkOf, watchTimeOf, appName, openAppUrl, subtitle, provider,
 }: {
@@ -60,7 +59,6 @@ export function MeLibraryV2({
   total: number;
   arrange: PageArrange;
   view: 'grid' | 'list';
-  onView: (v: 'grid' | 'list') => void;
   search: string;
   onSearch: (v: string) => void;
   filter: LibraryFilter;
@@ -136,6 +134,7 @@ export function MeLibraryV2({
         <div key={it._id} className="relative min-w-0">
         <MePoster
           poster={it.poster}
+          titleId={it._id}
           name={it.name}
           type={it.type}
           line={lineOf(it, watchTimeOf(it), kind)}
@@ -184,14 +183,13 @@ export function MeLibraryV2({
         );
         const seg = <MeSeg value={filter} onChange={onFilter} options={[{ key: 'all', label: 'Everything' }, { key: 'series', label: 'Shows' }, { key: 'movie', label: 'Movies' }]} />;
         const selectBtn = <button type="button" className="v2-btn shrink-0" aria-pressed={selecting} onClick={() => { onSelecting(!selecting); if (selecting) onClear(); }}>{selecting ? 'Done' : 'Select'}</button>;
-        // Row 1: search and the grid / list switch. Row 2: the tabs, Select at the end.
+        // Row 1: search. Row 2: the tabs, Select at the end.
         // (There is nothing else to filter here, so no Filters button.)
         if (phone) {
           return (
             <>
               <div className="flex items-center gap-2 mb-2.5">
                 {searchBox}
-                <ViewModeToggle mode={view} onChange={onView} />
               </div>
               <div className="flex items-center gap-2 mb-2">
                 {seg}
@@ -207,7 +205,6 @@ export function MeLibraryV2({
             <span className="flex-1 max-sm:hidden" />
             {seg}
             {selectBtn}
-            <ViewModeToggle mode={view} onChange={onView} />
           </div>
         );
       })()}

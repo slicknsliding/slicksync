@@ -14,22 +14,18 @@ import {
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userActivity, WatchSession, UserActivityData } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
-import { Avatar, ViewModeToggle, Card } from '@/components/ui';
+import { Avatar, Card } from '@/components/ui';
 import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
-import dynamic from 'next/dynamic';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { providerTypeLabel } from '@/lib/providers';
-import { CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from '@/lib/chartTooltip';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeActivityV2 } from '@/components/v2/MeActivityV2';
 import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
+import { ThisWeekPanel } from '@/components/user/ThisWeekPanel';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
-
-// recharts is large: it loads after the page, inside the chart's fixed-height box.
-const WatchTimeChartBody = dynamic(() => import('@/components/user/ActivityCharts').then((m) => m.WatchTimeChartBody), { ssr: false, loading: () => null });
-const ContentBreakdownChartBody = dynamic(() => import('@/components/user/ActivityCharts').then((m) => m.ContentBreakdownChartBody), { ssr: false, loading: () => null });
 
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
@@ -94,10 +90,6 @@ function formatDateHeader(dateKey: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// Memoized tooltip style
-const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
-const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
-
 // Stat Card Component
 function StatCard({
   label,
@@ -143,103 +135,6 @@ function StatCard({
     </motion.div>
   );
 }
-
-// Watch Time Chart Component
-const WatchTimeChart = memo(function WatchTimeChart({
-  data,
-}: {
-  data: Array<{ date: string; minutes: number }>;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.2 }}
-      className="p-6 rounded-xl"
-      style={{
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-surface-border)',
-      }}
-    >
-      <div className="flex items-center justify-between mb-6">
-        <h3
-          className="text-lg font-semibold"
-          style={{ color: 'var(--color-text)' }}
-        >
-          Watch Time
-        </h3>
-        <div
-          className="text-sm px-3 py-1 rounded-lg"
-          style={{
-            background: 'var(--color-surface-elevated)',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          Last 7 Days
-        </div>
-      </div>
-
-      <div className="h-64">
-        <WatchTimeChartBody data={data} formatDuration={formatDuration} />
-      </div>
-    </motion.div>
-  );
-});
-
-// Content Breakdown Chart Component
-const ContentBreakdownChart = memo(function ContentBreakdownChart({
-  data,
-}: {
-  data: Array<{ date: string; movies: number; series: number }>;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.25 }}
-      className="p-6 rounded-xl"
-      style={{
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-surface-border)',
-      }}
-    >
-      <div className="flex items-center justify-between mb-6">
-        <h3
-          className="text-lg font-semibold"
-          style={{ color: 'var(--color-text)' }}
-        >
-          Content Breakdown
-        </h3>
-      </div>
-
-      <div className="h-64">
-        <ContentBreakdownChartBody data={data} />
-      </div>
-
-      {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-surface-border)' }}>
-        <div className="flex items-center gap-2">
-          <span
-            className="w-3 h-3 rounded-full"
-            style={{ background: 'var(--color-primary)' }}
-          />
-          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Movies
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="w-3 h-3 rounded-full"
-            style={{ background: 'var(--color-secondary)' }}
-          />
-          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Series
-          </span>
-        </div>
-      </div>
-    </motion.div>
-  );
-});
 
 // Activity Card Component - matches admin design
 const ActivityCard = memo(function ActivityCard({
@@ -482,26 +377,10 @@ export default function UserActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Grid or list is one choice in Settings -> Page design; no switch here.
+  const { viewMode } = useDefaultViewMode();
   const [nowTick, setNowTick] = useState(Date.now());
   const searchRef = useRef<HTMLInputElement>(null);
-
-  // Load view mode preference
-  useEffect(() => {
-    const saved = localStorage.getItem('user-activity-view-mode');
-    if (saved === 'list' || saved === 'grid') {
-      setViewMode(saved);
-    }
-    setIsLoaded(true);
-  }, []);
-
-  // Save view mode preference
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('user-activity-view-mode', viewMode);
-    }
-  }, [viewMode, isLoaded]);
 
   // Fetch activity data with polling
   useEffect(() => {
@@ -649,12 +528,7 @@ export default function UserActivityPage() {
               { label: 'Shows', value: String(stats.seriesCount || 0) },
               { label: 'Today', value: formatHours((stats.watchTimeTodaySeconds || 0) / 3600), sub: `${stats.watchedTodayCount || 0} ${(stats.watchedTodayCount || 0) === 1 ? 'title' : 'titles'}` },
             ] : null}
-            charts={(
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <WatchTimeChart data={chartData} />
-                <ContentBreakdownChart data={chartData} />
-              </div>
-            )}
+            charts={<ThisWeekPanel days={chartData} embedded />}
             groups={groupedSessions}
             empty={(
               <div className="text-center py-12 rounded-xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
@@ -668,7 +542,6 @@ export default function UserActivityPage() {
             search={searchQuery}
             onSearch={setSearchQuery}
             view={viewMode}
-            onView={setViewMode}
             onFilterByContent={handleFilterByContent}
           />
         )}
@@ -785,10 +658,9 @@ export default function UserActivityPage() {
                                             </Card>            </motion.div>
           )}
 
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <WatchTimeChart data={chartData} />
-            <ContentBreakdownChart data={chartData} />
+          {/* This week */}
+          <div className="mb-8">
+            <ThisWeekPanel days={chartData} />
           </div>
 
           {/* Search and View Toggle */}
@@ -822,16 +694,6 @@ export default function UserActivityPage() {
               );
               return isTV ? <TVFocusable className="flex-1" style={{ maxWidth: '384px' }} onEnterPress={() => searchRef.current?.focus()}>{searchBox}</TVFocusable> : searchBox;
             })()}
-            {isTV ? (
-              <TVFocusable onEnterPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}>
-                <ViewModeToggle mode={viewMode} onChange={(mode) => setViewMode(mode)} />
-              </TVFocusable>
-            ) : (
-              <ViewModeToggle
-                mode={viewMode}
-                onChange={(mode) => setViewMode(mode)}
-              />
-            )}
           </motion.div>
 
           {/* Activity Feed - Grouped by Date */}

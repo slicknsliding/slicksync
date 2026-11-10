@@ -114,27 +114,6 @@ export interface StremioAddon {
   };
 }
 
-export interface Share {
-  id: string;
-  itemId: string;
-  itemName: string;
-  itemType: 'movie' | 'series';
-  poster?: string;
-  fromUserId: string;
-  fromUsername?: string;
-  toUserId: string;
-  toUsername?: string;
-  createdAt: string;
-  viewedAt?: string;
-}
-
-export interface GroupMember {
-  id: string;
-  username: string;
-  email: string;
-  colorIndex?: number;
-}
-
 // OAuth API
 export const userOAuth = {
   /**
@@ -840,53 +819,6 @@ export const userAddons = {
   },
 };
 
-// Shares API
-export const userShares = {
-  /**
-   * Get user's shares (sent and received)
-   */
-  async getShares(userId: string, authKey?: string): Promise<{ sent: Share[]; received: Share[] }> {
-    const params = new URLSearchParams({ userId });
-    return request(`/public-library/shares?${params.toString()}`, { authKey });
-  },
-
-  /**
-   * Get group members for sharing
-   */
-  async getGroupMembers(userId: string, authKey?: string): Promise<{ members: GroupMember[] }> {
-    const params = new URLSearchParams({ userId });
-    return request(`/public-library/group-members?${params.toString()}`, { authKey });
-  },
-
-  /**
-   * Share items with other users
-   */
-  async shareItems(
-    userId: string,
-    items: Array<{ itemId: string; itemName?: string; itemType?: string; poster?: string }>,
-    targetUserIds: string[]
-  ): Promise<{ success: boolean; shareCount: number }> {
-    return request(`/users/${userId}/shares`, {
-      method: 'POST',
-      body: JSON.stringify({ items, targetUserIds }),
-    });
-  },
-
-  /**
-   * Remove a share
-   */
-  async removeShare(userId: string, shareId: string): Promise<{ success: boolean }> {
-    return request(`/users/${userId}/shares/${shareId}`, { method: 'DELETE' });
-  },
-
-  /**
-   * Mark a share as viewed
-   */
-  async markAsViewed(userId: string, shareId: string): Promise<{ success: boolean }> {
-    return request(`/users/${userId}/shares/${shareId}/viewed`, { method: 'PUT' });
-  },
-};
-
 /**
  * Notifications on the person's own devices (PersonPushSubscription on the
  * server) - off until they turn them on, and never the admin's devices.
@@ -1075,7 +1007,6 @@ export const userApi = {
   library: userLibrary,
   activity: userActivity,
   addons: userAddons,
-  shares: userShares,
   sync: userSync,
   export: userExport,
 };

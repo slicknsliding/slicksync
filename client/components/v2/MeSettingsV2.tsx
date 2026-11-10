@@ -9,8 +9,9 @@ import { useState, type ReactNode } from 'react';
 import { ArrowPathIcon, BeakerIcon, ClipboardDocumentIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { ToggleSwitch } from '@/components/ui';
 import { ArrangeButton, ArrangeBar, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
-import { useCwFirst, useCwProgress, useCwTime, useCwWho, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { useCwFirst, useOutNow, useCwProgress, useCwTime, useCwWho, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageDesign, type PageArrange } from '@/lib/arrange';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import { MeHead, MeRow, MeRows, MeSeg } from './MeBits';
 import { V2Button } from './V2Bits';
 
@@ -53,9 +54,11 @@ export function MeSettingsV2(p: SettingsV2Props) {
   const { where: cwWho, setWhere: setCwWho } = useCwWho();
   const { where: cwProgress, setWhere: setCwProgress } = useCwProgress();
   const { first: cwFirst, setFirst: setCwFirst } = useCwFirst();
+  const { place: outNow, setPlace: setOutNow } = useOutNow();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const { shown: arrows, setShown: setArrows } = useFoldArrows();
   const { on: nameTap, setOn: setNameTap } = useNameFolds();
+  const { viewMode, setViewMode, isPhone } = useDefaultViewMode();
   const [themesOpen, setThemesOpen] = useState(false);
 
   const section = (key: string): ReactNode => {
@@ -102,11 +105,17 @@ export function MeSettingsV2(p: SettingsV2Props) {
               <MeRow title="Continue Watching first card" line="The latest title: one wide banner, or the same size as the rest">
                 <MeSeg value={cwFirst} onChange={(f) => setCwFirst(f === 'wide' ? 'wide' : 'same')} options={[{ key: 'wide', label: 'Wide' }, { key: 'same', label: 'Same size' }]} />
               </MeRow>
+              <MeRow title="Out now" line="An episode that is out: a tag in the card’s corner, or a label above the poster">
+                <MeSeg value={outNow} onChange={(p) => setOutNow(p === 'above' ? 'above' : 'corner')} options={[{ key: 'corner', label: 'Corner' }, { key: 'above', label: 'Above the poster' }]} />
+              </MeRow>
               <MeRow title="Fold arrows" line="The arrow beside each section’s name. Hidden by default; they always show while arranging">
                 <MeSeg value={arrows} onChange={(v) => setArrows(v === 'hide' ? 'hide' : 'show')} options={[{ key: 'show', label: 'Show' }, { key: 'hide', label: 'Hide' }]} />
               </MeRow>
               <MeRow title="Tap a name to fold" line="Tapping a section’s name, its count or “folded” folds and unfolds it">
                 <MeSeg value={nameTap ? 'on' : 'off'} onChange={(v) => setNameTap(v === 'on')} options={[{ key: 'on', label: 'On' }, { key: 'off', label: 'Off' }]} />
+              </MeRow>
+              <MeRow title="Grid or list" line={isPhone ? 'How Activity and Library show your titles. Phones always use grid.' : 'How Activity and Library show your titles. Starts on grid.'}>
+                <MeSeg value={viewMode} onChange={(v) => { if (!(isPhone && v === 'list')) setViewMode(v === 'list' ? 'list' : 'grid'); }} options={[{ key: 'grid', label: 'Grid' }, { key: 'list', label: 'List' }]} />
               </MeRow>
               <MeRow title="Page design" line="Classic, or v2’s grouped sections">
                 <MeSeg value={design} onChange={(d) => setDesign(d === 'v2' ? 'v2' : 'classic')} options={[{ key: 'classic', label: 'Classic' }, { key: 'v2', label: 'v2' }]} />

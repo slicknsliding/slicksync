@@ -18,7 +18,26 @@ const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateU
  */
 module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary, JWT_SECRET }) => {
   const { findLatestEpisode } = require('../utils/libraryHelpers')
-  const { getShares, getGroupMembers } = require('../utils/sharesManager')
+  // The other people in a person's groups (the caller left out)
+  async function getGroupMembers(prisma, accountId, userId) {
+    try {
+      const groups = await prisma.group.findMany({ where: { accountId }, select: { id: true, userIds: true } })
+      const ids = new Set()
+      for (const group of groups) {
+        if (!group.userIds) continue
+        const userIds = JSON.parse(group.userIds)
+        if (userIds.includes(userId)) userIds.forEach(id => { if (id !== userId) ids.add(id) })
+      }
+      if (ids.size === 0) return []
+      return await prisma.user.findMany({
+        where: { id: { in: Array.from(ids) }, accountId, isActive: true },
+        select: { id: true, username: true, email: true, colorIndex: true, activityVisibility: true }
+      })
+    } catch (error) {
+      console.error(`Failed to get group members for user ${userId}:`, error.message)
+      return []
+    }
+  }
   const { getAccountId } = require('../utils/helpers')
   const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId })
   const { imageUpload } = require('../utils/helpers/multer')
@@ -1421,7 +1440,6 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         }
         
         // Check if requesting user is in the same group and target user is public
-        const { getGroupMembers } = require('../utils/sharesManager');
         const groupMembers = await getGroupMembers(prisma, user.accountId, requestingUserId);
         const requestingUserInGroup = groupMembers.some(m => m.id === userId);
         
@@ -2623,9 +2641,23 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           accountId: user.accountId || DEFAULT_ACCOUNT_ID
         },
         orderBy: { date: 'desc' },
-        take: Math.min(Math.max(parseInt(limit) || 100, 1), 500)
+        // Watch time is stored a minute or two at a time, so one sitting is
+        // many rows; enough are read for `limit` viewings, not `limit` slices.
+        take: 20000
       });
       console.log('Watch activities found:', watchActivities.length);
+      // One viewing per title (episode, for a show) per day, its time added up.
+      // Each slice used to be its own card and its own "play": a film watched
+      // once showed 27 times.
+      const viewingLimit = Math.min(Math.max(parseInt(limit) || 100, 1), 500)
+      const viewingsByKey = new Map()
+      for (const a of watchActivities) {
+        const key = `${new Date(a.date).toISOString()}|${a.itemId}|${a.videoId || ''}`
+        const seen = viewingsByKey.get(key)
+        if (seen) seen.watchTimeSeconds = (seen.watchTimeSeconds || 0) + (a.watchTimeSeconds || 0)
+        else viewingsByKey.set(key, { ...a })
+      }
+      const viewings = [...viewingsByKey.values()]
 
       // Load library cache to get item names and posters
       console.log('Loading library cache for account:', user.accountId);
@@ -2682,7 +2714,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       });
 
       // Transform watch activity into activity items (like old slicksync)
-      const activityItems = watchActivities.map(activity => {
+      const activityItems = viewings.slice(0, viewingLimit).map(activity => {
         // Get item details from library cache
         const libraryItem = libraryItemMap.get(activity.itemId);
         const { season, episode } = extractSeasonEpisodeFromId(activity.itemId);
@@ -2770,7 +2802,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const seriesCount = [...uniqueItems.values()].filter(t => t === 'series').length;
 
       // Items watched this week
-      const recentItemsCount = watchActivities
+      const recentItemsCount = viewings
         .filter(a => new Date(a.date) >= oneWeekAgo)
         .length;
 
@@ -2783,7 +2815,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         const dayEnd = new Date(date);
         dayEnd.setHours(23, 59, 59, 999);
 
-        const dayActivities = watchActivities.filter(a => {
+        const dayActivities = viewings.filter(a => {
           const activityDate = new Date(a.date);
           return activityDate >= dayStart && activityDate <= dayEnd;
         });
@@ -2809,7 +2841,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       // === ADDITIONAL STATS FOR USER HOME ===
 
       // Watched today count
-      const watchedTodayCount = watchActivities
+      const watchedTodayCount = viewings
         .filter(a => new Date(a.date) >= todayStart)
         .length;
 
@@ -2872,7 +2904,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       // Most watched item
       const itemCounts = new Map();
-      watchActivities.forEach(a => {
+      viewings.forEach(a => {
         const key = a.itemId;
         const libraryItem = libraryItemMap.get(a.itemId);
         if (!itemCounts.has(key)) {
@@ -2907,7 +2939,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const bingeWatches = [];
       const seriesActivitiesByDay = new Map();
       
-      watchActivities.filter(a => a.itemType === 'series').forEach(a => {
+      viewings.filter(a => a.itemType === 'series').forEach(a => {
         const dateKey = new Date(a.date).toISOString().split('T')[0];
         const seriesKey = `${dateKey}:${a.itemId}`;
         const libraryItem = libraryItemMap.get(a.itemId);
@@ -3097,7 +3129,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           moviesCount,
           seriesCount,
           recentItemsCount,
-          totalSessions: watchActivities.length,
+          totalSessions: viewings.length,
           currentStreak,
           longestStreak,
           avgWatchTimeSeconds,
@@ -3418,74 +3450,6 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     } catch (error) {
       console.error('Error checking at-risk status:', error);
       res.status(500).json({ error: 'Failed to check status', message: publicMessage(error, 'Failed to check status') });
-    }
-  });
-
-  // Public endpoint: Get user shares
-  router.get('/shares', async (req, res) => {
-    try {
-      const { userId } = req.query;
-      const authKey = getAuthKey(req);
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
-
-      // Get user
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
-      });
-
-      if (!user || !user.isActive) {
-        return res.status(404).json({ error: 'User not found or inactive' });
-      }
-
-      try {
-        await verifyProviderIdentity(user, authKey, req);
-      } catch (e) {
-        return res.status(401).json({ error: publicMessage(e, 'Something went wrong') });
-      }
-
-      const shares = getShares(user.accountId, userId);
-      res.json(shares);
-    } catch (error) {
-      console.error(`Failed to get shares for user ${req.query.userId}:`, error);
-      res.status(500).json({ error: 'Failed to get shares', message: publicMessage(error, 'Failed to get shares') });
-    }
-  });
-
-  // Public endpoint: Get user group members
-  router.get('/group-members', async (req, res) => {
-    try {
-      const { userId } = req.query;
-      const authKey = getAuthKey(req);
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
-
-      // Get user
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
-      });
-
-      if (!user || !user.isActive) {
-        return res.status(404).json({ error: 'User not found or inactive' });
-      }
-
-      try {
-        await verifyProviderIdentity(user, authKey, req);
-      } catch (e) {
-        return res.status(401).json({ error: publicMessage(e, 'Something went wrong') });
-      }
-
-      const groupMembers = await getGroupMembers(prisma, user.accountId, userId);
-      res.json({ members: groupMembers });
-    } catch (error) {
-      console.error(`Failed to get group members for user ${req.query.userId}:`, error);
-      res.status(500).json({ error: 'Failed to get group members', message: publicMessage(error, 'Failed to get group members') });
     }
   });
 

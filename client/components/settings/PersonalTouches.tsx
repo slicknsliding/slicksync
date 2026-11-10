@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCardBackground, useCwFirst, useCwProgress, useCwTime, useCwWho, useDensity, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCardBackground, useCwFirst, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -21,6 +21,7 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
   const { where: cwWho, setWhere: setCwWho } = useCwWho();
   const { where: cwProgress, setWhere: setCwProgress } = useCwProgress();
   const { first: cwFirst, setFirst: setCwFirst } = useCwFirst();
+  const { place: outNow, setPlace: setOutNow } = useOutNow();
   const { bg: cardBg, setBg: setCardBg } = useCardBackground();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const { shown: arrows, setShown: setArrows } = useFoldArrows();
@@ -63,6 +64,11 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           title="Continue Watching first card"
           line="The latest title: one wide banner, or the same size as the rest"
           control={<V2Seg<'wide' | 'same'> label="Continue Watching first card" value={cwFirst} options={[{ id: 'wide' as const, label: 'Wide' }, { id: 'same' as const, label: 'Same size' }]} onChange={setCwFirst} />}
+        />
+        <V2SetRow
+          title="Out now"
+          line="An episode that is out: a tag in the card’s corner, or a label above the poster"
+          control={<V2Seg<'corner' | 'above'> label="Out now" value={outNow} options={[{ id: 'corner' as const, label: 'Corner' }, { id: 'above' as const, label: 'Above the poster' }]} onChange={setOutNow} />}
         />
         <V2SetRow
           title="Fold arrows"
@@ -198,6 +204,19 @@ export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
           {(['wide', 'same'] as const).map((w) => (
             <button key={w} type="button" role="radio" aria-checked={cwFirst === w} className={cwFirst === w ? 'on' : ''} onClick={() => setCwFirst(w)}>
               {w === 'wide' ? 'Wide' : 'Same size'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Out now</p>
+          <p className="text-xs text-muted">An episode that is out: a tag in the card’s corner, or a label above the poster</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Out now">
+          {(['corner', 'above'] as const).map((w) => (
+            <button key={w} type="button" role="radio" aria-checked={outNow === w} className={outNow === w ? 'on' : ''} onClick={() => setOutNow(w)}>
+              {w === 'corner' ? 'Corner' : 'Above the poster'}
             </button>
           ))}
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-// Pieces a person's own v2 pages (Library, Activity, Addons, Shares, Settings)
+// Pieces a person's own v2 pages (Library, Activity, Addons, Settings)
 // share: the header, the poster tile and its grid, the two-way switch, and the
 // short settings row.
 
@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { FilmIcon, TvIcon, CheckIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { V2MoreMenu, type V2MenuItem } from './V2Detail';
 import { PAGE_HEADER_CSS, useIconifyActions, usePageHeader } from '@/lib/pageHeader';
+import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 
 /** The page's name, one line under it, and its buttons (the obvious one first, the rest in ⋯). */
 export function MeHead({ title, sub, actions, more }: {
@@ -89,8 +90,10 @@ export function MeSeg<T extends string>({ value, onChange, options }: {
 export const POSTER_GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 min-[1700px]:grid-cols-9 min-[2300px]:grid-cols-11 min-[3000px]:grid-cols-13 gap-3';
 
 /** One poster with its title and a line under it; a bar along the foot shows how far in. */
-export function MePoster({ poster, name, type, line, progress, selected, selecting, href, onSelect, badge }: {
+export function MePoster({ poster, titleId, name, type, line, progress, selected, selecting, href, onSelect, badge }: {
   poster?: string | null;
+  /** The title's id: with an IMDb id, a missing or broken poster falls back to the one looked up by that id. */
+  titleId?: string | null;
   name: string;
   type?: string;
   line?: ReactNode;
@@ -104,15 +107,16 @@ export function MePoster({ poster, name, type, line, progress, selected, selecti
   onSelect?: () => void;
   badge?: ReactNode;
 }) {
-  const [bad, setBad] = useState(false);
+  const imdb = /^tt\d+/.exec(titleId || '')?.[0];
+  const { url: art0, onError } = useArtworkFallback([poster, imdb ? `https://images.metahub.space/poster/medium/${imdb}/img` : null]);
   const art = (
     <span
       className="relative block aspect-[2/3] rounded-[10px] overflow-hidden"
       style={{ background: 'var(--color-surface-elevated)', outline: selected ? '2px solid var(--color-primary)' : undefined, outlineOffset: selected ? 2 : undefined }}
     >
-      {poster && !bad ? (
+      {art0 ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={poster} alt="" className="w-full h-full object-cover" onError={() => setBad(true)} />
+        <img src={art0} alt="" className="w-full h-full object-cover" onError={onError} />
       ) : (
         <span className="w-full h-full flex items-center justify-center">
           {type === 'movie' ? <FilmIcon className="w-9 h-9 text-subtle" /> : <TvIcon className="w-9 h-9 text-subtle" />}

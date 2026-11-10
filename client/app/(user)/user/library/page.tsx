@@ -9,16 +9,15 @@ import {
   TrashIcon,
   PlayIcon,
   ClockIcon,
-  Squares2X2Icon,
-  ListBulletIcon,
   CheckIcon,
 } from '@heroicons/react/24/outline';
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userLibrary, LibraryItem } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
-import { ViewModeToggle } from '@/components/ui';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { MeLibraryV2, LIBRARY_SECTIONS, type LibraryFilter } from '@/components/v2/MeLibraryV2';
 import { providerTypeLabel } from '@/lib/providers';
@@ -27,8 +26,6 @@ import { AnchoredConfirm, libraryDeleteLine } from '@/components/ui/AnchoredConf
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
-
-type ViewMode = 'grid' | 'list';
 
 // Format watch time from milliseconds to human-readable string
 function formatWatchTime(ms: number | undefined | null): string | null {
@@ -44,6 +41,12 @@ function formatWatchTime(ms: number | undefined | null): string | null {
     return `${minutes}m`;
   }
   return null;
+}
+
+// The poster the library gave, then the same title's poster by its IMDb id.
+function posterCandidates(item: LibraryItem): string[] {
+  const imdbId = /^tt\d+$/.test(item._id) ? item._id : null;
+  return [item.poster, imdbId ? `https://images.metahub.space/poster/medium/${imdbId}/img` : null].filter((u): u is string => !!u);
 }
 
 // Card item component
@@ -67,7 +70,7 @@ interface LibraryCardItemProps {
 }
 
 function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime, appName, deleteLine, isTV }: LibraryCardItemProps) {
-  const [imageError, setImageError] = useState(false);
+  const { url: poster, onError: onPosterError } = useArtworkFallback(posterCandidates(item));
   const menuKey = `library-more-${item._id}`;
 
   // The ⋯ on every poster, always showing (a hover-only bin could not be
@@ -85,13 +88,13 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
       <div
         className={`relative aspect-[2/3] rounded-xl overflow-hidden shadow-xl ${isSelected ? 'bd3-sel' : 'bd-ok'}`}
       >
-        {item.poster && !imageError ? (
+        {poster ? (
           <>
             <img
-              src={item.poster}
+              src={poster}
               alt={item.name}
               className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
-              onError={() => setImageError(true)}
+              onError={onPosterError}
             />
             {/* Gradient overlay - subtle */}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />
@@ -218,7 +221,7 @@ interface LibraryListItemProps {
 }
 
 function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime, deleteLine, isTV }: LibraryListItemProps) {
-  const [imageError, setImageError] = useState(false);
+  const { url: poster, onError: onPosterError } = useArtworkFallback(posterCandidates(item));
   // The bin asks first, in a small question right under it.
   const [asking, setAsking] = useState(false);
   const binRef = useRef<HTMLButtonElement>(null);
@@ -228,12 +231,12 @@ function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, can
     <>
       {/* Poster */}
       <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 relative">
-        {item.poster && !imageError ? (
+        {poster ? (
           <img
-            src={item.poster}
+            src={poster}
             alt={item.name}
             className="w-full h-full object-cover"
-            onError={() => setImageError(true)}
+            onError={onPosterError}
           />
         ) : (
           <div
@@ -376,8 +379,8 @@ export default function UserLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Grid or list is one choice in Settings -> Page design; no switch here.
+  const { viewMode } = useDefaultViewMode();
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
@@ -393,22 +396,6 @@ export default function UserLibraryPage() {
   const [askMany, setAskMany] = useState(false);
   const deleteManyRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-
-  // Load view mode preference
-  useEffect(() => {
-    const saved = localStorage.getItem('user-library-view-mode');
-    if (saved === 'list' || saved === 'grid') {
-      setViewMode(saved);
-    }
-    setIsLoaded(true);
-  }, []);
-
-  // Save view mode preference
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('user-library-view-mode', viewMode);
-    }
-  }, [viewMode, isLoaded]);
 
   // Fetch library
   useEffect(() => {
@@ -553,7 +540,6 @@ export default function UserLibraryPage() {
           total={filteredLibrary.length}
           arrange={v2Arrange}
           view={viewMode}
-          onView={setViewMode}
           search={search}
           onSearch={setSearch}
           filter={typeFilter}
@@ -670,17 +656,6 @@ export default function UserLibraryPage() {
           </div>
         )}
 
-        {/* View toggle: a small two-icon pill at the right of the search */}
-        {isTV ? (
-          <TVFocusable onEnterPress={() => setViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}>
-            <ViewModeToggle mode={viewMode} onChange={(mode) => setViewMode(mode)} />
-          </TVFocusable>
-        ) : (
-          <ViewModeToggle
-            mode={viewMode}
-            onChange={(mode) => setViewMode(mode)}
-          />
-        )}
       </motion.div>
 
       {/* Select all / Deselect all - selection only exists to enable bulk

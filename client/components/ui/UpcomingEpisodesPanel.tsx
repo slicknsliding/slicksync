@@ -14,7 +14,7 @@ import { pointAnchor, HIDDEN_ANCHOR } from '@/lib/pointAnchor';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { posterUrl, cachedImageUrl } from '@/lib/posterUrl';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
-import { useCardBackground, type PageArrange } from '@/lib/arrange';
+import { useCardBackground, useOutNow, type PageArrange } from '@/lib/arrange';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { AnchoredPopup } from '@/components/user/AnchoredPopup';
 import { PlayIcon } from '@heroicons/react/24/solid';
@@ -177,6 +177,8 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
   followers?: UpcomingFollower[];
 }) {
   const plain = useCardBackground().bg === 'plain';
+  // Settings → Out now: a tag in the card's corner (the default), or a label above the poster.
+  const outNowAbove = useOutNow().place === 'above';
   const { rpdbEnabled } = usePersonalFeatures();
   const isTV = useIsTV();
   const imdb = imdbOf(item.showId);
@@ -236,6 +238,9 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
         <img src={cachedImageUrl(backdrop, 500) || backdrop} onError={onError} alt="" loading="lazy" decoding="async" className="art-fill absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ objectPosition: 'right center' }} />
       )}
       {onPicture && <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,12,20,.97) 0%, rgba(10,12,20,.88) 50%, rgba(10,12,20,.25) 100%)' }} />}
+      {aired && !outNowAbove && (
+        <span className="absolute top-0 left-0 z-[2] px-3 py-[3px] rounded-br-xl text-[11px] font-bold whitespace-nowrap pointer-events-none" style={{ background: 'var(--color-success, #16a34a)', color: '#fff' }}>Out now</span>
+      )}
       {/* Right-click or a long press opens the menu where it happened; only a
           remote, which has neither, needs the ... button. */}
       {!isTV ? <button ref={anchor} type="button" tabIndex={-1} aria-hidden="true" className={HIDDEN_ANCHOR} /> : <button
@@ -251,9 +256,9 @@ const UpcomingBannerTile = memo(function UpcomingBannerTile({ item, onOpen, onDi
         <EllipsisHorizontalIcon className="w-5 h-5" />
       </button>}
       <div className="relative flex items-end gap-3 w-full p-3 pr-12">
-        {/* Out now: the label sits above the poster. */}
+        {/* Out now: the label sits above the poster when picked; otherwise it is the corner tag. */}
         <div className="flex flex-col items-center gap-1.5 shrink-0">
-          {aired && (
+          {aired && outNowAbove && (
             <span className="px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap pointer-events-none" style={{ background: 'var(--color-success, #16a34a)', color: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.4)' }}>Out now</span>
           )}
           <div className="w-[52px] h-[78px] rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: 'var(--color-surface-hover)', boxShadow: '0 2px 8px rgba(0,0,0,.4)' }}>

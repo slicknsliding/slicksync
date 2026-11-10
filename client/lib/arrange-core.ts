@@ -57,6 +57,8 @@ export type Arrangement = {
   cwFirst?: 'wide';
   /** Continue Watching and Coming up cards: the show's picture behind the words, or a plain background ('plain'). */
   cardBg?: 'plain';
+  /** Coming up: an episode that is out gets a tag in the card's corner (the default), or a label above the poster ('above'). */
+  outNow?: 'above';
   /** Now Playing: the bar and times on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */
   nowPlayingProgress?: 'on' | 'under';
   /** The fold arrow beside each section's name: shown ('show'), or hidden (the default; 'hide' from before it was). */

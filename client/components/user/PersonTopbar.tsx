@@ -1,7 +1,7 @@
 'use client';
 
 // A person's own pages get the same top bar as the admin pages (NebulaBar),
-// with their own rows - Home, Library, Activity, Addons, Shares, Settings -
+// with their own rows - Home, Library, Activity, Addons, Settings -
 // instead of the side menu they used to have. Addons is left out for
 // Jellyfin, AIOStreams and AIOMetadata people, who have no addon list here.
 
@@ -9,7 +9,6 @@ import {
   HomeIcon,
   FilmIcon,
   ClockIcon,
-  ShareIcon,
   PuzzlePieceIcon,
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
@@ -23,7 +22,6 @@ const ITEMS: NebulaNavSection['items'] = [
   { href: '/user/library', label: 'Library', icon: FilmIcon },
   { href: '/user/activity', label: 'Activity', icon: ClockIcon },
   { href: '/user/addons', label: 'Addons', icon: PuzzlePieceIcon },
-  { href: '/user/shares', label: 'Shares', icon: ShareIcon },
   { href: '/user/settings', label: 'Settings', icon: Cog6ToothIcon },
 ];
 

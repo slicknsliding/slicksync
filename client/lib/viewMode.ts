@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { useArrangement } from '@/lib/arrange';
+import { useIsPhoneWidth } from '@/lib/pageHeader';
 
 type ViewMode = 'grid' | 'list';
 
@@ -36,14 +37,15 @@ function pageKeyOf(pathname: string | null) {
 /**
  * Grid or list. Admin pages all follow the one choice in Settings -> Themes
  * (saved to the account, so it follows you to another device); there is no
- * switch on the pages. A person's own pages (/user) still remember their own
- * choice. `{ global: true }` reads and sets the Themes choice. Phones are
+ * switch on the pages. A person's own pages (/user) follow their own choice
+ * (Settings -> Page design -> Grid or list), grid until they pick list. `{ global: true }` reads and sets the Themes choice. Phones are
  * always grid.
  */
 export function useDefaultViewMode(opts: { global?: boolean } = {}) {
   const pageKey = pageKeyOf(usePathname());
   const { arrangement, update, active } = useArrangement();
   const perPage = active && !opts.global && pageKey === '/user';
+  const phone = useIsPhoneWidth();
   const pageChoice = active ? arrangement.views?.[perPage ? pageKey : '*'] : undefined;
   const [viewModeState, setViewMode] = useState<ViewMode>('grid');
   const [isLoaded, setIsLoaded] = useState(false);
@@ -89,10 +91,15 @@ export function useDefaultViewMode(opts: { global?: boolean } = {}) {
     if (!perPage) setStoredViewMode(mode);
   }, [active, perPage, pageKey, update]);
 
-  const viewMode: ViewMode = pageChoice && isLoaded && !isMobile() ? pageChoice : viewModeState;
+  // A person's own pages follow only the one saved choice (Settings -> Page
+  // design -> Grid or list) and start on grid; nothing else decides.
+  const viewMode: ViewMode = perPage
+    ? (pageChoice && isLoaded && !phone ? pageChoice : 'grid')
+    : pageChoice && isLoaded && !isMobile() ? pageChoice : viewModeState;
 
   return {
     viewMode,
+    isPhone: phone,
     setViewMode: setViewModeDirect,
     toggleViewMode,
     isLoaded,

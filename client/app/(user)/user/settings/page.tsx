@@ -28,7 +28,8 @@ import { PersonPushRow } from '@/components/user/PersonPushRow';
 import { ProfilePictureEditor } from '@/components/user/ProfilePictureEditor';
 import { HistoryImportTile } from '@/components/user/HistoryImportTile';
 import { useIsTV } from '@/lib/hooks/useIsTV';
-import { useCwFirst, useCwProgress, useCwTime, useCwWho, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { useCwFirst, useOutNow, useCwProgress, useCwTime, useCwWho, useFoldArrows, useNameFolds, useNowPlayingProgress, useNowPlayingWho, usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { useDefaultViewMode } from '@/lib/viewMode';
 import { MeSettingsV2, SETTINGS_SECTIONS } from '@/components/v2/MeSettingsV2';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -167,9 +168,12 @@ export default function UserSettingsPage() {
   const { where: cwWho, setWhere: setCwWho } = useCwWho();
   const { where: cwProgress, setWhere: setCwProgress } = useCwProgress();
   const { first: cwFirst, setFirst: setCwFirst } = useCwFirst();
+  const { place: outNow, setPlace: setOutNow } = useOutNow();
   const { where: npProgress, setWhere: setNpProgress } = useNowPlayingProgress();
   const { shown: arrows, setShown: setArrows } = useFoldArrows();
   const { on: nameTap, setOn: setNameTap } = useNameFolds();
+  // Grid or list for Activity and Library: one choice, shared with those pages.
+  const { viewMode, setViewMode, isPhone } = useDefaultViewMode();
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
   const Wrapper = isTV ? TVPageProvider : Fragment;
@@ -805,6 +809,19 @@ export default function UserSettingsPage() {
           </div>
           <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Out now</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>An episode that is out: a tag in the card’s corner, or a label above the poster</p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Out now">
+              {(['corner', 'above'] as const).map((w) => (
+                <button key={w} type="button" role="radio" aria-checked={outNow === w} className={outNow === w ? 'on' : ''} onClick={() => setOutNow(w)}>
+                  {w === 'corner' ? 'Corner' : 'Above the poster'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
               <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Fold arrows</p>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>The arrow beside each section’s name. Hidden by default; they always show while arranging</p>
             </div>
@@ -825,6 +842,21 @@ export default function UserSettingsPage() {
               {([true, false] as const).map((v) => (
                 <button key={String(v)} type="button" role="radio" aria-checked={nameTap === v} className={nameTap === v ? 'on' : ''} onClick={() => setNameTap(v)}>
                   {v ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-6 pb-6 -mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Grid or list</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {isPhone ? 'How Activity and Library show your titles. Phones always use grid.' : 'How Activity and Library show your titles. Starts on grid.'}
+              </p>
+            </div>
+            <div className="menu-seg" role="radiogroup" aria-label="Grid or list">
+              {(['grid', 'list'] as const).map((v) => (
+                <button key={v} type="button" role="radio" aria-checked={viewMode === v} disabled={isPhone && v === 'list'} className={viewMode === v ? 'on' : ''} onClick={() => setViewMode(v)}>
+                  {v === 'grid' ? 'Grid' : 'List'}
                 </button>
               ))}
             </div>
