@@ -54,8 +54,6 @@ Open `:3000` and sign in with the username and password from `.env`. More in [In
 
 <img src=".github/readme/nuvio.svg" alt="Built for Nuvio">
 
-None of this exists in the Nuvio app itself.
-
 | 🏠 Home screens | |
 |:--|:--|
 | **Collections editor** | Folders and sources, drag to reorder, preview before saving |
@@ -96,8 +94,6 @@ None of this exists in the Nuvio app itself.
 <a name="-stremio-whats-new-since-syncio"></a>
 
 <img src=".github/readme/stremio.svg" alt="Stremio">
-
-Everything Syncio did, plus:
 
 | 📺 What it adds | |
 |:--|:--|
