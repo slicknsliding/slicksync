@@ -48,6 +48,9 @@ jobs:
         run: npm test
       - name: Lint
         run: npm run lint
+      # The tag, package.json and the newest changelog.json entry must agree.
+      - name: Release versions agree
+        run: node scripts/release-check.js "${{ github.ref_name }}"
 
   build:
     strategy:

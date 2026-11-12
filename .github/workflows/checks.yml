@@ -40,3 +40,36 @@ jobs:
       # Warnings are reported but do not fail the run; errors do.
       - name: Lint
         run: npm run lint
+
+  # The frontend: a type error or a page that will not build used to surface
+  # only when a release tag reached the Docker build.
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: node_modules/.bin/tsc --noEmit -p .
+
+      - name: Build
+        run: node_modules/.bin/next build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

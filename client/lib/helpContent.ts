@@ -178,7 +178,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'Everything is AES-GCM encrypted at rest. The edit form deliberately shows a blank secret field rather than the stored value - click the eye icon to fetch and reveal the real one.',
       'Real-Debrid and TorBox entries also show active downloads on the card. TorBox entries name the plan, and with no cost filled in, the edit form offers the plan\'s monthly price with one tap.',
-      'A nightly encrypted export lands in data/backup/vault/, separate from the main config backup.',
+      'A nightly encrypted export lands in data/backup/vault/, separate from the main config backup. It is locked with VAULT_BACKUP_PASSPHRASE if you set one, otherwise with this install\'s encryption key. Read one with: node scripts/vault-backup-decrypt.js data/backup/vault/latest.json',
     ],
     tips: [
       'A failing check is a real signal, not a false alarm - it means the credential genuinely is not working right now. If an indexer blocks your server\'s IP and that is expected, use the Health page\'s Ignore instead of deleting the entry.',

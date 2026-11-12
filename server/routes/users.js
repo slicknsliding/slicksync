@@ -6503,9 +6503,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       res.setHeader('Content-Type', 'application/json')
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
 
-      // Send JSON response
-      res.json(library)
+      // Written a slice at a time: the provider hands the library over whole,
+      // but turning it into one string as well doubled the memory a big
+      // library took. Same bytes as res.json wrote.
+      res.status(200)
+      const SLICE = 500
+      for (let i = 0; i < library.length || i === 0; i += SLICE) {
+        if (res.destroyed) return
+        const part = library.slice(i, i + SLICE).map((item) => JSON.stringify(item)).join(',')
+        const chunk = (i === 0 ? '[' : ',') + part + (i + SLICE >= library.length ? ']' : '')
+        if (!res.write(chunk)) {
+          await new Promise((resolve) => {
+            const done = () => { res.off('drain', done); res.off('close', done); resolve() }
+            res.on('drain', done)
+            res.on('close', done)
+          })
+        }
+      }
+      res.end()
     } catch (error) {
+      if (res.headersSent) {
+        console.error('Error backing up library:', error)
+        try { res.destroy(error) } catch { /* already closed */ }
+        return
+      }
       console.error('Error backing up library:', error)
       res.status(500).json({ error: 'Failed to backup library', message: publicMessage(error, 'Failed to backup library') })
     }

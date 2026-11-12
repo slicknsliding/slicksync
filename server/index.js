@@ -107,12 +107,8 @@ async function ensureDefaultAccount(prismaClient) {
 
 // Optional quiet mode: suppress non-error console output when QUIET=true or DEBUG is not enabled
 // QUIET and DEBUG_ENABLED are now imported from utils/config
-if (QUIET || !DEBUG_ENABLED) {
-  const noop = () => { }
-  console.log = noop
-  console.info = noop
-  console.warn = noop
-}
+// Warnings stay on (once a minute per message) - see utils/logLevels.js.
+require('./utils/logLevels').applyLogLevels({ quiet: QUIET, debug: DEBUG_ENABLED })
 
 const app = express();
 // PORT is now imported from utils/config
@@ -685,7 +681,7 @@ const shutdown = async (signal) => {
   try {
     const { waitForSyncsIdle, runningSyncs } = require('./utils/syncLock');
     if (runningSyncs() > 0) {
-      console.log(`🛑 Waiting for ${runningSyncs()} addon sync(s) to finish...`);
+      console.warn(`🛑 Waiting for ${runningSyncs()} addon sync(s) to finish...`);
       if (!(await waitForSyncsIdle(SHUTDOWN_SYNC_WAIT_MS))) console.warn('🛑 A sync was still running at shutdown.');
     }
   } catch { /* going away regardless */ }

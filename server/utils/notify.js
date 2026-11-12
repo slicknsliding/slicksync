@@ -37,6 +37,8 @@ async function postDiscord(webhookUrl, content, options = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      // A webhook that never answers must not hold up whatever sent it.
+      signal: AbortSignal.timeout(15000),
     }, { ...instancePolicy(), maxRedirects: 0 })
     try { await res.body?.cancel() } catch {}
   } catch {}
@@ -729,6 +731,7 @@ async function postDiscordFile(webhookUrl, buffer, filename, content) {
       method: 'POST',
       headers: { 'Content-Type': encoded.headers.get('content-type') },
       body: Buffer.from(await encoded.arrayBuffer()),
+      signal: AbortSignal.timeout(30000),
     }, { ...instancePolicy(), maxRedirects: 0 })
     return res.ok
   } catch {
@@ -745,7 +748,7 @@ async function postNtfy(ntfyUrl, topic, { title, message, priority = 'default', 
     if (title) headers['Title'] = title
     if (priority) headers['Priority'] = priority
     if (Array.isArray(tags) && tags.length) headers['Tags'] = tags.join(',')
-    await require('./safeUrl').safeFetch(url, { method: 'POST', headers, body: message || '' }, require('./safeUrl').instancePolicy())
+    await require('./safeUrl').safeFetch(url, { method: 'POST', headers, body: message || '', signal: AbortSignal.timeout(15000) }, require('./safeUrl').instancePolicy())
   } catch {}
 }
 

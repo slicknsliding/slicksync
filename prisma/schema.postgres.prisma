@@ -147,6 +147,7 @@ model Group {
   // Relationships
   addons GroupAddon[]
 
+  @@index([accountId])
   @@map("groups")
 }
 
@@ -209,6 +210,7 @@ model Addon {
   @@unique([name, accountId])
   @@index([manifestUrlHash])
   @@index([manifestHash])
+  @@index([accountId])
   @@map("addons")
 }
 
