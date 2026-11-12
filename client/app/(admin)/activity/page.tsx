@@ -62,6 +62,8 @@ import {
   ListBulletIcon,
   ShieldCheckIcon,
   FolderIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/24/outline';
 
 // Activity types
@@ -1166,6 +1168,21 @@ function DeviceClaimsPanel({ v2 = false }: { v2?: boolean } = {}) {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.getDeviceClaims>> | null>(null);
   const [busyIp, setBusyIp] = useState<string | null>(null);
   const { hideSensitive } = useTheme();
+  const isTV = useIsTV();
+  // Private mode: addresses someone chose to show, one device at a time.
+  const [shownIps, setShownIps] = useState<Set<string>>(() => new Set());
+  const ipText = (ip: string) => (hideSensitive && !shownIps.has(ip) ? '•••.•••.•••.•••' : ip);
+  const ipEye = (ip: string) => (hideSensitive && !isTV ? (
+    <button
+      type="button"
+      onClick={() => setShownIps((prev) => { const next = new Set(prev); if (next.has(ip)) next.delete(ip); else next.add(ip); return next; })}
+      className="inline-flex align-middle ml-1.5 p-0.5 -m-0.5 rounded text-subtle hover:text-default transition-colors"
+      aria-label={shownIps.has(ip) ? 'Hide address' : 'Show address'}
+      title={shownIps.has(ip) ? 'Hide address' : 'Show address'}
+    >
+      {shownIps.has(ip) ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+    </button>
+  ) : null);
 
   const load = useCallback(() => {
     api.getDeviceClaims().then(setData).catch(() => setData({ devices: [], users: [] }));
@@ -1207,7 +1224,7 @@ function DeviceClaimsPanel({ v2 = false }: { v2?: boolean } = {}) {
             <div key={d.clientIp} className="v2-row flex-wrap">
               <div className="min-w-0 flex-1" style={{ flexBasis: '14rem' }}>
                 <p className="text-[14.5px] font-semibold">
-                  {hideSensitive ? '•••.•••.•••.•••' : d.clientIp}
+                  {ipText(d.clientIp)}{ipEye(d.clientIp)}
                   {d.claim?.label && <span className="text-muted font-normal"> · {d.claim.label}</span>}
                 </p>
                 <p className="text-xs text-muted mt-0.5">
@@ -1248,7 +1265,7 @@ function DeviceClaimsPanel({ v2 = false }: { v2?: boolean } = {}) {
           <div key={d.clientIp} className="flex flex-wrap items-center gap-3 p-3 rounded-lg" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-default">
-                {hideSensitive ? '•••.•••.•••.•••' : d.clientIp}
+                {ipText(d.clientIp)}{ipEye(d.clientIp)}
                 {d.claim?.label && <span className="text-muted font-normal"> · {d.claim.label}</span>}
               </p>
               <p className="text-xs text-muted mt-0.5">

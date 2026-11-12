@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
+import { PasswordToggleButton } from '@/components/ui/Input';
 
 export function NewJellyfinAccountForm({ server, username, onSubmit }: {
   server: string;
@@ -17,6 +18,7 @@ export function NewJellyfinAccountForm({ server, username, onSubmit }: {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState<Record<string, boolean>>({});
 
   const submit = async () => {
     if (password.length < 6) { setError('Use at least 6 characters'); return; }
@@ -38,16 +40,17 @@ export function NewJellyfinAccountForm({ server, username, onSubmit }: {
         <LockClosedIcon className="w-5 h-5" />
       </div>
       <input
-        type="password"
+        type={shown[placeholder] ? 'text' : 'password'}
         value={value}
         onChange={(e) => { set(e.target.value); setError(null); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
         placeholder={placeholder}
         autoComplete={autoComplete}
         disabled={busy}
-        className="slicksync-input w-full pl-12 pr-4 py-3.5 rounded-xl focus:outline-none"
+        className="slicksync-input w-full pl-12 pr-12 py-3.5 rounded-xl focus:outline-none"
         style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
       />
+      <PasswordToggleButton visible={!!shown[placeholder]} onToggle={() => setShown((v) => ({ ...v, [placeholder]: !v[placeholder] }))} />
     </div>
   );
 

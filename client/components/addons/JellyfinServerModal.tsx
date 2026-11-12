@@ -89,6 +89,7 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -423,7 +424,12 @@ export function JellyfinServerModal({ isOpen, onClose, groups, server, onSaved }
               )}
               {method === 'apikey' && (
                 <div className="mt-3">
-                  <input type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key" className={field} aria-label="API key" />
+                  <div className="relative">
+                    <input type={showApiKey ? 'text' : 'password'} autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key" className={`${field} pr-12`} aria-label="API key" />
+                    <button type="button" onClick={() => setShowApiKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted" aria-label={showApiKey ? 'Hide API key' : 'Show API key'}>
+                      {showApiKey ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                    </button>
+                  </div>
                   <p className={hint}>Dashboard → API Keys on the server, then + to make one.</p>
                 </div>
               )}

@@ -45,6 +45,7 @@ import {
   XMarkIcon,
   EllipsisVerticalIcon,
   EyeIcon,
+  EyeSlashIcon,
   ArrowDownTrayIcon,
   UsersIcon,
   UserGroupIcon,
@@ -106,6 +107,8 @@ export default function UsersPage() {
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
+  // Private mode: emails someone chose to show, one row at a time.
+  const [shownEmails, setShownEmails] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   // Kept between visits when "Keep each page's filter" is on (Themes).
   const [peopleFilter, setPeopleFilter] = useSavedFilter('users', 'all' as 'all' | 'dormant' | 'watching' | 'fix' | 'off', ['all', 'dormant', 'watching', 'fix', 'off']);
@@ -971,8 +974,27 @@ export default function UsersPage() {
                                         <SignInPill user={user} onReconnect={openReconnect} />
                                       )}
                                     </div>
-                                    <p className="text-sm text-subtle">
-                                      {hideSensitive ? '••••••••' : displayEmail(user.email)}
+                                    <p className="text-sm text-subtle flex items-center gap-1.5">
+                                      {hideSensitive && !shownEmails.has(user.id) ? '••••••••' : displayEmail(user.email)}
+                                      {hideSensitive && !isTV && user.email && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setShownEmails((prev) => {
+                                              const next = new Set(prev);
+                                              if (next.has(user.id)) next.delete(user.id); else next.add(user.id);
+                                              return next;
+                                            });
+                                          }}
+                                          className="p-0.5 -m-0.5 rounded hover:text-default transition-colors"
+                                          aria-label={shownEmails.has(user.id) ? 'Hide email' : 'Show email'}
+                                          title={shownEmails.has(user.id) ? 'Hide email' : 'Show email'}
+                                        >
+                                          {shownEmails.has(user.id) ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                                        </button>
+                                      )}
                                     </p>
                                   </div>
                                 </TVLink>
