@@ -273,10 +273,20 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     ])
     
 
-    // Helper function to check if an addon is protected (by name)
+    // Cinemeta and Local Files are also known by their manifest id and
+    // address, so a renamed or translated copy ("Cinemeta (FR)") is still
+    // kept. Safe mode only, like the names.
+    const defaultIdSet = new Set(unsafeMode ? [] : (defaultAddons.ids || []))
+    const defaultUrlSet = new Set(unsafeMode ? [] : (defaultAddons.manifestUrls || []).map((u) => String(u).trim().toLowerCase()))
+
+    // Helper function to check if an addon is protected (by name, or for the
+    // default addons by id or address)
     const isProtected = (addon) => {
       const n = addon?.manifest?.name || addon?.transportName || addon?.name
-      return n && protectedNameSet.has(normalizeName(n))
+      if (n && protectedNameSet.has(normalizeName(n))) return true
+      if (addon?.manifest?.id && defaultIdSet.has(addon.manifest.id)) return true
+      const url = String(addon?.transportUrl || addon?.manifestUrl || '').trim().toLowerCase()
+      return !!url && defaultUrlSet.has(url)
     }
 
     // Parse excluded addons - these are database IDs stored in the database

@@ -96,7 +96,12 @@ else
   # container run as a different user than the image's (common, to match a
   # data folder's owner) cannot write node_modules, so generating here only
   # printed a "Can't write to node_modules/prisma" error on every boot.
-  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss --skip-generate || true
+  # A copy of the database first when the schema is about to change, since
+  # --accept-data-loss would take a dropped column's data with it (see
+  # scripts/sqlite-schema-backup.js). It never stops the boot.
+  node scripts/sqlite-schema-backup.js || true
+  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss --skip-generate || \
+    echo "❌ The database schema could not be brought up to date. SlickSync is starting anyway, but anything new in this version may fail. A copy taken before the change, if one was needed, is next to the database as *.pre-schema-*."
 fi
 
 export NODE_OPTIONS="--dns-result-order=ipv4first"
@@ -163,9 +168,14 @@ cleanup() {
   # spot, and the frontend - the one actually holding things open - is never
   # ended at all. Measured that exact mistake: the container sat for 33
   # seconds with the frontend still running.
+  # The frontend still goes at 3s. The backend gets until 8s (still inside
+  # Docker's 10) because it may be waiting for an addon sync to finish
+  # writing - see shutdown() in server/index.js; it exits as soon as none is
+  # running, so a normal stop is no slower.
   ( sleep 3
-    kill -9 $BACKEND_PID 2>/dev/null || true
-    kill -9 $FRONTEND_PID 2>/dev/null || true ) &
+    kill -9 $FRONTEND_PID 2>/dev/null || true
+    sleep 5
+    kill -9 $BACKEND_PID 2>/dev/null || true ) &
   wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
   exit 0
 }

@@ -8484,7 +8484,11 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
 // for the account is dropped (utils/liveEvents.js -> utils/sync.js).
 async function syncUserAddons(...args) {
   try {
-    return await syncUserAddonsCore(...args)
+    // One sync at a time per person (utils/syncLock.js); a second one waits
+    // and then works from what the first left.
+    const [, userId, , , req, , getAcct] = args
+    const accountId = (typeof getAcct === 'function' && req ? getAcct(req) : null) || req?.appAccountId || 'default'
+    return await require('../utils/syncLock').withPersonSync(`${accountId}:${userId}`, () => syncUserAddonsCore(...args))
   } finally {
     try {
       const req = args[4]
