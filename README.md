@@ -52,9 +52,9 @@ Open `:3000` and sign in with the username and password from `.env`. More in [In
 
 <a name="-built-for-nuvio"></a>
 
-<img src=".github/readme/nuvio.svg" alt="Built for Nuvio">
+<a name="nuvio-1"><img src=".github/readme/nuvio.svg" alt="Built for Nuvio"></a>
 
-| <img src=".github/readme/sub-home-screens.svg" alt="Home screens"> | |
+| <a name="sub-home-screens-2"><img src=".github/readme/sub-home-screens.svg" alt="Home screens"></a> | |
 |:--|:--|
 | **Collections editor** | Folders and sources, drag to reorder, preview before saving |
 | **Templates** | Streaming Services and Genres, built from the account's own addons |
@@ -63,12 +63,12 @@ Open `:3000` and sign in with the username and password from `.env`. More in [In
 | **Copy and share** | Between profiles, as a file, or as a share code |
 | **Home rows** | Reorder, rename, hide; copy the whole layout to another profile |
 
-| <img src=".github/readme/sub-guards.svg" alt="Guards"> | |
+| <a name="sub-guards-3"><img src=".github/readme/sub-guards.svg" alt="Guards"></a> | |
 |:--|:--|
 | **Collections and home-row guards** | Nuvio sync is last-write-wins; a sudden wipe alerts you, with one-click Restore |
 | **Account Guard** | Addon changes made outside SlickSync, with Re-assert or Accept |
 
-| <img src=".github/readme/sub-profiles-and-sign-in.svg" alt="Profiles and sign-in"> | |
+| <a name="sub-profiles-and-sign-in-4"><img src=".github/readme/sub-profiles-and-sign-in.svg" alt="Profiles and sign-in"></a> | |
 |:--|:--|
 | **Every profile tracked** | Separate one into its own person, Merge back, or Stop tracking |
 | **Profiles with their own addons** | Managed as users of their own |
@@ -78,13 +78,13 @@ Open `:3000` and sign in with the username and password from `.env`. More in [In
 | **Merge accounts** | A Nuvio and a Stremio account as one person, with undo |
 | **Self-hosted backends** | Point an account at your own Nuvio server |
 
-| <img src=".github/readme/sub-slicktrax-rows.svg" alt="SlickTrax rows"> | |
+| <a name="sub-slicktrax-rows-5"><img src=".github/readme/sub-slicktrax-rows.svg" alt="SlickTrax rows"></a> | |
 |:--|:--|
 | **Continue Watching, Watchlist, For You** | Per person, installed as an addon — no Trakt needed |
 | **Places itself** | Continue Watching slots in among the home rows |
 | **Linked catalogs** | A folder that follows a SlickSync catalog |
 
-| <img src=".github/readme/sub-anime.svg" alt="Anime"> | |
+| <a name="sub-anime-6"><img src=".github/readme/sub-anime.svg" alt="Anime"></a> | |
 |:--|:--|
 | **Airing this season** | Next-episode countdowns and watch-order chains |
 | **Absolute numbering** | Episode 137 resumes on the right season and episode |
@@ -93,9 +93,9 @@ Open `:3000` and sign in with the username and password from `.env`. More in [In
 
 <a name="-stremio-whats-new-since-syncio"></a>
 
-<img src=".github/readme/stremio.svg" alt="Stremio">
+<a name="stremio-7"><img src=".github/readme/stremio.svg" alt="Stremio"></a>
 
-| <img src=".github/readme/sub-what-it-adds.svg" alt="What it adds"> | |
+| <a name="sub-what-it-adds-8"><img src=".github/readme/sub-what-it-adds.svg" alt="What it adds"></a> | |
 |:--|:--|
 | **Watch tracking without Trakt** | Live Now Playing and full history: time watched, finished or dropped, rewatches |
 | **Live pauses** | With SlickTrax on, play, pause and stop show the moment they happen |
@@ -110,11 +110,11 @@ Everything under *Everything else* works for Stremio too.
 
 <a name="-jellyfin-aiostreams-and-aiometadata"></a>
 
-<img src=".github/readme/jellyfin.svg" alt="Jellyfin, AIOStreams, AIOMetadata">
+<a name="jellyfin-9"><img src=".github/readme/jellyfin.svg" alt="Jellyfin, AIOStreams, AIOMetadata"></a>
 
 Sign in with a password, PIN or Quick Connect code; SlickSync detects which server it is.
 
-| <img src=".github/readme/sub-watching.svg" alt="Watching"> | |
+| <a name="sub-watching-10"><img src=".github/readme/sub-watching.svg" alt="Watching"></a> | |
 |:--|:--|
 | **Now Playing** | Watch time from the server, with the device and app named |
 | **Written back** | Watched marks, favourites and resume points |
@@ -122,24 +122,24 @@ Sign in with a password, PIN or Quick Connect code; SlickSync detects which serv
 | **Keep Jellyfin in step** | Titles finished or part-watched in other apps are marked there too |
 | **Open in your own app** | AIOStreams, Swiftfin, Streamyfin, Infuse, or play on a device |
 
-| <img src=".github/readme/sub-households.svg" alt="Households"> | |
+| <a name="sub-households-11"><img src=".github/readme/sub-households.svg" alt="Households"></a> | |
 |:--|:--|
 | **Household users** | Become profiles — separate, merge back, stop tracking, set PINs |
 | **New devices** | Sign one in with its Quick Connect code; see Devices and sign them out |
 | **Invites** | Can create the Jellyfin account; switched off when someone leaves or expires |
 | **Profile pictures** | Changed on either side, shown on both |
 
-| <img src=".github/readme/sub-your-jellyfin-server-for-groups.svg" alt="Your Jellyfin server, for groups"> | |
+| <a name="sub-your-jellyfin-server-for-groups-12"><img src=".github/readme/sub-your-jellyfin-server-for-groups.svg" alt="Your Jellyfin server, for groups"></a> | |
 |:--|:--|
 | **Give it like an addon** | Addons → Add → Jellyfin server; everyone gets their own account |
 | **Any Jellyfin app** | Leaving a group switches the account off, never deletes it |
 
-| <img src=".github/readme/sub-collections.svg" alt="Collections"> | |
+| <a name="sub-collections-13"><img src=".github/readme/sub-collections.svg" alt="Collections"></a> | |
 |:--|:--|
 | **AIOStreams Collections** | Per account and per profile; search, drag, copy, share |
 | **Jellyfin collections** | Catalogs kept in step on your server every 30 minutes |
 
-| <img src=".github/readme/sub-guarded.svg" alt="Guarded"> | |
+| <a name="sub-guarded-14"><img src=".github/readme/sub-guarded.svg" alt="Guarded"></a> | |
 |:--|:--|
 | **Config alerts and history** | AIOStreams changes made elsewhere alert you; Put back restores an earlier one |
 | **AIOStreams health** | Per person, with a test search |
@@ -149,11 +149,11 @@ Sign in with a password, PIN or Quick Connect code; SlickSync detects which serv
 
 <a name="-aiosync"></a>
 
-<img src=".github/readme/aiosync.svg" alt="AIOSync">
+<a name="aiosync-15"><img src=".github/readme/aiosync.svg" alt="AIOSync"></a>
 
 Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
-| <img src=".github/readme/sub-what-it-does.svg" alt="What it does"> | |
+| <a name="sub-what-it-does-16"><img src=".github/readme/sub-what-it-does.svg" alt="What it does"></a> | |
 |:--|:--|
 | **Copy watch history** | Between sign-ins, profiles or people; preview first, undo for 7 days |
 | **Nothing goes backwards** | Further-along titles stay put; nothing is removed |
@@ -164,12 +164,12 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 <a name="-everything-else"></a>
 
-<img src=".github/readme/else.svg" alt="Everything else">
+<a name="else-17"><img src=".github/readme/else.svg" alt="Everything else"></a>
 
-<img src=".github/readme/group-blue.svg" alt="Watching">
+<a name="group-blue-18"><img src=".github/readme/group-blue.svg" alt="Watching"></a>
 
 <details>
-<summary><img src=".github/readme/box-now-playing-activity.svg" alt="Now Playing & Activity: Who's watching, history, Continue Watching" align="center"></summary>
+<summary><a name="box-now-playing-activity-19"><img src=".github/readme/box-now-playing-activity.svg" alt="Now Playing & Activity: Who's watching, history, Continue Watching" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -184,7 +184,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-slicktrax.svg" alt="SlickTrax: Watchlist, For You and scrobbling, no Trakt" align="center"></summary>
+<summary><a name="box-slicktrax-20"><img src=".github/readme/box-slicktrax.svg" alt="SlickTrax: Watchlist, For You and scrobbling, no Trakt" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -196,10 +196,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
-<img src=".github/readme/group-green.svg" alt="What'S On Screen">
+<a name="group-green-21"><img src=".github/readme/group-green.svg" alt="What'S On Screen"></a>
 
 <details>
-<summary><img src=".github/readme/box-discover.svg" alt="Discover: Find something to watch, and who is in it" align="center"></summary>
+<summary><a name="box-discover-22"><img src=".github/readme/box-discover.svg" alt="Discover: Find something to watch, and who is in it" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -212,7 +212,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-catalogs.svg" alt="Catalogs: Lists you build, import and share" align="center"></summary>
+<summary><a name="box-catalogs-23"><img src=".github/readme/box-catalogs.svg" alt="Catalogs: Lists you build, import and share" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -224,10 +224,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
-<img src=".github/readme/group-gold.svg" alt="People">
+<a name="group-gold-24"><img src=".github/readme/group-gold.svg" alt="People"></a>
 
 <details>
-<summary><img src=".github/readme/box-limits.svg" alt="Limits: Daily limit, bedtime and age limit" align="center"></summary>
+<summary><a name="box-limits-25"><img src=".github/readme/box-limits.svg" alt="Limits: Daily limit, bedtime and age limit" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -238,7 +238,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-each-person-s-own-page.svg" alt="Each person's own page: Their own Home, Library and Activity" align="center"></summary>
+<summary><a name="box-each-person-s-own-page-26"><img src=".github/readme/box-each-person-s-own-page.svg" alt="Each person's own page: Their own Home, Library and Activity" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -248,10 +248,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
-<img src=".github/readme/group-red.svg" alt="Protection">
+<a name="group-red-27"><img src=".github/readme/group-red.svg" alt="Protection"></a>
 
 <details>
-<summary><img src=".github/readme/box-vault.svg" alt="Vault: Every key and login, checked and encrypted" align="center"></summary>
+<summary><a name="box-vault-28"><img src=".github/readme/box-vault.svg" alt="Vault: Every key and login, checked and encrypted" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -263,7 +263,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-backups.svg" alt="Backups: Full backups, restore and 30-day undo" align="center"></summary>
+<summary><a name="box-backups-29"><img src=".github/readme/box-backups.svg" alt="Backups: Full backups, restore and 30-day undo" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -273,7 +273,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-security.svg" alt="Security: Passkeys, 2FA, SSO and limits" align="center"></summary>
+<summary><a name="box-security-30"><img src=".github/readme/box-security.svg" alt="Security: Passkeys, 2FA, SSO and limits" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -284,10 +284,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
-<img src=".github/readme/group-teal.svg" alt="Setup">
+<a name="group-teal-31"><img src=".github/readme/group-teal.svg" alt="Setup"></a>
 
 <details>
-<summary><img src=".github/readme/box-addons.svg" alt="Addons: One set for everyone, with health checks" align="center"></summary>
+<summary><a name="box-addons-32"><img src=".github/readme/box-addons.svg" alt="Addons: One set for everyone, with health checks" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -298,7 +298,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-app-speed.svg" alt="App & speed: Installs like an app, opens instantly" align="center"></summary>
+<summary><a name="box-app-speed-33"><img src=".github/readme/box-app-speed.svg" alt="App & speed: Installs like an app, opens instantly" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -309,7 +309,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-automation.svg" alt="Automation: Rules that act on real events" align="center"></summary>
+<summary><a name="box-automation-34"><img src=".github/readme/box-automation.svg" alt="Automation: Rules that act on real events" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -318,10 +318,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
-<img src=".github/readme/group-orange.svg" alt="Alerts">
+<a name="group-orange-35"><img src=".github/readme/group-orange.svg" alt="Alerts"></a>
 
 <details>
-<summary><img src=".github/readme/box-notifications.svg" alt="Notifications: Push and bell first, Discord optional" align="center"></summary>
+<summary><a name="box-notifications-36"><img src=".github/readme/box-notifications.svg" alt="Notifications: Push and bell first, Discord optional" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -331,10 +331,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
-<img src=".github/readme/group-purple.svg" alt="Look And Numbers">
+<a name="group-purple-37"><img src=".github/readme/group-purple.svg" alt="Look And Numbers"></a>
 
 <details>
-<summary><img src=".github/readme/box-make-it-yours.svg" alt="Make it yours: Arrange pages, your menu bar, themes" align="center"></summary>
+<summary><a name="box-make-it-yours-38"><img src=".github/readme/box-make-it-yours.svg" alt="Make it yours: Arrange pages, your menu bar, themes" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -346,7 +346,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 <details>
-<summary><img src=".github/readme/box-metrics-health.svg" alt="Metrics & health: Numbers, Year in Review, System Health" align="center"></summary>
+<summary><a name="box-metrics-health-39"><img src=".github/readme/box-metrics-health.svg" alt="Metrics & health: Numbers, Year in Review, System Health" align="center"></a></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -360,7 +360,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 <a name="-installation"></a>
 
-<img src=".github/readme/install.svg" alt="Installation">
+<a name="install-40"><img src=".github/readme/install.svg" alt="Installation"></a>
 
 **Needs:** Docker Compose and a reverse proxy for HTTPS (Traefik, Caddy, nginx).
 
