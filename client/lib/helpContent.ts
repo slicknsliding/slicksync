@@ -166,18 +166,18 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'vault-add-credential',
     title: 'Adding a credential to the Vault',
     category: 'Vault & credentials',
-    keywords: ['vault', 'credential', 'api key', 'add key', 'debrid', 'real-debrid', 'torbox'],
+    keywords: ['vault', 'credential', 'api key', 'add key', 'debrid', 'real-debrid', 'torbox', 'alldebrid', 'premiumize', 'debrid-link', 'expires', 'end date', 'plan'],
     answer: 'Vault → Add Entry. Pick a category (debrid, usenet, AI, etc.), paste the secret, and SlickSync runs a real check against the provider to confirm it works - not just that something was typed in.',
     steps: [
       'Go to Vault → Add Entry.',
       'Pick the provider/category - that\'s what decides which real health-check runs against it.',
       'Paste the secret and save. SlickSync immediately tests it against the provider\'s own API.',
       'Optionally fill in cost and billing cycle, which feeds the renewal calendar and spend forecast.',
-      'Optionally set an expiry date to get renewal alerts ahead of time.',
+      'Set when it expires to get a reminder ahead of time. Real-Debrid, TorBox, AllDebrid, Premiumize, Debrid-Link and IPTV logins fill this in themselves on every check, so renewing or buying more time moves it on its own.',
     ],
     details: [
       'Everything is AES-GCM encrypted at rest. The edit form deliberately shows a blank secret field rather than the stored value - click the eye icon to fetch and reveal the real one.',
-      'Real-Debrid and TorBox entries additionally show live usage on the card (active downloads, premium days remaining) pulled from the provider.',
+      'Real-Debrid and TorBox entries also show active downloads on the card. TorBox entries name the plan, and with no cost filled in, the edit form offers the plan\'s monthly price with one tap.',
       'A nightly encrypted export lands in data/backup/vault/, separate from the main config backup.',
     ],
     tips: [

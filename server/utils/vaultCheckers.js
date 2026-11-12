@@ -132,6 +132,19 @@ async function checkGenericHttp(secret, config = {}) {
   }
 }
 
+// "Dec 31, 2026" - read in UTC so a midnight-UTC date never shows as the day
+// before. Built by hand, not toLocaleDateString, so it reads the same under
+// any runtime locale.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function formatDay(d) {
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`
+}
+function unixDate(secs) {
+  const n = Number(secs)
+  return Number.isFinite(n) && n > 0 ? new Date(n * 1000) : undefined
+}
+const expiresText = (expiresAt) => (expiresAt ? `, expires ${formatDay(expiresAt)}` : '')
+
 // Real-Debrid: /user also reports premium expiration, which we surface back
 // so the vault entry's expiresAt can auto-update from the source of truth.
 async function checkRealDebrid(secret) {
@@ -146,10 +159,19 @@ async function checkRealDebrid(secret) {
     if (type !== 'premium') {
       return { ok: false, message: `Account type is "${type}", not premium`, expiresAt }
     }
-    return { ok: true, message: `Premium active${expiresAt ? `, expires ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
+    return { ok: true, message: `Premium${expiresText(expiresAt)}`, expiresAt }
   } catch (err) {
     return { ok: false, message: describeRequestError(err) }
   }
+}
+
+// TorBox's /user/me `plan` number. The prices are TorBox's monthly list
+// prices in US dollars, only ever offered as a one-tap suggestion for an
+// empty Cost field - never written on their own.
+const TORBOX_PLANS = {
+  1: { name: 'Essential', monthlyUsd: 3 },
+  2: { name: 'Pro', monthlyUsd: 10 },
+  3: { name: 'Standard', monthlyUsd: 5 },
 }
 
 // TorBox: /user/me reports plan and premium_expires_at
@@ -166,7 +188,59 @@ async function checkTorBox(secret) {
     if (plan === 0 || plan === undefined) {
       return { ok: false, message: 'No active TorBox plan', expiresAt }
     }
-    return { ok: true, message: `Plan active${expiresAt ? `, expires ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
+    const name = TORBOX_PLANS[plan]?.name
+    return { ok: true, message: `${name ? `${name} plan` : 'Plan active'}${expiresText(expiresAt)}`, expiresAt }
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
+// AllDebrid: /v4/user -> data.user.isPremium + premiumUntil (unix seconds).
+async function checkAllDebrid(secret) {
+  try {
+    const res = await fetchWithRetry('https://api.alldebrid.com/v4/user?agent=slicksync', {
+      headers: { Authorization: `Bearer ${secret}` }
+    })
+    if (!res.ok) return { ok: false, message: `AllDebrid returned ${res.status}` }
+    const data = await res.json()
+    if (data?.status !== 'success') return { ok: false, message: data?.error?.message || 'AllDebrid turned the key down' }
+    const user = data?.data?.user || {}
+    const expiresAt = unixDate(user.premiumUntil)
+    if (!user.isPremium) return { ok: false, message: 'No active AllDebrid premium', expiresAt }
+    return { ok: true, message: `Premium${expiresText(expiresAt)}`, expiresAt }
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
+// Premiumize: /api/account/info -> premium_until (unix seconds, or false).
+async function checkPremiumize(secret) {
+  try {
+    const res = await fetchWithRetry(`https://www.premiumize.me/api/account/info?apikey=${encodeURIComponent(secret)}`, {})
+    if (!res.ok) return { ok: false, message: `Premiumize returned ${res.status}` }
+    const data = await res.json()
+    if (data?.status !== 'success') return { ok: false, message: data?.message || 'Premiumize turned the key down' }
+    const expiresAt = unixDate(data.premium_until)
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) return { ok: false, message: 'No active Premiumize premium', expiresAt }
+    return { ok: true, message: `Premium${expiresText(expiresAt)}`, expiresAt }
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
+// Debrid-Link: /api/v2/account/infos -> value.premiumLeft (seconds left).
+async function checkDebridLink(secret) {
+  try {
+    const res = await fetchWithRetry('https://debrid-link.com/api/v2/account/infos', {
+      headers: { Authorization: `Bearer ${secret}` }
+    })
+    if (!res.ok) return { ok: false, message: `Debrid-Link returned ${res.status}` }
+    const data = await res.json()
+    if (data?.success !== true) return { ok: false, message: 'Debrid-Link turned the key down' }
+    const left = Number(data?.value?.premiumLeft)
+    const expiresAt = Number.isFinite(left) && left > 0 ? new Date(Date.now() + left * 1000) : undefined
+    if (!expiresAt) return { ok: false, message: 'No active Debrid-Link premium' }
+    return { ok: true, message: `Premium${expiresText(expiresAt)}`, expiresAt }
   } catch (err) {
     return { ok: false, message: describeRequestError(err) }
   }
@@ -464,13 +538,12 @@ async function checkXtreamAuth(secret, config = {}) {
     const info = data && typeof data === 'object' ? data.user_info : null
     if (!info || typeof info !== 'object') return { ok: false, message: 'That address did not answer like an IPTV server' }
     if (Number(info.auth) !== 1) return { ok: false, message: 'The IPTV server turned the login down' }
-    const secs = Number(info.exp_date)
-    const expiresAt = Number.isFinite(secs) && secs > 0 ? new Date(secs * 1000) : undefined
+    const expiresAt = unixDate(info.exp_date)
     const status = String(info.status || '').trim()
     if (status && status.toLowerCase() !== 'active') {
       return { ok: false, message: `Login works, but the account is ${status.toLowerCase()}`, expiresAt }
     }
-    return { ok: true, message: `Login works${expiresAt ? `, runs out ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
+    return { ok: true, message: `Login works${expiresText(expiresAt)}`, expiresAt }
   } catch (err) {
     return { ok: false, message: describeRequestError(err) }
   }
@@ -482,6 +555,9 @@ const CHECKERS = {
   generic_http: checkGenericHttp,
   real_debrid: checkRealDebrid,
   torbox: checkTorBox,
+  alldebrid: checkAllDebrid,
+  premiumize: checkPremiumize,
+  debrid_link: checkDebridLink,
   newznab_caps: checkNewznabCaps,
   tcp_reachability: checkTcpReachability,
   stremio_auth: checkStremioAuth,
@@ -501,4 +577,4 @@ async function runCheck(testType, secret, config) {
   }
 }
 
-module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase }
+module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase, TORBOX_PLANS }

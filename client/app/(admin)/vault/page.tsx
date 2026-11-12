@@ -73,6 +73,9 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   generic_http: 'Generic HTTP request',
   real_debrid: 'Real-Debrid',
   torbox: 'TorBox',
+  alldebrid: 'AllDebrid',
+  premiumize: 'Premiumize',
+  debrid_link: 'Debrid-Link',
   newznab_caps: 'Newznab indexer',
   tcp_reachability: 'TCP reachability',
   stremio_auth: 'Stremio login',
@@ -88,9 +91,38 @@ const CLASSIC_SECTION_LABELS: Record<string, string> = { cost: 'Cost summary', r
 const CLASSIC_SECTION_KEYS = Object.keys(CLASSIC_SECTION_LABELS);
 const CURRENCY_OPTIONS =['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'SEK', 'NOK', 'DKK', 'PLN', 'NZD', 'ZAR'];
 
+// Calendar days from today to the end date, the way TorBox and the other
+// services count them (Nov 11 -> Dec 31 is 50, whatever the time of day).
 function daysUntil(dateStr?: string | null): number | null {
   if (!dateStr) return null;
-  return Math.round((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const end = new Date(dateStr);
+  if (isNaN(end.getTime())) return null;
+  const now = new Date();
+  const a = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  // The end date is read as UTC, the same day the card's message and the
+  // edit form show (a typed-in date is stored as UTC midnight).
+  const b = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  return Math.round((b - a) / (1000 * 60 * 60 * 24));
+}
+
+// Active checks that read the end date from the service itself, and what the
+// edit form calls that service ("From TorBox"). The check writes the date on
+// every run, so the form shows it instead of offering a box to type into.
+const AUTO_EXPIRY_SOURCES: Partial<Record<VaultTestType, string>> = {
+  real_debrid: 'Real-Debrid',
+  torbox: 'TorBox',
+  alldebrid: 'AllDebrid',
+  premiumize: 'Premiumize',
+  debrid_link: 'Debrid-Link',
+  xtream_auth: 'the IPTV server',
+};
+
+// "2026-12-31" -> "Dec 31, 2026", read straight from the parts so no time
+// zone can move it a day.
+function formatDayString(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}, ${y}`;
 }
 
 function StatusBadge({ entry }: { entry: VaultEntry }) {
@@ -146,7 +178,6 @@ function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntr
   const parts: string[] = [];
   if (usage) {
     if (typeof usage.activeDownloads === 'number') parts.push(`${usage.activeDownloads} active download${usage.activeDownloads === 1 ? '' : 's'}`);
-    if (typeof usage.premiumDaysLeft === 'number') parts.push(`${usage.premiumDaysLeft}d premium left`);
   }
 
   const handleToggleAutoRemove = async () => {
@@ -469,6 +500,11 @@ function VaultPageContent() {
   // inside the form) only shows in that context, not on every manual edit.
   const [arrivedViaAlert, setArrivedViaAlert] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The check type the entry was saved with - its end date only counts as
+  // "from the service" while the form still has that same check picked.
+  const [editingTestType, setEditingTestType] = useState<VaultTestType | null>(null);
+  // TorBox's plan + list price, offered once for an empty Cost field.
+  const [planOffer, setPlanOffer] = useState<{ name: string; monthlyUsd: number } | null>(null);
   const [form, setForm] = useState<EntryFormState>(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -580,6 +616,8 @@ function VaultPageContent() {
 
   const openAddModal = () => {
     setEditingId(null);
+    setEditingTestType(null);
+    setPlanOffer(null);
     setForm(EMPTY_FORM);
     setArrivedViaAlert(false);
     setIsAddOpen(true);
@@ -587,6 +625,11 @@ function VaultPageContent() {
 
   const openEditModal = async (entry: VaultEntry) => {
     setEditingId(entry.id);
+    setEditingTestType(entry.testType);
+    setPlanOffer(null);
+    if (entry.testType === 'torbox' && entry.cost == null) {
+      api.getVaultEntryUsage(entry.id).then((r) => setPlanOffer(r.usage?.plan || null)).catch(() => {});
+    }
     setArrivedViaAlert(false);
     const cfg: any = entry.testConfig || {};
     setForm({
@@ -1455,7 +1498,17 @@ function VaultPageContent() {
 
           <div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Cost (optional)" type="number" placeholder="e.g. 5.00" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} />
+              <div>
+                <Input label="Cost (optional)" type="number" placeholder="e.g. 5.00" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} />
+                {/* Offered, never filled in by itself, and only in dollars -
+                    the price is TorBox's US list price. */}
+                {planOffer && !form.cost && form.testType === 'torbox' && currency === 'USD' && (
+                  <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text-muted)' }}>
+                    <span>TorBox {planOffer.name} is ${planOffer.monthlyUsd} a month</span>
+                    <Button type="button" variant="primary" size="sm" className="ml-auto" onClick={() => setForm(f => ({ ...f, cost: String(planOffer.monthlyUsd), costCycle: 'monthly' }))}>Use</Button>
+                  </div>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Billed</label>
                 <div className="flex gap-2">
@@ -1467,10 +1520,38 @@ function VaultPageContent() {
             <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>Feeds the cost/hour summary at the top of the Vault. Set the currency there.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
-            <Input label="Notify days before" type="number" value={form.notifyDaysBefore} onChange={e => setForm(f => ({ ...f, notifyDaysBefore: e.target.value }))} />
-          </div>
+          {(() => {
+            const source = AUTO_EXPIRY_SOURCES[form.testType];
+            const fromService = !!(source && editingId && form.expiresAt && form.testType === editingTestType);
+            const chipName = source ? source.replace(/^the IPTV server$/, 'IPTV') : '';
+            const note = !source ? null : fromService
+              ? `${source.charAt(0).toUpperCase()}${source.slice(1)} updates this on every check, so renewing or buying more time moves it by itself.`
+              : `Run the check once and ${source} fills this in.`;
+            // The note sits under the date on phones (where the two fields
+            // stack) and under the whole row on wider screens.
+            return (
+              <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    {fromService ? (
+                      <div>
+                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Expires on</label>
+                        <div className="w-full px-4 py-3 rounded-xl flex items-center gap-2" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}>
+                          <span>{formatDayString(form.expiresAt)}</span>
+                          <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>From {chipName}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
+                    )}
+                    {note && <p className="sm:hidden text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{note}</p>}
+                  </div>
+                  <Input label="Notify days before" type="number" value={form.notifyDaysBefore} onChange={e => setForm(f => ({ ...f, notifyDaysBefore: e.target.value }))} />
+                </div>
+                {note && <p className="hidden sm:block text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{note}</p>}
+              </div>
+            );
+          })()}
 
           <div className="flex gap-3 pt-2">
             <button

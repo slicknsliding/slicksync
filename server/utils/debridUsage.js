@@ -65,6 +65,8 @@ async function fetchTorBoxUsage(apiKey) {
     return {
       premiumDaysLeft: user?.premium_expires_at ? daysUntil(user.premium_expires_at) : null,
       activeDownloads,
+      // Plan name + list price, for the edit form's "Use $3 a month" offer
+      plan: require('./vaultCheckers').TORBOX_PLANS[user?.plan] || null,
     }
   } catch {
     cancel()

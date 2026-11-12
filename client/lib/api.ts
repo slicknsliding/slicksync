@@ -2948,7 +2948,7 @@ class ApiClient {
   // Live Real-Debrid/TorBox usage (active downloads, premium days left) -
   // usage is null for a non-debrid entry or if the live provider call failed.
   async getVaultEntryUsage(id: string) {
-    return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null } | null }>(`/vault/${id}/usage`);
+    return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null; plan?: { name: string; monthlyUsd: number } | null } | null }>(`/vault/${id}/usage`);
   }
 
   async createVaultEntry(data: VaultEntryInput) {
@@ -4350,7 +4350,7 @@ export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
   | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth' | 'alldebrid' | 'premiumize' | 'debrid_link';
 
 export interface VaultEntry {
   id: string;
