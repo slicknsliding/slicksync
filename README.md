@@ -166,8 +166,10 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 <img src=".github/readme/else.svg" alt="Everything else">
 
+<img src=".github/readme/group-blue.svg" alt="Watching">
+
 <details>
-<summary><img src=".github/readme/sub-now-playing-activity.svg" alt="Now Playing & Activity"></summary>
+<summary><img src=".github/readme/box-now-playing-activity.svg" alt="Now Playing & Activity: Who's watching, history, Continue Watching" align="center"></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -181,59 +183,8 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 | **Last seen and Dormant** | Spot who stopped watching; leave test people out of the numbers |
 
 </details>
-
 <details>
-<summary><img src=".github/readme/sub-limits.svg" alt="Limits"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Daily limit, Bedtime, Age limit** | For each person, profile or household user |
-| **Pauses** | On every provider — instant, no app restart |
-| **Held by Jellyfin** | Bedtime keeps working even while SlickSync is down |
-| **Resume now** | Gives the rest of the day back |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-each-person-s-own-page.svg" alt="Each person's own page"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Their own sign-in** | With their Stremio, Nuvio, Jellyfin or AIOStreams login |
-| **Their own pages** | Home, Library, Activity with a This week panel, and Settings |
-| **Their own phone** | Picture, Nuvio profile, history import and push notifications |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-discover.svg" alt="Discover"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **One page of posters** | Titles, People, For you, Nobody's seen it, Watchlist |
-| **Sort and filter** | Genre, decade, rating, length; Surprise me |
-| **Describe it** | Find a title from a half-remembered plot |
-| **People pages** | Every actor and director; Only what I haven't seen; Follow |
-| **Title details** | Ratings, trailer, where to watch, More Like This, Finish the saga |
-| **LumiereDB** | Optional: typo-proof search and IMDb's Trending |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-catalogs.svg" alt="Catalogs"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Build or import** | MDBList, TMDb, Trakt, AniList, MyAnimeList, SIMKL, share codes |
-| **Describe it** | "90s horror" — review the suggestions first |
-| **Smart Catalogs** | Criteria instead of a list, refreshed daily |
-| **Keep and share** | Auto-refresh, export, publish to another household |
-| **Kid-safe** | A content rating allowlist |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-slicktrax.svg" alt="SlickTrax"></summary>
+<summary><img src=".github/readme/box-slicktrax.svg" alt="SlickTrax: Watchlist, For You and scrobbling, no Trakt" align="center"></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -245,8 +196,62 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
+<img src=".github/readme/group-green.svg" alt="What'S On Screen">
+
 <details>
-<summary><img src=".github/readme/sub-vault.svg" alt="Vault"></summary>
+<summary><img src=".github/readme/box-discover.svg" alt="Discover: Find something to watch, and who is in it" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **One page of posters** | Titles, People, For you, Nobody's seen it, Watchlist |
+| **Sort and filter** | Genre, decade, rating, length; Surprise me |
+| **Describe it** | Find a title from a half-remembered plot |
+| **People pages** | Every actor and director; Only what I haven't seen; Follow |
+| **Title details** | Ratings, trailer, where to watch, More Like This, Finish the saga |
+| **LumiereDB** | Optional: typo-proof search and IMDb's Trending |
+
+</details>
+<details>
+<summary><img src=".github/readme/box-catalogs.svg" alt="Catalogs: Lists you build, import and share" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Build or import** | MDBList, TMDb, Trakt, AniList, MyAnimeList, SIMKL, share codes |
+| **Describe it** | "90s horror" — review the suggestions first |
+| **Smart Catalogs** | Criteria instead of a list, refreshed daily |
+| **Keep and share** | Auto-refresh, export, publish to another household |
+| **Kid-safe** | A content rating allowlist |
+
+</details>
+
+<img src=".github/readme/group-gold.svg" alt="People">
+
+<details>
+<summary><img src=".github/readme/box-limits.svg" alt="Limits: Daily limit, bedtime and age limit" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Daily limit, Bedtime, Age limit** | For each person, profile or household user |
+| **Pauses** | On every provider — instant, no app restart |
+| **Held by Jellyfin** | Bedtime keeps working even while SlickSync is down |
+| **Resume now** | Gives the rest of the day back |
+
+</details>
+<details>
+<summary><img src=".github/readme/box-each-person-s-own-page.svg" alt="Each person's own page: Their own Home, Library and Activity" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Their own sign-in** | With their Stremio, Nuvio, Jellyfin or AIOStreams login |
+| **Their own pages** | Home, Library, Activity with a This week panel, and Settings |
+| **Their own phone** | Picture, Nuvio profile, history import and push notifications |
+
+</details>
+
+<img src=".github/readme/group-red.svg" alt="Protection">
+
+<details>
+<summary><img src=".github/readme/box-vault.svg" alt="Vault: Every key and login, checked and encrypted" align="center"></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -257,78 +262,8 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 | **Debrid usage** | Live usage and auto-remove for old torrents |
 
 </details>
-
 <details>
-<summary><img src=".github/readme/sub-addons.svg" alt="Addons"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Organise** | Drag to reorder, protect, tag, bulk actions |
-| **Edit in place** | Change an addon's settings once; every user updates |
-| **Health and backups** | Health checks, backup addons, optional proxy |
-| **Templates** | Save a set, deploy it or share it as a code |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-make-it-yours.svg" alt="Make it yours"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Arrange any page** | Move, fold, hide and stretch sections and cards; Undo and Reset |
-| **Your own menu bar** | Order, More, hidden pages, one or two rows |
-| **Page design** | Classic or v2; grid or list; density; start page |
-| **Themes** | Ten built in or your own, synced across devices |
-| **Share codes** | Catalogs, collections, templates and themes |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-notifications.svg" alt="Notifications"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Push and bell first** | Discord optional |
-| **What you hear about** | Started watching, new episodes, sign-in problems, Vault, addons, backups, updates |
-| **Less noise** | One alert per outage, digest mode, monthly recap |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-app-speed.svg" alt="App & speed"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Installs like an app** | Phones and desktops, with push and an icon badge |
-| **Instant** | Opens at once; live updates without refreshing |
-| **Posters** | Sized and cached on your own box |
-| **Command palette** | Ctrl+K / Cmd+K jumps to anything, even a single setting |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-automation.svg" alt="Automation"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Rules on real events** | A watch, an addon going down, a key failover, a schedule |
-| **Recipes** | One click; every rule reads as a sentence |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-metrics-health.svg" alt="Metrics & health"></summary>
-
-| Feature | What it does |
-|:--|:--|
-| **Metrics** | Leaderboards, streaks, trends, Taste Profiles, Year in Review |
-| **Public stats page** | Optional, per person |
-| **System Health** | Sync drift, addon uptime, key checks, servers up or down |
-
-</details>
-
-<details>
-<summary><img src=".github/readme/sub-backups.svg" alt="Backups"></summary>
+<summary><img src=".github/readme/box-backups.svg" alt="Backups: Full backups, restore and 30-day undo" align="center"></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -337,9 +272,8 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 | **Move and update** | New server with one code; self-updates with automatic rollback |
 
 </details>
-
 <details>
-<summary><img src=".github/readme/sub-security.svg" alt="Security"></summary>
+<summary><img src=".github/readme/box-security.svg" alt="Security: Passkeys, 2FA, SSO and limits" align="center"></summary>
 
 | Feature | What it does |
 |:--|:--|
@@ -350,6 +284,79 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 
 </details>
 
+<img src=".github/readme/group-teal.svg" alt="Setup">
+
+<details>
+<summary><img src=".github/readme/box-addons.svg" alt="Addons: One set for everyone, with health checks" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Organise** | Drag to reorder, protect, tag, bulk actions |
+| **Edit in place** | Change an addon's settings once; every user updates |
+| **Health and backups** | Health checks, backup addons, optional proxy |
+| **Templates** | Save a set, deploy it or share it as a code |
+
+</details>
+<details>
+<summary><img src=".github/readme/box-app-speed.svg" alt="App & speed: Installs like an app, opens instantly" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Installs like an app** | Phones and desktops, with push and an icon badge |
+| **Instant** | Opens at once; live updates without refreshing |
+| **Posters** | Sized and cached on your own box |
+| **Command palette** | Ctrl+K / Cmd+K jumps to anything, even a single setting |
+
+</details>
+<details>
+<summary><img src=".github/readme/box-automation.svg" alt="Automation: Rules that act on real events" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Rules on real events** | A watch, an addon going down, a key failover, a schedule |
+| **Recipes** | One click; every rule reads as a sentence |
+
+</details>
+
+<img src=".github/readme/group-orange.svg" alt="Alerts">
+
+<details>
+<summary><img src=".github/readme/box-notifications.svg" alt="Notifications: Push and bell first, Discord optional" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Push and bell first** | Discord optional |
+| **What you hear about** | Started watching, new episodes, sign-in problems, Vault, addons, backups, updates |
+| **Less noise** | One alert per outage, digest mode, monthly recap |
+
+</details>
+
+<img src=".github/readme/group-purple.svg" alt="Look And Numbers">
+
+<details>
+<summary><img src=".github/readme/box-make-it-yours.svg" alt="Make it yours: Arrange pages, your menu bar, themes" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Arrange any page** | Move, fold, hide and stretch sections and cards; Undo and Reset |
+| **Your own menu bar** | Order, More, hidden pages, one or two rows |
+| **Page design** | Classic or v2; grid or list; density; start page |
+| **Themes** | Ten built in or your own, synced across devices |
+| **Share codes** | Catalogs, collections, templates and themes |
+
+</details>
+<details>
+<summary><img src=".github/readme/box-metrics-health.svg" alt="Metrics & health: Numbers, Year in Review, System Health" align="center"></summary>
+
+| Feature | What it does |
+|:--|:--|
+| **Metrics** | Leaderboards, streaks, trends, Taste Profiles, Year in Review |
+| **Public stats page** | Optional, per person |
+| **System Health** | Sync drift, addon uptime, key checks, servers up or down |
+
+</details>
+
+---
 
 <a name="-installation"></a>
 
