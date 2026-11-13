@@ -1,5 +1,30 @@
 [
   {
+    "version": "1.105.0",
+    "date": "2026-11-13",
+    "title": "1.105.0 - Sync history, Vault key History and end dates, a Motion setting, and safer backups",
+    "features": [
+      "Sync history on a person’s page (a tile in Tools in page design v2): what each sync added, removed or updated on their Stremio or Nuvio account, or whether it changed the order, and what started it. Failures say why; kept 90 days.",
+      "Vault key History: the clock button on a card (History in the v2 card menu) lists each time a key was shown, copied, moved to Addons, changed, added or swapped with its backup, with the device and address. It opens beside its card.",
+      "Vault end dates come from the service on every check (TorBox, Real-Debrid, AllDebrid, Premiumize, Debrid-Link, IPTV), with new checks for AllDebrid, Premiumize and Debrid-Link, TorBox plan names and a one-tap monthly price.",
+      "Motion setting in Settings → Themes → Layout: Device, Reduced or Full, saved to your account.",
+      "One clear “Couldn’t load” screen with Try again and the technical reason under Details, on Users, Groups, Addons, Invitations, What’s New and a person’s pages; the Dashboard keeps its panels under one banner.",
+      "The box you’re typing in gets the accent border and a glow; the theme builder warns when text is hard to read; phones get bigger tap areas for icon buttons and checkboxes.",
+      "An eye on every hidden value: backup secrets, Jellyfin PINs and keys, and in Private Mode each masked email or device address one at a time.",
+      "Data safety: household installs copy the database before an update changes it; the nightly Vault backup is encrypted; data snapshots carry the encryption key; default addons stay protected by id and address; one sync at a time per person."
+    ],
+    "bugFixes": [
+      "An addon that moved to a new address shows as Updated in Sync history, not added and removed.",
+      "Popups opened from a pill stay with it when the top bar grows back at the top of the page.",
+      "Loading bars show on Daylight, and list rows tint on hover in every theme.",
+      "A failed addon reorder snaps back to the saved order and says so.",
+      "Stremio likes, Nuvio covers, Discord and ntfy calls give up instead of hanging; warnings are back in the logs.",
+      "Vault saves say what’s wrong instead of failing with a server error; two sign-in routes no longer pass a provider’s internal error text through.",
+      "A plain docker build makes a household image; the compose files explain how to keep port 3000 to the machine behind a proxy.",
+      "The Sponsor button is removed, and a few old changelog lines are corrected."
+    ]
+  },
+  {
     "version": "1.104.0",
     "date": "2026-11-10",
     "title": "1.104.0 - Live Stremio pauses, Continue Watching and Coming up as banners, tidier personal pages, and security fixes",
