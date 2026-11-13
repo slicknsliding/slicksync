@@ -41,10 +41,16 @@ function names(list: string[]): string {
 }
 
 function changes(e: SyncHistoryEntry): string {
+  // The server compares addresses, so the same addon at a new address (their
+  // SlickTrax rows, a Vault key inside it) comes back as added and removed.
+  const moved = e.added.filter((n) => e.removed.includes(n));
+  const added = e.added.filter((n) => !moved.includes(n));
+  const removed = e.removed.filter((n) => !moved.includes(n));
+  const updated = [...new Set([...e.updated, ...moved])];
   const parts: string[] = [];
-  if (e.added.length) parts.push(`Added ${names(e.added)}`);
-  if (e.removed.length) parts.push(`Removed ${names(e.removed)}`);
-  if (e.updated.length) parts.push(`Updated ${names(e.updated)}`);
+  if (added.length) parts.push(`Added ${names(added)}`);
+  if (removed.length) parts.push(`Removed ${names(removed)}`);
+  if (updated.length) parts.push(`Updated ${names(updated)}`);
   if (e.reordered) parts.push('New order');
   return parts.join(' · ');
 }

@@ -1480,6 +1480,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'Only syncs that changed something are kept, plus the ones that failed. The schedule checks often and usually finds nothing to do, so those aren’t listed.',
       'A failure that keeps happening stays on one line with a count, so a sign-in that’s broken for a week doesn’t fill the list.',
+      'An addon that moved to a new address counts as Updated, not added and removed: SlickTrax after their rows change, or an addon after a Vault key inside its address changes.',
       'Someone with both a Stremio and a Nuvio sign-in gets one list, with each line saying which one it was.',
       'Lines are kept for 90 days.',
     ],
