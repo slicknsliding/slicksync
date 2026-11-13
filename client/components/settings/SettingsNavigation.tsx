@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDownIcon, ChevronRightIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { TVFocusable } from '@/components/tv/TVFocusable';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 import type { SettingsIndexEntry } from '@/lib/settingsIndex';
 
 export interface SettingsTabDef {
@@ -137,6 +137,7 @@ function SettingsSearch({ getEntries, onPick, tabs }: {
   };
   const replace = () => { const at = place(); if (at) setAnchor(at); };
   useFitPopup(panel, open, replace);
+  useFollowAnchor(open, () => [box.current?.getBoundingClientRect() ?? null], replace);
 
   useEffect(() => {
     if (!open) return;
@@ -260,6 +261,7 @@ function SectionDropdown({ tabs, active, onSelect }: {
   };
   const replace = () => { const at = place(); if (at) setAnchor(at); };
   useFitPopup(panel, open, replace);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], replace);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); button.current?.focus(); } };

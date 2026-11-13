@@ -139,8 +139,9 @@ export function useFitPopup(panel: React.RefObject<HTMLElement | null>, open: bo
  * Place an open popup again when what it hangs off moves without the page
  * scrolling or resizing: the top bar growing back as the page reaches the top
  * pushes everything under it down over a few hundred milliseconds, and the
- * popup stayed where it was (on its card). Checks once a frame while open and
- * places again only after a move.
+ * popup stayed where it was, away from its pill or on top of its card. Every
+ * anchored popup uses it beside useFitPopup. Checks once a frame while open
+ * and places again only after a move.
  */
 export function useFollowAnchor(open: boolean, where: () => (DOMRect | null)[], replace: () => void) {
   useEffect(() => {

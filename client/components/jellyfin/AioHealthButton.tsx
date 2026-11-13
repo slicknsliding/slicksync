@@ -13,7 +13,7 @@ import { HeartIcon } from '@heroicons/react/24/outline';
 import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { api, type AioHealth, type AioTestSearch } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 export function AioHealthButton({ userId, name }: { userId: string; name: string }) {
   const button = useRef<HTMLButtonElement>(null);
@@ -40,6 +40,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   // Read when opened (and when the range changes, or on Try again) - it asks AIOStreams.
   const [attempt, setAttempt] = useState(0);

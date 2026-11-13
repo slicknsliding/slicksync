@@ -13,7 +13,7 @@ import { DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
 import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { api, type JellyfinDevice } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 function ago(iso: string | null) {
   if (!iso) return null;
@@ -56,6 +56,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
     load();
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;

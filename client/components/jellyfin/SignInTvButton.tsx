@@ -15,7 +15,7 @@ import { ActionPill } from '@/components/user/ActionPill';
 import { Button } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, type HouseholdProfile } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 type Who = { id: string | null; name: string; ready: boolean; hint?: string };
 
@@ -47,6 +47,7 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
     }
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;

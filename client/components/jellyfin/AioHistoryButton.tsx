@@ -14,7 +14,7 @@ import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { Button, Modal } from '@/components/ui';
 import { api, type AioHistory } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 const REASON: Record<string, string> = {
   seen: 'Seen',
@@ -47,6 +47,7 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   // The change alert links here with ?aioHistory=1.
   useEffect(() => {

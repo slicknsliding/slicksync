@@ -13,7 +13,7 @@ import { ActionPill } from '@/components/user/ActionPill';
 import { Button } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 type Found = { deviceName: string | null; deviceType: string | null };
 
@@ -48,6 +48,7 @@ export function SignInNuvioTvButton({ userId, name }: { userId: string; name: st
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;

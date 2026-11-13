@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import { CheckCircleIcon, ChevronLeftIcon, MagnifyingGlassIcon, CheckIcon, TvIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { api, type CatchUpEpisodes, type CatchUpJob, type CatchUpShow } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 import { posterUrl } from '@/lib/posterUrl';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { ActionPill } from '@/components/user/ActionPill';
@@ -93,6 +93,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;
