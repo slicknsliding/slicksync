@@ -44,29 +44,6 @@ class DatabaseTransactions {
       })
     ]);
   }
-
-  /**
-   * Delete group with all its relations
-   */
-  async deleteGroupWithRelations(groupId, accountId) {
-    return await this.prisma.$transaction([
-      this.prisma.groupAddon.deleteMany({ where: { groupId } }),
-      this.prisma.group.delete({ 
-        where: { id: groupId, accountId }
-      })
-    ]);
-  }
-
-  /**
-   * Upsert group-addon relationship
-   */
-  async upsertGroupAddon(groupId, addonId, isEnabled = true) {
-    return await this.prisma.groupAddon.upsert({
-      where: { groupId_addonId: { groupId, addonId } },
-      update: { isEnabled },
-      create: { groupId, addonId, isEnabled }
-    });
-  }
 }
 
 /**

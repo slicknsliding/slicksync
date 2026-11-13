@@ -33,8 +33,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/client/node_modules ./client/node_modules
 COPY . .
 
-# Set build-time variables first
-ARG INSTANCE
+# Set build-time variables first. private unless the build says otherwise
+# (the release workflows always pass it); it must match the default below,
+# or a plain `docker build .` made a household frontend inside a public image.
+ARG INSTANCE=private
 
 # Generate Prisma client with correct engine
 ENV PRISMA_CLI_BINARY_TARGETS="linux-musl-openssl-3.0.x,linux-musl-arm64-openssl-3.0.x"
@@ -86,7 +88,7 @@ RUN apk add --no-cache curl openssl3 npm coreutils
 ENV PRISMA_CLI_BINARY_TARGETS="linux-musl-openssl-3.0.x,linux-musl-arm64-openssl-3.0.x"
 
 # Allow building instance-specific images (private/public) and set default instance
-ARG INSTANCE=public
+ARG INSTANCE=private
 ENV INSTANCE=$INSTANCE
 ENV NEXT_PUBLIC_DEBUG=false
 
