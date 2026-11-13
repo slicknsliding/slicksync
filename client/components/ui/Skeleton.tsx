@@ -11,10 +11,9 @@ export function Skeleton({ className, style }: SkeletonProps) {
   return (
     <div
       className={clsx(
-        'relative overflow-hidden rounded-lg bg-surface-300/50',
-        'before:absolute before:inset-0 before:-translate-x-full',
-        'before:animate-shimmer before:bg-gradient-to-r',
-        'before:from-transparent before:via-white/5 before:to-transparent',
+        // Colours come from the theme's own text colour (globals.css), so
+        // the bars show on dark themes and on Daylight alike.
+        'skeleton-fill relative overflow-hidden rounded-lg',
         className
       )}
       style={style}
@@ -39,7 +38,7 @@ export function CardSkeleton() {
 // Table row skeleton
 export function TableRowSkeleton({ columns = 5 }: { columns?: number }) {
   return (
-    <tr className="border-b border-white/5">
+    <tr className="border-b border-default">
       {Array.from({ length: columns }).map((_, i) => (
         <td key={i} className="px-6 py-4">
           <Skeleton className="h-5 w-full" style={{ maxWidth: '150px' }} />

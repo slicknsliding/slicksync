@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError, EmptyState } from '@/components/ui/LoadState';
 import Head from 'next/head';
 import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
@@ -45,6 +46,7 @@ import {
   XMarkIcon,
   EllipsisVerticalIcon,
   EyeIcon,
+  EyeSlashIcon,
   ArrowDownTrayIcon,
   UsersIcon,
   UserGroupIcon,
@@ -106,6 +108,8 @@ export default function UsersPage() {
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
+  // Private mode: emails someone chose to show, one row at a time.
+  const [shownEmails, setShownEmails] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   // Kept between visits when "Keep each page's filter" is on (Themes).
   const [peopleFilter, setPeopleFilter] = useSavedFilter('users', 'all' as 'all' | 'dormant' | 'watching' | 'fix' | 'off', ['all', 'dormant', 'watching', 'fix', 'off']);
@@ -167,7 +171,6 @@ export default function UsersPage() {
         setGroups(groupsData);
       } catch (err) {
         setError(err as Error);
-        toast.error('Failed to load users');
       } finally {
         setIsLoading(false);
       }
@@ -763,16 +766,7 @@ export default function UsersPage() {
             <p className="text-muted">Loading users...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <XMarkIcon className="w-8 h-8 text-error" />
-            </div>
-            <h3 className="text-lg font-medium mb-2 text-default">Error Loading Users</h3>
-            <p className="text-muted mb-4">{error.message}</p>
-            <Button variant="primary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </div>
+          <LoadError what="your users" error={error} />
         ) : (
           <>
             {/* Users grid/list - v2 groups people by their group instead. */}
@@ -921,7 +915,7 @@ export default function UsersPage() {
                               key={user.id}
                               id={user.id}
                               onClick={() => toggleSelect(user.id)}
-                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(user.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
+                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(user.id) ? 'bg-primary-muted' : 'row-hover'
                                 }`}
                             >
                               <td className="px-4 py-4">
@@ -971,8 +965,27 @@ export default function UsersPage() {
                                         <SignInPill user={user} onReconnect={openReconnect} />
                                       )}
                                     </div>
-                                    <p className="text-sm text-subtle">
-                                      {hideSensitive ? '••••••••' : displayEmail(user.email)}
+                                    <p className="text-sm text-subtle flex items-center gap-1.5">
+                                      {hideSensitive && !shownEmails.has(user.id) ? '••••••••' : displayEmail(user.email)}
+                                      {hideSensitive && !isTV && user.email && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setShownEmails((prev) => {
+                                              const next = new Set(prev);
+                                              if (next.has(user.id)) next.delete(user.id); else next.add(user.id);
+                                              return next;
+                                            });
+                                          }}
+                                          className="p-0.5 -m-0.5 rounded hover:text-default transition-colors"
+                                          aria-label={shownEmails.has(user.id) ? 'Hide email' : 'Show email'}
+                                          title={shownEmails.has(user.id) ? 'Hide email' : 'Show email'}
+                                        >
+                                          {shownEmails.has(user.id) ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                                        </button>
+                                      )}
                                     </p>
                                   </div>
                                 </TVLink>
@@ -1037,22 +1050,21 @@ export default function UsersPage() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-16"
               >
-                <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-                  <svg className="w-8 h-8 text-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium mb-2 text-default">No users found</h3>
-                <p className="mb-6 text-muted">
-                  {peopleFilter === 'dormant' ? `Everyone has watched something in the last ${DORMANT_DAYS} days` : searchQuery ? 'Try adjusting your search' : 'Get started by adding your first user'}
-                </p>
-                {!searchQuery && peopleFilter === 'all' && (
-                  <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
-                    Add User
-                  </Button>
-                )}
+                <EmptyState
+                  icon={(
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  )}
+                  title="No users found"
+                  line={peopleFilter === 'dormant' ? `Everyone has watched something in the last ${DORMANT_DAYS} days` : searchQuery ? 'Try adjusting your search' : 'Get started by adding your first user'}
+                  action={!searchQuery && peopleFilter === 'all' && (
+                    <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
+                      Add User
+                    </Button>
+                  )}
+                />
               </motion.div>
             )}
           </>

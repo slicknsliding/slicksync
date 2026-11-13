@@ -88,4 +88,8 @@ health without you polling anything.
 Everything configurable is documented in `env.example`, which is the
 authoritative list. Only `JWT_SECRET` is always required; in public mode
 `ENCRYPTION_KEY` and `POSTGRES_PASSWORD` are as well. On a private instance an
-encryption key generates itself on first boot and is kept in the data volume.
+encryption key generates itself on first boot and is kept in the data volume
+(`data/server_secret.key`). Vault secrets and the nightly Vault backup are
+locked with it, so keep a copy somewhere else: a database snapshot taken with
+an encryption passphrase set carries it, and `scripts/restore-data-snapshot.js`
+puts it back.

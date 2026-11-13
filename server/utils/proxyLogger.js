@@ -118,10 +118,6 @@ async function pruneRotatedLogs() {
  * @param {Iterable<string>} options.accountAddonIds - The account's addon ids: entries written before accountId was
  *   recorded are attributed by their addonId
  * @param {boolean} options.includeUnattributed - Also keep entries tied to no addon or account (single-account installs only)
- * @param {string} options.accountId - Only entries belonging to this account (see accountAddonIds)
- * @param {Iterable<string>} options.accountAddonIds - The account's addon ids: entries written before accountId was
- *   recorded are attributed by their addonId
- * @param {boolean} options.includeUnattributed - Also keep entries tied to no addon or account (single-account installs only)
  * @param {number} options.limit - Max number of entries to return (default 100)
  * @param {number} options.offset - Number of entries to skip (default 0)
  * @returns {Promise<{logs: Array, total: number}>}
@@ -129,58 +125,46 @@ async function pruneRotatedLogs() {
 async function readProxyLogs(options = {}) {
   const { addonId, proxyUuid, accountId, accountAddonIds, includeUnattributed = false, limit = 100, offset = 0 } = options;
   const ownAddonIds = new Set(accountAddonIds || []);
+  const matches = (log) => {
+    if (accountId) {
+      if (log.accountId) { if (log.accountId !== accountId) return false; }
+      else if (log.addonId) { if (!ownAddonIds.has(log.addonId)) return false; }
+      else if (!includeUnattributed) return false;
+    }
+    if (addonId && log.addonId !== addonId) return false;
+    if (proxyUuid && log.proxyUuid !== proxyUuid) return false;
+    return true;
+  };
 
   try {
-    // Check if file exists
     if (!fs.existsSync(PROXY_LOG_FILE)) {
       return { logs: [], total: 0 };
     }
 
-    // Read file
-    const content = await fs.promises.readFile(PROXY_LOG_FILE, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean);
-
-    // Parse all logs (newest last in file, so reverse to get newest first)
-    let logs = lines
-      .map(line => {
-        try {
-          return JSON.parse(line);
-        } catch (e) {
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .map((log) => (log.upstreamUrl ? { ...log, upstreamUrl: redactUpstreamUrl(log.upstreamUrl) } : log))
-      .reverse();
-
-    // Apply filters
-    if (accountId) {
-      logs = logs.filter(log => {
-        if (log.accountId) return log.accountId === accountId;
-        if (log.addonId) return ownAddonIds.has(log.addonId);
-        return includeUnattributed;
-      });
-    }
-    if (accountId) {
-      logs = logs.filter(log => {
-        if (log.accountId) return log.accountId === accountId;
-        if (log.addonId) return ownAddonIds.has(log.addonId);
-        return includeUnattributed;
-      });
-    }
-    if (addonId) {
-      logs = logs.filter(log => log.addonId === addonId);
-    }
-    if (proxyUuid) {
-      logs = logs.filter(log => log.proxyUuid === proxyUuid);
+    // Read line by line, keeping only what the page needs. The newest entry
+    // is the last line, so the page (newest first, from `offset`) is the
+    // last offset+limit matching lines: hold just those in a ring and count
+    // the rest. The whole 10 MB file used to be read into one string and
+    // every line parsed into memory to show a hundred rows.
+    const window = Math.max(0, Number(offset) || 0) + Math.max(0, Number(limit) || 0);
+    const ring = new Array(window);
+    let total = 0;
+    const rl = require('readline').createInterface({ input: fs.createReadStream(PROXY_LOG_FILE, { encoding: 'utf8' }), crlfDelay: Infinity });
+    for await (const line of rl) {
+      if (!line) continue;
+      let log;
+      try { log = JSON.parse(line); } catch { continue; }
+      if (!log || !matches(log)) continue;
+      if (window) ring[total % window] = log;
+      total++;
     }
 
-    const total = logs.length;
-
-    // Apply pagination
-    logs = logs.slice(offset, offset + limit);
-
-    return { logs, total };
+    const logs = [];
+    const kept = Math.min(total, window);
+    for (let i = 1; i <= kept; i++) logs.push(ring[(total - i) % window]);
+    const page = logs.slice(offset, offset + limit)
+      .map((log) => (log.upstreamUrl ? { ...log, upstreamUrl: redactUpstreamUrl(log.upstreamUrl) } : log));
+    return { logs: page, total };
   } catch (e) {
     console.error('Error reading proxy logs:', e);
     return { logs: [], total: 0 };

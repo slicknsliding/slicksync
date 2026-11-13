@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError } from '@/components/ui/LoadState';
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -262,7 +263,6 @@ export default function ChangelogPage() {
     } catch (err) {
       setIsError(true);
       setError(err as Error);
-      toast.error('Failed to load changelog');
     } finally {
       setIsLoading(false);
     }
@@ -311,7 +311,6 @@ export default function ChangelogPage() {
   };
 
   const isInitialLoading = isLoading && releases.length === 0;
-  const errorMessage = error instanceof Error ? error.message : 'Failed to load changelog.';
 
   return (
     <Wrapper>
@@ -351,23 +350,8 @@ export default function ChangelogPage() {
         {/* Error State */}
         {isError && (
           <PageSection>
-            <Card padding="lg" className="text-center">
-              <p className="text-muted mb-4">
-                Could not load the changelog. {errorMessage}
-              </p>
-              {(() => {
-                const retry = (
-                  <Button
-                    variant="secondary"
-                    leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-                    onClick={fetchData}
-                    isLoading={isLoading}
-                  >
-                    Retry
-                  </Button>
-                );
-                return isTV ? <div className="flex justify-center"><TVFocusable onEnterPress={fetchData}>{retry}</TVFocusable></div> : retry;
-              })()}
+            <Card padding="lg">
+              <LoadError what="the changelog" error={error} onRetry={fetchData} />
             </Card>
           </PageSection>
         )}

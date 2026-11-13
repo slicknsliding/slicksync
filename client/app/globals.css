@@ -954,6 +954,43 @@ body {
   animation: float 4s ease-in-out infinite;
 }
 
+/* Loading placeholder bars (components/ui/Skeleton.tsx) and table-row
+   hover: a tint of the theme's text colour, so both read on dark themes
+   and on Daylight. */
+.skeleton-fill {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+}
+.skeleton-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-text) 7%, transparent), transparent);
+  animation: shimmer 2s linear infinite;
+}
+/* Bigger tap areas on touch screens: an icon-only button (drag handles, the
+   three-dot menus, eye buttons) is about 28px, under the 44px a fingertip
+   needs. An invisible area 8px past each side, the same look. Two icon
+   buttons side by side only reach 3px towards each other, so a tap still
+   lands on the nearer one. Mouse and TV remote are unchanged. */
+@media (pointer: coarse) {
+  html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child):not(.absolute, .fixed, .sticky) { position: relative; }
+  html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child)::after { content: ""; position: absolute; inset: -8px; }
+  html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child):has(+ :is(button, [role="button"], a):has(> svg:only-child))::after { right: -3px; }
+  html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child) + :is(button, [role="button"], a):has(> svg:only-child)::after { left: -3px; }
+  /* Select checkboxes (rows and "select all", 24px): 10px past each side, about 44px. */
+  html:not([data-tv]) button[role="checkbox"]:not(.absolute, .fixed, .sticky) { position: relative; }
+  html:not([data-tv]) button[role="checkbox"]::after { content: ""; position: absolute; inset: -10px; }
+}
+
+/* Theme builder: a colour that's hard to read (ThemesPanel ColorOverride). */
+.contrast-warn { color: var(--color-warning); }
+.row-hover:hover {
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
 /* Nebula layout's corner spotlight glows (PageContainer.tsx) - a gentle
    transform-only drift (translate + scale) so the blobs feel alive without
    ever being able to move off their corner entirely, unlike the two earlier
@@ -978,11 +1015,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-shimmer,
-  .animate-pulse-soft,
-  .animate-float,
-  .animate-float-slow,
-  .animate-float-slow-reverse {
+  html:not([data-motion="full"]) :is(.animate-shimmer, .animate-pulse-soft, .animate-float, .animate-float-slow, .animate-float-slow-reverse),
+  html:not([data-motion="full"]) .skeleton-fill::before {
     animation: none;
   }
 }
@@ -1049,12 +1083,25 @@ body {
 
 /* ===== SELECTION & FOCUS ===== */
 
-/* Remove focus ring/outline/box-shadow; use primary-muted (activity tab selected) for focus border */
+/* The box you're typing in: the accent border and a soft glow, so it stands
+   out on every theme. A TV keeps its own focus glow on the wrapper. */
 .slicksync-input:focus,
 .slicksync-input:focus-visible {
   outline: none !important;
+  box-shadow: 0 0 0 3px var(--color-primary-muted) !important;
+  border-color: var(--color-primary) !important;
+}
+html[data-tv] .slicksync-input:focus,
+html[data-tv] .slicksync-input:focus-visible {
   box-shadow: none !important;
   border-color: var(--color-primary-muted) !important;
+}
+/* Hand-built text boxes (a plain <input>/<textarea>/<select> with a border)
+   get the same: borderless inline fields, like search inside a pill, don't. */
+html:not([data-tv]) :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select)[class~="border"]:focus-visible,
+html:not([data-tv]) :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea)[class~="border"]:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-muted);
 }
 
 ::selection {
@@ -1557,9 +1604,10 @@ body {
   transform: scale(0.97);
 }
 @media (prefers-reduced-motion: reduce) {
-  .airing-date { transition: none; }
-  .airing-date:active { transform: none; }
+  html:not([data-motion="full"]) .airing-date { transition: none; }
+  html:not([data-motion="full"]) .airing-date:active { transform: none; }
 }
+html[data-motion="reduced"] .airing-date:active { transform: none; }
 /* Touch swipes the strip; the arrow buttons would only sit on top of tiles. */
 @media (pointer: coarse) {
   .airing-strip button[aria-label^="Scroll"] { display: none; }
@@ -1628,14 +1676,32 @@ html[data-tv] [data-tv-modal] :is(a, button, input, select, textarea, [tabindex]
 }
 
 /* Motion off for anyone who asks the system for it. */
+/* Reduced motion: the device's own setting, unless the account chose Full
+   (Themes → Layout → Motion), or the account's Reduced on any device.
+   Spinners keep turning: they are how you can tell something is loading. */
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after {
+  html:not([data-motion="full"]) { scroll-behavior: auto; }
+  html:not([data-motion="full"]) *, html:not([data-motion="full"]) *::before, html:not([data-motion="full"]) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  html:not([data-motion="full"]) .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+html[data-motion="reduced"] { scroll-behavior: auto; }
+html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+html[data-motion="reduced"] .animate-spin {
+  animation-duration: 1s !important;
+  animation-iteration-count: infinite !important;
 }
 
 /* Text on the solid accent fill. Unlayered so it wins over a text-white
@@ -1746,7 +1812,7 @@ html[data-tv] [data-tv-modal] :is(a, button, input, select, textarea, [tabindex]
   .ss-toast { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ss-toast-in, .ss-toast-out { animation-duration: 0.01ms; }
+  html:not([data-motion="full"]) :is(.ss-toast-in, .ss-toast-out) { animation-duration: 0.01ms; }
 }
 
 /* Arranging a page (components/ui/Arrange.tsx). */

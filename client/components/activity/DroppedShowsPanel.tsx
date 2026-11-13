@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -51,6 +52,7 @@ export function DroppedShowsPanel({ v2Arrange }: { v2Arrange?: PageArrange } = {
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
+    setError(null);
     try {
       const [abandoned, graves] = await Promise.all([api.getAbandonedShows(), api.getBuriedShows()]);
       setItems(abandoned);
@@ -234,8 +236,7 @@ export function DroppedShowsPanel({ v2Arrange }: { v2Arrange?: PageArrange } = {
   if (error) {
     return (
       <Card padding="lg">
-        <p className="text-sm text-error">{error}</p>
-        <Button variant="ghost" size="sm" className="mt-2" onClick={load}>Retry</Button>
+        <LoadErrorInline error={error} onRetry={load} />
       </Card>
     );
   }

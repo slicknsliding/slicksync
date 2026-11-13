@@ -142,7 +142,7 @@ export function JfChoices({ loading, servers, accounts, onPickServer, onPickAcco
     <section className="arrange-section" aria-label="Server or sign-in">
       <h2 className="text-lg font-semibold mb-3">Choose a server or sign-in</h2>
       {loading ? (
-        <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[66px] rounded-2xl bg-surface-hover animate-pulse" />)}</V2Tiles>
+        <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[66px] rounded-2xl skeleton-fill" />)}</V2Tiles>
       ) : total === 0 ? (
         <p className="text-sm text-muted">
           Nobody here signs in with AIOStreams or to a Jellyfin server of their own yet. Add someone with Users &rarr; Add &rarr; Jellyfin.{' '}

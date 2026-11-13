@@ -894,6 +894,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, profil
       if (search && search.trim()) params.set('search', search.trim())
       const res = await fetch(`https://nuvio.tv/api/covers?${params}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(15000),
       })
       if (!res.ok) throw new Error(`Nuvio covers request failed (${res.status})`)
       return res.json()

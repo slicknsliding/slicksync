@@ -527,7 +527,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
                 try {
                   const { syncUserAddons } = require('./users')
                   const reqLike = { appAccountId: request.invitation.accountId, headers: {} }
-                  const syncResult = await syncUserAddons(prisma, newUser.id, [], false, reqLike, decrypt, () => request.invitation.accountId, true)
+                  const syncResult = await syncUserAddons(prisma, newUser.id, false, reqLike, decrypt, () => request.invitation.accountId, true, { source: 'invite' })
                   if (syncResult?.success) {
                     console.log('✅ User synced on join')
                   } else {
@@ -1807,7 +1807,7 @@ module.exports.createPublicRouter =({ prisma, encrypt, assignUserToGroup, decryp
               try {
                 const { syncUserAddons } = require('./users')
                 const reqLike = { appAccountId: invitation.accountId, headers: {} }
-                const syncResult = await syncUserAddons(prisma, newUser.id, [], false, reqLike, decrypt, () => invitation.accountId, true)
+                const syncResult = await syncUserAddons(prisma, newUser.id, false, reqLike, decrypt, () => invitation.accountId, true, { source: 'invite' })
                 if (syncResult?.success) {
                   console.log('✅ User synced on join')
                 } else {

@@ -1154,7 +1154,7 @@ export default function ListDetailPage() {
           ) : isLoading ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />
+                <div key={i} className="aspect-[2/3] rounded-md skeleton-fill" />
               ))}
             </div>
           ) : list && list.items.length === 0 ? (
@@ -1723,7 +1723,7 @@ export default function ListDetailPage() {
           {loadingSuggestions ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
               {[...Array(8)].map((_, i) => (
-                <div key={i} className="aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />
+                <div key={i} className="aspect-[2/3] rounded-md skeleton-fill" />
               ))}
             </div>
           ) : suggestions.length === 0 ? (

@@ -1411,7 +1411,7 @@ export default function NuvioCollectionsPage() {
               {usersLoading ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-20 rounded-xl bg-surface-hover animate-pulse" />
+                    <div key={i} className="h-20 rounded-xl skeleton-fill" />
                   ))}
                 </div>
               ) : nuvioUsers.length === 0 ? (
@@ -1461,7 +1461,7 @@ export default function NuvioCollectionsPage() {
                     {profilesLoading ? (
                       <div className="flex gap-2">
                         {Array.from({ length: 3 }).map((_, i) => (
-                          <div key={i} className="h-9 w-24 rounded-lg bg-surface-hover animate-pulse" />
+                          <div key={i} className="h-9 w-24 rounded-lg skeleton-fill" />
                         ))}
                       </div>
                     ) : (
@@ -1514,7 +1514,7 @@ export default function NuvioCollectionsPage() {
           {selectedProfileIndex !== null && !homeRowsEditorOpen && (
             collectionsLoading ? (
               <div className="space-y-3">
-                {[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-surface-hover animate-pulse" />)}
+                {[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-xl skeleton-fill" />)}
               </div>
             ) : (
               <>
@@ -2191,7 +2191,7 @@ export default function NuvioCollectionsPage() {
                   <label className="block text-xs font-medium text-muted mb-1.5">Preview</label>
                   {pickerPreviewLoading ? (
                     <div className="flex gap-2">
-                      {[...Array(6)].map((_, i) => <div key={i} className="w-16 aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />)}
+                      {[...Array(6)].map((_, i) => <div key={i} className="w-16 aspect-[2/3] rounded-md skeleton-fill" />)}
                     </div>
                   ) : pickerPreview.length === 0 ? (
                     <p className="text-xs text-subtle">No preview available for this catalog.</p>
@@ -2371,7 +2371,7 @@ export default function NuvioCollectionsPage() {
                         </div>
                       ) : isLoadingPreview ? (
                         <div className="flex flex-wrap gap-2.5">
-                          {[...Array(6)].map((_, i) => <div key={i} className="w-20 aspect-[2/3] rounded-lg bg-surface-hover animate-pulse" />)}
+                          {[...Array(6)].map((_, i) => <div key={i} className="w-20 aspect-[2/3] rounded-lg skeleton-fill" />)}
                         </div>
                       ) : items.length === 0 ? (
                         <p className="text-sm text-subtle">No preview available for this folder&apos;s sources.</p>
@@ -2425,7 +2425,7 @@ export default function NuvioCollectionsPage() {
                     <p className="text-xs text-subtle">No sources in this folder.</p>
                   ) : loading ? (
                     <div className="flex gap-2">
-                      {[...Array(6)].map((_, i) => <div key={i} className="w-16 aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />)}
+                      {[...Array(6)].map((_, i) => <div key={i} className="w-16 aspect-[2/3] rounded-md skeleton-fill" />)}
                     </div>
                   ) : items.length === 0 ? (
                     <p className="text-xs text-subtle">No preview available for this folder&apos;s sources.</p>

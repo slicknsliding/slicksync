@@ -217,24 +217,41 @@ test/                    node:test regression tests (node --test test/) - not ex
 
 | Mount path | File | Purpose |
 |---|---|---|
-| `/api/auth`, `/api/public-auth` | `publicAuth.js` | Login/auth for public instance mode |
-| `/api/addons` | `addons.js` | Addon CRUD, manifest handling |
-| `/api/groups` | `groups.js` | User groups |
-| `/api/users` | `users.js` | Managed Stremio users |
-| `/api/stremio` | `stremio.js` | Stremio provider integration |
-| `/api/nuvio` | `nuvio.js` | Nuvio provider integration (auth/connect/OAuth; rate-limited) |
+| `/api/auth`, `/api/public-auth` | `publicAuth.js` | Sign-in, sessions, config export/import |
+| `/api/users` | `users.js` | People: providers, sync, library, history, limits |
+| `/api/groups` | `groups.js` | Groups and their addon lists |
+| `/api/addons` | `addons.js` | Addon CRUD, manifests, proxy logs |
+| `/api/stremio` | `stremio.js` | Stremio sign-in and account calls |
+| `/api/nuvio` | `nuvio.js` | Nuvio sign-in/connect (rate-limited) |
+| `/api/jellyfin` | `jellyfin.js` (+ `jellyfinHouseholdServers.js` at `/household-servers`) | Jellyfin-compatible servers and households |
 | `/api/snapshots` | `snapshots.js` | Library/addon snapshots |
-| `/api/avatars` | `avatars.js` | Avatar upload/serving |
 | `/api/vault` | `vault.js` | Credential vault |
-| `/api/settings` | `settings.js` | Instance/account settings |
-| `/api/discover` | `discover.js` | Browse/search Cinemeta's real catalogs (Popular/New/Top Rated) — stateless proxy, no account scoping needed |
-| `/api/ext` | `externalApi.js` | External API surface |
-| `/api/invitations`, `/invite` | `invitations.js` | Invitations (authenticated admin + public accept flow) |
-| `/api/public-library` | `publicLibrary.js` | Public-mode library reads |
-| `/proxy` | `proxy.js`, `streamProxy.js` | Stream/manifest proxying |
-| — | `activity.js`, `debug.js` | Activity feed, debug endpoints |
+| `/api/settings` | `settings.js` | Account and instance settings |
+| `/api/automation` | `automation.js` | Automation rules and recipes |
+| `/api/health` | `health.js` | Health page, build stamp |
+| `/api/scrobble` | `scrobble.js` | Scrobble endpoints |
+| `/api/watch-together` | `watchTogether.js` | Watch Together |
+| `/api/watchlist` | `watchlist.js` | Watchlist |
+| `/api/lists` | `lists.js` | Custom lists |
+| `/api/follows` | `follows.js` | Follows |
+| `/api/discover` | `discover.js` | Browse Cinemeta catalogs (stateless) |
+| `/api/addon-directory` | `addonDirectory.js` | Addon directory |
+| `/api/anime` | `anime.js` | Anime lookups |
+| `/api/poster`, `/api/img` | `posters.js`, `imageCache.js` | Posters and cached images |
+| `/api/qr` | `qr.js` | QR codes |
+| `/api/push` | `push.js` | Web push subscriptions |
+| `/api/passkeys` | `passkeys.js` | Passkeys |
+| `/api/federation` | `federation.js` | Federation |
+| `/api/migration` | `migration.js` | Migration codes between instances |
+| `/api/superadmin` | `superadmin.js` | Operator console (public mode) |
+| `/api/ext`, `/api/docs` | `externalApi.js` | External API and its docs |
+| `/api/invitations` | `invitations.js` | Invitations (admin + public accept flow) |
+| `/api/public-library` | `publicLibrary.js` | A person's own portal |
+| `/proxy` | `proxy.js` | Addon proxying |
+| `/stream` | `streamProxy.js` | Stream proxying |
+| `/trax` | `traxAddon.js` | SlickTrax addon (must bypass any auth gate) |
 
-`accountScopingMiddleware` wraps groups/users/addons/stremio/nuvio/snapshots/vault so multi-account data stays scoped.
+`accountScopingMiddleware` wraps groups, users (except `/public-stats/`), addons, stremio, nuvio, jellyfin, snapshots, vault, automation and watch-together so multi-account data stays scoped.
 
 ## Client routes (`client/app/(admin)/`)
 

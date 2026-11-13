@@ -47,7 +47,7 @@ test('IPTV check: a working login passes and brings its end date', async (t) => 
   const r = await runCheck('xtream_auth', 'right-password', { url: `${srv.url}/`, identifier: 'viewer' })
   assert.equal(r.ok, true)
   assert.equal(r.expiresAt.toISOString(), new Date(1893456000 * 1000).toISOString())
-  assert.match(r.message, /Login works, runs out 2030-01-01/)
+  assert.match(r.message, /Login works, expires Jan 1, 2030/)
   assert.equal(srv.seen.length, 1)
 })
 

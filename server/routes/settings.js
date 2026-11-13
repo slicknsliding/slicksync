@@ -1615,7 +1615,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const decrypt = require('../utils/encryption').decrypt;
 
       const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID;
-      const syncReq = { appAccountId: accountId, headers: {}, body: {} };
+      const syncReq = { appAccountId: accountId, headers: {}, body: {}, syncSource: 'sync_all' };
 
       const groups = await prisma.group.findMany({
         where: scopedWhere(syncReq, {}),
@@ -1764,9 +1764,13 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const accountId = getAccountId(req) || 'default'
       const entry = await findAiVaultEntry(accountId)
       if (!entry) return res.status(404).json({ message: 'AI Services not configured' })
+      // Same limit and the same History as the Vault card's own eye icon.
+      const vaultAccess = require('../utils/vaultAccess')
+      if (!vaultAccess.takeRevealSlot(accountId)) return res.status(429).json({ message: vaultAccess.LIMIT_MESSAGE })
       const decrypt = require('../utils/encryption').decrypt
       let secret
       try { secret = decrypt(entry.encryptedSecret, req) } catch { return res.status(500).json({ message: 'Failed to decrypt secret' }) }
+      await vaultAccess.recordVaultAccess(prisma, { accountId, entryId: entry.id, action: 'shown', req })
       res.json({ secret })
     } catch (e) {
       console.error('Error revealing AI services key:', e)
@@ -1875,6 +1879,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const data = { testConfig, testType: 'openai_compatible' }
         if (trimmedKey) data.encryptedSecret = encrypt(trimmedKey, req)
         const updated = await prisma.vaultEntry.update({ where: { id: existing.id }, data })
+        if (trimmedKey) await require('../utils/vaultAccess').recordVaultAccess(prisma, { accountId, entryId: existing.id, action: 'changed', req })
         const verdict = await verifyAndRecordAiServices(accountId, updated)
         return res.json({ configured: true, ...verdict })
       }
@@ -1899,6 +1904,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           position: (maxPositionEntry?.position ?? -1) + 1,
         },
       })
+      await require('../utils/vaultAccess').recordVaultAccess(prisma, { accountId, entryId: created.id, action: 'added', req })
       const verdict = await verifyAndRecordAiServices(accountId, created)
       return res.status(201).json({ configured: true, ...verdict })
     } catch (e) {

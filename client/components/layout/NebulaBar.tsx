@@ -11,7 +11,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ComponentType, Fragment, ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { AccountPlacementContext, useAccountPlacement } from '@/lib/layout-mode';
@@ -90,7 +90,7 @@ export function NebulaBar({
   const router = useRouter();
   const isTV = useIsTV();
   const floatAway = useStepAsideOnScroll();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useReducedMotionConfig();
   const navId = useId();
   const barRef = useRef<HTMLDivElement>(null);
   // The bar sits in the page's flow, so a change to its size (a Themes →

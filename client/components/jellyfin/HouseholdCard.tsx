@@ -6,7 +6,7 @@
 // one tile per profile, and picking one opens what can be done with it right
 // underneath. The rules live in server/utils/jellyfinProfiles.js.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -18,9 +18,21 @@ import { api, type HouseholdPersonal, type HouseholdProfile, type LimitsSummary 
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { avatarThumbUrl } from '@/lib/posterUrl';
 import { copyToClipboard } from '@/lib/clipboard';
-import { Badge, Button, Card, ConfirmModal, Modal, ToggleSwitch } from '@/components/ui';
+import { Badge, Button, Card, ConfirmModal, Modal, PasswordToggleButton, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { MENU_ITEM, POPOVER_WIDTH, placeUnder, type Placement } from '@/components/user/ProfilesCard';
+
+// A PIN or password field with the eye to show what was typed.
+function HiddenField(props: InputHTMLAttributes<HTMLInputElement>) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={visible ? 'text' : 'password'}
+        className="w-full pl-4 pr-12 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+      <PasswordToggleButton visible={visible} onToggle={() => setVisible((v) => !v)} />
+    </div>
+  );
+}
 
 interface PendingAction {
   title: string;
@@ -636,8 +648,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
           {canPin && (
           <div>
             <label htmlFor="household-new-pin" className="block text-sm font-medium mb-2 text-default">PIN <span className="text-muted font-normal">(optional, 4 to 12 digits)</span></label>
-            <input id="household-new-pin" type="password" inputMode="numeric" autoComplete="new-password" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-              className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+            <HiddenField id="household-new-pin" inputMode="numeric" autoComplete="new-password" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} />
           </div>
           )}
           {serverKind !== 'aiometadata' && (
@@ -672,8 +683,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
           <p className="text-sm text-muted">The new PIN works in every app straight away. SlickSync signs {pinFor?.name} in once with it to keep tracking them.</p>
           <div>
             <label htmlFor="household-change-pin" className="block text-sm font-medium mb-2 text-default">New PIN <span className="text-muted font-normal">(4 to 12 digits)</span></label>
-            <input id="household-change-pin" type="password" inputMode="numeric" autoComplete="new-password" value={changedPin} onChange={(e) => setChangedPin(e.target.value.replace(/\D/g, ''))}
-              className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+            <HiddenField id="household-change-pin" inputMode="numeric" autoComplete="new-password" value={changedPin} onChange={(e) => setChangedPin(e.target.value.replace(/\D/g, ''))} />
           </div>
           <div className="flex gap-3 justify-between flex-wrap">
             <Button variant="ghost" type="button" onClick={() => submitPin(null)} disabled={busy}>Remove the PIN</Button>
@@ -736,14 +746,12 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
           </p>
           <div>
             <label htmlFor="household-password" className="block text-sm font-medium mb-2 text-default">Configuration password</label>
-            <input id="household-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+            <HiddenField id="household-password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           {signingIn?.status === 'needs-pin' && (
             <div>
               <label htmlFor="household-pin" className="block text-sm font-medium mb-2 text-default">{signingIn.name}&apos;s PIN</label>
-              <input id="household-pin" type="password" inputMode="numeric" autoComplete="off" value={pin} onChange={(e) => setPin(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }} />
+              <HiddenField id="household-pin" inputMode="numeric" autoComplete="off" value={pin} onChange={(e) => setPin(e.target.value)} />
             </div>
           )}
           <div className="flex gap-3 justify-end">

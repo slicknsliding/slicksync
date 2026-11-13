@@ -520,7 +520,7 @@ export function AvatarPickerModal({
                   </button>
                 ))}
                 {nuvioCoversLoading && Array.from({ length: size === 'full' ? 10 : size === 'md' ? 4 : 8 }).map((_, i) => (
-                  <div key={`skeleton-${i}`} className="aspect-video rounded-lg bg-surface-hover animate-pulse" />
+                  <div key={`skeleton-${i}`} className="aspect-video rounded-lg skeleton-fill" />
                 ))}
                 {/* Infinite-scroll observer target - col-span-full so it
                     doesn't become a visible grid cell of its own. */}

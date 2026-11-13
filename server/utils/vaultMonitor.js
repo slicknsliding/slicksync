@@ -1,4 +1,4 @@
-// Periodically runs active-checks on vault entries and notifies (ntfy/Discord) when:
+// Periodically runs active-checks on vault entries and notifies (bell, push and Discord) when:
 //   - an entry is within its notifyDaysBefore window of expiresAt (throttled to once/day)
 //   - an automated check flips from ok -> error (throttled to once/day per entry)
 
@@ -216,6 +216,9 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
                     prisma.vaultEntry.update({ where: { id: primaryEntry.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'ok', lastCheckMessage: 'Original key recovered - restored as primary' } }),
                     prisma.vaultEntry.update({ where: { id: entry.id }, data: { encryptedSecret: primaryEntry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Back to being the backup' } }),
                   ])
+                  for (const id of [primaryEntry.id, entry.id]) {
+                    await require('./vaultAccess').recordVaultAccess(prisma, { accountId: account.id, entryId: id, action: 'swapped' })
+                  }
                   // Fresh read: only the vaultPromotions key is ours to change.
                   await updateAccountSyncKey(prisma, account.id, 'vaultPromotions', (cur) => {
                     const next = { ...(cur || {}) }

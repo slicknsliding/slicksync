@@ -45,6 +45,8 @@ export type Arrangement = {
   pages?: Record<string, PageArrangement>;
   menu?: MenuArrangement;
   density?: Density;
+  /** Motion (Themes → Layout): 'reduced' or 'full'; nothing saved follows the device's reduce-motion setting. */
+  motion?: 'reduced' | 'full';
   /** Now Playing: who is watching sits on the picture ('on'); under it otherwise. */
   nowPlayingWho?: 'on';
   /** Continue Watching: time left / Up next on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */

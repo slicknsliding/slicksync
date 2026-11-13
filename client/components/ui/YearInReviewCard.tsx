@@ -118,7 +118,7 @@ export function YearInReviewCard() {
       </div>
 
       {loading ? (
-        <div className="h-40 rounded-lg bg-surface-hover animate-pulse" />
+        <div className="h-40 rounded-lg skeleton-fill" />
       ) : !data || !data.hasData ? (
         <p className="text-sm text-muted py-8 text-center">No watch activity recorded for {year} yet.</p>
       ) : (

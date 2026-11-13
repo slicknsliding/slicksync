@@ -26,4 +26,28 @@ function sanitizeRestoredEntry(data) {
   return data
 }
 
-module.exports = { cleanDashboardUrl, sanitizeRestoredEntry }
+// The fields a save can set that the database is strict about, checked
+// before it sees them: a wrong type used to come back as a server error
+// (500) instead of saying what was wrong. Returns the problem as a sentence,
+// or null when everything given is fine. Fields left out are not checked.
+function vaultFieldProblem(body = {}) {
+  const { testType, notifyDaysBefore, isActive, secretLabel, expiresAt } = body
+  if (testType !== undefined && testType !== null) {
+    const { CHECKERS } = require('./vaultCheckers')
+    if (typeof testType !== 'string' || (testType !== 'manual' && !Object.prototype.hasOwnProperty.call(CHECKERS, testType))) return 'testType is not a check SlickSync knows'
+  }
+  if (notifyDaysBefore !== undefined && notifyDaysBefore !== null) {
+    if (!Number.isInteger(notifyDaysBefore) || notifyDaysBefore < 0 || notifyDaysBefore > 365) return 'notifyDaysBefore must be a whole number of days from 0 to 365'
+  }
+  if (isActive !== undefined && typeof isActive !== 'boolean') return 'isActive must be true or false'
+  if (secretLabel !== undefined && secretLabel !== null && (typeof secretLabel !== 'string' || secretLabel.length > 100)) return 'secretLabel must be short text'
+  if (expiresAt) {
+    const t = (typeof expiresAt === 'string' || typeof expiresAt === 'number') ? new Date(expiresAt).getTime() : NaN
+    if (isNaN(t)) return 'expiresAt must be a valid date'
+    const year = new Date(t).getUTCFullYear()
+    if (year < 2000 || year > 2200) return 'expiresAt must be a real date'
+  }
+  return null
+}
+
+module.exports = { cleanDashboardUrl, sanitizeRestoredEntry, vaultFieldProblem }

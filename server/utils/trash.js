@@ -174,10 +174,21 @@ async function restoreTrashItem(prisma, accountId, trashId) {
   throw new Error(`Unsupported trash kind: ${item.kind}`)
 }
 
-// A person's Trash entry going for good takes the history they left with it.
+// A person's Trash entry going for good takes the history they left with it,
+// and a Vault entry's takes its key History (kept while it could still be
+// restored, since a restore brings the entry back under the same id).
 async function purgePeopleIn(prisma, items) {
   const { purgePersonLeftovers } = require('./accountDeletion')
   for (const item of items) {
+    if (item.kind === 'vault') {
+      let entryId = null
+      try { entryId = JSON.parse(item.payload)?.entry?.id || null } catch {}
+      const back = entryId ? await prisma.vaultEntry.findUnique({ where: { id: entryId }, select: { id: true } }).catch(() => null) : null
+      if (entryId && !back && prisma.vaultAccessLog) {
+        await prisma.vaultAccessLog.deleteMany({ where: { entryId } }).catch((e) => console.error('[Trash] Could not clear the History of a deleted key:', e?.message))
+      }
+      continue
+    }
     if (item.kind !== 'user') continue
     let userId = null
     try { userId = JSON.parse(item.payload)?.user?.id || null } catch {}
@@ -197,7 +208,7 @@ async function purgeExpiredTrash(prisma) {
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000)
   try {
     const where = { deletedAt: { lt: cutoff } }
-    const people = await prisma.trashItem.findMany({ where: { ...where, kind: 'user' }, select: { kind: true, payload: true } }).catch(() => [])
+    const people = await prisma.trashItem.findMany({ where: { ...where, kind: { in: ['user', 'vault'] } }, select: { kind: true, payload: true } }).catch(() => [])
     const res = await prisma.trashItem.deleteMany({ where })
     if (res.count > 0) console.log(`[Trash] Purged ${res.count} expired item(s)`)
     await purgePeopleIn(prisma, people)

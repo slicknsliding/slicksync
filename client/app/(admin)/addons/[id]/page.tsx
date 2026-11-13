@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError } from '@/components/ui/LoadState';
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
@@ -1300,11 +1301,7 @@ export default function AddonDetailPage() {
       <>
         {layoutMode !== 'nebula' && <Header title="Error" />}
         <div className="p-8">
-          <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
-            <p className="text-lg text-error">Failed to load addon</p>
-            <p className="text-sm text-subtle">{error.message}</p>
-            <Button onClick={() => window.location.reload()}>Retry</Button>
-          </div>
+          <LoadError what="this addon" error={error} />
         </div>
       </>
     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { PersonalTouches } from '@/components/settings/PersonalTouches';
+import { PersonalTouches, MotionRow } from '@/components/settings/PersonalTouches';
 import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
@@ -12,7 +12,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import {
   useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, loadOptionalFonts, FontId, CustomTheme, SavedCustomTheme,
   RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId,
-  THEME_REAL_COLORS, encodeThemeShareCode, decodeThemeShareCode,
+  THEME_REAL_COLORS, encodeThemeShareCode, decodeThemeShareCode, contrastRatio,
 } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId, accountButtonMeta, accountButtonIds, AccountButtonId } from '@/lib/layout-mode';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -27,6 +27,7 @@ import { V2SetRow, V2Seg, V2Switch } from '@/components/v2/SettingsV2';
 import { V2Button } from '@/components/v2/V2Bits';
 import {
   PaintBrushIcon,
+  ExclamationTriangleIcon,
   SwatchIcon,
   CheckIcon,
   TrashIcon,
@@ -244,12 +245,15 @@ const ColorOverride = memo(function ColorOverride({
   seed,
   onSet,
   onClear,
+  warning,
 }: {
   label: string;
   value: string;
   seed: string;
   onSet: (v: string) => void;
   onClear: () => void;
+  /** A heads-up under the colour, e.g. that it's hard to read. */
+  warning?: string | null;
 }) {
   return (
     <div>
@@ -277,9 +281,25 @@ const ColorOverride = memo(function ColorOverride({
           <span className="text-[11px] text-muted italic">using base</span>
         )}
       </div>
+      {warning && (
+        <p className="contrast-warn mt-2 text-xs leading-snug flex gap-1.5" role="status">
+          <ExclamationTriangleIcon className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden />
+          <span>{warning}</span>
+        </p>
+      )}
     </div>
   );
 });
+
+// Text that's hard to read on the builder's background or cards: the lower of
+// the two ratios, against the WCAG AA line for body text (4.5 : 1).
+function readabilityWarning(fg: string, bg: string, surface: string): string | null {
+  const ratios = [contrastRatio(fg, bg), contrastRatio(fg, surface)].filter((r): r is number => r !== null);
+  if (!ratios.length) return null;
+  const worst = Math.min(...ratios);
+  if (worst >= 4.5) return null;
+  return `Hard to read on your background (${(Math.floor(worst * 10) / 10).toFixed(1)} : 1). Aim for 4.5 : 1 or more.`;
+}
 
 // The base theme's own corner scale, used as the preview mockup's fallback
 // when the builder's radius preset is 'default' (RADIUS_PRESETS['default']
@@ -667,6 +687,14 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
   const [builderFont, setBuilderFont] = useState<FontId>((activeCustomTheme?.fontDisplay as FontId) || 'default');
   const [builderRadius, setBuilderRadius] = useState<RadiusId>((activeCustomTheme?.radius as RadiusId) || 'default');
   const [builderTextScale, setBuilderTextScale] = useState<TextScaleId>((activeCustomTheme?.textScale as TextScaleId) || 'default');
+  // What the builder's colours come to, for the readability heads-up.
+  const builderPalette = resolvePreviewPalette(builderBase, {
+    primary: builderPrimary, secondary: builderSecondary,
+    text: builderText, textMuted: builderTextMuted,
+    background: builderBackground, surface: builderSurface,
+    bgMuted: builderBgMuted, border: builderBorder,
+    progressBar: builderProgressBar, success: builderSuccess, error: builderError,
+  });
   // Assemble the current builder state into a CustomTheme so every change site
   // can call `previewCustom(buildDraft())` without repeating every field.
   const buildDraft = (): CustomTheme => ({
@@ -813,6 +841,8 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
                 </p>
               </>
             )}
+
+            <MotionRow v2={v2} />
 
             <PageDesignChoice v2={v2} />
 
@@ -1241,6 +1271,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-5">
                   <ColorOverride
                     label="Text color"
+                    warning={readabilityWarning(builderPalette.text, builderPalette.bg, builderPalette.surface)}
                     value={builderText}
                     seed={THEME_REAL_COLORS[builderBase].text}
                     onSet={(v) => { setBuilderText(v); previewCustom({ ...buildDraft(), text: v }); }}
@@ -1248,6 +1279,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
                   />
                   <ColorOverride
                     label="Muted text"
+                    warning={readabilityWarning(builderPalette.textMuted, builderPalette.bg, builderPalette.surface)}
                     value={builderTextMuted}
                     seed={THEME_REAL_COLORS[builderBase].textMuted}
                     onSet={(v) => { setBuilderTextMuted(v); previewCustom({ ...buildDraft(), textMuted: v }); }}

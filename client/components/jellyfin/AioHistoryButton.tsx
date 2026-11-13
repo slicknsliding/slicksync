@@ -6,6 +6,7 @@
 // links here with ?aioHistory=1, which opens it. Same anchored popup as the
 // other pills beside it.
 
+import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
@@ -13,7 +14,7 @@ import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { Button, Modal } from '@/components/ui';
 import { api, type AioHistory } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 const REASON: Record<string, string> = {
   seen: 'Seen',
@@ -46,6 +47,7 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   // The change alert links here with ?aioHistory=1.
   useEffect(() => {
@@ -55,6 +57,8 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
     return () => clearTimeout(t);
   }, []);
 
+  // Read when opened, and again on Try again.
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!open) return;
     setError(null);
@@ -69,7 +73,7 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
       window.removeEventListener('resize', onMove);
       window.removeEventListener('scroll', onMove, true);
     };
-  }, [open, userId]);
+  }, [open, userId, attempt]);
 
   const doRestore = async () => {
     if (!restoring) return;
@@ -105,9 +109,9 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
               <p className="text-xs text-muted mt-0.5">Every version of their configuration SlickSync has seen, newest first.</p>
             </div>
             {error ? (
-              <p className="text-xs text-error">{error}</p>
+              <LoadErrorInline error={error} onRetry={() => setAttempt((n) => n + 1)} />
             ) : !state ? (
-              <div className="h-24 rounded-xl bg-surface-hover animate-pulse" />
+              <div className="h-24 rounded-xl skeleton-fill" />
             ) : !state.available ? (
               <p className="text-xs text-default">Only for someone added with their AIOStreams configuration password.</p>
             ) : state.versions.length === 0 ? (

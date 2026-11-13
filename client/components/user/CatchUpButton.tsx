@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import { CheckCircleIcon, ChevronLeftIcon, MagnifyingGlassIcon, CheckIcon, TvIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { api, type CatchUpEpisodes, type CatchUpJob, type CatchUpShow } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 import { posterUrl } from '@/lib/posterUrl';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { ActionPill } from '@/components/user/ActionPill';
@@ -93,6 +93,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;
@@ -365,7 +366,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                 {query.trim().length >= 2 ? (
                   <div className="max-h-[300px] overflow-y-auto -mx-1 px-1 space-y-1">
                     {results === null ? (
-                      [0, 1, 2].map((i) => <div key={i} className="h-14 rounded-xl bg-surface-hover animate-pulse" />)
+                      [0, 1, 2].map((i) => <div key={i} className="h-14 rounded-xl skeleton-fill" />)
                     ) : results.length === 0 ? (
                       <p className="text-xs text-muted py-3 text-center">No shows match that.</p>
                     ) : results.map((r) => (
@@ -380,7 +381,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                     <p className="text-xs font-medium text-muted mb-1.5">{name} is watching</p>
                     {shows === null ? (
                       <div className="grid grid-cols-4 gap-2">
-                        {[0, 1, 2, 3].map((i) => <div key={i} className="aspect-[2/3] rounded-lg bg-surface-hover animate-pulse" />)}
+                        {[0, 1, 2, 3].map((i) => <div key={i} className="aspect-[2/3] rounded-lg skeleton-fill" />)}
                       </div>
                     ) : shows.length === 0 ? (
                       <p className="text-xs text-muted py-2">No shows in their History yet - search for one above.</p>
@@ -417,8 +418,8 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                   <p className="text-xs text-muted rounded-xl px-3 py-3" style={{ background: 'var(--color-surface-hover)' }}>{listError}</p>
                 ) : !list ? (
                   <div className="space-y-2">
-                    <div className="h-7 rounded-lg bg-surface-hover animate-pulse" />
-                    <div className="h-24 rounded-xl bg-surface-hover animate-pulse" />
+                    <div className="h-7 rounded-lg skeleton-fill" />
+                    <div className="h-24 rounded-xl skeleton-fill" />
                   </div>
                 ) : (
                   <>

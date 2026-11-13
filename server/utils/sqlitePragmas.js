@@ -53,10 +53,26 @@ function scheduleSqliteOptimize(prisma) {
   if (!url.startsWith('file:')) return null
   const optimize = (all) => prisma.$executeRawUnsafe(all ? 'PRAGMA optimize=0x10002' : 'PRAGMA optimize')
     .catch((e) => console.warn('[SQLite] optimize failed:', e?.message))
-  setTimeout(() => optimize(true), 3 * 60 * 1000).unref?.()
+  setTimeout(() => { optimize(true); checkpoint() }, 3 * 60 * 1000).unref?.()
   const timer = setInterval(() => optimize(false), 12 * 60 * 60 * 1000)
   timer.unref?.()
+  // The write-ahead log (sqlite.db-wal) is copied into the database as it
+  // goes, but the file itself never shrinks: a busy hour leaves it at its
+  // high-water mark for good (seen at 4 MB beside a 9 MB database minutes
+  // after a restart). Once an hour, copy everything in and cut it back to
+  // nothing. TRUNCATE waits briefly for readers and simply does less if one
+  // is still going; nothing is lost either way.
+  const walTimer = setInterval(checkpoint, 60 * 60 * 1000)
+  walTimer.unref?.()
   return timer
+
+  async function checkpoint() {
+    try {
+      await prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE)')
+    } catch (e) {
+      console.warn('[SQLite] WAL checkpoint failed:', e?.message)
+    }
+  }
 }
 
 module.exports = { applySqlitePragmas, scheduleSqliteOptimize }

@@ -6,13 +6,14 @@
 // administrator's sign-in on that server (server/utils/jellyfinDevices.js).
 // The same anchored popup as SignInTvButton beside it.
 
+import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
 import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { api, type JellyfinDevice } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 function ago(iso: string | null) {
   if (!iso) return null;
@@ -55,6 +56,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
     load();
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;
@@ -103,10 +105,10 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
               <p className="text-xs text-muted mt-0.5">Everything signed in to their Jellyfin server as them. Sign out an old or unknown one.</p>
             </div>
             {error ? (
-              <p className="text-xs text-error">{error}</p>
+              <LoadErrorInline error={error} onRetry={load} />
             ) : !state ? (
               <div className="space-y-2">
-                {[0, 1].map((i) => <div key={i} className="h-11 rounded-xl bg-surface-hover animate-pulse" />)}
+                {[0, 1].map((i) => <div key={i} className="h-11 rounded-xl skeleton-fill" />)}
               </div>
             ) : state.needsAdmin ? (
               <p className="text-xs text-default">

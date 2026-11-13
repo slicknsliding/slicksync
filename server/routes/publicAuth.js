@@ -1094,7 +1094,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       try {
         exchanged = await exchangeNuvioTvLogin(code, deviceNonce, anonToken)
       } catch (err) {
-        return res.status(401).json({ message: err?.message || 'Nuvio approval failed or expired' })
+        return res.status(401).json({ message: require('../utils/publicError').publicMessage(err, 'Nuvio approval failed or expired') })
       }
 
       const nuvioUserId = exchanged?.user?.id
@@ -1329,7 +1329,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         signedIn = await signInFromBody(req.body)
       } catch (err) {
         const status = err?.status === 401 ? 401 : 400
-        return res.status(status).json({ message: err?.message || 'Could not sign in to the server', ...(err?.pinNeeded ? { pinNeeded: true } : {}) })
+        return res.status(status).json({ message: require('../utils/publicError').publicMessage(err, 'Could not sign in to the server'), ...(err?.pinNeeded ? { pinNeeded: true } : {}) })
       }
       const { probe, login } = signedIn
       // Signing in retired the token anyone else holding this server user had,

@@ -1,5 +1,30 @@
 [
   {
+    "version": "1.105.0",
+    "date": "2026-11-13",
+    "title": "1.105.0 - Sync history, Vault key History and end dates, a Motion setting, and safer backups",
+    "features": [
+      "Sync history on a person’s page (a tile in Tools in page design v2): what each sync added, removed or updated on their Stremio or Nuvio account, or whether it changed the order, and what started it. Failures say why; kept 90 days.",
+      "Vault key History: the clock button on a card (History in the v2 card menu) lists each time a key was shown, copied, moved to Addons, changed, added or swapped with its backup, with the device and address. It opens beside its card.",
+      "Vault end dates come from the service on every check (TorBox, Real-Debrid, AllDebrid, Premiumize, Debrid-Link, IPTV), with new checks for AllDebrid, Premiumize and Debrid-Link, TorBox plan names and a one-tap monthly price.",
+      "Motion setting in Settings → Themes → Layout: Device, Reduced or Full, saved to your account.",
+      "One clear “Couldn’t load” screen with Try again and the technical reason under Details, on Users, Groups, Addons, Invitations, What’s New and a person’s pages; the Dashboard keeps its panels under one banner.",
+      "The box you’re typing in gets the accent border and a glow; the theme builder warns when text is hard to read; phones get bigger tap areas for icon buttons and checkboxes.",
+      "An eye on every hidden value: backup secrets, Jellyfin PINs and keys, and in Private Mode each masked email or device address one at a time.",
+      "Data safety: household installs copy the database before an update changes it; the nightly Vault backup is encrypted; data snapshots carry the encryption key; default addons stay protected by id and address; one sync at a time per person."
+    ],
+    "bugFixes": [
+      "An addon that moved to a new address shows as Updated in Sync history, not added and removed.",
+      "Popups opened from a pill stay with it when the top bar grows back at the top of the page.",
+      "Loading bars show on Daylight, and list rows tint on hover in every theme.",
+      "A failed addon reorder snaps back to the saved order and says so.",
+      "Stremio likes, Nuvio covers, Discord and ntfy calls give up instead of hanging; warnings are back in the logs.",
+      "Vault saves say what’s wrong instead of failing with a server error; two sign-in routes no longer pass a provider’s internal error text through.",
+      "A plain docker build makes a household image; the compose files explain how to keep port 3000 to the machine behind a proxy.",
+      "The Sponsor button is removed, and a few old changelog lines are corrected."
+    ]
+  },
+  {
     "version": "1.104.0",
     "date": "2026-11-10",
     "title": "1.104.0 - Live Stremio pauses, Continue Watching and Coming up as banners, tidier personal pages, and security fixes",
@@ -2112,7 +2137,7 @@
       "Since v1.9.4 now syncs all Nuvio profiles instead of just the primary one, movie/episode watch entries can come from different profiles on the same account (e.g. a household's Main, Secondary, and Test profiles). Each entry is now tagged with the Nuvio profile name it came from and stored in a new profileLabel column on EpisodeWatchHistory and MovieWatchHistory. The Activity page (both grid and list views) shows this as a small badge on each card when known, so activity from different profiles stays visually distinguishable instead of being merged anonymously.",
       "Activity cards (both grid and list view) now show the actual user avatar (avatarUrl, respecting useGravatar) instead of always falling back to a generic letter badge. Previously the Activity feed's user objects never included avatarUrl, so UserAvatar had nothing to render but initials, even for accounts with a real avatar set (as seen on the Users page).",
       "v1.9.6 added avatarUrl to the Activity page's user data, but three other surfaces build their user objects from separate code paths that were missed: the Metrics page's User Leaderboard and Watch Streaks panels (sourced from watchActivity.byUser), and the Dashboard's Recent Activity and Top Viewers widgets (the latter also sourced from watchActivity.byUser). All four now carry avatarUrl/useGravatar through from the database and pass it to UserAvatar, so a user's real avatar (e.g. a custom uploaded image) shows consistently across the whole app instead of only on the Activity page.",
-      "Replaced the plain circular 'S' badge (inherited from upstream SlickSync) with an original angular spark mark in a violet-to-cyan gradient, matching the app's existing Slick theme palette. Updated everywhere the old logo appeared: sidebar (admin and user), invite pages, the create-user modal, favicon, and apple-touch-icon.",
+      "Replaced the plain circular 'S' badge (inherited from upstream Syncio) with an original angular spark mark in a violet-to-cyan gradient, matching the app's existing Slick theme palette. Updated everywhere the old logo appeared: sidebar (admin and user), invite pages, the create-user modal, favicon, and apple-touch-icon.",
       "Replaced the gradient spark mark from v1.9.13 (which clashed with the sidebar's own theme-colored badge background) with a chain-link icon representing 'sync', built as an inline SVG component (SlickSyncLogo) instead of a static image. It now automatically adapts to whichever of the 8 themes is active, since the surrounding badge already uses --color-primary/--color-secondary and the mark itself is flat white - checked for contrast against every theme's palette. Applied everywhere the logo renders in-app: sidebar (admin and user), login page, invite pages, and the create/reconnect user modal. Favicon and apple-touch-icon remain static files (browser tab icons can't be theme-reactive) using the same chain-link mark on the brand's Slick violet-cyan gradient.",
       "Replaced the chain-link mark from v1.9.14 with a tilted, tightly interlocked double-S design - two copies of the real Orbitron Black 'S' glyph (extracted directly from the font file, not live text, so it renders identically regardless of what fonts are installed), overlapped so the strokes actually cross rather than just touching, tilted ~18 degrees for motion. Same theme-reactive approach as before: flat white fill inside the sidebar's theme-colored badge, so it adapts across all 8 themes automatically. Updated everywhere SlickSyncLogo renders, plus regenerated favicon/apple-touch-icon on the brand's Slick violet-cyan gradient.",
       "Softened the Slick theme's palette - the original vivid violet (#a855f7) + electric cyan (#22d3ee) combination read as harsh/neon. Replaced with a lower-saturation periwinkle-violet (#8b7ec8) + muted teal (#5fd4c4).",
@@ -2327,7 +2352,7 @@
     "bugFixes": [],
     "miscChores": [
       "Rewrote README to reflect the actual current feature set (Vault, badges, redesign, backup export)",
-      "Added a dedicated Credits section: iamneur0 (original SlickSync creator), Avangelista (Nuvio integration concepts), Sonicx161/AIOManager (Vault design inspiration)"
+      "Added a dedicated Credits section: iamneur0 (original Syncio creator), Avangelista (Nuvio integration concepts), Sonicx161/AIOManager (Vault design inspiration)"
     ]
   },
   {
@@ -2358,8 +2383,8 @@
     "date": "2026-07-05",
     "title": "Credential Vault + full SlickSync rebrand",
     "features": [
-      "New Vault: encrypted credential storage with expiry tracking, active-checks (Real-Debrid, TorBox, Newznab indexers, generic HTTP, TCP reachability), and ntfy/Discord notifications on expiry or failure",
-      "Complete rebrand from SlickSync to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
+      "New Vault: encrypted credential storage with expiry tracking, active-checks (Real-Debrid, TorBox, Newznab indexers, generic HTTP, TCP reachability), and push and Discord notifications on expiry or failure",
+      "Complete rebrand from Syncio to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
     ],
     "bugFixes": [],
     "miscChores": [

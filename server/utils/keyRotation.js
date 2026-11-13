@@ -151,7 +151,7 @@ async function propagateSecretRotation(prisma, reqLike, deps, { accountId, oldSe
   const { syncUserAddons } = require('../routes/users')
   for (const u of activeUsers) {
     try {
-      const result = await syncUserAddons(prisma, u.id, [], false, reqLike, decrypt, () => accountId, true)
+      const result = await syncUserAddons(prisma, u.id, false, reqLike, decrypt, () => accountId, true, { source: 'key_change' })
       if (result && result.success) summary.usersSynced++
       else summary.userFailures.push({ username: u.username, error: (result && result.error) || 'unknown' })
     } catch (e) {

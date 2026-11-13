@@ -8,6 +8,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
+import { MotionConfig } from 'framer-motion';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable, type SortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
@@ -154,9 +155,24 @@ export function ArrangeProvider({ children, store = ACCOUNT_STORE }: { children:
     return () => { delete root.dataset.density; };
   }, [density]);
 
+  // Motion (Themes → Layout): an attribute the stylesheet stills or keeps
+  // moving from, and the same choice for framer-motion. Nothing saved
+  // follows the device's own reduce-motion setting.
+  const motion = arrangement.motion;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (motion === 'reduced' || motion === 'full') root.dataset.motion = motion;
+    else delete root.dataset.motion;
+    return () => { delete root.dataset.motion; };
+  }, [motion]);
+
   const canUndo = history.length > 0;
   const value = useMemo(() => ({ arrangement, update, active: true, loaded, session, canUndo, undo, cancel }), [arrangement, update, loaded, session, canUndo, undo, cancel]);
-  return <ArrangeContext.Provider value={value}>{children}</ArrangeContext.Provider>;
+  return (
+    <ArrangeContext.Provider value={value}>
+      <MotionConfig reducedMotion={motion === 'reduced' ? 'always' : motion === 'full' ? 'never' : 'user'}>{children}</MotionConfig>
+    </ArrangeContext.Provider>
+  );
 }
 
 export function useArrangement() {
@@ -507,6 +523,20 @@ export function useDensity() {
     });
   }, [update]);
   return { density, setDensity };
+}
+
+/** Motion (Themes → Layout): follow the device (the default), Reduced or Full. */
+export function useMotionChoice() {
+  const { arrangement, update } = useArrangement();
+  const motion: 'device' | 'reduced' | 'full' = arrangement.motion === 'reduced' || arrangement.motion === 'full' ? arrangement.motion : 'device';
+  const setMotion = useCallback((m: 'device' | 'reduced' | 'full') => {
+    update((prev) => {
+      const out: Arrangement = { ...prev };
+      if (m === 'device') delete out.motion; else out.motion = m;
+      return out;
+    });
+  }, [update]);
+  return { motion, setMotion };
 }
 
 /** Now Playing: who is watching under the picture (the default) or on it. */

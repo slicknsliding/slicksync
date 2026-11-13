@@ -256,6 +256,15 @@ function relLum(c: { r: number; g: number; b: number }): number {
   return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
 }
 
+/** WCAG contrast ratio of two #rrggbb colours (1 to 21), or null when either isn't one. */
+export function contrastRatio(a: string, b: string): number | null {
+  const x = hexToRgb(a);
+  const y = hexToRgb(b);
+  if (!x || !y) return null;
+  const [hi, lo] = [relLum(x), relLum(y)].sort((m, n) => n - m);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 // The fill that sits behind white text (buttons, active tabs, chips, tick
 // badges, toggles): the accent itself when white already reads on it
 // (4.5:1), otherwise darkened a step at a time until it does. Text and links

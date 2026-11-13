@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError } from '@/components/ui/LoadState';
 import { Fragment, useState, useEffect } from 'react';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { motion } from 'framer-motion';
@@ -181,15 +182,6 @@ export default function UserHomePage() {
       <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
     </button>
   );
-  const retryBtn = (
-    <button
-      onClick={() => window.location.reload()}
-      className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90"
-      style={{ background: 'var(--color-primary)', color: 'white' }}
-    >
-      Try Again
-    </button>
-  );
 
   return (
     <Wrapper>
@@ -287,11 +279,8 @@ export default function UserHomePage() {
       )}
 
       {!loading && error && (
-        <div className="p-6 rounded-xl text-center" style={{ background: 'var(--color-error-muted)', border: '1px solid var(--color-error)' }}>
-          <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-error)' }} />
-          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-error)' }}>Failed to load activity data</h3>
-          <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
-          {isTV ? <TVFocusable className="inline-block" onEnterPress={() => window.location.reload()}>{retryBtn}</TVFocusable> : retryBtn}
+        <div className="rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+          <LoadError what="your activity" error={error} />
         </div>
       )}
 

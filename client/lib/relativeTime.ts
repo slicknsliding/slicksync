@@ -47,3 +47,20 @@ export function formatRelativeTime(value?: string | Date | null): string | null 
 export function formatLastSync(value?: string | Date | null): string {
   return formatRelativeTime(value) ?? 'Never';
 }
+
+/**
+ * A moment in a history list: "Today, 9:41 PM", "Yesterday, 3:00 AM",
+ * "Nov 10, 6:12 PM", with the year only when it is not this one.
+ */
+export function formatWhen(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `Today, ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday, ${time}`;
+  const day = d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) });
+  return `${day}, ${time}`;
+}

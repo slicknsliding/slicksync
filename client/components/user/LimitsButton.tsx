@@ -18,7 +18,7 @@ import { ActionPill, type ActionPillTone } from '@/components/user/ActionPill';
 import { ScreenTimePanel } from '@/components/user/ScreenTimePanel';
 import { AgeLimitCard, ageLimitLabel } from '@/components/user/AgeLimitCard';
 import { api, type AgeLimitView, type LimitsSummary, type ScreenTimeView } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 export function LimitsButton({ id, name, summary, size = 'sm', onPickGroup, onReconnect }: {
   /** A person's id, or a merged profile's (its limitId). */
@@ -57,6 +57,7 @@ export function LimitsButton({ id, name, summary, size = 'sm', onPickGroup, onRe
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
   useEffect(() => {
     if (!open) return;

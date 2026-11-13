@@ -517,6 +517,9 @@ const ACTIONS = {
           prisma.vaultEntry.update({ where: { id: entry.id }, data: { encryptedSecret: backup.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Promoted from backup - awaiting first check' } }),
           prisma.vaultEntry.update({ where: { id: backup.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Demoted failed primary - replace this key' } }),
         ])
+        for (const id of [entry.id, backup.id]) {
+          await require('../vaultAccess').recordVaultAccess(prisma, { accountId, entryId: id, action: 'swapped' })
+        }
 
         // Stamp the promotion so the vault monitor can complete the round
         // trip: when the demoted key (now sitting in the backup entry)
@@ -699,7 +702,7 @@ const ACTIONS = {
       const failures = []
       for (const id of userIds) {
         try {
-          const result = await syncUserAddons(prisma, id, [], false, reqLike, decrypt, () => accountId, true)
+          const result = await syncUserAddons(prisma, id, false, reqLike, decrypt, () => accountId, true, { source: 'automation' })
           if (result && result.success) synced++
           else failures.push((result && result.error) || 'unknown error')
         } catch (e) {

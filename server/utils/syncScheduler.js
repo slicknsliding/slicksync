@@ -227,6 +227,7 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
         
         for (const g of groups) {
           try {
+            accountReq.syncSource = 'schedule'
             const result = await syncGroupUsers(prisma, getAccountId, scopedWhere, decrypt, g.id, accountReq)
             if (result && !result.error) {
               totalSynced += result.syncedUsers || 0
@@ -323,7 +324,7 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
           if (!QUIET) console.log(msg)
         } catch {}
         const { syncGroupUsers } = require('../routes/groups')
-        for (const g of groups) { await syncGroupUsers(prisma, getAccountId, scopedWhere, decrypt, g.id, req) }
+        for (const g of groups) { await syncGroupUsers(prisma, getAccountId, scopedWhere, decrypt, g.id, req, { source: 'schedule' }) }
       }
     } catch (e) {
       if (!QUIET) console.warn('Account sync failed:', e?.message)

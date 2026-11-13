@@ -2585,6 +2585,11 @@ class ApiClient {
     return this.fetch<KeepInStep>(`/users/${encodeURIComponent(userId)}/keep-in-step`, { method: 'PUT', body: JSON.stringify(body) });
   }
 
+  // What each sync changed on their accounts (server/utils/syncLog.js).
+  async getSyncHistory(userId: string) {
+    return this.fetch<{ entries: SyncHistoryEntry[] }>(`/users/${encodeURIComponent(userId)}/sync-history`);
+  }
+
   // Their AIOStreams configuration's history (server/utils/aioConfigHistory.js).
   async getAioHistory(userId: string) {
     return this.fetch<AioHistory>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-history`);
@@ -2938,9 +2943,14 @@ class ApiClient {
     return this.fetch<VaultEntry>(`/vault/${id}`);
   }
 
-  async revealVaultSecret(id: string) {
+  /** purpose goes into the key's History: Shown (the default), Copied, or Moved to Addons. */
+  async revealVaultSecret(id: string, purpose: 'show' | 'copy' | 'move' = 'show') {
     // POST (not GET): reveal is CSRF-gated + not cacheable + never in referer.
-    return this.fetch<{ secret: string }>(`/vault/${id}/reveal`, { method: 'POST' });
+    return this.fetch<{ secret: string }>(`/vault/${id}/reveal`, { method: 'POST', body: JSON.stringify({ purpose }) });
+  }
+  // Each time this key was shown, copied, changed or added (server/utils/vaultAccess.js).
+  async getVaultHistory(id: string) {
+    return this.fetch<{ entries: VaultHistoryEntry[] }>(`/vault/${encodeURIComponent(id)}/history`);
   }
   async snoozeVaultEntry(id: string) {
     return this.fetch<VaultEntry>(`/vault/${id}/snooze`, { method: 'POST' });
@@ -2948,7 +2958,7 @@ class ApiClient {
   // Live Real-Debrid/TorBox usage (active downloads, premium days left) -
   // usage is null for a non-debrid entry or if the live provider call failed.
   async getVaultEntryUsage(id: string) {
-    return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null } | null }>(`/vault/${id}/usage`);
+    return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null; plan?: { name: string; monthlyUsd: number } | null } | null }>(`/vault/${id}/usage`);
   }
 
   async createVaultEntry(data: VaultEntryInput) {
@@ -3858,6 +3868,31 @@ export interface JellyfinAgeLimit {
 }
 
 /** Versions of an AIOStreams configuration, newest first (server/utils/aioConfigHistory.js). */
+export interface SyncHistoryEntry {
+  id: string;
+  at: string;
+  lastAt: string;
+  provider: string;
+  source: string;
+  groupName: string | null;
+  ok: boolean;
+  added: string[];
+  removed: string[];
+  updated: string[];
+  reordered: boolean;
+  total: number | null;
+  error: string | null;
+  repeats: number;
+}
+
+export interface VaultHistoryEntry {
+  id: string;
+  at: string;
+  action: 'shown' | 'copied' | 'moved' | 'changed' | 'added' | 'swapped';
+  device: string | null;
+  ip: string | null;
+}
+
 export interface AioHistory {
   available: boolean;
   versions: { id: string; at: string; reason: 'seen' | 'slicksync' | 'restore'; current: boolean; changes: string[]; addons: number; services: number; users: number }[];
@@ -4350,7 +4385,7 @@ export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
   | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth' | 'alldebrid' | 'premiumize' | 'debrid_link';
 
 export interface VaultEntry {
   id: string;

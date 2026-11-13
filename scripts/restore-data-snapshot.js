@@ -24,7 +24,8 @@ const path = require('path')
 const zlib = require('zlib')
 const crypto = require('crypto')
 
-const MAGIC = Buffer.from('SLICKSYNCDATA001', 'utf8')
+const MAGIC_V1 = Buffer.from('SLICKSYNCDATA001', 'utf8')
+const MAGIC = Buffer.from('SLICKSYNCDATA002', 'utf8') // also carries the encryption key
 const SALT_LEN = 16
 const IV_LEN = 12
 const TAG_LEN = 16
@@ -60,6 +61,31 @@ function decrypt(buf, passphrase) {
   }
 }
 
+// The snapshot's Vault secrets are encrypted under the key the old install
+// used. Put it back where SlickSync looks for it, unless this folder already
+// has a different key - then leave both and say what to do.
+function restoreKey(dataDir, keys) {
+  // Same form keyManager reads: the key as base64 text.
+  const keyFile = path.join(dataDir, 'server_secret.key')
+  const key = String(keys[0])
+  if (process.env.ENCRYPTION_KEY) {
+    console.log("ENCRYPTION_KEY is set here, so it decides the key. If Vault entries will not open, set it to the old install's key (the one restored below).")
+  }
+  if (keys.length > 1) {
+    keys.slice(1).forEach((k, i) => fs.writeFileSync(path.join(dataDir, `server_secret.key.older-${i + 1}`), String(k), { mode: 0o600 }))
+    console.log('The old install also read with older keys; they are next to it as server_secret.key.older-*, in case some entries were never re-encrypted.')
+  }
+  if (!fs.existsSync(keyFile)) {
+    fs.writeFileSync(keyFile, key, { mode: 0o600 })
+    console.log(`Encryption key restored to ${keyFile}`)
+    return
+  }
+  if (fs.readFileSync(keyFile, 'utf8').trim() === key) return
+  const aside = `${keyFile}.from-snapshot`
+  fs.writeFileSync(aside, key, { mode: 0o600 })
+  console.log(`This folder already has a different encryption key. The snapshot's key is in ${aside} - swap it in (keep the old one) if Vault entries will not open.`)
+}
+
 function main() {
   const args = parseArgs(process.argv)
   if (args.help || !args.file) {
@@ -78,9 +104,17 @@ function main() {
   )
 
   let buf = fs.readFileSync(src)
-  if (buf.subarray(0, MAGIC.length).equals(MAGIC)) {
+  let keys = null
+  const head = buf.subarray(0, MAGIC.length)
+  if (head.equals(MAGIC) || head.equals(MAGIC_V1)) {
     console.log('Encrypted snapshot - decrypting...')
+    const v2 = head.equals(MAGIC)
     buf = decrypt(buf, args.passphrase)
+    if (v2) {
+      const len = buf.readUInt32BE(0)
+      keys = JSON.parse(buf.subarray(4, 4 + len).toString('utf8')).keys || []
+      buf = buf.subarray(4 + len)
+    }
   }
   console.log('Decompressing...')
   const db = zlib.gunzipSync(buf)
@@ -106,6 +140,7 @@ function main() {
   fs.mkdirSync(path.dirname(target), { recursive: true })
   fs.writeFileSync(target, db)
   console.log(`Restored ${Math.round(db.length / 1024)}KB to ${target}`)
+  if (keys && keys.length) restoreKey(path.dirname(target), keys)
   console.log('Start the container again - and check Activity to confirm the history is back.')
 }
 

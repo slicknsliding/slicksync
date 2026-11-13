@@ -1,6 +1,6 @@
 {
   "name": "slicksync",
-  "version": "1.104.0",
+  "version": "1.105.0",
   "description": "SlickSync - Nuvio and Stremio addon, user and credential management",
   "main": "server/index.js",
   "scripts": {
@@ -48,7 +48,6 @@
     "multer": "^2.5.0",
     "otplib": "^12.0.1",
     "qrcode": "^1.5.4",
-    "redis": "^4.6.0",
     "stremio-api-client": "^1.6.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",

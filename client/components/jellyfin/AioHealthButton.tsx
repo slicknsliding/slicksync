@@ -6,13 +6,14 @@
 // this title" search (server/utils/aioHealth.js). Same anchored popup as
 // Devices and Age limit beside it. Read-only.
 
+import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HeartIcon } from '@heroicons/react/24/outline';
 import { ActionPill } from '@/components/user/ActionPill';
 import { toast } from '@/components/ui/Toast';
 import { api, type AioHealth, type AioTestSearch } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 export function AioHealthButton({ userId, name }: { userId: string; name: string }) {
   const button = useRef<HTMLButtonElement>(null);
@@ -39,13 +40,15 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
     if (at) setAnchor(at);
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
 
-  // Read when opened (and when the range changes) - it asks AIOStreams.
+  // Read when opened (and when the range changes, or on Try again) - it asks AIOStreams.
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!open) return;
     setError(null);
     api.getAioHealth(userId, range).then(setState).catch((e: any) => setError(e?.message || 'Could not read AIOStreams'));
-  }, [open, range, userId]);
+  }, [open, range, userId, attempt]);
 
   useEffect(() => {
     if (!open) return;
@@ -96,9 +99,9 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
             </div>
 
             {error ? (
-              <p className="text-xs text-error">{error}</p>
+              <LoadErrorInline error={error} onRetry={() => setAttempt((n) => n + 1)} />
             ) : !state ? (
-              <div className="h-24 rounded-xl bg-surface-hover animate-pulse" />
+              <div className="h-24 rounded-xl skeleton-fill" />
             ) : !state.canRead ? (
               <p className="text-xs text-default">{state.reason}</p>
             ) : (
@@ -203,7 +206,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
                         {testing ? 'Searching…' : 'Test'}
                       </button>
                     </form>
-                    {testing && <div className="h-10 rounded-xl bg-surface-hover animate-pulse" />}
+                    {testing && <div className="h-10 rounded-xl skeleton-fill" />}
                     {result && (
                       <div className="space-y-1 text-xs">
                         <p className="text-default">

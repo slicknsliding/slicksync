@@ -64,7 +64,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     }
   }
 
-  async function syncGroupUsers(groupId, req, { forcePush = false } = {}) {
+  // source: what started it, for each person's Sync history (utils/syncLog.js).
+  async function syncGroupUsers(groupId, req, { forcePush = false, source = 'group_sync' } = {}) {
     // Load group with scoped account
     const group = await prisma.group.findFirst({
       where: { id: groupId, accountId: getAccountId(req) },
@@ -180,7 +181,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
 
         // Otherwise perform sync (reload already handled above if advanced)
         // The force reaches the push itself - see syncCredentialsAddons.
-        const result = await syncUserAddons(prisma, uid, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { force: forcePush })
+        const result = await syncUserAddons(prisma, uid, unsafeMode, req, decrypt, getAccountId, useCustomFields, { force: forcePush, source, groupName: group.name || null })
         if (result?.success) {
           synced++
           console.log('✅ User now synced')
@@ -1042,7 +1043,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       // order, and the normal alreadySynced check can't tell that apart from
       // a no-op (see syncGroupUsers's own comment).
       console.log(`[Reorder] Success. Triggering group sync for ${groupId}`)
-      syncGroupUsers(groupId, req, { forcePush: true }).catch(e => console.error('Post-reorder group sync failed:', e.message))
+      syncGroupUsers(groupId, req, { forcePush: true, source: 'group_change' }).catch(e => console.error('Post-reorder group sync failed:', e.message))
 
       res.json({ message: 'Addons reordered successfully', groupId, reorderedCount: orderedIds.length })
     } catch (error) {
@@ -1548,7 +1549,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
 
       for (const group of groups) {
         try {
-          const result = await syncGroupUsers(group.id, req)
+          const result = await syncGroupUsers(group.id, req, { source: 'sync_all' })
           if (result?.error) {
             failedGroups++
           } else {
@@ -1577,7 +1578,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     }
   });
   // Exportable helper to sync one group's users (used by scheduler)
-  async function externalSyncGroupUsers(prismaDep, getAccountIdDep, scopedWhereDep, decryptDep, groupId, reqDep) {
+  async function externalSyncGroupUsers(prismaDep, getAccountIdDep, scopedWhereDep, decryptDep, groupId, reqDep, { source } = {}) {
     // Load group
     const group = await prismaDep.group.findFirst({ where: { id: groupId, accountId: getAccountIdDep(reqDep) }, select: { id: true, userIds: true, name: true } })
     if (!group) return { error: 'Group not found', groupId }
@@ -1630,7 +1631,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     let synced = 0, failed = 0
     for (const uid of uniqueUserIds) {
       try {
-        const r = await syncUserAddons(prismaDep, uid, [], unsafeMode, reqDep, decryptDep, getAccountIdDep, useCustomFields)
+        const r = await syncUserAddons(prismaDep, uid, unsafeMode, reqDep, decryptDep, getAccountIdDep, useCustomFields, { source: source || reqDep?.syncSource || 'group_change', groupName: group.name || null })
         if (r?.success) synced++; else failed++
       } catch { failed++ }
     }

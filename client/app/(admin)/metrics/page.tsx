@@ -382,7 +382,9 @@ export default function MetricsPage() {
     api.setProxyHealthIgnored(healthIgnored).then(() => loadHealth(true)).catch(() => {});
   }, [loadHealth]);
 
-  // Fetch metrics data
+  // Fetch metrics data (again on Try again under a chart that failed)
+  const [metricsAttempt, setMetricsAttempt] = useState(0);
+  const retryMetrics = useCallback(() => setMetricsAttempt((n) => n + 1), []);
   useEffect(() => {
     setIsLoading(true);
     setError(null);
@@ -395,7 +397,7 @@ export default function MetricsPage() {
         setError(err);
         setIsLoading(false);
       });
-  }, [period]);
+  }, [period, metricsAttempt]);
 
   // Taste overlap is all-time real watch-time comparison, not windowed by
   // the period filter above - fetched once, independently.
@@ -1032,6 +1034,7 @@ export default function MetricsPage() {
             arrange={metricsContentArrange}
             isLoading={isLoading}
             error={!!error}
+            onRetry={retryMetrics}
             periodKey={period}
             data={metricsData}
             contentChart={v2ContentChart}
@@ -1170,8 +1173,9 @@ export default function MetricsPage() {
                                 </div>
                               </div>
                             ) : error ? (
-                              <div className="flex items-center justify-center h-full text-sm text-muted">
-                                Failed to load data
+                              <div className="flex flex-col items-center justify-center gap-1.5 h-full text-sm text-muted">
+                                <span>Couldn’t load this chart.</span>
+                                <button type="button" className="text-primary font-medium hover:underline" onClick={retryMetrics}>Try again</button>
                               </div>
                             ) : contentBreakdownData.length === 0 ? (
                               <div className="flex flex-col items-center justify-center h-full text-sm text-muted">
@@ -1445,9 +1449,9 @@ export default function MetricsPage() {
         {viewMode === 'health' && (
           healthLoading ? (
             <PageSection>
-              <div className="h-24 rounded-xl bg-surface-hover animate-pulse mb-6" />
+              <div className="h-24 rounded-xl skeleton-fill mb-6" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[...Array(4)].map((_, i) => <div key={i} className="h-40 rounded-xl bg-surface-hover animate-pulse" />)}
+                {[...Array(4)].map((_, i) => <div key={i} className="h-40 rounded-xl skeleton-fill" />)}
               </div>
             </PageSection>
           ) : !healthData ? (

@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError, EmptyState } from '@/components/ui/LoadState';
 import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useRouter } from 'next/navigation';
@@ -159,7 +160,6 @@ export default function InvitationsPage() {
         setRequests(allRequests);
       } catch (err) {
         setError(err as Error);
-        toast.error('Failed to load invitations');
       } finally {
         setIsLoading(false);
       }
@@ -400,16 +400,7 @@ export default function InvitationsPage() {
                   <p className="text-muted">Loading invitations...</p>
                 </div>
               ) : error ? (
-                <div className="text-center py-16">
-                  <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-                    <XMarkIcon className="w-8 h-8 text-error" />
-                  </div>
-                  <h3 className="text-lg font-medium mb-2 text-default">Error Loading Invitations</h3>
-                  <p className="text-muted mb-4">{error.message}</p>
-                  <Button variant="primary" onClick={() => window.location.reload()}>
-                    Retry
-                  </Button>
-                </div>
+                <LoadError what="your invitations" error={error} />
               ) : (
                 <LayoutGroup>
                   <AnimatePresence mode="popLayout">
@@ -471,7 +462,7 @@ export default function InvitationsPage() {
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
                                   exit={{ opacity: 0 }}
-                                  className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(invite.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
+                                  className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(invite.id) ? 'bg-primary-muted' : 'row-hover'
                                     }`}
                                   onClick={() => toggleSelect(invite.id)}
                                 >
@@ -530,18 +521,12 @@ export default function InvitationsPage() {
               )}
 
               {!isLoading && !error && invitationsDisplay.length === 0 && (
-                <div className="text-center py-16">
-                  <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-                    <EnvelopeIcon className="w-8 h-8 text-subtle" />
-                  </div>
-                  <h3 className="text-lg font-medium mb-2 text-default">No invitations</h3>
-                  <p className="mb-6 text-muted">
-                    Create an invitation to start inviting users
-                  </p>
-                  <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
-                    Create Invite
-                  </Button>
-                </div>
+                <EmptyState
+                  icon={<EnvelopeIcon className="w-7 h-7" />}
+                  title="No invitations"
+                  line="Create an invitation to start inviting users"
+                  action={<Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>Create Invite</Button>}
+                />
               )}
     </>
   );
@@ -708,11 +693,12 @@ export default function InvitationsPage() {
                 note="Hidden only here: invites keep working. Tap one to bring it back."
               />
               {v2Requests.length === 0 && v2Invites.length === 0 && (
-                <div className="text-center py-16">
-                  <h3 className="text-lg font-medium mb-2 text-default">No invitations</h3>
-                  <p className="mb-6 text-muted">Create an invitation to start inviting people</p>
-                  <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>Create Invite</Button>
-                </div>
+                <EmptyState
+                  icon={<EnvelopeIcon className="w-7 h-7" />}
+                  title="No invitations"
+                  line="Create an invitation to start inviting people"
+                  action={<Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>Create Invite</Button>}
+                />
               )}
             </>
           )

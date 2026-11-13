@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { Button, Card, ToggleSwitch } from '@/components/ui';
+import { useEffect, useState, type ReactNode, type InputHTMLAttributes } from 'react';
+import { Button, Card, ToggleSwitch, PasswordToggleButton } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, BackupTargets, DataBackupSettings, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
 import { TrashPanel } from './TrashPanel';
@@ -28,6 +28,17 @@ function relative(iso: string | null | undefined): string {
 
 const inputClass = 'w-full px-3 py-2 rounded-lg text-sm border border-transparent focus:border-primary focus:outline-none';
 const inputStyle = { background: 'var(--color-surface-hover)', color: 'var(--color-text)' } as const;
+
+// A hidden field with the eye to show what is in it.
+function SecretInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={visible ? 'text' : 'password'} className={`${inputClass} pr-10`} style={inputStyle} />
+      <PasswordToggleButton visible={visible} onToggle={() => setVisible((v) => !v)} size="sm" />
+    </div>
+  );
+}
 
 export function MaintenancePanel() {
   // History Doctor - scan is read-only; repair re-scans server-side (see
@@ -435,14 +446,22 @@ export function MaintenancePanel() {
                 ] as Array<[keyof BackupTargets['s3'], string]>).map(([key, label]) => (
                   <div key={key}>
                     <label className="block text-xs font-medium text-muted mb-1">{label}</label>
-                    <input
-                      type={key === 'secretAccessKey' ? 'password' : 'text'}
-                      defaultValue={targets.s3[key]}
-                      onBlur={(e) => { if (e.target.value !== targets.s3[key]) saveTargets({ s3: { ...targets.s3, [key]: e.target.value } }); }}
-                      spellCheck={false}
-                      className={inputClass}
-                      style={inputStyle}
-                    />
+                    {key === 'secretAccessKey' ? (
+                      <SecretInput
+                        defaultValue={targets.s3[key]}
+                        onBlur={(e) => { if (e.target.value !== targets.s3[key]) saveTargets({ s3: { ...targets.s3, [key]: e.target.value } }); }}
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        defaultValue={targets.s3[key]}
+                        onBlur={(e) => { if (e.target.value !== targets.s3[key]) saveTargets({ s3: { ...targets.s3, [key]: e.target.value } }); }}
+                        spellCheck={false}
+                        className={inputClass}
+                        style={inputStyle}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -453,14 +472,22 @@ export function MaintenancePanel() {
                 {([['url', 'Folder URL'], ['username', 'Username'], ['password', 'Password']] as Array<[keyof BackupTargets['webdav'], string]>).map(([key, label]) => (
                   <div key={key}>
                     <label className="block text-xs font-medium text-muted mb-1">{label}</label>
-                    <input
-                      type={key === 'password' ? 'password' : 'text'}
-                      defaultValue={targets.webdav[key]}
-                      onBlur={(e) => { if (e.target.value !== targets.webdav[key]) saveTargets({ webdav: { ...targets.webdav, [key]: e.target.value } }); }}
-                      spellCheck={false}
-                      className={inputClass}
-                      style={inputStyle}
-                    />
+                    {key === 'password' ? (
+                      <SecretInput
+                        defaultValue={targets.webdav[key]}
+                        onBlur={(e) => { if (e.target.value !== targets.webdav[key]) saveTargets({ webdav: { ...targets.webdav, [key]: e.target.value } }); }}
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        defaultValue={targets.webdav[key]}
+                        onBlur={(e) => { if (e.target.value !== targets.webdav[key]) saveTargets({ webdav: { ...targets.webdav, [key]: e.target.value } }); }}
+                        spellCheck={false}
+                        className={inputClass}
+                        style={inputStyle}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -471,14 +498,11 @@ export function MaintenancePanel() {
                 <label className="block text-xs font-medium text-muted mb-1">
                   Encryption passphrase <span className="text-subtle">(optional)</span>
                 </label>
-                <input
-                  type="password"
+                <SecretInput
                   defaultValue={targets.encryptPassphrase || ''}
                   placeholder="Leave empty to upload plain JSON"
                   onBlur={(e) => { if (e.target.value !== (targets.encryptPassphrase || '')) saveTargets({ encryptPassphrase: e.target.value }); }}
                   spellCheck={false}
-                  className={inputClass}
-                  style={inputStyle}
                 />
                 <p className="text-[11px] text-subtle mt-1">
                   With a passphrase set, uploads are encrypted (.enc) so a leaked bucket leaks nothing - backups

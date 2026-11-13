@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError } from '@/components/ui/LoadState';
 import { Fragment, useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -513,7 +514,9 @@ export default function UserActivityPage() {
           </div>
         )}
         {error && (
-          <div className="p-4 rounded-xl text-center mb-6" style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}>{error}</div>
+          <div className="rounded-2xl mb-6" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+            <LoadError what="your activity" error={error} />
+          </div>
         )}
         {!loading && !error && (
           <MeActivityV2
