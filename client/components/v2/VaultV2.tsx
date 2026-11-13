@@ -7,7 +7,7 @@
 // Arrange.
 
 import {
-  ArrowPathIcon, ArrowPathRoundedSquareIcon, BellSnoozeIcon, DocumentDuplicateIcon, EyeIcon, EyeSlashIcon, KeyIcon,
+  ArrowPathIcon, ArrowPathRoundedSquareIcon, BellSnoozeIcon, ClockIcon, DocumentDuplicateIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PencilSquareIcon, PlayIcon, PuzzlePieceIcon, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -41,7 +41,7 @@ export function judgeEntry(e: VaultEntry, now: number): Judged {
   return { tone: 'live', words: 'Working', line: ends || e.lastCheckMessage || 'Last check passed', need: null };
 }
 
-export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete }: {
+export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete, onHistory }: {
   entries: VaultEntry[];
   labels: Record<string, string>;
   arrange: PageArrange;
@@ -62,6 +62,8 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   onMoveToAddons: (e: VaultEntry) => void;
   /** Asks first (the page's own confirm). */
   onDelete: (e: VaultEntry) => void;
+  /** The key's History, beside this card's menu button. */
+  onHistory: (e: VaultEntry) => void;
 }) {
   const hidden = new Set(entryArrange.hidden);
   const judged = entries.map((e) => ({ e, j: judgeEntry(e, now) }));
@@ -102,6 +104,7 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
       { label: 'Run check now', icon: <PlayIcon className="w-4 h-4" />, disabled: e.testType === 'manual', onClick: () => onTest(e) },
       { label: 'Edit', icon: <PencilSquareIcon className="w-4 h-4" />, onClick: () => onOpen(e) },
       { label: revealed[e.id] ? 'Hide value' : 'Reveal', icon: revealed[e.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />, onClick: () => onReveal(e) },
+      { label: 'History', icon: <ClockIcon className="w-4 h-4" />, onClick: () => onHistory(e) },
       { label: 'Snooze 7 days', icon: <BellSnoozeIcon className="w-4 h-4" />, disabled: !alertWorthy || snoozed, onClick: () => onSnooze(e) },
       { label: 'Rotate now', icon: <ArrowPathRoundedSquareIcon className="w-4 h-4" />, disabled: !e.dashboardUrl, onClick: () => onRotate(e) },
       { label: 'Move to Addons', icon: <PuzzlePieceIcon className="w-4 h-4" />, onClick: () => onMoveToAddons(e) },

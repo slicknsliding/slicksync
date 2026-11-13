@@ -399,7 +399,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
       const allReloadDiffs = []
       for (const gid of groupIds) {
         try {
-          const reqLike = { appAccountId: req.appAccountId, headers: { 'x-sync-mode': 'normal' }, body: { unsafe } }
+          const reqLike = { appAccountId: req.appAccountId, headers: { 'x-sync-mode': 'normal' }, body: { unsafe }, syncSource: 'api' }
           const r = await syncGroupUsers(prisma, getAccountId, scopedWhere, reloadDeps.decrypt, gid, reqLike)
           if (r && !r.error) {
             groupsSynced++
@@ -543,6 +543,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
       const allReloadDiffs = []
       for (const g of groups) {
         try {
+          req.syncSource = 'api'
           const r = await syncGroupUsers(prisma, getAccountId, scopedWhere, reloadDeps.decrypt, g.id, req)
           if (r && !r.error) {
             totalSynced += r.syncedUsers || 0

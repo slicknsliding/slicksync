@@ -1450,3 +1450,47 @@ model WatchSyncMove {
   @@index([userId, at])
   @@map("watch_sync_moves")
 }
+
+// One line of a person's Sync history: a sync that changed their addons, or
+// one that failed (a failure that repeats is counted on the same line, not
+// added again). Syncs that found nothing to change are not kept. Written by
+// utils/syncLog.js; kept 90 days.
+model SyncLog {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String
+  provider  String // which of their sign-ins: stremio | nuvio
+  source    String // what started it - see utils/syncLog.js SOURCES
+  groupName String?
+  ok        Boolean
+  added     String? // JSON array of addon names
+  removed   String?
+  updated   String?
+  reordered Boolean  @default(false)
+  total     Int? // addons on the account afterwards
+  error     String?
+  repeats   Int      @default(1)
+  at        DateTime @default(now())
+  lastAt    DateTime @default(now())
+
+  @@index([userId, lastAt])
+  @@index([accountId, lastAt])
+  @@map("sync_logs")
+}
+
+// Each time a Vault key was shown, copied, changed or added - the key's own
+// History. Written by utils/vaultAccess.js; kept a year, and cleared with
+// the entry once it leaves the Trash for good.
+model VaultAccessLog {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  entryId   String
+  action    String // shown | copied | moved | changed | added
+  device    String? // "Chrome on Windows"
+  ip        String?
+  at        DateTime @default(now())
+
+  @@index([entryId, at])
+  @@index([accountId, at])
+  @@map("vault_access_logs")
+}

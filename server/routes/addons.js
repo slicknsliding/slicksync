@@ -1400,6 +1400,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       if (groupIds.length === 0) return
       const { syncGroupUsers } = require('./groups')
       if (typeof syncGroupUsers !== 'function') return
+      req.syncSource = 'addon_update'
       for (const groupId of groupIds) {
         try { await syncGroupUsers(prisma, getAccountId, scopedWhere, decrypt, groupId, req) }
         catch (e) { console.warn(`Post-reload sync of group ${groupId} failed:`, e?.message) }

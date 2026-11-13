@@ -14,7 +14,7 @@
 const PERSON_TABLES = [
   'aioConfigSnapshot', 'dismissedContinueWatching', 'episodeWatchHistory', 'movieWatchHistory',
   'nuvioCollectionsSnapshot', 'nuvioHomeLayoutSnapshot', 'personPushSubscription', 'proxyDeviceClaim',
-  'proxyUserIpAffinity', 'streamGateWrap', 'userSyncGuardState', 'watchActivity', 'watchCopyRun',
+  'proxyUserIpAffinity', 'streamGateWrap', 'syncLog', 'userSyncGuardState', 'watchActivity', 'watchCopyRun',
   'watchSession', 'watchSnapshot', 'watchStateCursor', 'watchStateEvent', 'watchSyncMove', 'watchSyncSetting',
   'userProviderCredential',
 ]
@@ -28,8 +28,8 @@ const ACCOUNT_TABLES = [
   'movieWatchHistory', 'mutedShow', 'notInterestedItem', 'notification', 'notificationDigestEntry',
   'nuvioCollectionsSnapshot', 'nuvioHomeLayoutSnapshot', 'nuvioProfileRoute', 'passkey', 'personPushSubscription',
   'profileMerge', 'proxyDeviceClaim', 'proxyStreamSession', 'proxyUserIpAffinity', 'pushSubscription',
-  'showEpisodeAlertState', 'streamGateWrap', 'titleRating', 'titleReaction', 'trashItem', 'userSyncGuardState',
-  'vaultEntry', 'watchActivity', 'watchCopyRun', 'watchSession', 'watchSnapshot', 'watchStateCursor',
+  'showEpisodeAlertState', 'streamGateWrap', 'syncLog', 'titleRating', 'titleReaction', 'trashItem', 'userSyncGuardState',
+  'vaultAccessLog', 'vaultEntry', 'watchActivity', 'watchCopyRun', 'watchSession', 'watchSnapshot', 'watchStateCursor',
   'watchStateEvent', 'watchSyncMove', 'watchSyncSetting', 'watchTogetherShow', 'watchlistItem',
   // Invitation already cascades from AppAccount, but clearing it explicitly
   // keeps this list self-contained/order-independent.

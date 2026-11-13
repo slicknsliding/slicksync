@@ -29,6 +29,7 @@ import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
+import { SyncHistoryButton } from '@/components/user/SyncHistoryButton';
 import { HistoryImportFlow, type HistoryImportFlowHandle } from '@/components/user/HistoryImportFlow';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -207,6 +208,16 @@ const CLASSIC_LABELS: Record<string, string> = {
 const PERSON_SYNC_KEY = 'person-sync';
 function PersonTVPage({ children }: { children: React.ReactNode }) {
   return <TVPageProvider initialFocusKey={PERSON_SYNC_KEY}>{children}</TVPageProvider>;
+}
+
+
+// Sync history only means something for a sign-in with an addon list:
+// what its line calls their account, or null for nobody to show it for.
+function syncHistoryAccount(user: { providerType?: string | null } | null | undefined, merged: { providerType?: string | null } | null): string | null {
+  const kinds = [user?.providerType || 'stremio', merged?.providerType].filter((k): k is string => k === 'stremio' || k === 'nuvio');
+  if (kinds.length === 0) return null;
+  if (new Set(kinds).size > 1) return 'accounts';
+  return `${kinds[0] === 'nuvio' ? 'Nuvio' : 'Stremio'} account`;
 }
 
 export default function UserDetailPage() {
@@ -1819,6 +1830,8 @@ export default function UserDetailPage() {
       tiles.push(<PillTool key="aiohealth" icon={toolIcon(ShieldCheckIcon)} title="AIOStreams health" line="What AIOStreams says about their setup"><AioHealthButton userId={user.id} name={name} /></PillTool>);
       tiles.push(<PillTool key="aiohistory" icon={toolIcon(ClockIcon)} title="AIOStreams history" line="Changes made to their setup"><AioHistoryButton userId={user.id} name={name} /></PillTool>);
     }
+    const syncAccount = syncHistoryAccount(user, mergeInfo);
+    if (syncAccount) tiles.push(<PillTool key="synchistory" icon={toolIcon(ClockIcon)} title="Sync history" line="What each sync changed, and when"><SyncHistoryButton userId={user.id} name={name} account={syncAccount} /></PillTool>);
     if (realJellyfin) tiles.push(<PillTool key="devices" icon={toolIcon(TvIcon)} title="Devices" line="Where they are signed in on their server"><JellyfinDevicesButton userId={user.id} name={name} /></PillTool>);
     tiles.push(
       <V2ToolTile
@@ -2124,6 +2137,10 @@ export default function UserDetailPage() {
                           <>
                             <JellyfinDevicesButton userId={user.id} name={user.username || user.name || 'them'} />
                           </>
+                        )}
+                        {/* What each sync changed - only for a sign-in with an addon list. */}
+                        {syncHistoryAccount(user, mergeInfo) && (
+                          <SyncHistoryButton userId={user.id} name={user.username || user.name || 'them'} account={syncHistoryAccount(user, mergeInfo)!} />
                         )}
                         {(() => {
                           const toggleDebug = () => {

@@ -3,6 +3,7 @@
 import { usePageArrangement, usePageDesign, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, ArrangePanel, HiddenTray } from '@/components/ui/Arrange';
 import { VaultV2, VAULT_SECTIONS } from '@/components/v2/VaultV2';
+import { VaultHistoryButton, VaultHistoryPopup } from '@/components/vault/VaultHistory';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
@@ -491,6 +492,8 @@ function VaultPageContent() {
     setIsLoading(false);
   });
   const [revealed, setRevealed] = useState<Record<string, string>>({});
+  // v2: the entry whose History is open from its card's menu.
+  const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [movingToAddonsId, setMovingToAddonsId] = useState<string | null>(null);
 
@@ -822,7 +825,7 @@ function VaultPageContent() {
     if (!confirm(`Move "${entry.name}" to Addons? This removes it from the Vault.`)) return;
     setMovingToAddonsId(entry.id);
     try {
-      const { secret } = await api.revealVaultSecret(entry.id);
+      const { secret } = await api.revealVaultSecret(entry.id, 'move');
       if (!secret || !/^https?:\/\//i.test(secret.trim())) {
         toast.error('That isn’t an addon address', { line: 'The secret has to be a link starting with http:// or https://.' });
         return;
@@ -938,12 +941,12 @@ function VaultPageContent() {
     }
   };
 
-  // Copies the secret without requiring "Reveal" first - reuses whatever's
-  // already revealed on screen if present, otherwise fetches it quietly
-  // (never stores it into `revealed`, so the card stays masked).
+  // Copies the secret without requiring "Reveal" first, and never stores it
+  // into `revealed`, so the card stays masked. Always asked of the server,
+  // even when it is on screen already, so the key's History says Copied.
   const handleCopy = async (entry: VaultEntry) => {
     try {
-      const value = revealed[entry.id] ?? (await api.revealVaultSecret(entry.id)).secret;
+      const value = (await api.revealVaultSecret(entry.id, 'copy')).secret;
       await copyToClipboard(value);
       toast.success('Copied to clipboard');
     } catch (err: any) {
@@ -1107,6 +1110,7 @@ function VaultPageContent() {
           );
           return isTV ? <TVFocusable onEnterPress={() => handleMoveToAddons(entry)}>{btn}</TVFocusable> : btn;
         })()}
+        <VaultHistoryButton entryId={entry.id} name={entry.name} />
         {(() => {
           const btn = (
             <button onClick={() => handleDelete(entry)} title="Delete" aria-label="Delete" className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surface-hover)' }}>
@@ -1244,6 +1248,20 @@ function VaultPageContent() {
           }}
           onMoveToAddons={handleMoveToAddons}
           onDelete={handleDelete}
+          onHistory={(entry) => setHistoryFor({ id: entry.id, name: entry.name })}
+        />
+        {/* History from a card's menu, beside that card's menu button. */}
+        <VaultHistoryPopup
+          entryId={historyFor?.id ?? ''}
+          name={historyFor?.name ?? ''}
+          open={!!historyFor}
+          anchor={() => {
+            if (!historyFor) return null;
+            const label = `${historyFor.name} options`;
+            const el = Array.from(document.querySelectorAll<HTMLElement>('[aria-label]')).find((x) => x.getAttribute('aria-label') === label);
+            return el?.getBoundingClientRect() ?? null;
+          }}
+          onClose={() => setHistoryFor(null)}
         />
         <HiddenTray
           arrange={sectionArrange}

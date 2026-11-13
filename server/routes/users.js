@@ -847,7 +847,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
               if (typeof cfg.useCustomFields === 'boolean') useCustomFields = cfg.useCustomFields
               else if (typeof cfg.useCustomNames === 'boolean') useCustomFields = cfg.useCustomNames
             }
-            await syncUserAddons(prisma, updated.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+            await syncUserAddons(prisma, updated.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'trax' })
           } catch (e) {
             console.warn('[SlickTrax] sync after a rows change failed:', e?.message)
           }
@@ -3500,6 +3500,21 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  // Sync history: what each sync changed on this person's accounts, and the
+  // ones that failed, newest first (utils/syncLog.js).
+  router.get('/:id/sync-history', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } })
+      if (!user) return res.status(404).json({ message: 'User not found' })
+      const { listSyncHistory } = require('../utils/syncLog')
+      res.json({ entries: await listSyncHistory(prisma, { accountId, userId: user.id }) })
+    } catch (error) {
+      console.error('[sync-history] Error:', error?.message)
+      res.status(500).json({ message: publicMessage(error, 'Failed to read the sync history') })
+    }
+  })
+
   // Get user's sync plan (current vs desired addons for debugging)
   router.get('/:id/sync-plan', async (req, res) => {
     try {
@@ -4873,7 +4888,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Individual user sync - no reload needed, just sync
-      const result = await syncUserAddons(prisma, id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+      const result = await syncUserAddons(prisma, id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'manual' })
 
       if (!result.success) {
         return res.status(400).json({ message: result.error || 'Failed to sync user' })
@@ -4958,7 +4973,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             debug.log(`🔄 Syncing user: ${user.username || user.email}`)
 
             // Use the reusable sync function
-            const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+            const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'sync_all' })
 
             if (syncResult.success) {
               syncedCount++
@@ -8473,13 +8488,19 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
       return { success: true, total: (plan.desired || []).length, alreadySynced: true }
     }
 
+    // What this sync changes, for the person's Sync history (utils/syncLog.js),
+    // by the same fingerprint the plan compared with.
+    const { createManifestFingerprint } = require('../utils/sync')
+    const { describeSyncChange } = require('../utils/syncLog')
+    const changeFingerprint = createManifestFingerprint(canonicalizeFn, { urlOnly: (credentials.providerType || 'stremio') !== 'stremio' })
+
     // If desired addons is empty (empty group), clear all addons
     let finalDesired = plan.desired || []
     if (finalDesired.length === 0) {
       await provider.clearAddons()
       console.log('📦 Empty group detected, cleared all addons')
       await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, [])
-      return { success: true, total: 0 }
+      return { success: true, total: 0, change: describeSyncChange(plan.current, [], changeFingerprint) }
     }
 
     await provider.setAddons(finalDesired)
@@ -8492,7 +8513,11 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
       ensureTraxHomePlacement(provider, { id: credentials.id }, `vip.slicksync.trax.${credentials.id}:series:slicktrax-continue`)
         .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
     }
-    return { success: true, total: (plan.desired || []).length }
+    return {
+      success: true,
+      total: (plan.desired || []).length,
+      change: describeSyncChange(plan.current, finalDesired, changeFingerprint, plan.staleManifests),
+    }
   } catch (e) {
     console.error('❌ Failed to apply sync plan:', e?.message)
     return { success: false, error: publicMessage(e, 'Failed to sync addons') }
@@ -8567,6 +8592,17 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
       ? { success: true, unsupported: true, total: 0 }
       : await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
 
+    // Sync history (utils/syncLog.js): what started this sync comes from the
+    // caller, either as options.source or on the request it passed along.
+    const { recordSyncOutcome } = require('../utils/syncLog')
+    const logContext = {
+      accountId: boundAccountId,
+      userId: user.id,
+      source: options?.source || req?.syncSource || 'other',
+      groupName: options?.groupName || req?.syncGroupName || null,
+    }
+    await recordSyncOutcome(prismaClient, { ...logContext, provider: user.providerType, result })
+
     // Merged users (see server/utils/userMerge.js) absorb a second provider's
     // credentials into a UserProviderCredential row rather than a second
     // User row - sync it as a second pass here so every existing caller of
@@ -8611,6 +8647,7 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
               }
             : undefined,
         }, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
+        await recordSyncOutcome(prismaClient, { ...logContext, provider: secondaryCredential.providerType, result: secondaryResult })
         if (secondaryResult.success) {
           console.log(`✅ Secondary provider (${secondaryCredential.providerType}) also synced for ${userName}`)
         } else {

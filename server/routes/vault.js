@@ -2,6 +2,7 @@ const express = require('express');
 const { runCheck } = require('../utils/vaultCheckers');
 const { cleanDashboardUrl, vaultFieldProblem } = require('../utils/vaultFields');
 const { INSTANCE_TYPE } = require('../utils/config');
+const vaultAccess = require('../utils/vaultAccess');
 
 const CATEGORIES = [
   'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
@@ -75,17 +76,38 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
   // POST /api/vault/:id/reveal - decrypt and return the real secret value.
   // POST (not GET) so it goes through the CSRF guard, isn't cached, and never
   // appears in browser history / referer headers / intermediate proxy logs.
+  // body.purpose says why, for the key's History: 'copy' (Copy), 'move'
+  // (Move to Addons), anything else is Shown. Every one counts toward the
+  // show/copy limit (utils/vaultAccess.js).
   router.post('/:id/reveal', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
       const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
       if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      if (!vaultAccess.takeRevealSlot(accountId)) return res.status(429).json({ error: vaultAccess.LIMIT_MESSAGE });
       let secret;
       try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.status(500).json({ error: 'Failed to decrypt secret' }); }
+      const purpose = req.body?.purpose;
+      const action = purpose === 'copy' ? 'copied' : purpose === 'move' ? 'moved' : 'shown';
+      await vaultAccess.recordVaultAccess(prisma, { accountId, entryId: entry.id, action, req });
       res.json({ secret });
     } catch (error) {
       console.error('Error revealing vault entry:', error);
       res.status(500).json({ error: 'Failed to reveal vault entry' });
+    }
+  });
+
+  // GET /api/vault/:id/history - each time this key was shown, copied,
+  // changed or added, newest first (utils/vaultAccess.js).
+  router.get('/:id/history', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      res.json({ entries: await vaultAccess.listVaultHistory(prisma, { accountId, entryId: entry.id }) });
+    } catch (error) {
+      console.error('Error reading vault entry history:', error);
+      res.status(500).json({ error: 'Failed to read the history' });
     }
   });
 
@@ -187,6 +209,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         },
       });
 
+      await vaultAccess.recordVaultAccess(prisma, { accountId, entryId: entry.id, action: 'added', req });
       res.status(201).json({ id: entry.id, name: entry.name });
     } catch (error) {
       console.error('Error creating vault entry:', error);
@@ -311,6 +334,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       }
 
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
+      if (secret && oldSecret !== secret) {
+        await vaultAccess.recordVaultAccess(prisma, { accountId, entryId: existing.id, action: 'changed', req });
+      }
 
       // Key-rotation propagation - opt-in per account (keyRotationPropagation
       // in Settings, OFF by default). When the secret actually changed, find

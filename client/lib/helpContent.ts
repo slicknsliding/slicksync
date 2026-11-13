@@ -1467,6 +1467,43 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Settings',
   },
   {
+    id: 'sync-history',
+    title: 'What a sync changed: Sync history',
+    category: 'Users & Groups',
+    keywords: ['sync history', 'sync log', 'what changed', 'who synced', 'sync failed', 'addons removed', 'addons added', 'audit', 'sync record'],
+    answer: 'Open a person and press Sync history, next to Limits. Each line says when a sync ran, who or what started it (you, the schedule, a group change, an invite, an automation…), and which addons it added, removed or updated, or whether it changed the order.',
+    steps: [
+      'Open a person from Users.',
+      'Press Sync history in the row of buttons under their name. In the v2 design it is a tile in Tools.',
+      'Read the newest line first. A sync that didn’t work says so, with the technical reason under Details.',
+    ],
+    details: [
+      'Only syncs that changed something are kept, plus the ones that failed. The schedule checks often and usually finds nothing to do, so those aren’t listed.',
+      'A failure that keeps happening stays on one line with a count, so a sign-in that’s broken for a week doesn’t fill the list.',
+      'Someone with both a Stremio and a Nuvio sign-in gets one list, with each line saying which one it was.',
+      'Lines are kept for 90 days.',
+    ],
+    tips: ['To see what a sync will do before it runs, press Sync: it shows the changes and waits for you to confirm.'],
+    related: ['sync-preview', 'sync-mode-basics'],
+  },
+  {
+    id: 'vault-key-history',
+    title: 'Who showed or copied a Vault key',
+    category: 'Vault & credentials',
+    keywords: ['vault history', 'key history', 'who copied', 'who saw', 'revealed', 'access log', 'audit', 'shown', 'copied', 'security', 'too many'],
+    answer: 'Press the clock button on a Vault card (in the v2 design: History in the card’s ⋯ menu). It lists each time the key was shown, copied, changed or added, with the device and the address it came from.',
+    details: [
+      'Showing the AI Services key from Settings counts as Shown on its Vault entry too.',
+      'SlickSync using a key itself (its checks, putting it into addons, the nightly backup) isn’t listed. Swapping a key with its backup after a failed check is.',
+      'Lines are kept for a year. A deleted entry keeps its History while it’s in the Trash, and loses it once it leaves for good.',
+      'More than 30 shows or copies in 10 minutes and the next one asks you to wait a few minutes. Normal use never gets near it; it stops a stolen session from emptying the Vault in one go.',
+    ],
+    tips: ['An address or device you don’t recognise is worth acting on: change that key at the provider, then sign out your other sessions.'],
+    related: ['vault-add-credential', 'vault-key-rotation'],
+    href: '/vault',
+    linkLabel: 'Open the Vault',
+  },
+  {
     id: 'arrange-my-home',
     title: 'Arranging your own Home',
     category: 'Getting started',
@@ -2303,7 +2340,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tips: [
       'The preview uses the same comparison the sync itself uses, so it cannot tell you one thing and then do another.',
     ],
-    related: ['sync-mode-basics', 'advanced-sync'],
+    related: ['sync-mode-basics', 'advanced-sync', 'sync-history'],
   },
   {
     id: 'history-doctor',
