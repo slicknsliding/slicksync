@@ -243,7 +243,7 @@ export function HealthStripV2({ history, loading, error, aiSummary, isChecking, 
   return (
     <div>
       {loading ? (
-        <div className="flex gap-0.5 animate-pulse">{Array.from({ length: 30 }).map((_, i) => <span key={i} className="flex-1 h-[26px] rounded-[3px] bg-surface-hover" />)}</div>
+        <div className="flex gap-0.5">{Array.from({ length: 30 }).map((_, i) => <span key={i} className="flex-1 h-[26px] rounded-[3px] skeleton-fill" />)}</div>
       ) : error || oldestFirst.length === 0 ? (
         <p className="text-sm text-subtle">{error ? error : 'No health checks recorded yet. Choose Check now to run one.'}</p>
       ) : (

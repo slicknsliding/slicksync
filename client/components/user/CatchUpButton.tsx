@@ -365,7 +365,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                 {query.trim().length >= 2 ? (
                   <div className="max-h-[300px] overflow-y-auto -mx-1 px-1 space-y-1">
                     {results === null ? (
-                      [0, 1, 2].map((i) => <div key={i} className="h-14 rounded-xl bg-surface-hover animate-pulse" />)
+                      [0, 1, 2].map((i) => <div key={i} className="h-14 rounded-xl skeleton-fill" />)
                     ) : results.length === 0 ? (
                       <p className="text-xs text-muted py-3 text-center">No shows match that.</p>
                     ) : results.map((r) => (
@@ -380,7 +380,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                     <p className="text-xs font-medium text-muted mb-1.5">{name} is watching</p>
                     {shows === null ? (
                       <div className="grid grid-cols-4 gap-2">
-                        {[0, 1, 2, 3].map((i) => <div key={i} className="aspect-[2/3] rounded-lg bg-surface-hover animate-pulse" />)}
+                        {[0, 1, 2, 3].map((i) => <div key={i} className="aspect-[2/3] rounded-lg skeleton-fill" />)}
                       </div>
                     ) : shows.length === 0 ? (
                       <p className="text-xs text-muted py-2">No shows in their History yet - search for one above.</p>
@@ -417,8 +417,8 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                   <p className="text-xs text-muted rounded-xl px-3 py-3" style={{ background: 'var(--color-surface-hover)' }}>{listError}</p>
                 ) : !list ? (
                   <div className="space-y-2">
-                    <div className="h-7 rounded-lg bg-surface-hover animate-pulse" />
-                    <div className="h-24 rounded-xl bg-surface-hover animate-pulse" />
+                    <div className="h-7 rounded-lg skeleton-fill" />
+                    <div className="h-24 rounded-xl skeleton-fill" />
                   </div>
                 ) : (
                   <>

@@ -107,7 +107,7 @@ export function AioHistoryButton({ userId, name }: { userId: string; name: strin
             {error ? (
               <p className="text-xs text-error">{error}</p>
             ) : !state ? (
-              <div className="h-24 rounded-xl bg-surface-hover animate-pulse" />
+              <div className="h-24 rounded-xl skeleton-fill" />
             ) : !state.available ? (
               <p className="text-xs text-default">Only for someone added with their AIOStreams configuration password.</p>
             ) : state.versions.length === 0 ? (

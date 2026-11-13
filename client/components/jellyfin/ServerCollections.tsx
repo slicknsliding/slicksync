@@ -221,7 +221,7 @@ export function ServerCollections({ server, canSwitch, onSwitch, v2 = false, swi
         {arrange.shown.includes('catalogs') && (
           <ArrangeSection arrange={arrange} id="catalogs" title="Catalogs" meta={view ? `${onCount} of ${total} on` : undefined} noun="section">
             {!view ? (
-              <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[86px] rounded-2xl bg-surface-hover animate-pulse" />)}</V2Tiles>
+              <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[86px] rounded-2xl skeleton-fill" />)}</V2Tiles>
             ) : view.catalogs.length === 0 ? (
               <div className="v2-box v2-box-pad"><p className="text-sm text-muted text-center">No catalogs yet. Make one on the Catalogs page.</p></div>
             ) : (
@@ -296,7 +296,7 @@ export function ServerCollections({ server, canSwitch, onSwitch, v2 = false, swi
 
       {!view ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-2xl bg-surface-hover animate-pulse" />)}
+          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-2xl skeleton-fill" />)}
         </div>
       ) : view.catalogs.length === 0 ? (
         <Card padding="lg"><p className="text-sm text-muted text-center">No catalogs yet. Make one on the Catalogs page.</p></Card>

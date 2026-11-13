@@ -433,7 +433,7 @@ export default function AiostreamsCollectionPage() {
       {query.trim().length >= 2 && (
         searching ? (
           <ScrollRow className={resultsRow}>
-            {Array.from({ length: 8 }).map((_, i) => <div key={i} className={`${resultCell} aspect-[2/3] rounded-xl bg-surface-hover animate-pulse`} />)}
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className={`${resultCell} aspect-[2/3] rounded-xl skeleton-fill`} />)}
           </ScrollRow>
         ) : results.length === 0 ? (
           <p className="text-sm text-muted">Nothing found for “{query.trim()}”.</p>
@@ -477,7 +477,7 @@ export default function AiostreamsCollectionPage() {
     <>
   {lists === null ? (
     <div className={grid}>
-      {Array.from({ length: 8 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-xl bg-surface-hover animate-pulse" />)}
+      {Array.from({ length: 8 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-xl skeleton-fill" />)}
     </div>
   ) : titles.length === 0 ? (
     <Card padding="lg">
@@ -541,8 +541,8 @@ export default function AiostreamsCollectionPage() {
           {v2 && (
             !ready ? (
               <div className="space-y-4">
-                <div className="h-24 rounded-2xl bg-surface-hover animate-pulse" />
-                <div className="h-64 rounded-2xl bg-surface-hover animate-pulse" />
+                <div className="h-24 rounded-2xl skeleton-fill" />
+                <div className="h-64 rounded-2xl skeleton-fill" />
               </div>
             ) : (
               <JfCollectionV2
@@ -575,8 +575,8 @@ export default function AiostreamsCollectionPage() {
           {!v2 && <PageSection>
             {!ready ? (
               <div className="space-y-4">
-                <div className="h-40 rounded-2xl bg-surface-hover animate-pulse" />
-                <div className="h-64 rounded-2xl bg-surface-hover animate-pulse" />
+                <div className="h-40 rounded-2xl skeleton-fill" />
+                <div className="h-64 rounded-2xl skeleton-fill" />
               </div>
             ) : (
               <div className="space-y-6">

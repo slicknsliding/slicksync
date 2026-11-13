@@ -106,7 +106,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
               <p className="text-xs text-error">{error}</p>
             ) : !state ? (
               <div className="space-y-2">
-                {[0, 1].map((i) => <div key={i} className="h-11 rounded-xl bg-surface-hover animate-pulse" />)}
+                {[0, 1].map((i) => <div key={i} className="h-11 rounded-xl skeleton-fill" />)}
               </div>
             ) : state.needsAdmin ? (
               <p className="text-xs text-default">

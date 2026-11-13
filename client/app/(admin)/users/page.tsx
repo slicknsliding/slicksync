@@ -924,7 +924,7 @@ export default function UsersPage() {
                               key={user.id}
                               id={user.id}
                               onClick={() => toggleSelect(user.id)}
-                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(user.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
+                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(user.id) ? 'bg-primary-muted' : 'row-hover'
                                 }`}
                             >
                               <td className="px-4 py-4">

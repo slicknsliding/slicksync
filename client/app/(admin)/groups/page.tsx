@@ -581,7 +581,7 @@ export default function GroupsPage() {
                               key={group.id}
                               id={group.id}
                               onClick={() => toggleSelect(group.id)}
-                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(group.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
+                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(group.id) ? 'bg-primary-muted' : 'row-hover'
                                 }`}
                             >
                               <td className="px-4 py-4">

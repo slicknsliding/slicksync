@@ -377,7 +377,7 @@ export function NuvioCollectionsV2(p: NuvioV2Props) {
         <section className="arrange-section" aria-label="Nuvio account">
           <h2 className="text-lg font-semibold mb-3">Choose a Nuvio account</h2>
           {p.usersLoading ? (
-            <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[66px] rounded-2xl bg-surface-hover animate-pulse" />)}</V2Tiles>
+            <V2Tiles wide={3}>{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[66px] rounded-2xl skeleton-fill" />)}</V2Tiles>
           ) : p.nuvioUsers.length === 0 ? (
             <p className="text-sm text-muted">No Nuvio-connected people yet.</p>
           ) : (
@@ -408,7 +408,7 @@ export function NuvioCollectionsV2(p: NuvioV2Props) {
       {hasProfile && p.editor}
       {hasProfile && !p.editor && (
         p.collectionsLoading ? (
-          <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-2xl bg-surface-hover animate-pulse" />)}</div>
+          <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-2xl skeleton-fill" />)}</div>
         ) : nC === 0 ? (
           <div className="v2-box v2-box-pad text-center">
             <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />

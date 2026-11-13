@@ -471,7 +471,7 @@ export default function InvitationsPage() {
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
                                   exit={{ opacity: 0 }}
-                                  className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(invite.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
+                                  className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(invite.id) ? 'bg-primary-muted' : 'row-hover'
                                     }`}
                                   onClick={() => toggleSelect(invite.id)}
                                 >

@@ -673,7 +673,9 @@ export default function AddonsPage() {
       const reorderedIds = filteredAddons.map(a => a.id);
       const [movedId] = reorderedIds.splice(oldIndex, 1);
       reorderedIds.splice(newIndex, 0, movedId);
+      let before: Addon[] | null = null;
       setAddons(prev => {
+        before = prev;
         const byId = new Map(prev.map(a => [a.id, a]));
         const reorderedAddons = reorderedIds
           .map(id => byId.get(id))
@@ -681,8 +683,10 @@ export default function AddonsPage() {
         const rest = prev.filter(a => !reorderedIds.includes(a.id));
         return [...reorderedAddons, ...rest];
       });
-      api.reorderAddons(reorderedIds).catch((err: any) => {
-        toast.error(err.message || 'Failed to save new order');
+      api.reorderAddons(reorderedIds).catch(() => {
+        // The server kept the old order, so show that one again.
+        if (before) setAddons(before);
+        toast.error("Couldn't save the new order, so it's back the way it was. Try again in a moment.");
       });
     };
     return registerDragEndHandler(handleDragEnd);

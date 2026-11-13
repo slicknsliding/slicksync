@@ -243,7 +243,7 @@ export default function AiostreamsCollectionsPage() {
                 <label className="block text-xs font-medium text-muted mb-3">AIOStreams account or Jellyfin server</label>
                 {loading || (!userId && !serverKey && choices === 1) ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-surface-hover animate-pulse" />)}
+                    {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-xl skeleton-fill" />)}
                   </div>
                 ) : choices === 0 ? (
                   <p className="text-xs text-subtle">
@@ -634,7 +634,7 @@ function AccountCollections({ account, profile, accounts, onProfileChanged, v2 =
             >
               {!view ? (
                 <V2Tiles wide={4}>
-                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-[170px] rounded-2xl bg-surface-hover animate-pulse" />)}
+                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-[170px] rounded-2xl skeleton-fill" />)}
                 </V2Tiles>
               ) : collections.length === 0 ? (
                 <div className="v2-box v2-box-pad">
@@ -757,7 +757,7 @@ function AccountCollections({ account, profile, accounts, onProfileChanged, v2 =
 
             {!view ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-2xl bg-surface-hover animate-pulse" />)}
+                {Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-2xl skeleton-fill" />)}
               </div>
             ) : collections.length === 0 ? (
               <Card padding="lg">

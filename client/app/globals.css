@@ -954,6 +954,26 @@ body {
   animation: float 4s ease-in-out infinite;
 }
 
+/* Loading placeholder bars (components/ui/Skeleton.tsx) and table-row
+   hover: a tint of the theme's text colour, so both read on dark themes
+   and on Daylight. */
+.skeleton-fill {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+}
+.skeleton-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-text) 7%, transparent), transparent);
+  animation: shimmer 2s linear infinite;
+}
+.row-hover:hover {
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
 /* Nebula layout's corner spotlight glows (PageContainer.tsx) - a gentle
    transform-only drift (translate + scale) so the blobs feel alive without
    ever being able to move off their corner entirely, unlike the two earlier
@@ -979,6 +999,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-shimmer,
+  .skeleton-fill::before,
   .animate-pulse-soft,
   .animate-float,
   .animate-float-slow,

@@ -98,7 +98,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
             {error ? (
               <p className="text-xs text-error">{error}</p>
             ) : !state ? (
-              <div className="h-24 rounded-xl bg-surface-hover animate-pulse" />
+              <div className="h-24 rounded-xl skeleton-fill" />
             ) : !state.canRead ? (
               <p className="text-xs text-default">{state.reason}</p>
             ) : (
@@ -203,7 +203,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
                         {testing ? 'Searching…' : 'Test'}
                       </button>
                     </form>
-                    {testing && <div className="h-10 rounded-xl bg-surface-hover animate-pulse" />}
+                    {testing && <div className="h-10 rounded-xl skeleton-fill" />}
                     {result && (
                       <div className="space-y-1 text-xs">
                         <p className="text-default">

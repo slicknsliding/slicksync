@@ -1445,9 +1445,9 @@ export default function MetricsPage() {
         {viewMode === 'health' && (
           healthLoading ? (
             <PageSection>
-              <div className="h-24 rounded-xl bg-surface-hover animate-pulse mb-6" />
+              <div className="h-24 rounded-xl skeleton-fill mb-6" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[...Array(4)].map((_, i) => <div key={i} className="h-40 rounded-xl bg-surface-hover animate-pulse" />)}
+                {[...Array(4)].map((_, i) => <div key={i} className="h-40 rounded-xl skeleton-fill" />)}
               </div>
             </PageSection>
           ) : !healthData ? (
