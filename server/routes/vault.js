@@ -1,6 +1,6 @@
 const express = require('express');
 const { runCheck } = require('../utils/vaultCheckers');
-const { cleanDashboardUrl } = require('../utils/vaultFields');
+const { cleanDashboardUrl, vaultFieldProblem } = require('../utils/vaultFields');
 const { INSTANCE_TYPE } = require('../utils/config');
 
 const CATEGORIES = [
@@ -158,9 +158,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       }
       const cleanUrl = cleanDashboardUrl(dashboardUrl);
       if (cleanUrl === null) return res.status(400).json({ error: 'dashboardUrl must be an http or https address' });
-      if (expiresAt && isNaN(new Date(expiresAt).getTime())) {
-        return res.status(400).json({ error: 'expiresAt must be a valid date' });
-      }
+      const fieldProblem = vaultFieldProblem(req.body || {});
+      if (fieldProblem) return res.status(400).json({ error: fieldProblem });
 
       const maxPositionEntry = await prisma.vaultEntry.findFirst({
         where: { accountId, category },
@@ -254,9 +253,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (provider !== undefined && provider !== null && typeof provider !== 'string') {
         return res.status(400).json({ error: 'provider must be text' });
       }
-      if (expiresAt && ((typeof expiresAt !== 'string' && typeof expiresAt !== 'number') || isNaN(new Date(expiresAt).getTime()))) {
-        return res.status(400).json({ error: 'expiresAt must be a valid date' });
-      }
+      const fieldProblem = vaultFieldProblem(req.body || {});
+      if (fieldProblem) return res.status(400).json({ error: fieldProblem });
       const cleanUrl = dashboardUrl === undefined ? undefined : cleanDashboardUrl(dashboardUrl);
       if (cleanUrl === null) return res.status(400).json({ error: 'dashboardUrl must be an http or https address' });
 

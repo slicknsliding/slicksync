@@ -568,7 +568,8 @@ async function runCheck(testType, secret, config) {
   if (!testType || testType === 'manual') {
     return { ok: null, message: 'Manual entry — no automated check configured' }
   }
-  const checker = CHECKERS[testType]
+  // Own keys only: CHECKERS['constructor'] is Object itself.
+  const checker = Object.prototype.hasOwnProperty.call(CHECKERS, testType) ? CHECKERS[testType] : null
   if (!checker) return { ok: false, message: `Unknown test type: ${testType}` }
   try {
     return await checker(secret, config || {})

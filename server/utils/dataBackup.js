@@ -47,8 +47,15 @@ const DAY_MS = 24 * 60 * 60 * 1000
 // Encrypted-snapshot container format, read back by
 // scripts/restore-data-snapshot.js:
 //   MAGIC(16) | salt(16) | iv(12) | tag(16) | ciphertext(...)
-// The payload inside is the gzipped snapshot.
-const MAGIC = Buffer.from('SLICKSYNCDATA001', 'utf8')
+// Version 002's payload is  keyLen(4, big-endian) | keys JSON | gzipped
+// snapshot,  where the JSON is { keys: [base64...] }: this install's
+// encryption key first, then any older keys it still reads with. The
+// database keeps Vault secrets encrypted under that key, and the key lived
+// only in data/server_secret.key - so restoring a snapshot onto a fresh disk
+// brought back every Vault entry unreadable. The key only ever travels
+// inside the passphrase-encrypted file. (001 held just the gzipped snapshot;
+// the restore script reads both.)
+const MAGIC = Buffer.from('SLICKSYNCDATA002', 'utf8')
 const SALT_LEN = 16
 const IV_LEN = 12
 const TAG_LEN = 16
@@ -148,6 +155,21 @@ function verifySnapshot(snapshotPath) {
   }
 }
 
+// The keys this install encrypts and decrypts with, minus the built-in
+// legacy one everybody already has.
+function installKeys() {
+  const km = require('./keyManager')
+  const keys = [km.ENCRYPTION_KEY, ...(km.ENCRYPTION_KEY_FALLBACKS || [])].filter((k) => Buffer.isBuffer(k) && !k.equals(km.LEGACY_KEY))
+  return [...new Map(keys.map((k) => [k.toString('base64'), k])).keys()]
+}
+
+function withInstallKeys(gz, keys = installKeys()) {
+  const header = Buffer.from(JSON.stringify({ keys }), 'utf8')
+  const len = Buffer.alloc(4)
+  len.writeUInt32BE(header.length)
+  return Buffer.concat([len, header, gz])
+}
+
 function encryptBuffer(passphrase, plain) {
   const salt = crypto.randomBytes(SALT_LEN)
   const key = crypto.scryptSync(String(passphrase), salt, 32, { N: 1 << 14, r: 8, p: 1 })
@@ -186,7 +208,7 @@ async function createDataSnapshot(prisma) {
   let body = gz
   if (passphrase) {
     finalPath = `${rawPath}.gz.enc`
-    body = encryptBuffer(passphrase, gz)
+    body = encryptBuffer(passphrase, withInstallKeys(gz))
   }
   fs.writeFileSync(finalPath, body)
 
@@ -331,4 +353,6 @@ module.exports = {
   scheduleDataBackups,
   clearDataBackupSchedule,
   getDbFilePath,
+  encryptBuffer,
+  withInstallKeys,
 }
