@@ -181,7 +181,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
 
         // Otherwise perform sync (reload already handled above if advanced)
         // The force reaches the push itself - see syncCredentialsAddons.
-        const result = await syncUserAddons(prisma, uid, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { force: forcePush, source, groupName: group.name || null })
+        const result = await syncUserAddons(prisma, uid, unsafeMode, req, decrypt, getAccountId, useCustomFields, { force: forcePush, source, groupName: group.name || null })
         if (result?.success) {
           synced++
           console.log('✅ User now synced')
@@ -1631,7 +1631,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     let synced = 0, failed = 0
     for (const uid of uniqueUserIds) {
       try {
-        const r = await syncUserAddons(prismaDep, uid, [], unsafeMode, reqDep, decryptDep, getAccountIdDep, useCustomFields, { source: source || reqDep?.syncSource || 'group_change', groupName: group.name || null })
+        const r = await syncUserAddons(prismaDep, uid, unsafeMode, reqDep, decryptDep, getAccountIdDep, useCustomFields, { source: source || reqDep?.syncSource || 'group_change', groupName: group.name || null })
         if (r?.success) synced++; else failed++
       } catch { failed++ }
     }

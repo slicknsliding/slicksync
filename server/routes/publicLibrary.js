@@ -3358,7 +3358,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const { syncUserAddons } = require('./users');
       
       // Perform sync
-      const result = await syncUserAddons(prisma, userId, [], false, req, decrypt, () => user.accountId, true, { source: 'self' });
+      const result = await syncUserAddons(prisma, userId, false, req, decrypt, () => user.accountId, true, { source: 'self' });
       
       if (result.success) {
         res.json({ 

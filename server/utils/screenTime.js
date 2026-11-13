@@ -338,7 +338,7 @@ async function syncPerson(prisma, accountId, userId) {
   const { cfg } = await readSync(prisma, accountId)
   const unsafe = typeof cfg.safe === 'boolean' ? !cfg.safe : !!cfg.unsafe
   const useCustomFields = typeof cfg.useCustomFields === 'boolean' ? cfg.useCustomFields : (typeof cfg.useCustomNames === 'boolean' ? cfg.useCustomNames : true)
-  const result = await syncUserAddons(prisma, userId, [], unsafe, { appAccountId: accountId, headers: {} }, decrypt, () => accountId, useCustomFields, { source: 'screen_time' })
+  const result = await syncUserAddons(prisma, userId, unsafe, { appAccountId: accountId, headers: {} }, decrypt, () => accountId, useCustomFields, { source: 'screen_time' })
   if (!result?.success) throw new Error(result?.error || 'The sync failed')
 }
 

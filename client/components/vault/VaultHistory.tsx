@@ -3,7 +3,7 @@
 // A Vault key's History: each time it was shown, copied, changed or added,
 // from which device and address, newest first (server/utils/vaultAccess.js).
 // The clock button on a Classic card opens it; in v2 it is History in the
-// card's menu, which opens the same box beside that card's menu button.
+// card's menu. Either way the box opens next to the card, not on it.
 
 import { useEffect, useRef, useState } from 'react';
 import { ClockIcon } from '@heroicons/react/24/outline';
@@ -36,11 +36,13 @@ function useVaultHistory(entryId: string, open: boolean) {
 }
 
 /** The box itself, beside whatever `anchor` points at. */
-export function VaultHistoryPopup({ entryId, name, open, anchor, onClose }: {
+export function VaultHistoryPopup({ entryId, name, open, anchor, around, onClose }: {
   entryId: string;
   name: string;
   open: boolean;
   anchor: () => DOMRect | null;
+  /** The key's card: the box opens beside it, never on it. */
+  around?: () => HTMLElement | null;
   onClose: () => void;
 }) {
   const { entries, error, retry } = useVaultHistory(entryId, open);
@@ -48,6 +50,7 @@ export function VaultHistoryPopup({ entryId, name, open, anchor, onClose }: {
     <HistoryPopup
       open={open}
       anchor={anchor}
+      around={around}
       onClose={onClose}
       title={`History of ${name}’s key`}
       line="Each time it was shown, copied or changed, newest first."
@@ -103,6 +106,7 @@ export function VaultHistoryButton({ entryId, name }: { entryId: string; name: s
         name={name}
         open={open}
         anchor={() => button.current?.getBoundingClientRect() ?? null}
+        around={() => button.current?.closest<HTMLElement>('[data-vault-card]') ?? null}
         onClose={() => setOpen(false)}
       />
     </>

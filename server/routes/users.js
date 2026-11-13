@@ -847,7 +847,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
               if (typeof cfg.useCustomFields === 'boolean') useCustomFields = cfg.useCustomFields
               else if (typeof cfg.useCustomNames === 'boolean') useCustomFields = cfg.useCustomNames
             }
-            await syncUserAddons(prisma, updated.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'trax' })
+            await syncUserAddons(prisma, updated.id, unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'trax' })
           } catch (e) {
             console.warn('[SlickTrax] sync after a rows change failed:', e?.message)
           }
@@ -4888,7 +4888,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Individual user sync - no reload needed, just sync
-      const result = await syncUserAddons(prisma, id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'manual' })
+      const result = await syncUserAddons(prisma, id, unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'manual' })
 
       if (!result.success) {
         return res.status(400).json({ message: result.error || 'Failed to sync user' })
@@ -4973,7 +4973,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             debug.log(`🔄 Syncing user: ${user.username || user.email}`)
 
             // Use the reusable sync function
-            const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'sync_all' })
+            const syncResult = await syncUserAddons(prisma, user.id, unsafeMode, req, decrypt, getAccountId, useCustomFields, { source: 'sync_all' })
 
             if (syncResult.success) {
               syncedCount++
@@ -8386,7 +8386,7 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
    function run unchanged if a future caller supplies them from its own scope.
    Linting them as undefined is correct in the letter and wrong in effect, and
    rewriting the sync path to please the rule is not worth the risk. */
-async function syncCredentialsAddons(prismaClient, credentials, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options = {}) {
+async function syncCredentialsAddons(prismaClient, credentials, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options = {}) {
   const hasCredentials = credentials.stremioAuthKey || (credentials.nuvioRefreshToken && credentials.nuvioUserId)
   if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
 
@@ -8532,20 +8532,20 @@ async function syncUserAddons(...args) {
   try {
     // One sync at a time per person (utils/syncLock.js); a second one waits
     // and then works from what the first left.
-    const [, userId, , , req, , getAcct] = args
+    const [, userId, , req, , getAcct] = args
     const accountId = (typeof getAcct === 'function' && req ? getAcct(req) : null) || req?.appAccountId || 'default'
     return await require('../utils/syncLock').withPersonSync(`${accountId}:${userId}`, () => syncUserAddonsCore(...args))
   } finally {
     try {
-      const req = args[4]
-      const getAcct = args[6]
+      const req = args[3]
+      const getAcct = args[5]
       const accountId = (typeof getAcct === 'function' && req ? getAcct(req) : null) || req?.appAccountId || 'default'
       require('../utils/liveEvents').emitLive(accountId, 'sync')
     } catch { /* never disturbs the sync result */ }
   }
 }
 
-async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [], unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true, options = {}) {
+async function syncUserAddonsCore(prismaClient, userId, unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true, options = {}) {
   try {
     // Ensure req has appAccountId for account scoping
     if (!req.appAccountId) {
@@ -8590,7 +8590,7 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
     // them below still does.
     const result = user.providerType === 'jellyfin'
       ? { success: true, unsupported: true, total: 0 }
-      : await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
+      : await syncCredentialsAddons(prismaClient, user, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
 
     // Sync history (utils/syncLog.js): what started this sync comes from the
     // caller, either as options.source or on the request it passed along.
@@ -8646,7 +8646,7 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
                 })
               }
             : undefined,
-        }, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
+        }, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
         await recordSyncOutcome(prismaClient, { ...logContext, provider: secondaryCredential.providerType, result: secondaryResult })
         if (secondaryResult.success) {
           console.log(`✅ Secondary provider (${secondaryCredential.providerType}) also synced for ${userName}`)

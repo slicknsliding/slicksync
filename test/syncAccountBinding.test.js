@@ -27,7 +27,7 @@ test('a person of another account is not found, and nothing is fetched or writte
   t.after(() => { global.fetch = realFetch })
   const prisma = fakePrisma([{ id: 'victim', accountId: 'acctB', isActive: true, providerType: 'nuvio', username: 'victim' }])
   const req = { appAccountId: 'acctA', headers: {} }
-  const result = await syncUserAddons(prisma, 'victim', [], false, req, (v) => v, () => 'acctA', true)
+  const result = await syncUserAddons(prisma, 'victim', false, req, (v) => v, () => 'acctA', true)
   assert.equal(result.success, false)
   assert.equal(result.error, 'User not found')
   assert.ok(prisma.lookups.every((w) => w.accountId === 'acctA'), 'every lookup is bound to the caller\'s account')
@@ -36,7 +36,7 @@ test('a person of another account is not found, and nothing is fetched or writte
 
 test('with no account to bind to, nobody is found', async () => {
   const prisma = fakePrisma([{ id: 'someone', accountId: 'acctB', isActive: true }])
-  const result = await syncUserAddons(prisma, 'someone', [], false, { headers: {} }, (v) => v, () => null, true)
+  const result = await syncUserAddons(prisma, 'someone', false, { headers: {} }, (v) => v, () => null, true)
   assert.equal(result.error, 'User not found')
   assert.deepEqual(prisma.lookups, [])
 })

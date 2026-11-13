@@ -431,6 +431,7 @@ function ItemInner(p: V2ItemProps & { sort?: ReturnType<typeof useSortable> }) {
         <Link
           {...linkProps}
           ref={sort?.setNodeRef as React.Ref<HTMLAnchorElement> | undefined}
+          data-v2-item=""
           className={`v2-row ${className}`}
           style={{ ...linkProps.style, ...dragStyle, ...(selected ? { background: 'var(--color-primary-muted)' } : {}), ...(sort?.isDragging ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-surface)' } : {}) }}
           onPointerDown={mouseDown}
@@ -446,6 +447,7 @@ function ItemInner(p: V2ItemProps & { sort?: ReturnType<typeof useSortable> }) {
     <V2ItemContext.Provider value={{ grip }}>
       <div
         ref={sort?.setNodeRef}
+        data-v2-item=""
       className={`relative h-full ${menuButton ? '[&_.v2-card>:first-child]:pr-[46px]' : ''}`}
         style={{
           ...dragStyle,

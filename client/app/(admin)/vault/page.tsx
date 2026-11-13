@@ -987,7 +987,7 @@ function VaultPageContent() {
   ];
 
   const renderEntryCard = (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => (
-    <Card variant="bordered" className={`h-full flex flex-col ${isDragging ? 'shadow-lg shadow-primary/25 scale-[1.01]' : ''}`}>
+    <Card data-vault-card="" variant="bordered" className={`h-full flex flex-col ${isDragging ? 'shadow-lg shadow-primary/25 scale-[1.01]' : ''}`}>
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0 flex items-center gap-2">
           {dragHandleProps && (
@@ -1250,7 +1250,7 @@ function VaultPageContent() {
           onDelete={handleDelete}
           onHistory={(entry) => setHistoryFor({ id: entry.id, name: entry.name })}
         />
-        {/* History from a card's menu, beside that card's menu button. */}
+        {/* History from a card's menu: beside that card, pointing at its menu button. */}
         <VaultHistoryPopup
           entryId={historyFor?.id ?? ''}
           name={historyFor?.name ?? ''}
@@ -1260,6 +1260,12 @@ function VaultPageContent() {
             const label = `${historyFor.name} options`;
             const el = Array.from(document.querySelectorAll<HTMLElement>('[aria-label]')).find((x) => x.getAttribute('aria-label') === label);
             return el?.getBoundingClientRect() ?? null;
+          }}
+          around={() => {
+            if (!historyFor) return null;
+            const label = `${historyFor.name} options`;
+            const el = Array.from(document.querySelectorAll<HTMLElement>('[aria-label]')).find((x) => x.getAttribute('aria-label') === label);
+            return el?.closest<HTMLElement>('[data-v2-item]') ?? null;
           }}
           onClose={() => setHistoryFor(null)}
         />

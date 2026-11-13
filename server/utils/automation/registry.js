@@ -702,7 +702,7 @@ const ACTIONS = {
       const failures = []
       for (const id of userIds) {
         try {
-          const result = await syncUserAddons(prisma, id, [], false, reqLike, decrypt, () => accountId, true, { source: 'automation' })
+          const result = await syncUserAddons(prisma, id, false, reqLike, decrypt, () => accountId, true, { source: 'automation' })
           if (result && result.success) synced++
           else failures.push((result && result.error) || 'unknown error')
         } catch (e) {
