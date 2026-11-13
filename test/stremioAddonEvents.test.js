@@ -263,7 +263,9 @@ test('a burst of library events makes one read of that person, after the delay',
   const real = activityMonitor.checkActivityForUser
   activityMonitor.checkActivityForUser = async (accountId, userId) => { reads.push([accountId, userId]); return true }
   t.after(() => { activityMonitor.checkActivityForUser = real; events.timing.readDelayMs = events.LIBRARY_READ_DELAY_MS })
-  events.timing.readDelayMs = 40
+  // Long enough that the four requests below always finish inside it: at 40 ms
+  // a busy machine sometimes took longer than that and the read came first.
+  events.timing.readDelayMs = 400
 
   for (const extra of ['action=watched&videoId=tt1:1:1,tt1:1:2', 'action=watched&videoId=tt1:1:3', 'action=libraryAdd', 'action=unwatched&videoId=tt1:1:2']) {
     const res = await get(library('series', 'tt1', extra))
@@ -271,12 +273,12 @@ test('a burst of library events makes one read of that person, after the delay',
     assert.deepEqual(await res.json(), {})
   }
   assert.deepEqual(reads, [], 'not before the delay')
-  await new Promise((resolve) => setTimeout(resolve, 150))
+  await new Promise((resolve) => setTimeout(resolve, 700))
   assert.deepEqual(reads, [[ACCOUNT, 'u1']])
 
   // A later burst reads again.
   await get(library('movie', heat, 'action=libraryRemove'))
-  await new Promise((resolve) => setTimeout(resolve, 150))
+  await new Promise((resolve) => setTimeout(resolve, 700))
   assert.equal(reads.length, 2)
 })
 
