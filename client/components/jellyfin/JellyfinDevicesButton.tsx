@@ -6,6 +6,7 @@
 // administrator's sign-in on that server (server/utils/jellyfinDevices.js).
 // The same anchored popup as SignInTvButton beside it.
 
+import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
@@ -103,7 +104,7 @@ export function JellyfinDevicesButton({ userId, name }: { userId: string; name: 
               <p className="text-xs text-muted mt-0.5">Everything signed in to their Jellyfin server as them. Sign out an old or unknown one.</p>
             </div>
             {error ? (
-              <p className="text-xs text-error">{error}</p>
+              <LoadErrorInline error={error} onRetry={load} />
             ) : !state ? (
               <div className="space-y-2">
                 {[0, 1].map((i) => <div key={i} className="h-11 rounded-xl skeleton-fill" />)}

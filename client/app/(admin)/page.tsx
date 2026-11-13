@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadBanner } from '@/components/ui/LoadState';
 import { useRouter } from 'next/navigation';
 import { memo, useEffect, useState, useMemo, useCallback, useRef, Fragment } from 'react';
 import { motion } from 'framer-motion';
@@ -975,16 +976,7 @@ export default function DashboardPage() {
     const body = (
       <>
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
-            <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
-            <div>
-              <p className="font-semibold">Failed to load dashboard data</p>
-              <p className="opacity-90">{error.message}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => refreshData()} className="ml-auto">
-              Retry
-            </Button>
-          </div>
+          <LoadBanner className="mb-6" title="Couldn’t load everything on the Dashboard" line="Some panels may be out of date. Check your connection, then try again." error={error} onRetry={() => refreshData()} />
         )}
         <SetupChecklist />
         <ArrangeBar arrange={dashArrange} />
@@ -1078,23 +1070,7 @@ export default function DashboardPage() {
             />
 
             {error && (
-              <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
-                <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
-                <div>
-                  <p className="font-semibold">Failed to load dashboard data</p>
-                  <p className="opacity-90">{error.message}</p>
-                </div>
-                {(() => {
-                  const retryBtn = (
-                    <Button variant="ghost" size="sm" onClick={() => refreshData()} className={isTV ? undefined : 'ml-auto'}>
-                      Retry
-                    </Button>
-                  );
-                  return isTV ? (
-                    <TVFocusable className="ml-auto" onEnterPress={() => refreshData()}>{retryBtn}</TVFocusable>
-                  ) : retryBtn;
-                })()}
-              </div>
+              <LoadBanner className="mb-6" title="Couldn’t load everything on the Dashboard" line="Some panels may be out of date. Check your connection, then try again." error={error} onRetry={() => refreshData()} />
             )}
 
             {/* Optional setup steps - one closed line (same component as the
@@ -1413,16 +1389,7 @@ export default function DashboardPage() {
 
       <div className="p-6 lg:p-8">
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
-            <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
-            <div>
-              <p className="font-semibold">Failed to load dashboard data</p>
-              <p className="opacity-90">{error.message}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => refreshData()} className="ml-auto">
-              Retry
-            </Button>
-          </div>
+          <LoadBanner className="mb-6" title="Couldn’t load everything on the Dashboard" line="Some panels may be out of date. Check your connection, then try again." error={error} onRetry={() => refreshData()} />
         )}
 
         {/* What this instance still isn't set up with - hides itself once

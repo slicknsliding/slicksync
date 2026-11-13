@@ -160,7 +160,6 @@ export default function InvitationsPage() {
         setRequests(allRequests);
       } catch (err) {
         setError(err as Error);
-        toast.error('Failed to load invitations');
       } finally {
         setIsLoading(false);
       }

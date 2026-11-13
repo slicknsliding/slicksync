@@ -111,7 +111,6 @@ export default function GroupsPage() {
         setUsers(usersData);
       } catch (err) {
         setError(err as Error);
-        toast.error('Failed to load groups');
       } finally {
         setIsLoading(false);
       }

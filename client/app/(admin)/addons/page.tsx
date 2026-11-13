@@ -301,7 +301,6 @@ export default function AddonsPage() {
         setAddonTagColors(tagsData.tagColors || {});
       } catch (err) {
         setError(err as Error);
-        toast.error('Failed to load addons');
       } finally {
         setIsLoading(false);
       }

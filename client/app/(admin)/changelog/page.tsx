@@ -263,7 +263,6 @@ export default function ChangelogPage() {
     } catch (err) {
       setIsError(true);
       setError(err as Error);
-      toast.error('Failed to load changelog');
     } finally {
       setIsLoading(false);
     }

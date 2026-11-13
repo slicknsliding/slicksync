@@ -253,10 +253,12 @@ export function MetricsUsersV2({ arrange, isLoading, periodMeta, periodLabel, to
 
 /* -------------------------------------------------------------- Content */
 
-export function MetricsContentV2({ arrange, isLoading, error, periodKey, data, contentChart }: {
+export function MetricsContentV2({ arrange, isLoading, error, onRetry, periodKey, data, contentChart }: {
   arrange: PageArrange;
   isLoading: boolean;
   error: boolean;
+  /** Fetches the numbers again after a failure. */
+  onRetry?: () => void;
   /** Resets the lists inside when the period changes. */
   periodKey: string;
   data: MetricsData | null;
@@ -327,7 +329,12 @@ export function MetricsContentV2({ arrange, isLoading, error, periodKey, data, c
                     </div>
                     <div className="text-muted text-[13px] mt-2 mb-4">Movies {share}% · Shows {movies + shows > 0 ? 100 - share : 0}%</div>
                     <div className="h-40 md:h-52">
-                      {error ? <div className="flex items-center justify-center h-full text-sm text-muted">Failed to load data</div> : contentChart}
+                      {error ? (
+                        <div className="flex flex-col items-center justify-center gap-1.5 h-full text-sm text-muted">
+                          <span>Couldn’t load this chart.</span>
+                          {onRetry && <button type="button" className="text-primary font-medium hover:underline" onClick={onRetry}>Try again</button>}
+                        </div>
+                      ) : contentChart}
                     </div>
                   </V2Box>
                 </div>

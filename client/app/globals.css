@@ -980,6 +980,9 @@ body {
   html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child)::after { content: ""; position: absolute; inset: -8px; }
   html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child):has(+ :is(button, [role="button"], a):has(> svg:only-child))::after { right: -3px; }
   html:not([data-tv]) :is(button, [role="button"], a):has(> svg:only-child) + :is(button, [role="button"], a):has(> svg:only-child)::after { left: -3px; }
+  /* Select checkboxes (rows and "select all", 24px): 10px past each side, about 44px. */
+  html:not([data-tv]) button[role="checkbox"]:not(.absolute, .fixed, .sticky) { position: relative; }
+  html:not([data-tv]) button[role="checkbox"]::after { content: ""; position: absolute; inset: -10px; }
 }
 
 /* Theme builder: a colour that's hard to read (ThemesPanel ColorOverride). */

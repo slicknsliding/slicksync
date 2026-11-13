@@ -6,6 +6,7 @@
 // this title" search (server/utils/aioHealth.js). Same anchored popup as
 // Devices and Age limit beside it. Read-only.
 
+import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HeartIcon } from '@heroicons/react/24/outline';
@@ -40,12 +41,13 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
   };
   useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
 
-  // Read when opened (and when the range changes) - it asks AIOStreams.
+  // Read when opened (and when the range changes, or on Try again) - it asks AIOStreams.
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!open) return;
     setError(null);
     api.getAioHealth(userId, range).then(setState).catch((e: any) => setError(e?.message || 'Could not read AIOStreams'));
-  }, [open, range, userId]);
+  }, [open, range, userId, attempt]);
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +98,7 @@ export function AioHealthButton({ userId, name }: { userId: string; name: string
             </div>
 
             {error ? (
-              <p className="text-xs text-error">{error}</p>
+              <LoadErrorInline error={error} onRetry={() => setAttempt((n) => n + 1)} />
             ) : !state ? (
               <div className="h-24 rounded-xl skeleton-fill" />
             ) : !state.canRead ? (

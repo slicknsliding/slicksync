@@ -66,6 +66,70 @@ export function LoadError({ what, error, onRetry, line }: {
   );
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+}
+
+function DetailsFold({ text, className = '' }: { text: string; className?: string }) {
+  return (
+    <details className={`load-details ${className}`}>
+      <summary className="cursor-pointer text-xs text-muted select-none">Details</summary>
+      <code className="block mt-1.5 px-2.5 py-1.5 rounded-lg bg-surface-hover border border-default text-xs text-muted font-mono break-all whitespace-pre-wrap">{text}</code>
+    </details>
+  );
+}
+
+/** A page that still shows what it has, but part of it failed: a banner on top. */
+export function LoadBanner({ title, line, error, onRetry, className = '' }: {
+  title: string;
+  line?: ReactNode;
+  error?: unknown;
+  onRetry: () => void;
+  className?: string;
+}) {
+  const isTV = useIsTV();
+  const details = errorText(error);
+  const button = <Button variant="ghost" size="sm" onClick={onRetry}>Try again</Button>;
+  return (
+    <div className={`p-4 rounded-xl bg-error-muted border border-error text-sm flex flex-wrap sm:flex-nowrap items-start gap-3 ${className}`}>
+      <ExclamationTriangleIcon className="w-5 h-5 shrink-0 text-error mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-error">{title}</p>
+        {line && <p className="text-muted mt-0.5">{line}</p>}
+        {details && !isTV && <DetailsFold text={details} className="mt-2" />}
+      </div>
+      <div className="shrink-0 ml-8 sm:ml-0">
+        {isTV ? <TVFocusable onEnterPress={onRetry}>{button}</TVFocusable> : button}
+      </div>
+    </div>
+  );
+}
+
+/** A small panel or popup that couldn't load: one line, Try again, folded Details. */
+export function LoadErrorInline({ error, onRetry, what = 'this' }: {
+  error?: unknown;
+  onRetry?: () => void;
+  /** "Couldn't load {what}." */
+  what?: string;
+}) {
+  const isTV = useIsTV();
+  const details = errorText(error);
+  return (
+    <div className="flex items-start gap-2 text-sm text-default">
+      <ExclamationTriangleIcon className="w-4 h-4 shrink-0 text-error mt-0.5" />
+      <div className="min-w-0">
+        <span>Couldn’t load {what}.</span>
+        {onRetry && (
+          isTV
+            ? <TVFocusable inline onEnterPress={onRetry}><button type="button" className="ml-1.5 text-primary font-medium" onClick={onRetry}>Try again</button></TVFocusable>
+            : <button type="button" className="ml-1.5 text-primary font-medium hover:underline" onClick={onRetry}>Try again</button>
+        )}
+        {details && !isTV && <DetailsFold text={details} className="mt-1.5" />}
+      </div>
+    </div>
+  );
+}
+
 /** Nothing to list yet: neutral colours, the page's own wording. */
 export function EmptyState({ icon, title, line, action }: {
   icon: ReactNode;
