@@ -2358,8 +2358,8 @@
     "date": "2026-07-05",
     "title": "Credential Vault + full SlickSync rebrand",
     "features": [
-      "New Vault: encrypted credential storage with expiry tracking, active-checks (Real-Debrid, TorBox, Newznab indexers, generic HTTP, TCP reachability), and ntfy/Discord notifications on expiry or failure",
-      "Complete rebrand from SlickSync to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
+      "New Vault: encrypted credential storage with expiry tracking, active-checks (Real-Debrid, TorBox, Newznab indexers, generic HTTP, TCP reachability), and push and Discord notifications on expiry or failure",
+      "Complete rebrand from Syncio to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
     ],
     "bugFixes": [],
     "miscChores": [
