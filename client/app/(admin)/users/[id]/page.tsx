@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError } from '@/components/ui/LoadState';
 import { Fragment, useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
@@ -2766,16 +2767,7 @@ export default function UserDetailPage() {
             <p className="text-muted">Loading user data...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <XMarkIcon className="w-8 h-8 text-error" />
-            </div>
-            <h3 className="text-lg font-medium mb-2 text-default">Error Loading User</h3>
-            <p className="text-muted mb-4">{error.message}</p>
-            <Button variant="primary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </div>
+          <LoadError what="this user" error={error} />
         ) : !user ? (
           <div className="text-center py-16">
             <p className="text-muted">User not found</p>

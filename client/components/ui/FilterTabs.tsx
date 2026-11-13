@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useLayoutEffect, useEffect, useId, type KeyboardEvent } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useDroppable } from '@dnd-kit/core';
 import {
   ChevronDownIcon,
@@ -91,7 +91,7 @@ export function FilterTabs({
   enableDropTargets = false,
   dropTargetPrefix = 'vault-category-',
 }: FilterTabsProps) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useReducedMotionConfig();
   const containerRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
   const generatedId = useId();

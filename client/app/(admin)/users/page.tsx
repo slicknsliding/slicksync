@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError, EmptyState } from '@/components/ui/LoadState';
 import Head from 'next/head';
 import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
@@ -766,16 +767,7 @@ export default function UsersPage() {
             <p className="text-muted">Loading users...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <XMarkIcon className="w-8 h-8 text-error" />
-            </div>
-            <h3 className="text-lg font-medium mb-2 text-default">Error Loading Users</h3>
-            <p className="text-muted mb-4">{error.message}</p>
-            <Button variant="primary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </div>
+          <LoadError what="your users" error={error} />
         ) : (
           <>
             {/* Users grid/list - v2 groups people by their group instead. */}
@@ -1059,22 +1051,21 @@ export default function UsersPage() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-16"
               >
-                <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-                  <svg className="w-8 h-8 text-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium mb-2 text-default">No users found</h3>
-                <p className="mb-6 text-muted">
-                  {peopleFilter === 'dormant' ? `Everyone has watched something in the last ${DORMANT_DAYS} days` : searchQuery ? 'Try adjusting your search' : 'Get started by adding your first user'}
-                </p>
-                {!searchQuery && peopleFilter === 'all' && (
-                  <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
-                    Add User
-                  </Button>
-                )}
+                <EmptyState
+                  icon={(
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  )}
+                  title="No users found"
+                  line={peopleFilter === 'dormant' ? `Everyone has watched something in the last ${DORMANT_DAYS} days` : searchQuery ? 'Try adjusting your search' : 'Get started by adding your first user'}
+                  action={!searchQuery && peopleFilter === 'all' && (
+                    <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
+                      Add User
+                    </Button>
+                  )}
+                />
               </motion.div>
             )}
           </>

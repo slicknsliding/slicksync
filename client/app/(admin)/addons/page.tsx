@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError, EmptyState } from '@/components/ui/LoadState';
 import Head from 'next/head';
 import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
@@ -957,16 +958,7 @@ export default function AddonsPage() {
             <p className="text-muted">Loading addons...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <XMarkIcon className="w-8 h-8 text-error" />
-            </div>
-            <h3 className="text-lg font-medium mb-2 text-default">Error Loading Addons</h3>
-            <p className="text-muted mb-4">{error.message}</p>
-            <Button variant="primary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </div>
+          <LoadError what="your addons" error={error} />
         ) : (
           <>
             {/* Jellyfin servers, given to groups like an addon */}
@@ -1130,20 +1122,17 @@ export default function AddonsPage() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-16"
               >
-                <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-                  <PuzzlePieceIcon className="w-8 h-8 text-subtle" />
-                </div>
-                <h3 className="text-lg font-medium mb-2 text-default">No addons found</h3>
-                <p className="mb-6 text-muted">
-                  {searchQuery ? 'Try adjusting your search' : 'Get started by adding your first addon'}
-                </p>
-                {!searchQuery && (
-                  <Button variant="primary" onClick={() => setIsAddModalOpen(true)}>
-                    Add Addon
-                  </Button>
-                )}
+                <EmptyState
+                  icon={<PuzzlePieceIcon className="w-7 h-7" />}
+                  title="No addons found"
+                  line={searchQuery ? 'Try adjusting your search' : 'Get started by adding your first addon'}
+                  action={!searchQuery && (
+                    <Button variant="primary" onClick={() => setIsAddModalOpen(true)}>
+                      Add Addon
+                    </Button>
+                  )}
+                />
               </motion.div>
             )}
           </>

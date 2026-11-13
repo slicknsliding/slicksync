@@ -6,11 +6,49 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCardBackground, useCwFirst, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCardBackground, useCwFirst, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
 const START_PAGES = [...ADMIN_MENU.map((i) => ({ href: i.href, label: i.label })), { href: '/tasks', label: 'Tasks' }];
+
+const MOTION_OPTIONS = [
+  { id: 'device' as const, label: 'Device' },
+  { id: 'reduced' as const, label: 'Reduced' },
+  { id: 'full' as const, label: 'Full' },
+];
+const MOTION_LINE = 'Device follows your phone or computer’s reduce-motion setting. Reduced stops sliding, zooming and shimmering.';
+
+/** Themes → Layout → Motion, saved to the account. */
+export function MotionRow({ v2 = false }: { v2?: boolean }) {
+  const { motion, setMotion } = useMotionChoice();
+  if (v2) {
+    return (
+      <V2SetRow
+        title="Motion"
+        line={MOTION_LINE}
+        control={<V2Seg<'device' | 'reduced' | 'full'> label="Motion" value={motion} options={MOTION_OPTIONS} onChange={setMotion} />}
+      />
+    );
+  }
+  return (
+    <div className="mt-5 rounded-xl p-4" style={{ border: '1px solid var(--color-surface-border)' }}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-[12rem]">
+          <p className="font-medium text-sm text-default">Motion</p>
+          <p className="text-xs text-muted">{MOTION_LINE}</p>
+        </div>
+        <div className="menu-seg" role="radiogroup" aria-label="Motion">
+          {MOTION_OPTIONS.map((o) => (
+            <button key={o.id} type="button" role="radio" aria-checked={motion === o.id} className={motion === o.id ? 'on' : ''} onClick={() => setMotion(o.id)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function PersonalTouches({ v2 = false }: { v2?: boolean } = {}) {
   const { density, setDensity } = useDensity();

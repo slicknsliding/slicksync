@@ -1,5 +1,6 @@
 'use client';
 
+import { LoadError } from '@/components/ui/LoadState';
 import { useState, memo, useEffect, useMemo, useRef, useCallback, Suspense, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
@@ -2604,10 +2605,8 @@ function ActivityPageContent() {
     const state = isLoading ? (
       <div className="v2-box v2-box-pad text-center py-10"><div className="w-7 h-7 mx-auto border-2 border-current border-t-transparent rounded-full animate-spin text-primary" /></div>
     ) : error ? (
-      <div className="v2-box v2-box-pad text-center py-10">
-        <XMarkIcon className="w-8 h-8 mx-auto mb-2 text-error" />
-        <h3 className="text-lg font-semibold text-default mb-1">Error loading data</h3>
-        <p className="text-muted">{error.message}</p>
+      <div className="v2-box v2-box-pad">
+        <LoadError what="the invitation history" error={error} />
       </div>
     ) : null;
     return (
@@ -3007,12 +3006,8 @@ function ActivityPageContent() {
                 </PageSection>
               ) : error ? (
                 <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <XMarkIcon className="w-8 h-8 text-error" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">Error Loading Data</h3>
-                    <p className="text-muted">{error.message}</p>
+                  <Card padding="lg">
+                    <LoadError what="the invitation history" error={error} />
                   </Card>
                 </PageSection>
               ) : inviteHistory.length === 0 ? (
