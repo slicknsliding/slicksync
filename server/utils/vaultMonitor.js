@@ -1,4 +1,4 @@
-// Periodically runs active-checks on vault entries and notifies (ntfy/Discord) when:
+// Periodically runs active-checks on vault entries and notifies (bell, push and Discord) when:
 //   - an entry is within its notifyDaysBefore window of expiresAt (throttled to once/day)
 //   - an automated check flips from ok -> error (throttled to once/day per entry)
 

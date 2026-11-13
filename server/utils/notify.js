@@ -2,7 +2,7 @@ const { getUserAvatarUrl } = require('./avatarUtils')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
 const { fetchOmdbRatings } = require('./omdb')
 
-// A webhook or ntfy address is typed in by whoever set the notification up,
+// A webhook address is typed in by whoever set the notification up,
 // so before anything is sent it gets the same check as every other address
 // the server contacts for someone (see safeUrl.js): a household's install
 // may post to a server on its own network, an instance serving strangers
@@ -739,23 +739,9 @@ async function postDiscordFile(webhookUrl, buffer, filename, content) {
   }
 }
 
-async function postNtfy(ntfyUrl, topic, { title, message, priority = 'default', tags = [] } = {}) {
-  try {
-    if (!ntfyUrl || !topic) return
-    const base = String(ntfyUrl).replace(/\/+$/, '')
-    const url = `${base}/${encodeURIComponent(topic)}`
-    const headers = { 'Content-Type': 'text/plain; charset=utf-8' }
-    if (title) headers['Title'] = title
-    if (priority) headers['Priority'] = priority
-    if (Array.isArray(tags) && tags.length) headers['Tags'] = tags.join(',')
-    await require('./safeUrl').safeFetch(url, { method: 'POST', headers, body: message || '', signal: AbortSignal.timeout(15000) }, require('./safeUrl').instancePolicy())
-  } catch {}
-}
-
 module.exports = {
   postDiscord,
   postDiscordFile,
-  postNtfy,
   createSyncEmbed,
   sendSyncNotification,
   fetchMetadata,

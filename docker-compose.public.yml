@@ -11,6 +11,11 @@ services:
       DATABASE_URL: postgresql://slicksync:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - choose one in .env}@db:5432/slicksync
     depends_on:
       - db
+    # Opens SlickSync on port 3000 of every network this machine is on, so
+    # http://<server-address>:3000 works straight away. Docker opens this
+    # past the host firewall (ufw does not block it). If a reverse proxy on
+    # this same machine (Traefik, Caddy, nginx) is your way in, use
+    # "127.0.0.1:3000:3000" instead so only the proxy can reach it.
     ports:
       - "3000:3000"
     volumes:
