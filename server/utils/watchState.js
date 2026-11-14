@@ -273,6 +273,8 @@ async function liveViewings(prisma, accountId, userIds = null) {
       episode: c.episode ?? null,
       startedAt: new Date(c.createdAt || c.startAt),
       positionMs: position,
+      // When playback stood at positionMs: now, since it was just moved on.
+      positionAt: now,
       durationMs: c.durationMs || null,
       // The last event heard for it (AIOStreams reports nothing in between).
       observedAt: startedAt,

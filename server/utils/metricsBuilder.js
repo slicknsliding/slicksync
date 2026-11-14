@@ -627,8 +627,11 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
         ...(typeof v.observedAt === 'number' || v.observedAt instanceof Date
           ? {
             reportedAtTimestamp: new Date(v.observedAt).getTime(),
-            // The position was reported then; the card counts on from it while playing.
-            ...(typeof v.positionMs === 'number' ? { positionAt: new Date(v.observedAt).getTime() } : {}),
+            // Where the position stood and when; the card counts on from it
+            // while playing. A position already moved on to now says so
+            // (positionAt) - counting from the report as well added the time
+            // since twice.
+            ...(typeof v.positionMs === 'number' ? { positionAt: typeof v.positionAt === 'number' ? v.positionAt : new Date(v.observedAt).getTime() } : {}),
           }
           : {}),
         ...(v.paused === true ? { paused: true } : {}),
