@@ -1,4 +1,4 @@
-// The "Playback not being tracked" warning (server/utils/watchSyncMismatch.js)
+// The "was streamed but not recorded" alert (server/utils/watchSyncMismatch.js)
 // never fired from the day it was written: it asked episode history for an
 // itemName field that model doesn't have (episodes are named by showName), the
 // query threw, and the check gave up on every pass. The fake database here
@@ -66,8 +66,8 @@ function fakePrisma(data) {
 }
 
 // A connection that carried data for an hour, ending `endedMinsAgo` ago.
-const stream = (displayName, metadataItemId, endedMinsAgo = 60) => ({
-  accountId: 'acc', displayName, metadataItemId,
+const stream = (displayName, metadataItemId, endedMinsAgo = 60, metadataName = null) => ({
+  accountId: 'acc', displayName, metadataItemId, metadataName,
   startTime: ago(endedMinsAgo + 60), lastSeenAt: ago(endedMinsAgo), requestCount: 4,
 })
 
@@ -87,7 +87,20 @@ test('a played show no connected account recorded raises one warning', async () 
   await checkWatchSyncMismatch(db.prisma, 'acc', [])
   assert.equal(db.raised.length, 1, 'two episodes of one show are one warning')
   assert.equal(db.raised[0].type, 'mismatch')
-  assert.match(db.raised[0].body, /Carrie/)
+  assert.equal(db.raised[0].title, 'Carrie was streamed but not recorded', 'the show, not the file')
+  assert.equal(db.raised[0].body, 'Add the sign-in it was watched on in Users.')
+})
+
+test("the alert names the matched title when the stream has one", async () => {
+  const db = fakePrisma({
+    streams: [
+      stream('Avatar The Last Airbender S01E04 The Warriors of Kyoshi', 'tt0417299', 60),
+      stream('Avatar The Last Airbender S01E05', 'tt0417299', 40, 'Avatar: The Last Airbender'),
+    ],
+  })
+  await checkWatchSyncMismatch(db.prisma, 'acc', [])
+  assert.equal(db.raised.length, 1)
+  assert.equal(db.raised[0].title, 'Avatar: The Last Airbender was streamed but not recorded')
 })
 
 test('an episode recorded under the show name counts as tracked', async () => {

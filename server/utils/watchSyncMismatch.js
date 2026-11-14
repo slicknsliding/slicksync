@@ -64,7 +64,16 @@ function normalizeTitle(name) {
 const imdbOf = (id) => /^tt\d+/.exec(String(id || ''))?.[0] || null
 
 const { isPlayingConnection } = require('./proxyPlaying')
-const { isOpaqueStreamName } = require('./proxyTitle')
+const { isOpaqueStreamName, proxyDisplayTitle } = require('./proxyTitle')
+
+// The name a person knows the show or film by, for the alert's title: the
+// matched title's own name, or else the stream's name up to its episode
+// marker ("Carrie S01E05 PHYSICAL EDUCATION" -> "Carrie").
+function shownNameOf(row) {
+  if (row.metadataName) return proxyDisplayTitle(row)
+  const raw = String(row.displayName || '').trim()
+  return raw.replace(/\s+S\d{1,2}E\d{1,3}\b.*$/i, '').trim() || raw
+}
 
 async function checkWatchSyncMismatch(prisma, accountId, users) {
   try {
@@ -77,11 +86,11 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
     // one request and was never watched, so it has nothing to mismatch.
     const proxyRows = (await prisma.proxyStreamSession.findMany({
       where: { accountId, startTime: { gte: windowStart } },
-      select: { displayName: true, metadataItemId: true, startTime: true, lastSeenAt: true, requestCount: true },
+      select: { displayName: true, metadataName: true, metadataItemId: true, startTime: true, lastSeenAt: true, requestCount: true },
     })).filter(isPlayingConnection)
     if (proxyRows.length === 0) return
 
-    const byTitle = new Map() // normalized -> { display, lastActivity, ids }
+    const byTitle = new Map() // normalized -> { display, matched, lastActivity, ids }
     for (const row of proxyRows) {
       // An opaque stream id names no title: nothing to compare with native
       // history, and nothing readable to put in the message.
@@ -92,14 +101,19 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
         row.lastSeenAt ? row.lastSeenAt.getTime() : 0,
         row.startTime ? row.startTime.getTime() : 0
       )
-      const existing = byTitle.get(norm)
-      if (!existing || lastActivity > existing.lastActivity) {
-        byTitle.set(norm, { display: row.displayName, lastActivity, ids: existing?.ids || new Set() })
-      } else if (existing && !existing.display) {
-        existing.display = row.displayName
+      let entry = byTitle.get(norm)
+      if (!entry) {
+        entry = { display: null, matched: false, lastActivity: 0, ids: new Set() }
+        byTitle.set(norm, entry)
+      }
+      if (lastActivity > entry.lastActivity) entry.lastActivity = lastActivity
+      // A matched title's own name beats a name parsed from a stream.
+      if (!entry.display || (row.metadataName && !entry.matched)) {
+        entry.display = shownNameOf(row)
+        entry.matched = !!row.metadataName
       }
       const id = imdbOf(row.metadataItemId)
-      if (id) byTitle.get(norm).ids.add(id)
+      if (id) entry.ids.add(id)
     }
     if (byTitle.size === 0) return
 
@@ -156,8 +170,8 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
       if (standing.has(u.dedupeKey)) continue
       await createNotification(prisma, accountId, {
         type: 'mismatch',
-        title: 'Playback not being tracked',
-        body: `"${u.display}" was streamed but no connected account recorded it. If you watched it on a Stremio or Nuvio account that isn't added to SlickSync, add that account to track its history.`,
+        title: `${u.display} was streamed but not recorded`,
+        body: 'Add the sign-in it was watched on in Users.',
         url: '/users',
         dedupeKey: u.dedupeKey,
       })

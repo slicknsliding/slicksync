@@ -672,10 +672,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
   },
   {
     id: 'account-merge-mismatch',
-    title: 'Account merge and mismatch alerts',
+    title: 'Account merge and not-recorded alerts',
     category: 'Users & Groups',
-    keywords: ['account merge', 'merge accounts', 'mismatch', 'unrecognized account'],
-    answer: 'Users → a user\'s own page → Merge lets you absorb a second provider identity (e.g. a Nuvio login for someone already added via Stremio) into one existing user, with a preview and full undo. A "mismatch" notification means streaming was seen on a provider account that isn\'t added to SlickSync yet - add it as a User to resolve.',
+    keywords: ['account merge', 'merge accounts', 'mismatch', 'not recorded', 'streamed but not recorded', 'unrecognized account'],
+    answer: 'Users → a user\'s own page → Merge lets you absorb a second provider identity (e.g. a Nuvio login for someone already added via Stremio) into one existing user, with a preview and full undo. A "was streamed but not recorded" alert in the bell means something played through AIOStreams that none of the sign-ins in SlickSync recorded: it was watched on a Stremio, Nuvio, Jellyfin or AIOStreams sign-in that isn\'t added yet. Add that sign-in in Users, and the alert clears itself once its history has the show.',
     details: [
       'Profiles of one Nuvio account are combined differently: from Nuvio profiles on the Users page, which can also separate them again. A Nuvio profile other than the main one cannot be merged into a Stremio user.',
     ],
@@ -1819,7 +1819,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'This has been confirmed live more than once: a completely empty History in SlickSync traced back to the upstream Stremio account genuinely having no history to sync.',
     ],
     tips: [
-      'A watch that happened on an account not added to SlickSync will never appear. The account-mismatch notification exists to flag exactly that case.',
+      'A watch that happened on an account not added to SlickSync will never appear. The "was streamed but not recorded" alert in the bell exists to flag exactly that case.',
       'A "needs to reconnect" notification, or a warning badge on the person in Users, means SlickSync can no longer sign in to read their history. Reconnect them and tracking picks up again.',
       'Reconnect asks for the app they actually use: Stremio (sign-in link, auth key or password), Nuvio (Nuvio’s sign-in code or email and password - the same Nuvio account they had), or their Jellyfin, AIOStreams or AIOMetadata server.',
       'They can also fix it themselves: in the Reconnect dialog, copy the link for them to sign in and send it. Signing in on their own SlickSync page renews the sign-in SlickSync holds - no password passes through you. They need to be in a group to sign in there.',

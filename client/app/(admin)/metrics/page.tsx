@@ -1755,7 +1755,7 @@ export default function MetricsPage() {
                     <div className="flex items-center gap-2">
                       <ExclamationTriangleIcon className="w-4 h-4 text-warning flex-shrink-0" />
                       <p className="text-sm text-default">
-                        {healthData.mismatchCount} title{healthData.mismatchCount !== 1 ? 's' : ''} streamed but not recorded by any connected account — see the notification bell for details.
+                        {healthData.mismatchCount === 1 ? '1 title was' : `${healthData.mismatchCount} titles were`} streamed but not recorded by any sign-in in SlickSync. {healthData.mismatchCount === 1 ? 'It’s' : 'They’re'} in the bell.
                       </p>
                     </div>
                   </Card>
