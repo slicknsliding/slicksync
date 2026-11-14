@@ -600,7 +600,10 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const id = String(req.query.id || '')
       const type = req.query.type === 'movie' ? 'movie' : 'series'
       if (!validTitleId(id)) return res.json({ servers: [], devices: [] })
-      const people = await prisma.user.findMany({ where: { accountId } })
+      // personId: one person's sign-ins only (their Continue Watching card
+      // resumes on their own server, as them).
+      const personId = typeof req.query.personId === 'string' && req.query.personId ? req.query.personId : null
+      const people = await prisma.user.findMany({ where: { accountId, ...(personId ? { id: personId } : {}) } })
       const creds = await prisma.userProviderCredential.findMany({ where: { userId: { in: people.map((p) => p.id) }, providerType: 'jellyfin' } }).catch(() => [])
       const rows = [
         ...people.filter((p) => p.providerType === 'jellyfin' && p.jellyfinServerUrl && p.jellyfinToken),

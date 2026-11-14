@@ -2564,8 +2564,9 @@ class ApiClient {
 
   // AIOStreams servers people here sign in to, for "Open in AIOStreams".
   // "Open in …" on a title (lib/openWith.ts): servers, item ids, Play on devices.
-  async getOpenTargets(id: string, type: 'movie' | 'series') {
-    return this.fetch<import('./openWith').OpenTargets>(`/jellyfin/open-targets?id=${encodeURIComponent(id)}&type=${type}`);
+  // personId: that person's own sign-ins only (their Continue Watching card).
+  async getOpenTargets(id: string, type: 'movie' | 'series', personId?: string) {
+    return this.fetch<import('./openWith').OpenTargets>(`/jellyfin/open-targets?id=${encodeURIComponent(id)}&type=${type}${personId ? `&personId=${encodeURIComponent(personId)}` : ''}`);
   }
 
   async playOnDevice(body: { personId: string; credentialId: string | null; sessionId: string; itemId: string }) {

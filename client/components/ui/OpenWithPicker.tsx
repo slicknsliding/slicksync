@@ -15,13 +15,17 @@ import {
 
 const row = 'w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover text-left';
 
-export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSaved, onPlayOn }: {
+export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSaved, onPlayOn, hrefFor }: {
   targets: OpenTargets;
   /** The apps that can open this title (availableApps). */
   apps: OpenWithApp[];
   /** The one ticked: this device's pick, when it can open the title. */
   currentId: OpenWithAppId | null;
   onPick: (id: OpenWithAppId) => void;
+  /** Where each app opens this title. Given, picking an app opens it there
+   *  too - as a plain link, since an app address opened from script is
+   *  unreliable on phones. */
+  hrefFor?: (id: OpenWithAppId) => string | null;
   /** The Shortcut's names were just saved, so lists built from them are stale. */
   onShortcutSaved: () => void;
   onPlayOn: (device: OpenTargets['devices'][number]) => void;
@@ -75,16 +79,25 @@ export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSav
         <div className="text-[15px] font-semibold text-default">Open titles with</div>
         <div className="text-[13px] text-muted">Your pick is remembered on this device only - each phone, tablet or TV keeps its own</div>
       </div>
-      {[...OPEN_WITH_APPS, WEB_APP].filter((a) => apps.some((x) => x.id === a.id)).map((a) => (
-        <button key={a.id} type="button" className={`${row} ${a.id === currentId ? 'bg-surface-hover' : ''}`} onClick={() => onPick(a.id)}>
-          <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: a.color }}>{a.letter}</span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-[15px] text-default truncate">{a.name}</span>
-            <span className="block text-[13px] text-muted truncate">{a.platforms}</span>
-          </span>
-          {a.id === currentId && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
-        </button>
-      ))}
+      {[...OPEN_WITH_APPS, WEB_APP].filter((a) => apps.some((x) => x.id === a.id)).map((a) => {
+        const inner = (
+          <>
+            <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: a.color }}>{a.letter}</span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[15px] text-default truncate">{a.name}</span>
+              <span className="block text-[13px] text-muted truncate">{a.platforms}</span>
+            </span>
+            {a.id === currentId && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
+          </>
+        );
+        const cls = `${row} ${a.id === currentId ? 'bg-surface-hover' : ''}`;
+        const href = hrefFor?.(a.id) || null;
+        if (href) {
+          const page = /^https?:/i.test(href);
+          return <a key={a.id} href={href} target={page ? '_blank' : undefined} rel={page ? 'noopener noreferrer' : undefined} className={cls} onClick={() => onPick(a.id)}>{inner}</a>;
+        }
+        return <button key={a.id} type="button" className={cls} onClick={() => onPick(a.id)}>{inner}</button>;
+      })}
       {(targets.servers?.length ?? 0) > 0 && (
         <button type="button" className={`${row} ${currentId === 'shortcut' ? 'bg-surface-hover' : ''}`} onClick={startShortcut}>
           <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: SHORTCUT_APP.color }}>{SHORTCUT_APP.letter}</span>

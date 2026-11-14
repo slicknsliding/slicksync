@@ -10,9 +10,10 @@
 //
 // Resume opens Stremio and Nuvio from the address SlickSync has for them. For
 // a Jellyfin or AIOStreams person it opens the app this device chose (the same
-// choice, list and memory as the admin's "Open in" - lib/openWith.ts), picked
-// from "Choose app..." in the menu; until one is chosen the menu offers the
-// title's page. All plain links, not scripted navigation - an app address
+// choice, list and memory as the admin's "Open in" - lib/openWith.ts); until
+// one is chosen, Resume and the row in List view open the picker
+// (components/dashboard/ResumeWithApp.tsx), and "Choose app..." in the menu
+// changes it. All plain links, not scripted navigation - an app address
 // opened from a click handler is unreliable on phones.
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,10 +30,11 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 import { providerBadgeVariant, providerTypeLabel } from '@/lib/providers';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
-import { availableApps, linksFor, rememberApp, rememberedApp, rememberedShortcut, type OpenTargets, type OpenWithAppId } from '@/lib/openWith';
+import { availableApps, linksFor, rememberApp, resumeAppName, safeOpenUrl, type OpenTargets, type OpenWithAppId } from '@/lib/openWith';
 import { userContinueWatching, userOpenTargets, type ContinueWatchingCardData } from '@/lib/user-api';
 import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 import { ContinueBannerCard, ContinueLeadBanner } from '@/components/dashboard/ContinueBanners';
+import { useRememberedApp, type ResumeApps } from '@/components/dashboard/ResumeWithApp';
 import type { ContinueWatchingItem } from '@/lib/api';
 
 const REFRESH_MS = 60 * 1000;
@@ -41,8 +43,6 @@ const EMPTY: ContinueWatchingCardData[] = [];
 // Only addresses a link here may open: the two apps, and web pages.
 const safeAppUrl = (u: string | null) => (u && /^(stremio|nuvio):/i.test(u) ? u : null);
 const safeWebUrl = (u: string | null) => (u && /^https:\/\//i.test(u) ? u : null);
-// What a chosen Jellyfin app may open: its own schemes, the Shortcuts app, the server's page.
-const safeResumeUrl = (u: string) => (/^(swiftfin|streamyfin|infuse|aiostreams|shortcuts):/i.test(u) || /^https?:\/\//i.test(u) ? u : null);
 const EMPTY_TARGETS: OpenTargets = { servers: [], devices: [], tmdbId: null };
 // A Jellyfin or AIOStreams person's card resumes in the app they choose.
 const choosesApp = (card: ContinueWatchingCardData) => card.providerType === 'jellyfin';
@@ -117,7 +117,9 @@ const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
   menuOpen: boolean;
   onToggleMenu: (card: ContinueWatchingCardData, button: HTMLElement) => void;
 }) {
-  const { appUrl, href, app } = openingOf(card);
+  const { appUrl, href: titleHref, app } = openingOf(card);
+  // A Jellyfin or AIOStreams row opens the menu: Resume in the chosen app, or Choose app.
+  const href = choosesApp(card) ? null : titleHref;
   const { url: image, onError: onImageError } = useArtworkFallback([card.thumbnail, card.background, card.poster]);
   const isTV = useIsTV();
   const inner = (
@@ -149,6 +151,15 @@ const ListRow = memo(function ListRow({ card, menuOpen, onToggleMenu }: {
           </a>
         );
         return isTV ? <TVFocusable className="flex-1 min-w-0 flex" onEnterPress={() => openOnTV(appUrl, href)}>{link}</TVFocusable> : link;
+      })() : choosesApp(card) ? (() => {
+        const button = (
+          <button type="button" onClick={(e) => onToggleMenu(card, e.currentTarget)} tabIndex={isTV ? -1 : undefined} aria-label={`Resume ${card.name}`} aria-haspopup="dialog" aria-expanded={menuOpen}
+            className="flex-1 min-w-0 flex items-center gap-4 rounded-lg text-left">
+            {inner}
+          </button>
+        );
+        const onEnter = () => { const at = document.activeElement; if (at instanceof HTMLElement) onToggleMenu(card, at); };
+        return isTV ? <TVFocusable className="flex-1 min-w-0 flex" onEnterPress={onEnter}>{button}</TVFocusable> : button;
       })() : <div className="flex-1 min-w-0 flex items-center gap-4">{inner}</div>}
       <button type="button" onClick={(e) => onToggleMenu(card, e.currentTarget)} aria-label={`More for ${card.name}`} aria-haspopup="dialog" aria-expanded={menuOpen}
         className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors" style={{ color: 'var(--color-text-muted)' }}>
@@ -180,7 +191,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
   // The open card's servers and devices (null while they load), the app this
   // device remembers, and a counter that re-reads a just-saved Shortcut.
   const [targets, setTargets] = useState<{ showId: string; value: OpenTargets } | null>(null);
-  const [chosen, setChosen] = useState<OpenWithAppId | null>(() => rememberedApp());
+  const chosen = useRememberedApp();
   const [shortcutSaved, setShortcutSaved] = useState(0);
   // The ... button the open menu hangs from. The menu is drawn outside the
   // scrolling row, so the row's drag-to-scroll never sees presses inside it.
@@ -217,7 +228,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
   const closeMenu = useCallback(() => setMenuFor(null), []);
   const closePicker = useCallback(() => setPickerFor(null), []);
   const choose = useCallback((card: ContinueWatchingCardData) => { setMenuFor(null); setPickerFor(card); }, []);
-  const pickApp = useCallback((id: OpenWithAppId) => { rememberApp(id); setChosen(id); setPickerFor(null); }, []);
+  const pickApp = useCallback((id: OpenWithAppId) => { rememberApp(id); setPickerFor(null); }, []);
   const playOn = useCallback(async (d: OpenTargets['devices'][number]) => {
     setPickerFor(null);
     if (!userId || !authKey) return;
@@ -238,7 +249,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
     const apps = availableApps(loaded, card.contentType);
     const current = apps.find((a) => a.id === chosen) || null;
     const link = current ? linksFor(current.id, loaded, card.contentType)[0] : null;
-    return { loaded, apps, current, url: link ? safeResumeUrl(link.url) : null };
+    return { loaded, apps, current, url: safeOpenUrl(link?.url) };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcutSaved: availableApps re-reads the saved Shortcut
   }, [menuFor, pickerFor, targets, chosen, shortcutSaved]);
 
@@ -254,6 +265,13 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
     }
   }, [userId, authKey]);
 
+  // Resume on a Jellyfin or AIOStreams banner: their own server, the app this device chose.
+  const resumeApps = useMemo<ResumeApps | undefined>(() => (userId && authKey ? {
+    key: `own:${userId}`,
+    load: (item) => userOpenTargets.get(userId, authKey, item.showId, item.contentType),
+    playOn: (d) => userOpenTargets.playOn(userId, authKey, { sessionId: d.sessionId, itemId: d.itemId }),
+  } : undefined), [userId, authKey]);
+
   // The banners hand back their own item; the menu works on the card it came from.
   const moreFor = (item: ContinueWatchingItem, anchor: HTMLElement) => {
     const card = cards.find((c) => c.showId === item.showId);
@@ -266,6 +284,12 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
   const lead = wideFirst ? banners[0] : null;
   const rest = wideFirst ? banners.slice(1) : banners;
   const tvOpen = (item: ContinueWatchingItem) => {
+    // A Jellyfin or AIOStreams card: its menu - Resume in the chosen app, or Choose app.
+    if (item.providerType === 'jellyfin') {
+      const at = document.activeElement;
+      if (at instanceof HTMLElement) moreFor(item, at);
+      return;
+    }
     const href = item.appUrl || item.webUrl;
     if (href) openOnTV(item.appUrl || null, href);
   };
@@ -282,7 +306,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
       ) : (
         <>
           {lead && (() => {
-            const leadCard = <ContinueLeadBanner item={lead} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} />;
+            const leadCard = <ContinueLeadBanner item={lead} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} resumeApps={resumeApps} />;
             return isTV
               ? <TVFocusable ringInside className={rest.length ? 'mb-3' : ''} onEnterPress={() => tvOpen(lead)}>{leadCard}</TVFocusable>
               : <div className={rest.length ? 'mb-3' : ''}>{leadCard}</div>;
@@ -292,7 +316,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
               ? 'flex gap-3 pb-1'
               : 'grid grid-flow-col gap-3 pb-1 auto-cols-[82%] min-[640px]:auto-cols-[calc((100%-24px)/3)] min-[1100px]:auto-cols-[calc((100%-36px)/4)] min-[1700px]:auto-cols-[calc((100%-48px)/5)]'}>
               {rest.map((item, index) => {
-                const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} />;
+                const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={notDragged} onRemove={noRemove} self onMore={moreFor} resumeApps={resumeApps} />;
                 return isTV
                   ? <TVFocusable key={item.showId} ringInside className="w-[300px] shrink-0" onEnterPress={() => tvOpen(item)}>{card}</TVFocusable>
                   : <div key={item.showId} className="min-w-0">{card}</div>;
@@ -308,7 +332,7 @@ export function ContinueWatchingRow({ view = 'grid', playingId = null }: {
         const icon = 'w-[18px] h-[18px] shrink-0 text-muted';
         const canChoose = resume.apps.length > 0 || (resume.loaded?.devices.length ?? 0) > 0;
         const current = resume.current;
-        const resumeName = current ? (current.id === 'web' ? 'browser' : current.id === 'shortcut' ? (rememberedShortcut()?.app || 'your app') : current.name) : '';
+        const resumeName = current ? resumeAppName(current) : '';
         return (
           <AnchoredPopup anchorRef={menuAnchor} onClose={closeMenu} title={menuFor.name} width={280} align="end">
             <div className="space-y-1 -mx-1">

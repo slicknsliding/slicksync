@@ -44,11 +44,35 @@ export const SHORTCUT_APP: OpenWithApp = { id: 'shortcut', name: 'Any app (throu
 export const WEB_APP: OpenWithApp = { id: 'web', name: 'The server’s own page', platforms: 'In a browser · works on any device', color: '#00a4dc', letter: 'J' };
 
 const STORAGE_KEY = 'slicksync-open-with';
+// Told when the pick changes, so every card on the page says the new app.
+const CHANGED = 'slicksync-open-with-changed';
+let thisVisit: OpenWithAppId | null = null;
 export function rememberedApp(): OpenWithAppId | null {
-  try { return (localStorage.getItem(STORAGE_KEY) as OpenWithAppId | null) || null; } catch { return null; }
+  try { return (localStorage.getItem(STORAGE_KEY) as OpenWithAppId | null) || thisVisit; } catch { return thisVisit; }
 }
 export function rememberApp(id: OpenWithAppId) {
+  thisVisit = id;
   try { localStorage.setItem(STORAGE_KEY, id); } catch { /* private mode: this visit only */ }
+  try { window.dispatchEvent(new Event(CHANGED)); } catch { /* no window */ }
+}
+/** Calls back when this device's pick changes (here, or in another tab). */
+export function onRememberedAppChange(cb: () => void): () => void {
+  const storage = (e: StorageEvent) => { if (e.key === STORAGE_KEY) cb(); };
+  window.addEventListener(CHANGED, cb);
+  window.addEventListener('storage', storage);
+  return () => { window.removeEventListener(CHANGED, cb); window.removeEventListener('storage', storage); };
+}
+
+/** What "Resume in …" calls the app: "browser" for the server's page, the Shortcut's app by its name. */
+export function resumeAppName(app: OpenWithApp): string {
+  if (app.id === 'web') return 'browser';
+  if (app.id === 'shortcut') return rememberedShortcut()?.app || 'your app';
+  return app.name;
+}
+
+/** Only what a chosen app may open: its own schemes, the Shortcuts app, the server's page. */
+export function safeOpenUrl(u: string | null | undefined): string | null {
+  return u && (/^(swiftfin|streamyfin|infuse|aiostreams|shortcuts):/i.test(u) || /^https?:\/\//i.test(u)) ? u : null;
 }
 
 const SHORTCUT_KEY = 'slicksync-open-with-shortcut';
@@ -94,8 +118,10 @@ export function linksFor(app: OpenWithAppId, t: OpenTargets, type: 'movie' | 'se
     } else if (app === 'streamyfin') {
       out.push({ label: names(s), detail: host(s.address), url: `streamyfin://items/page?id=${encodeURIComponent(id)}` });
     } else if (app === 'web') {
-      // Only a real Jellyfin has a web app; AIOStreams and AIOMetadata don't.
+      // A real Jellyfin's web app, or AIOStreams' own (served at <base>/web/,
+      // the title's page at #/item/<id>). AIOMetadata has none.
       if (s.kind === 'jellyfin') out.push({ label: names(s), detail: host(s.address), url: `${s.address}/web/#/details?id=${encodeURIComponent(id)}${s.serverId ? `&serverId=${encodeURIComponent(s.serverId)}` : ''}` });
+      else if (s.kind === 'aiostreams') out.push({ label: names(s), detail: host(s.address), url: `${s.address}/web/#/item/${encodeURIComponent(id)}` });
     }
   }
   return out;

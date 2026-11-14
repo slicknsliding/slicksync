@@ -13,6 +13,10 @@
 // Tapping the card opens its details; the ... button (or right-click, or a
 // long press) offers Details and Remove from Continue Watching.
 //
+// A card from a Jellyfin or AIOStreams sign-in has no app address of its own:
+// Resume opens the app this device chose, or the picker to choose one
+// (ResumeWithApp.tsx), and the menu adds Choose app... to change it.
+//
 // Settings → Themes → Card backgrounds: the show's picture behind the words
 // (the default), or plain, with the poster beside the words instead.
 //
@@ -33,6 +37,7 @@ import { useArtworkFallback } from '@/lib/hooks/useArtworkFallback';
 import { useCardBackground, useCwProgress, useCwTime, useCwWho } from '@/lib/arrange';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { providerTypeLabel } from '@/lib/providers';
+import { ResumeMenuRows, ResumePicker, useResumeWithApp, type ResumeApps, type ResumeWithApp } from './ResumeWithApp';
 
 const LONG_PRESS_MS = 500;
 const imdbOf = (id: string) => /^tt\d+/.exec(id || '')?.[0] || null;
@@ -82,7 +87,7 @@ function playOf(item: ContinueWatchingItem) {
   const href = item.appUrl || item.webUrl || null;
   const e = item.nextEpisode;
   const what = item.resume ? 'Resume' : (item.contentType === 'series' && e ? `Play S${e.season} E${e.episode}` : 'Play');
-  return { href, inApp: !!item.appUrl, text: item.appUrl ? `${what} in ${app}` : what };
+  return { href, inApp: !!item.appUrl, what, text: item.appUrl ? `${what} in ${app}` : what };
 }
 
 /** Picture behind the words: the backdrop first, as Now Playing does. Plain: the poster. */
@@ -105,6 +110,8 @@ type CardProps = {
   self?: boolean;
   /** The caller draws the menu (a person's Home: Resume, Choose app..., Remove), hung from this button. */
   onMore?: (item: ContinueWatchingItem, anchor: HTMLElement) => void;
+  /** Where a Jellyfin or AIOStreams card looks up the apps that can open it. */
+  resumeApps?: ResumeApps;
 };
 
 /** Right-click, long press and the ... button all open the same anchored menu. */
@@ -171,8 +178,33 @@ function ProgressBar({ item, onPicture, under }: { item: ContinueWatchingItem; o
   );
 }
 
-function PlayButton({ item, wasDraggedRef, big }: { item: ContinueWatchingItem; wasDraggedRef: RefObject<boolean>; big?: boolean }) {
+function PlayButton({ item, wasDraggedRef, big, resume }: { item: ContinueWatchingItem; wasDraggedRef: RefObject<boolean>; big?: boolean; resume?: ResumeWithApp | null }) {
+  const pillRef = useRef<HTMLButtonElement>(null);
   const p = playOf(item);
+  const cls = `cwb-play inline-flex items-center gap-1.5 rounded-full font-semibold text-white self-start ${big ? 'px-4 py-2 text-sm' : 'px-3 py-1 text-xs'}`;
+  const style = { background: 'var(--color-primary)' };
+  const playIcon = <PlayIcon className={big ? 'w-4 h-4' : 'w-3.5 h-3.5'} />;
+  // A Jellyfin or AIOStreams card: the chosen app's link, or the picker.
+  if (resume && !resume.nothing) {
+    const text = resume.name ? `${p.what} in ${resume.name}` : p.what;
+    if (resume.url) {
+      const page = /^https?:/i.test(resume.url);
+      return (
+        <a href={resume.url} target={page ? '_blank' : undefined} rel={page ? 'noopener noreferrer' : undefined} draggable={false}
+          onClick={(e) => { e.stopPropagation(); if (wasDraggedRef.current) e.preventDefault(); }} className={cls} style={style}>
+          {playIcon}
+          {text}
+        </a>
+      );
+    }
+    return (
+      <button ref={pillRef} type="button" aria-haspopup="dialog" aria-expanded={!!resume.pickerAt}
+        onClick={(e) => { e.stopPropagation(); if (!wasDraggedRef.current) resume.openPicker(pillRef); }} className={cls} style={style}>
+        {playIcon}
+        {text}
+      </button>
+    );
+  }
   if (!p.href) return null;
   return (
     <a
@@ -181,10 +213,10 @@ function PlayButton({ item, wasDraggedRef, big }: { item: ContinueWatchingItem; 
       rel={p.inApp ? undefined : 'noopener noreferrer'}
       draggable={false}
       onClick={(e) => { e.stopPropagation(); if (wasDraggedRef.current) e.preventDefault(); }}
-      className={`cwb-play inline-flex items-center gap-1.5 rounded-full font-semibold text-white self-start ${big ? 'px-4 py-2 text-sm' : 'px-3 py-1 text-xs'}`}
-      style={{ background: 'var(--color-primary)' }}
+      className={cls}
+      style={style}
     >
-      <PlayIcon className={big ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
+      {playIcon}
       {p.text}
     </a>
   );
@@ -224,7 +256,7 @@ function MoreButton({ anchorRef, open, onToggle, label, onPicture }: { anchorRef
   );
 }
 
-function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails }: { anchorRef: RefObject<HTMLButtonElement | null>; open: boolean; onClose: () => void; item: ContinueWatchingItem; onRemove: CardProps['onRemove']; onOpenDetails?: CardProps['onOpenDetails'] }) {
+function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails, resume }: { anchorRef: RefObject<HTMLButtonElement | null>; open: boolean; onClose: () => void; item: ContinueWatchingItem; onRemove: CardProps['onRemove']; onOpenDetails?: CardProps['onOpenDetails']; resume?: ResumeWithApp | null }) {
   if (!open) return null;
   const row = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] text-left text-default hover:bg-surface-hover transition-colors';
   const icon = 'w-[18px] h-[18px] shrink-0 text-muted';
@@ -232,6 +264,7 @@ function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails }: {
   return (
     <AnchoredPopup anchorRef={anchorRef} onClose={close} title={item.showName} width={280} align="end">
       <div className="space-y-1 -mx-1">
+        {resume && <ResumeMenuRows resume={resume} anchorRef={anchorRef} onClose={close} />}
         {onOpenDetails && (
           <button type="button" className={row} onClick={() => { close(); onOpenDetails(item); }}>
             <InformationCircleIcon className={icon} />
@@ -318,11 +351,12 @@ function Cell({ under, children }: { under: ReactNode | null; children: ReactNod
 }
 
 /** One of the smaller banners in the row. */
-export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDraggedRef, onRemove, onOpenDetails, priority = false, self, onMore }: CardProps) {
+export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDraggedRef, onRemove, onOpenDetails, priority = false, self, onMore, resumeApps }: CardProps) {
   const plain = useCardBackground().bg === 'plain';
   const parts = useUnderParts();
   const { url: art, onError } = useCardArt(item, plain);
   const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef, onMore ? (a) => onMore(item, a) : undefined);
+  const resume = useResumeWithApp(item, resumeApps);
   const onPicture = !plain;
   const ep = episodeLong(item);
   return (
@@ -355,21 +389,23 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
           {ep && !parts.time && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
           {!parts.progress && <ProgressBar item={item} onPicture={onPicture} />}
           {!parts.progress && <p className="cwb-line text-xs break-words mt-0.5" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{stoppedLine(item)}</p>}
-          <div className="mt-2"><PlayButton item={item} wasDraggedRef={wasDraggedRef} /></div>
+          <div className="mt-2"><PlayButton item={item} wasDraggedRef={wasDraggedRef} resume={resume} /></div>
         </div>
       </Frame>
       </Cell>
-      {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />}
+      {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} resume={resume} />}
+      <ResumePicker resume={resume} item={item} />
     </>
   );
 });
 
 /** The latest title, as wide as the section: the same shape as Now Playing's first banner. */
-export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDraggedRef, onRemove, onOpenDetails, self, onMore }: CardProps) {
+export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDraggedRef, onRemove, onOpenDetails, self, onMore, resumeApps }: CardProps) {
   const plain = useCardBackground().bg === 'plain';
   const parts = useUnderParts();
   const { url: art, onError } = useCardArt(item, plain);
   const { open, setOpen, anchorRef, justOpened, handlers } = useCardMenu(wasDraggedRef, onMore ? (a) => onMore(item, a) : undefined);
+  const resume = useResumeWithApp(item, resumeApps);
   const onPicture = !plain;
   const ep = episodeLong(item);
   const extra = 'Pick up where you left off';
@@ -397,11 +433,12 @@ export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDr
           {ep && !parts.time && <p className="text-sm break-words" style={{ color: onPicture ? '#d1d5db' : 'var(--color-text-muted)' }}>{ep}</p>}
           {!parts.progress && <ProgressBar item={item} onPicture={onPicture} />}
           {!parts.progress && <p className="text-[12.5px] break-words" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text-muted)' }}>{stoppedLine(item)}</p>}
-          <div className="mt-1.5"><PlayButton item={item} wasDraggedRef={wasDraggedRef} big /></div>
+          <div className="mt-1.5"><PlayButton item={item} wasDraggedRef={wasDraggedRef} big resume={resume} /></div>
         </div>
       </Frame>
       </Cell>
-      {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} />}
+      {!onMore && <CardMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} item={item} onRemove={onRemove} onOpenDetails={onOpenDetails} resume={resume} />}
+      <ResumePicker resume={resume} item={item} />
     </>
   );
 });

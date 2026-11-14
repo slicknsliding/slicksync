@@ -73,12 +73,17 @@ test.before(async () => {
       member('jNone', 'acc1', {}),
       member('sStremio', 'acc1', { providerType: 'stremio', stremioAuthKey: 'key-for-s@example.com' }),
     ]),
+    userProviderCredential: table([]),
   }
   const app = express()
   app.use(express.json())
   app.use('/api/public-library', makePublicLibraryRouter({
     prisma: data, DEFAULT_ACCOUNT_ID: 'default', encrypt: (v) => v, decrypt: (v) => v,
     getCachedLibrary: () => [], setCachedLibrary: () => {}, JWT_SECRET: SECRET,
+  }))
+  // The admin's lookup, signed in to household acc1.
+  app.use('/api/jellyfin', require('../server/routes/jellyfin')({
+    prisma: data, getAccountId: () => 'acc1', encrypt: (v) => v, decrypt: (v) => v, assignUserToGroup: async () => {},
   }))
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve) })
   base = `http://127.0.0.1:${server.address().port}/api/public-library`
@@ -168,4 +173,25 @@ test('Play on a device: only their own device, on their own Jellyfin', async () 
   assert.equal((await call('POST', '/open-targets/play-on', { key: session('aSam'), body: { userId: 'aSam', sessionId: 'session-of-aSam', itemId: 'item-1234567890' } })).status, 400)
   assert.equal((await call('POST', '/open-targets/play-on', { key: session('jNone'), body: { userId: 'jNone', sessionId: 'x', itemId: 'item-1234567890' } })).status, 400)
   assert.equal(played.length, 1, 'only the one valid start')
+})
+
+// The admin's Continue Watching card resumes as that card's person: with
+// personId, only their own sign-ins - never a housemate's or another household's.
+test('admin lookup with personId: only that person’s own server and devices', async () => {
+  const admin = (query) => realFetch(`${base.replace('/public-library', '/jellyfin')}/open-targets?${new URLSearchParams({ id: 'tt0133093', type: 'movie', ...query })}`).then((r) => r.json())
+  const everyone = await admin({})
+  assert.deepEqual(everyone.servers.map((s) => s.address).sort(), ['https://aio.example.com', 'https://jf.example.com'])
+
+  const sam = await admin({ personId: 'aSam' })
+  assert.deepEqual(sam.servers.map((s) => s.address), ['https://aio.example.com'])
+  assert.deepEqual(sam.servers[0].people.map((p) => p.name), ['aSam'])
+  assert.deepEqual(sam.devices, [])
+
+  const liv = await admin({ personId: 'jLiv' })
+  assert.deepEqual(liv.servers.map((s) => s.address), ['https://jf.example.com'])
+  assert.deepEqual(liv.servers[0].people, [{ name: 'jLiv', userId: 'u-liv' }])
+  assert.deepEqual(liv.devices.map((d) => d.personId), ['jLiv'])
+
+  assert.deepEqual((await admin({ personId: 'jOther' })).servers, [], 'another household')
+  assert.ok(!JSON.stringify(everyone).includes('SECRET-TOKEN'), 'no token leaves')
 })

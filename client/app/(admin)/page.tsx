@@ -15,6 +15,7 @@ import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, MediaDetailModal } from '@/components/ui';
 import { UpcomingEpisodesPanel, type UpcomingFollower } from '@/components/ui/UpcomingEpisodesPanel';
 import { ContinueBannerCard, ContinueLeadBanner } from '@/components/dashboard/ContinueBanners';
+import type { ResumeApps } from '@/components/dashboard/ResumeWithApp';
 import { NowPlayingSection } from '@/components/admin/NowPlayingSection';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
@@ -53,6 +54,14 @@ const SyncActivityChart = dynamic(
 
 // Fixed height for activity items (5 items)
 const ACTIVITY_CARD_HEIGHT = 'h-[420px]';
+
+// Continue Watching from a Jellyfin or AIOStreams sign-in resumes on that
+// person's own server, in the app this device chose (ResumeWithApp.tsx).
+const RESUME_APPS: ResumeApps = {
+  key: 'admin',
+  load: (item) => api.getOpenTargets(item.showId, item.contentType, item.userId),
+  playOn: (d) => api.playOnDevice({ personId: d.personId, credentialId: d.credentialId, sessionId: d.sessionId, itemId: d.itemId }),
+};
 
 // Recent Addon Item component with error handling
 const RecentAddonItem = memo(function RecentAddonItem({ 
@@ -669,7 +678,7 @@ export default function DashboardPage() {
     if (!continueShown.length) return null;
     const lead = wideFirst ? continueShown[0] : null;
     const rest = wideFirst ? continueShown.slice(1) : continueShown;
-    const leadCard = lead && <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+    const leadCard = lead && <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} resumeApps={RESUME_APPS} />;
     return (
       <>
         {lead && (isTV
@@ -688,7 +697,7 @@ export default function DashboardPage() {
               : 'arrange-cardrow grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[82%] min-[640px]:auto-cols-[calc((100%-24px)/3)] min-[1100px]:auto-cols-[calc((100%-36px)/4)] min-[1700px]:auto-cols-[calc((100%-48px)/5)]'}
           >
             {rest.map((item, index) => {
-              const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+              const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} resumeApps={RESUME_APPS} />;
               const key = `${item.userId}-${item.showId}`;
               return isTV
                 ? <TVFocusable key={key} ringInside className="w-[300px] shrink-0" onEnterPress={() => setDetailModalItem(item)}>{card}</TVFocusable>
