@@ -7,9 +7,10 @@
 // moved, folded and hidden, and people hidden, pinned or dragged (into another
 // group's section to move them there), through the page's Arrange mode.
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowDownTrayIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ArrowTopRightOnSquareIcon, EyeIcon, MapPinIcon, PowerIcon, TrashIcon,
+  ArrowDownTrayIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ArrowTopRightOnSquareIcon, ClockIcon, EyeIcon, MapPinIcon, PowerIcon, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -20,6 +21,7 @@ import type { PageArrange } from '@/lib/arrange';
 import { pinFirst } from '@/lib/arrange-core';
 import { V2AppPill, V2Button, V2Card, V2DragHint, V2Grid, V2Grip, V2Item, V2List, V2Status, type V2CardMenuItem, type V2Tone } from './V2Bits';
 import { syncWords, useV2Sync, type V2Sync } from './V2Sync';
+import { SyncHistoryPopup } from '@/components/user/SyncHistoryButton';
 
 export type V2Person = {
   id: string;
@@ -38,6 +40,8 @@ export type V2Person = {
   addonCount: number;
   /** Whether SlickSync keeps an addon list for them (a Jellyfin server has none to sync). */
   hasAddons?: boolean;
+  /** What Sync history calls their Stremio/Nuvio account; null = no Sync history for them. */
+  syncAccount?: string | null;
 };
 
 export type V2Group = { key: string; name: string; colorIndex?: number; avatarUrl?: string | null; addons?: number };
@@ -109,6 +113,8 @@ function SignInPill({ p, onFix }: { p: V2Person; onFix: (p: V2Person) => void })
 
 export function PeopleV2({ people, groups, arrange, peopleArrange, view, watching, syncing, onSync, onFix, onReloadAddons, onImportAddons, onToggleActive, onDelete, pins }: Props) {
   const router = useRouter();
+  // Sync history, opened from a card's ⋯ menu: it points at that ⋯.
+  const [historyFor, setHistoryFor] = useState<V2Person | null>(null);
   const hiddenPeople = new Set(peopleArrange.hidden);
   const byKey = new Map(groups.map((g) => [g.key, g]));
   const groupKeyOf = (p: V2Person) => {
@@ -129,6 +135,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
     { label: 'Open', icon: <ArrowTopRightOnSquareIcon className="w-4 h-4" />, onClick: () => router.push(`/users/${p.id}`) },
     ...(p.hasAddons === false ? [] : [
       { label: 'Sync', icon: <ArrowPathIcon className="w-4 h-4" />, disabled: syncing.has(p.id), onClick: () => onSync(p) },
+      ...(p.syncAccount ? [{ label: 'Sync history', icon: <ClockIcon className="w-4 h-4" />, onClick: () => setHistoryFor(p) }] : []),
       { label: 'Reload addons', icon: <ArrowPathRoundedSquareIcon className="w-4 h-4" />, onClick: () => onReloadAddons(p) },
       { label: 'Import addons', icon: <ArrowDownTrayIcon className="w-4 h-4" />, onClick: () => onImportAddons(p) },
     ]),
@@ -228,8 +235,28 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
           </ArrangeSection>
         );
       })}
+      {historyFor && (
+        <SyncHistoryPopup
+          key={historyFor.id}
+          userId={historyFor.id}
+          name={historyFor.name}
+          account={historyFor.syncAccount || undefined}
+          anchor={() => menuButtonOf(historyFor.id)}
+          pointer="end"
+          onClose={() => setHistoryFor(null)}
+        />
+      )}
     </div>
   );
+}
+
+/** Where a person's ⋯ button is now (their card or row, if the ⋯ is hidden). */
+function menuButtonOf(id: string): DOMRect | null {
+  const href = `/users/${id}`;
+  const item = [...document.querySelectorAll<HTMLElement>('[data-v2-item]')]
+    .find((el) => el.getAttribute('href') === href || el.querySelector(`a[href="${CSS.escape(href)}"]`));
+  const button = item?.querySelector<HTMLElement>('button[aria-haspopup="menu"]');
+  return (button ?? item)?.getBoundingClientRect() ?? null;
 }
 
 type CardParts = {

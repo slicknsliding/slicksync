@@ -12,6 +12,7 @@ import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer
 import { ProfilesCard } from '@/components/user/ProfilesCard';
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
+import { SyncHistoryButton, syncHistoryAccount } from '@/components/user/SyncHistoryButton';
 import { HouseholdsCard } from '@/components/jellyfin/HouseholdCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -315,6 +316,7 @@ export default function UsersPage() {
     status: u.status,
     connectionError: u.providerConnectionError,
     hasAddons: hasAddonList(u),
+    syncAccount: syncHistoryAccount(u.providerType || 'stremio', u.secondaryProviderType),
     lastSeen: u.lastSeen,
     watchTime: u.watchTime,
     addonCount: u.addonCount,
@@ -1015,6 +1017,9 @@ export default function UsersPage() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
                                 <LimitsButton id={user.id} name={user.name} summary={limits[user.id] || null} />
+                                {syncHistoryAccount(user.providerType || 'stremio', user.secondaryProviderType) && (
+                                  <SyncHistoryButton userId={user.id} name={user.name} account={syncHistoryAccount(user.providerType || 'stremio', user.secondaryProviderType)!} size="sm" pointer />
+                                )}
                                 <Button
                                   variant="secondary"
                                   size="sm"
@@ -1379,6 +1384,9 @@ function UserCard({
     onDelete();
   };
 
+  // Their own Stremio or Nuvio sign-in (or a merged one): what each sync changed there.
+  const syncAccount = syncHistoryAccount(user.providerType || 'stremio', user.secondaryProviderType);
+
   const cardElement = (
       <Card
         variant="interactive"
@@ -1513,6 +1521,7 @@ function UserCard({
               summary={limits}
               onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
             />
+            {syncAccount && <SyncHistoryButton userId={user.id} name={user.name} account={syncAccount} size="sm" pointer />}
             <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
           </span>
         </div>

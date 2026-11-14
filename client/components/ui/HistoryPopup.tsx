@@ -7,6 +7,9 @@
 // when the page scrolls, resizes or shifts under it, and closes on Escape or
 // a click outside.
 //
+// With `pointer`, it opens right under (or over) the pill with a pointer
+// touching it - on a Users card, where Limits and Caught up sit beside it.
+//
 // With `around` (the card the opening button sits in), it goes next to that
 // card instead of on it: below or above with a gap, a pointer at the button,
 // and a shadow that keeps it reading as on top of the page rather than as one
@@ -15,18 +18,20 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { placePopup, placeOutside, popupStyle, scrollParent, useFitPopup, useFollowAnchor, type OutsidePlacement, type PopupPlacement } from '@/lib/anchoredPopup';
+import { placeAtPill, placePopup, placeOutside, popupStyle, scrollParent, useFitPopup, useFollowAnchor, type OutsidePlacement, type PopupPlacement } from '@/lib/anchoredPopup';
 
 const SPOT = ['left', 'width', 'top', 'bottom', 'maxHeight', 'side', 'tipX', 'tipY'] as const;
 const ACCENT_EDGE = 'color-mix(in srgb, var(--color-primary) 45%, transparent)';
 const FLOATING = '0 18px 48px rgba(0,0,0,0.6), 0 4px 14px rgba(0,0,0,0.45)';
 
-export function HistoryPopup({ open, anchor, around, onClose, title, line, note, children }: {
+export function HistoryPopup({ open, anchor, around, pointer, onClose, title, line, note, children }: {
   open: boolean;
   /** Where the thing that opened it is now. */
   anchor: () => DOMRect | null;
   /** The card that thing sits in, to open beside rather than on top of. */
   around?: () => HTMLElement | null;
+  /** Right at the pill with a pointer: 'start' lines up with its left edge, 'end' with its right (a ⋯ button). */
+  pointer?: 'start' | 'end';
   onClose: () => void;
   title: string;
   line: string;
@@ -43,6 +48,7 @@ export function HistoryPopup({ open, anchor, around, onClose, title, line, note,
     const r = anchor();
     if (!r) return null;
     const card = around?.() ?? null;
+    if (!card && pointer) return placeAtPill(r, 380, panel.current?.scrollHeight, pointer);
     if (!card) return placePopup(r, 380, panel.current?.scrollHeight);
     const height = panel.current?.scrollHeight;
     let p = placeOutside(card.getBoundingClientRect(), r, 380, height);
@@ -68,11 +74,13 @@ export function HistoryPopup({ open, anchor, around, onClose, title, line, note,
     if (!open) { setAt(null); madeRoom.current = false; return; }
     replace();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
+    // Before anything else hears the key: the pill's wrapper keeps keys away
+    // from the card under it, and Escape must still close this.
+    window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', replace);
     window.addEventListener('scroll', replace, true);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', replace);
       window.removeEventListener('scroll', replace, true);
     };

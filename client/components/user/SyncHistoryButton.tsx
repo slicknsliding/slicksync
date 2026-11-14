@@ -1,9 +1,10 @@
 'use client';
 
-// "Sync history" on a person's page: what each sync changed on their
-// Stremio or Nuvio account, who or what started it, and the ones that
-// failed, newest first (server/utils/syncLog.js). Syncs that found nothing
-// to change are not kept, so every line here is one that did something.
+// "Sync history" on a person's page and on their Users card (in the ⋯ menu
+// of the other page design): what each sync changed on their Stremio or
+// Nuvio account, who or what started it, and the ones that failed, newest
+// first (server/utils/syncLog.js). Syncs that found nothing to change are
+// not kept, so every line here is one that did something.
 
 import { useEffect, useRef, useState } from 'react';
 import { ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
@@ -115,19 +116,81 @@ export function SyncHistoryBody({ entries, error, retry }: ReturnType<typeof use
   return <SyncHistoryList entries={entries} />;
 }
 
-/** account: what the line names, e.g. "Stremio account". */
-export function SyncHistoryButton({ userId, name, account = 'account' }: { userId: string; name: string; account?: string }) {
+/**
+ * Sync history only means something for a sign-in with an addon list: what
+ * its line calls their account, or null for nobody to show it for. Pass every
+ * sign-in the person has (their own, then a merged one).
+ */
+export function syncHistoryAccount(...providerTypes: (string | null | undefined)[]): string | null {
+  const kinds = providerTypes.filter((k): k is string => k === 'stremio' || k === 'nuvio');
+  if (kinds.length === 0) return null;
+  if (new Set(kinds).size > 1) return 'accounts';
+  return `${kinds[0] === 'nuvio' ? 'Nuvio' : 'Stremio'} account`;
+}
+
+/** The popup on its own, for something else that opens it (a card's ⋯ menu). */
+export function SyncHistoryPopup({ userId, name, account = 'account', anchor, pointer, onClose }: {
+  userId: string;
+  name: string;
+  account?: string;
+  anchor: () => DOMRect | null;
+  pointer?: 'start' | 'end';
+  onClose: () => void;
+}) {
+  const history = useSyncHistory(userId, true);
+  return (
+    // Opened from inside a card, whose own clicks open the person: nothing in
+    // here reaches it (React passes a portal's events up through this tree).
+    <span className="contents" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <HistoryPopup
+        open
+        anchor={anchor}
+        pointer={pointer}
+        onClose={onClose}
+        title={`Sync history for ${name}`}
+        line={`What each sync changed on their ${account}, newest first.`}
+        note="Syncs that found nothing to change aren’t listed. Kept for 90 days."
+      >
+        <SyncHistoryBody {...history} />
+      </HistoryPopup>
+    </span>
+  );
+}
+
+/**
+ * account: what the line names, e.g. "Stremio account". size 'sm' and
+ * `pointer` on a Users card, beside Limits and Caught up.
+ */
+export function SyncHistoryButton({ userId, name, account = 'account', size = 'md', pointer = false }: {
+  userId: string;
+  name: string;
+  account?: string;
+  size?: 'sm' | 'md';
+  pointer?: boolean;
+}) {
   const button = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const history = useSyncHistory(userId, open);
   return (
-    <>
-      <ActionPill ref={button} icon={ClockIcon} open={open} onClick={() => setOpen((v) => !v)}>
+    // On a Users card the card itself opens the person on a click; nothing
+    // done here - in the pill or its popup - reaches it (React passes a
+    // portal's events up through the component that rendered it).
+    <span
+      className="inline-flex max-w-full min-w-0"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <ActionPill ref={button} icon={ClockIcon} size={size} open={open} onClick={() => setOpen((v) => !v)}>
         Sync history
       </ActionPill>
       <HistoryPopup
         open={open}
         anchor={() => button.current?.getBoundingClientRect() ?? null}
+        pointer={pointer ? 'start' : undefined}
         onClose={() => setOpen(false)}
         title={`Sync history for ${name}`}
         line={`What each sync changed on their ${account}, newest first.`}
@@ -135,6 +198,6 @@ export function SyncHistoryButton({ userId, name, account = 'account' }: { userI
       >
         <SyncHistoryBody {...history} />
       </HistoryPopup>
-    </>
+    </span>
   );
 }

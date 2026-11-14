@@ -1471,10 +1471,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'What a sync changed: Sync history',
     category: 'Users & Groups',
     keywords: ['sync history', 'sync log', 'what changed', 'who synced', 'sync failed', 'addons removed', 'addons added', 'audit', 'sync record'],
-    answer: 'Open a person and press Sync history, next to Limits. Each line says when a sync ran, who or what started it (you, the schedule, a group change, an invite, an automation…), and which addons it added, removed or updated, or whether it changed the order.',
+    answer: 'Press Sync history on their card on the Users page, or on their own page, next to Limits. Each line says when a sync ran, who or what started it (you, the schedule, a group change, an invite, an automation…), and which addons it added, removed or updated, or whether it changed the order.',
     steps: [
-      'Open a person from Users.',
-      'Press Sync history in the row of buttons under their name. In the v2 design it is a tile in Tools.',
+      'On Users, press Sync history on their card, between Limits and Caught up (in the list view it sits in Actions). In the v2 design it is in the card’s ⋯ menu, under Sync.',
+      'Or open the person and press Sync history in the row of buttons under their name. In the v2 design it is a tile in Tools.',
       'Read the newest line first. A sync that didn’t work says so, with the technical reason under Details.',
     ],
     details: [
@@ -1482,6 +1482,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'A failure that keeps happening stays on one line with a count, so a sign-in that’s broken for a week doesn’t fill the list.',
       'An addon that moved to a new address counts as Updated, not added and removed: SlickTrax after their rows change, or an addon after a Vault key inside its address changes.',
       'Someone with both a Stremio and a Nuvio sign-in gets one list, with each line saying which one it was.',
+      'Only people with a Stremio or Nuvio sign-in have one. A Jellyfin, AIOStreams or AIOMetadata sign-in has no addon list to sync.',
       'Lines are kept for 90 days.',
     ],
     tips: ['To see what a sync will do before it runs, press Sync: it shows the changes and waits for you to confirm.'],
