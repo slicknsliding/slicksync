@@ -10,12 +10,18 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { checkWatchSyncMismatch } = require('../server/utils/watchSyncMismatch')
 
-// Field names per model, read from the real schema.
-const SCHEMA = fs.readFileSync(path.join(__dirname, '..', 'prisma', 'schema.prisma'), 'utf8')
+// Field names per model that both real schemas have (SQLite and Postgres - an
+// instance runs on either; prisma/schema.prisma is generated from one of them
+// at start-up and isn't in the repo).
+const SCHEMAS = ['schema.sqlite.prisma', 'schema.postgres.prisma']
+  .map((file) => fs.readFileSync(path.join(__dirname, '..', 'prisma', file), 'utf8'))
 function fieldsOf(model) {
-  const body = new RegExp(`^model ${model} \\{([\\s\\S]*?)^\\}`, 'm').exec(SCHEMA)
-  assert.ok(body, `model ${model} is in the schema`)
-  return new Set(body[1].split('\n').map((l) => /^\s+([A-Za-z]\w*)\s/.exec(l)?.[1]).filter(Boolean))
+  const sets = SCHEMAS.map((schema) => {
+    const body = new RegExp(`^model ${model} \\{([\\s\\S]*?)^\\}`, 'm').exec(schema)
+    assert.ok(body, `model ${model} is in every schema`)
+    return new Set(body[1].split('\n').map((l) => /^\s+([A-Za-z]\w*)\s/.exec(l)?.[1]).filter(Boolean))
+  })
+  return new Set([...sets[0]].filter((f) => sets.every((s) => s.has(f))))
 }
 
 const NOW = Date.now()
