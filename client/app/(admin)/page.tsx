@@ -234,6 +234,11 @@ export default function DashboardPage() {
   const hasCapturedPointerRef = useRef(false);
 
   const handleRowPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Any new press starts a new gesture: the last drag is over. Cleared before
+    // the checks below - a right-click, or a press on a button in the row,
+    // used to leave it set, so after one drag a card's right-click menu and
+    // the Resume pill did nothing until a left press on a card.
+    wasDraggedRef.current = false;
     // button 0 = primary/left only - a right-click (button 2, opening the
     // context menu) was falling through this same check and calling
     // setPointerCapture on the row, which had no business engaging for a
@@ -241,7 +246,6 @@ export default function DashboardPage() {
     if (e.pointerType !== 'mouse' || e.button !== 0 || !scrollRowRef.current) return;
     if ((e.target as HTMLElement).closest('button')) return;
     isPointerDownRef.current = true;
-    wasDraggedRef.current = false;
     hasCapturedPointerRef.current = false;
     dragStartXRef.current = e.clientX;
     dragStartScrollLeftRef.current = scrollRowRef.current.scrollLeft;
@@ -291,6 +295,10 @@ export default function DashboardPage() {
       scrollRowRef.current?.releasePointerCapture(e.pointerId);
       hasCapturedPointerRef.current = false;
     }
+    // The click that follows letting go of a drag is swallowed (it fires in
+    // this same task); after that the drag is over, so a right-click or a
+    // key press on a card works again without another press first.
+    if (e.type === 'pointerup' && wasDraggedRef.current) setTimeout(() => { wasDraggedRef.current = false; }, 0);
   }, []);
 
   // Tick once a second so live watch time counts up - but ONLY while
