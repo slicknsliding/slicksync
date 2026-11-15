@@ -43,10 +43,12 @@ export type NowPlayingBannerRow = Pick<NowPlayingItem, 'item' | 'lastPosition' |
   device?: { name: string | null; client: string | null } | null;
 };
 
-export function NowPlayingBanner({ row, provider, profileLabel, who, compact = false, flush = false }: {
+export function NowPlayingBanner({ row, provider, profileLabel, through, who, compact = false, flush = false }: {
   row: NowPlayingBannerRow;
   provider: string | null;
   profileLabel?: string | null;
+  /** Not in an app of theirs but through this ("your AIOStreams login" - an unknown device). */
+  through?: string;
   /** Admin pages: who is watching (picture and name), shown ahead of "Playing in". */
   who?: ReactNode;
   /** A smaller banner, for when several people are watching. */
@@ -112,7 +114,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
     <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
       {who}
       <span className={`w-2 h-2 rounded-full shrink-0 ${playing ? 'animate-pulse' : ''}`} style={{ background: playing ? '#22c55e' : '#facc15', boxShadow: playing ? '0 0 0 4px rgba(34,197,94,.2)' : undefined }} />
-      <span className="min-w-0 break-words">{playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
+      <span className="min-w-0 break-words">{through ? (playing ? `Playing through ${through}` : `Paused on ${through}`) : playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
     </div>
   );
 

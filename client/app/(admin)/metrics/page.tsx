@@ -418,7 +418,7 @@ export default function MetricsPage() {
   // period-wide "was active at some point" count. Derived from the same
   // live nowPlaying feed, deduped by user id.
   const liveActiveUsersCount = metricsData?.nowPlaying
-    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    ? new Set(metricsData.nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size
     : 0;
 
   // Transform watch time data for chart

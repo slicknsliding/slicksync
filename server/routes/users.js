@@ -1665,7 +1665,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const claimByIp = new Map(claims.map((c) => [c.clientIp, c]))
       const affinityByIp = new Map(affinity.map((a) => [a.clientIp, a.userId]))
       const devices = [...byIp.values()].map((d) => {
-        const claim = claimByIp.get(d.clientIp) || null
+        // A claim with no person is "known, no one in particular" (the
+        // Dashboard's "It's fine, don't ask again"); this list still guesses for it.
+        const claim = claimByIp.get(d.clientIp)?.userId ? claimByIp.get(d.clientIp) : null
         const guessId = affinityByIp.get(d.clientIp) || null
         return {
           ...d,
@@ -1682,16 +1684,25 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.post('/device-claims', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default'
-      const { clientIp, userId, label } = req.body || {}
+      const { clientIp, userId, label, known } = req.body || {}
       if (!clientIp || typeof clientIp !== 'string') return res.status(400).json({ error: 'clientIp is required' })
-      if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required' })
-      const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
-      if (!user) return res.status(404).json({ error: 'User not found' })
+      // known: true with no person - the address is the household's, no one
+      // in particular (stored as an empty userId; see unknownDevices.js).
+      const noOne = known === true && !userId
+      if (!noOne && (!userId || typeof userId !== 'string')) return res.status(400).json({ error: 'userId is required' })
+      if (!noOne) {
+        const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
+        if (!user) return res.status(404).json({ error: 'User not found' })
+      }
+      require('../utils/unknownDevices').forgetAddress(accountId, clientIp)
       await prisma.proxyDeviceClaim.upsert({
         where: { accountId_clientIp: { accountId, clientIp } },
-        create: { accountId, clientIp, userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
-        update: { userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+        create: { accountId, clientIp, userId: noOne ? '' : userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+        update: { userId: noOne ? '' : userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
       })
+      // The open Now Playing cards pick it up at once.
+      try { require('../utils/metricsBuilder').invalidateLiveNowPlaying(accountId) } catch {}
+      try { require('../utils/liveEvents').emitLive(accountId, 'nowplaying') } catch {}
       res.json({ success: true })
     } catch (e) {
       res.status(500).json({ error: publicMessage(e, 'Failed to save claim') })
@@ -1702,6 +1713,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     try {
       const accountId = getAccountId(req) || 'default'
       await prisma.proxyDeviceClaim.deleteMany({ where: { accountId, clientIp: req.params.clientIp } })
+      require('../utils/unknownDevices').forgetAddress(accountId, req.params.clientIp)
       res.json({ success: true })
     } catch (e) {
       res.status(500).json({ error: publicMessage(e, 'Failed to remove claim') })

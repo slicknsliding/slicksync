@@ -437,8 +437,9 @@ export default function DashboardPage() {
   // Watching" stat uses - dedupe by user id since one user can have more
   // than one nowPlaying entry (e.g. the same title picked up under both
   // their Stremio and Nuvio profiles).
+  // People watching - an unknown device on their login isn't one of them.
   const activeUsers = metricsData?.nowPlaying
-    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    ? new Set(metricsData.nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size
     : 0;
   const ringCircumference = 2 * Math.PI * 28;
   const ringRatio = stats.totalUsers > 0 ? Math.min(1, activeUsers / stats.totalUsers) : 0;
@@ -509,9 +510,10 @@ export default function DashboardPage() {
     
     const items: any[] = [];
     
-    // Add live items first
+    // Add live items first - the household's people; an unknown device on
+    // their login has its own card in Now Playing and no profile to open.
     if (metricsData.nowPlaying) {
-      metricsData.nowPlaying.forEach(np => {
+      metricsData.nowPlaying.filter((np) => !np.unknownDevice).forEach(np => {
         items.push({
           ...np,
           isLive: true,

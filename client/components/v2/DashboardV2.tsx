@@ -10,6 +10,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { V2MoreMenu } from './V2Detail';
 import { UserAvatar, Avatar } from '@/components/ui';
 import { NowPlayingBanner } from '@/components/user/home/NowPlayingBanner';
+import { UnknownDeviceMark, UnknownDevicePill } from '@/components/dashboard/UnknownDevicePill';
 import type { MetricsData } from '@/lib/api';
 import { V2Status, type V2Tone } from './V2Bits';
 import { StretchHandle } from '@/components/ui/Arrange';
@@ -27,6 +28,16 @@ export function appOfRow(np: NowPlayingRows[number], providerByUser: Map<string,
 }
 
 function Who({ np }: { np: NowPlayingRows[number] }) {
+  // Not one of their people: no picture, no profile to open.
+  if (np.unknownDevice) {
+    return (
+      <span className="inline-flex items-center gap-2 min-w-0">
+        <UnknownDeviceMark />
+        <b className="break-words min-w-0">Unknown device</b>
+        <span aria-hidden="true">·</span>
+      </span>
+    );
+  }
   return (
     <Link href={`/users/${np.user.id}`} className="inline-flex items-center gap-2 min-w-0 hover:underline" style={{ color: 'inherit' }} aria-label={`Open ${np.user.username}’s profile`}>
       <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} colorIndex={np.user.colorIndex} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} useGravatar={np.user.useGravatar} size="xs" />
@@ -67,12 +78,22 @@ export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref,
         row={np}
         provider={appOfRow(np, providerByUser)}
         profileLabel={np.profileLabel}
+        through={np.unknownDevice ? 'your AIOStreams login' : undefined}
         who={<Who np={np} />}
         compact={compact}
         flush
       />
     );
-    if (!detail) return el;
+    // Under a stranger's card, "Who is this?" - beside the detail line when there is one.
+    if (!detail) {
+      if (!np.unknownDevice) return el;
+      return (
+        <div key={key} className="min-w-0">
+          {el}
+          <div className="px-2 pt-1.5"><UnknownDevicePill device={np.unknownDevice} /></div>
+        </div>
+      );
+    }
     const line = detail(np);
     return (
       <div key={key} className="min-w-0">

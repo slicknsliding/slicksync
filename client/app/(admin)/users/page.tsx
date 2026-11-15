@@ -291,7 +291,7 @@ export default function UsersPage() {
   // stays as-is, and each user row's own status badge still shows it - only
   // this one stat's own meaning changed. The two no longer sum to Total
   // Users as a result (they measure different things now); that's expected.
-  const activeCount = new Set(nowPlaying.map((np) => np.user.id)).size;
+  const activeCount = new Set(nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size;
 
   // v2: groups as sections the account can move, fold and hide, and people
   // it can hide (lib/arrange.tsx). Sections follow the Groups page's order;

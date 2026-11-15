@@ -86,7 +86,7 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
     // one request and was never watched, so it has nothing to mismatch.
     const proxyRows = (await prisma.proxyStreamSession.findMany({
       where: { accountId, startTime: { gte: windowStart } },
-      select: { displayName: true, metadataName: true, metadataItemId: true, startTime: true, lastSeenAt: true, requestCount: true },
+      select: { displayName: true, metadataName: true, metadataItemId: true, startTime: true, lastSeenAt: true, requestCount: true, clientIp: true },
     })).filter(isPlayingConnection)
     if (proxyRows.length === 0) return
 
@@ -103,7 +103,7 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
       )
       let entry = byTitle.get(norm)
       if (!entry) {
-        entry = { display: null, matched: false, lastActivity: 0, ids: new Set() }
+        entry = { display: null, matched: false, lastActivity: 0, ids: new Set(), ips: new Set() }
         byTitle.set(norm, entry)
       }
       if (lastActivity > entry.lastActivity) entry.lastActivity = lastActivity
@@ -114,6 +114,7 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
       }
       const id = imdbOf(row.metadataItemId)
       if (id) entry.ids.add(id)
+      if (row.clientIp) entry.ips.add(row.clientIp)
     }
     if (byTitle.size === 0) return
 
@@ -138,6 +139,12 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
     for (const r of episodes) note(r.showName, r.showId)
     for (const r of sessions) note(r.itemName, r.itemId)
 
+    // A device that isn't theirs (unknownDevices.js) has no sign-in of theirs
+    // to add: its streams are announced as an unknown device instead.
+    const unknownByIp = await require('./unknownDevices').unknownAddresses(
+      prisma, accountId, [...byTitle.values()].flatMap((info) => [...info.ips]))
+    const onlyUnknownDevices = (info) => info.ips.size > 0 && [...info.ips].every((ip) => unknownByIp.has(ip))
+
     // A title is "untracked" if the proxy streamed it (and it has stabilized)
     // but no connected account recorded it natively in the window.
     const untracked = [] // { dedupeKey, display }
@@ -145,6 +152,7 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
       if (now - info.lastActivity < STABILIZE_MS) continue // still settling
       if (trackedTitles.has(norm)) continue // recorded by some connected account
       if ([...info.ids].some((id) => trackedIds.has(id))) continue // recorded under its id
+      if (onlyUnknownDevices(info)) continue // a stranger's device, not a sign-in to add
       untracked.push({ dedupeKey: `untracked-${norm}`, display: info.display || norm })
     }
 

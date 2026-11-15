@@ -2034,9 +2034,10 @@ function ActivityPageContent() {
       }
     }
 
-    // Add elapsed time from all active "Now Playing" sessions
+    // Add elapsed time from all active "Now Playing" sessions - the
+    // household's own; an unknown device on their login isn't their watch time.
     if (metricsData.nowPlaying && metricsData.nowPlaying.length > 0) {
-      metricsData.nowPlaying.forEach(np => {
+      metricsData.nowPlaying.filter((np) => !np.unknownDevice).forEach(np => {
         let startMs: number | null = null;
 
         // Find session to get accurate start time
@@ -2346,7 +2347,7 @@ function ActivityPageContent() {
   // nowPlaying entry, e.g. the same title under both their Stremio and Nuvio
   // profiles).
   const activeUsersCount = metricsData?.nowPlaying
-    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    ? new Set(metricsData.nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size
     : 0;
 
   // Group task history by time periods (TODO: fetch from API)

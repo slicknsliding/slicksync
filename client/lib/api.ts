@@ -3140,6 +3140,13 @@ class ApiClient {
     });
   }
 
+  // The household's, no one in particular - the Dashboard's "It's fine, don't ask again".
+  async markDeviceKnown(clientIp: string) {
+    return this.fetch<{ success: boolean }>('/users/device-claims', {
+      method: 'POST', body: JSON.stringify({ clientIp, known: true }),
+    });
+  }
+
   async deleteDeviceClaim(clientIp: string) {
     return this.fetch<{ success: boolean }>(`/users/device-claims/${encodeURIComponent(clientIp)}`, {
       method: 'DELETE',
@@ -5652,6 +5659,9 @@ export interface MetricsData {
     positionAt?: number | null;
     // The Nuvio (or AIOStreams) profile it is playing under.
     profileLabel?: string | null;
+    // A stream from an address that isn't the household's (the user is then
+    // "Unknown device", not a person): what its "Who is this?" box shows.
+    unknownDevice?: { address: string; firstSeen: string; titles: number; aiostreamsPage: string | null };
     // Proxy-sourced entries only: elapsed watch time we can actually stand
     // behind (seconds), frozen once proxy traffic goes quiet rather than
     // climbing forever off raw wall-clock time - see the comment in
