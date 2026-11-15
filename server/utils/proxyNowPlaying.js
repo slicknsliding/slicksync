@@ -75,6 +75,18 @@ const PLAYER_OWNS_CARD = new Set(['stremio', 'jellyfin'])
 /** How a proxy row is known, for comparing against a library title. */
 const describe = (row) => ({ id: row.metadataItemId || null, titles: [proxyDisplayTitle(row), row.displayName].filter(Boolean) })
 
+/** A stream named only by an opaque id (a usenet or cache hash) that no lookup matched. */
+const hasNoReadableName = (row) => !row.metadataItemId && !row.metadataName && isOpaqueStreamName(proxyDisplayTitle(row))
+
+/** Someone signed in to the AIOStreams server: their playback goes through its proxy. */
+const playsThroughAiostreams = (u) => u.providerType === 'jellyfin' && u.jellyfinServerKind === 'aiostreams'
+
+// A server's sessions list drops a viewing whose app stopped checking in
+// (AIOStreams' after about five minutes), so an app can go quiet while it
+// still plays. A stream that kept reading this long after the app's last
+// word is still playing, not paused.
+const APP_QUIET_STILL_PLAYING_MS = 3 * 60 * 1000
+
 // How far before the stream opened a native session may have started or
 // last been written and still be this viewing (the provider's own clock and
 // its checkpoint cadence run a little apart from the proxy's).
@@ -133,9 +145,14 @@ async function nameFromSameFile(prisma, accountId, rows) {
  *
  * Only the times the app itself gave count (when its viewing began, and when
  * it ended - at the pause): a session row refreshed later says nothing new.
+ *
+ * A stream with no readable name can't be compared by title. Then only people
+ * signed in to the AIOStreams server count (their playback is what goes
+ * through its proxy), the title must not be one another stream is showing,
+ * and exactly one such session qualifies - its title is this stream's.
  */
-async function pausedOnJellyfin(prisma, accountId, users, described, streamStart) {
-  const ids = users.filter((u) => u.providerType === 'jellyfin').map((u) => u.id)
+async function pausedOnJellyfin(prisma, accountId, users, described, streamStart, { nameUnknown = false, takenElsewhere = () => false } = {}) {
+  const ids = users.filter((u) => u.providerType === 'jellyfin' && (!nameUnknown || playsThroughAiostreams(u))).map((u) => u.id)
   if (!ids.length) return null
   const since = new Date(streamStart.getTime() - OPAQUE_BORROW_SLACK_MS)
   let rows
@@ -147,9 +164,13 @@ async function pausedOnJellyfin(prisma, accountId, users, described, streamStart
     })) || []
   } catch { return null }
   const { hasReachedEnd } = require('./sessionTracker')
-  const hits = rows.filter((s) => s.lastPosition > 0 && !hasReachedEnd(s.lastPosition, s.totalDuration) &&
-    pairMatches(described, { id: s.itemId, name: s.itemName, type: s.itemType }))
+  const hits = rows.filter((s) => {
+    if (!(s.lastPosition > 0) || hasReachedEnd(s.lastPosition, s.totalDuration)) return false
+    const item = { id: s.itemId, name: s.itemName, type: s.itemType }
+    return nameUnknown ? !takenElsewhere(item) : pairMatches(described, item)
+  })
   if (new Set(hits.map((s) => s.userId)).size !== 1) return null
+  if (nameUnknown && hits.length !== 1) return null
   const s = hits[0]
   return {
     userId: s.userId,
@@ -416,6 +437,10 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     if (!groupedByTitle.has(key)) groupedByTitle.set(key, [])
     groupedByTitle.get(key).push(proxy)
   }
+  // Titles the streams with a readable name are showing: a stream named by a
+  // hash is never one of those.
+  const namedStreams = proxySessions.filter((p) => !hasNoReadableName(p)).map(describe)
+  const takenElsewhere = (item) => !!item && namedStreams.some((d) => pairMatches(d, item))
 
   for (const group of groupedByTitle.values()) {
     // Use the most recently active row in the group as the representative
@@ -480,17 +505,43 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     const described = describe(representative)
     let reported = null
     let pausedReport = null
+    // The app's own live entry for a stream with no readable name.
+    let unnamedReport = null
     if (!directMatch) {
-      const reporters = users.filter((u) => (watchSessionsByUserId.get(u.id) || [])
-        .some((np) => APP_REPORTED.has(np.source) && pairMatches(described, np.item)))
-      if (reporters.length === 1) reported = reporters[0]
-      const candidateHasIt = candidates.some((u) => (watchSessionsByUserId.get(u.id) || []).some((np) => pairMatches(described, np.item)))
+      // A name to compare by, or - for a stream named by a hash - the time:
+      // an app's viewing that began or reported during this stream, from
+      // someone whose playback goes through the AIOStreams proxy (see
+      // borrowForOpaqueStream).
+      const nameUnknown = hasNoReadableName(representative)
+      const reporters = []
+      for (const u of users) {
+        const theirs = (watchSessionsByUserId.get(u.id) || []).filter((np) => APP_REPORTED.has(np.source))
+        if (!nameUnknown) {
+          if (theirs.some((np) => pairMatches(described, np.item))) reporters.push({ u, np: null })
+        } else if (playsThroughAiostreams(u)) {
+          const np = borrowForOpaqueStream(theirs.filter((e) => !takenElsewhere(e.item)), earliestStartTime)
+          if (np) reporters.push({ u, np })
+        }
+      }
+      if (reporters.length === 1) {
+        reported = reporters[0].u
+        unnamedReport = reporters[0].np
+      }
+      const candidateHasIt = candidates.some((u) => {
+        const theirs = watchSessionsByUserId.get(u.id) || []
+        return nameUnknown ? !!borrowForOpaqueStream(theirs, earliestStartTime) : theirs.some((np) => pairMatches(described, np.item))
+      })
       // Nobody's app is reporting it right now: someone whose Jellyfin-type
-      // app reported it during this stream and went quiet has paused it.
+      // app reported it during this stream and went quiet has paused it -
+      // or is still playing, when the stream kept reading long after.
       if (!reporters.length && !candidateHasIt) {
-        pausedReport = await pausedOnJellyfin(prisma, accountId, users, described, earliestStartTime)
+        pausedReport = await pausedOnJellyfin(prisma, accountId, users, described, earliestStartTime, { nameUnknown, takenElsewhere })
         reported = pausedReport ? usersById.get(pausedReport.userId) || null : null
         if (!reported) pausedReport = null
+        if (pausedReport && representative.lastSeenAt.getTime() > pausedReport.reportedAtTimestamp + APP_QUIET_STILL_PLAYING_MS) {
+          // Counted on from the app's last word, as an estimate.
+          pausedReport = { ...pausedReport, paused: false, positionAt: pausedReport.reportedAtTimestamp, stillPlaying: true }
+        }
       }
     }
 
@@ -537,7 +588,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // as if it were the proxied content. User identity (avatar/username/
     // email) is about the person, not the content, so any of their entries
     // can supply it.
-    let existing = theirSessions.find((np) => pairMatches(described, np.item)) || pausedReport
+    let existing = theirSessions.find((np) => pairMatches(described, np.item)) || pausedReport || unnamedReport
     // A stream whose only name is an opaque id (a usenet or cache hash the
     // lookup could not match) can never match by title. Native may still be
     // showing THIS viewing under its real name - borrow it only when exactly
@@ -608,9 +659,10 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
             ? Math.max(existing.reportedAtTimestamp, earliestStartTime.getTime())
             : null,
       // Their app saved it at a pause and has said nothing since (pausedOnJellyfin).
-      ...(pausedReport ? { paused: true } : {}),
-      // A guessed title's position is its last checkpoint plus the time played since.
-      ...(existing?.item?.guessed ? { positionEstimated: true } : {}),
+      ...(pausedReport?.paused ? { paused: true } : {}),
+      // A guessed title's position is its last checkpoint plus the time played
+      // since; so is one whose app went quiet while the stream played on.
+      ...(existing?.item?.guessed || pausedReport?.stillPlaying ? { positionEstimated: true } : {}),
       ...(existingTitleMatches && existing.stremioAppUrl ? { stremioAppUrl: existing.stremioAppUrl, nuvioAppUrl: existing.nuvioAppUrl } : {}),
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
@@ -634,7 +686,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // found it still open) - what the "Live - updated 8 s ago" label on the
       // cards counts from. Display only; nothing here merges on it.
       // A paused card counts from the pause instead ("Paused · 3 min ago").
-      reportedAtTimestamp: pausedReport ? pausedReport.reportedAtTimestamp : mostRecentPollConfirmation.getTime(),
+      reportedAtTimestamp: pausedReport?.paused ? pausedReport.reportedAtTimestamp : mostRecentPollConfirmation.getTime(),
       // Elapsed time we can actually stand behind, in seconds - real
       // wall-clock elapsed while the connection is confirmed live, but
       // frozen once we can no longer confirm that rather than continuing to
