@@ -3917,7 +3917,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           people: s.people.map((p) => ({ name: p.name, userId: p.userId })),
         })),
         devices: found.devices.map((d) => ({
-          personId: user.id, credentialId: null, person: d.person, address: d.address, itemId: d.itemId,
+          personId: user.id, credentialId: null, person: d.person, address: d.address, kind: d.kind, itemId: d.itemId,
           sessionId: d.sessionId, device: d.device, client: d.client,
         })),
         tmdbId: found.tmdbId,
@@ -3930,7 +3930,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   });
 
   // Play on a device: only a device their own sign-in can control, on their
-  // own real Jellyfin, with an item id of the shape that server uses.
+  // own real Jellyfin or AIOMetadata (4.0 and newer - the provider checks),
+  // with an item id of the shape that server uses.
   router.post('/open-targets/play-on', async (req, res) => {
     try {
       const user = await personAsking(req, req.body?.userId);
@@ -3938,8 +3939,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const itemId = String(req.body?.itemId || '');
       if (!sessionId || !/^[A-Za-z0-9-]{8,64}$/.test(itemId)) return res.status(400).json({ error: 'Pick a device', message: 'Pick a device' });
       const row = await ownServerRow(user);
-      if (!row || (row.jellyfinServerKind || 'jellyfin') !== 'jellyfin') {
-        return res.status(400).json({ error: 'Only a Jellyfin server can do that', message: 'Only a Jellyfin server can do that' });
+      if (!row || !['jellyfin', 'aiometadata'].includes(row.jellyfinServerKind || 'jellyfin')) {
+        return res.status(400).json({ error: 'Only a Jellyfin server or AIOMetadata can do that', message: 'Only a Jellyfin server or AIOMetadata can do that' });
       }
       const provider = ownServerProvider(row);
       const own = await provider.controllableSessions().catch(() => []);

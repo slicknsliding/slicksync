@@ -225,3 +225,61 @@ test('AIOMetadata: what plays on every device comes from /AIOStreams/Activity, k
     server.restore()
   }
 })
+
+test('Play on a device: AIOMetadata from 4.0 offers each person their own devices and starts the title there; older ones and AIOStreams offer none', async () => {
+  const sessions = [
+    { Id: 'e1271701-tv', UserId: 'e1271701-4ac0-4111-8066-c21a15cba9a0', DeviceId: 'tv', DeviceName: 'Living room TV', Client: 'Jellyfin Android TV', SupportsRemoteControl: true },
+    { Id: '2fc8a50e-tab', UserId: '2fc8a50e-4ce2-fa7e-5834-fe55ac1f8e08', DeviceId: 'tab', DeviceName: 'Kid tablet', Client: 'Jellyfin iOS', SupportsRemoteControl: true },
+    { Id: 'e1271701-web', UserId: 'e1271701-4ac0-4111-8066-c21a15cba9a0', DeviceId: 'web', DeviceName: 'Browser', Client: 'Jellyfin Web', SupportsRemoteControl: false },
+  ]
+  const item = encodePackedId({ kind: 'movie', base: 'tt0133093' })
+  const own = 'e12717014ac041118066c21a15cba9a0'
+  // Each version on its own address: the answer is kept for a while per server.
+  // As AIOMetadata answers: Version is the Jellyfin version it speaks (always
+  // 12.x), its own is aiostreams.version.tag. No tag counts as too old.
+  for (const [version, offered] of [['3.9.0', false], ['none', false], ['4.0.0', true], ['4.1.2', true]]) {
+    const server = fakeServer({
+      '/System/Info/Public': () => ({ ServerName: 'AIOMetadata', Version: '12.1.0', aiostreams: version === 'none' ? {} : { version: { tag: `v${version}` } } }),
+      '/Sessions?': () => sessions,
+      '/Playing': () => ({}),
+    })
+    try {
+      const provider = createJellyfinProvider({ serverUrl: `https://aiom-${version}.test/jellyfin/x`, token: 't', userId: own, serverKind: 'aiometadata' })
+      const devices = await provider.controllableSessions()
+      if (!offered) {
+        assert.deepEqual(devices, [], `${version}: no devices`)
+        assert.ok(!server.calls.some((c) => c.includes('/Sessions')), `${version}: sessions not even asked`)
+        await assert.rejects(provider.playOn('e1271701-tv', item), (e) => e.status === 400)
+        assert.ok(!server.calls.some((c) => c.includes('/Playing')), `${version}: nothing started`)
+        continue
+      }
+      // Only this person's devices that take commands: not the kid's tablet, not the browser.
+      assert.deepEqual(devices, [{ id: 'e1271701-tv', device: 'Living room TV', client: 'Jellyfin Android TV', playing: null }], version)
+      assert.equal(await provider.playOn('e1271701-tv', item), true)
+      assert.ok(server.calls.includes(`/jellyfin/x/Sessions/e1271701-tv/Playing?playCommand=PlayNow&itemIds=${item}`), `${version}: Play sent to the device`)
+    } finally {
+      server.restore()
+    }
+  }
+
+  // AIOStreams answers the commands but does nothing with them: never offered, never asked.
+  const aio = fakeServer({ '/Sessions?': () => sessions })
+  try {
+    const provider = createJellyfinProvider({ serverUrl: 'https://aio.test/jellyfin', token: 't', userId: own, serverKind: 'aiostreams' })
+    assert.deepEqual(await provider.controllableSessions(), [])
+    await assert.rejects(provider.playOn('e1271701-tv', item), (e) => e.status === 400)
+    assert.deepEqual(aio.calls, [])
+  } finally {
+    aio.restore()
+  }
+
+  // A real Jellyfin is unchanged: its own ControllableByUserId answer, no version check.
+  const jf = fakeServer({ '/Sessions?': () => sessions, '/Playing': () => ({}) })
+  try {
+    const provider = createJellyfinProvider({ serverUrl: 'https://jf.test', token: 't', userId: own, serverKind: 'jellyfin' })
+    assert.deepEqual((await provider.controllableSessions()).map((d) => d.id), ['e1271701-tv', '2fc8a50e-tab'])
+    assert.ok(!jf.calls.some((c) => c.includes('/System/Info')))
+  } finally {
+    jf.restore()
+  }
+})

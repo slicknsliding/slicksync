@@ -17,6 +17,8 @@ export interface OpenTargetDevice {
   credentialId: string | null;
   person: string;
   address: string;
+  /** The server it plays through: 'jellyfin' or 'aiometadata' (missing = jellyfin). */
+  kind?: string;
   itemId: string;
   sessionId: string;
   device: string;

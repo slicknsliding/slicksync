@@ -130,6 +130,28 @@ function dateMs(value) {
   return Number.isFinite(t) ? t : 0
 }
 
+// Whether a server passes Play commands on to its apps' devices: a real
+// Jellyfin always; AIOMetadata from 4.0 (older ones answer and do nothing);
+// AIOStreams never. Read from the server's public info, kept 10 minutes.
+const remoteControlByServer = new Map() // address -> { at, ok }
+async function takesRemoteControl(address, serverKind) {
+  if (serverKind === 'jellyfin') return true
+  if (serverKind !== 'aiometadata') return false
+  const hit = remoteControlByServer.get(address)
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.ok
+  let ok = false
+  try {
+    const info = await jfRequest(address, '/System/Info/Public', { timeoutMs: 5000 })
+    const { parseVersion, isNewer } = require('../utils/serverVersions')
+    // Its own version; Version is the Jellyfin one it speaks (12.x), never it.
+    const v = parseVersion(info?.aiostreams?.version?.tag)
+    ok = !!v && !isNewer([4, 0, 0], v)
+  } catch { /* unknown: not offered */ }
+  remoteControlByServer.set(address, { at: Date.now(), ok })
+  if (remoteControlByServer.size > 500) remoteControlByServer.delete(remoteControlByServer.keys().next().value)
+  return ok
+}
+
 function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyfin', serverId, deviceId, slicksyncUserId, onUnauthorized, resolveProfiles, onProfileUnauthorized }) {
   const base = serverUrl
   const serverKey = serverId || serverUrl
@@ -637,20 +659,28 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
     /**
      * Devices this sign-in can start a title on: its own sessions in any
      * Jellyfin app that takes remote commands (the official apps included),
-     * seen in the last 15 minutes. A real Jellyfin only - AIOStreams and
-     * AIOMetadata accept the commands but do nothing with them.
+     * seen in the last 15 minutes. A real Jellyfin, and AIOMetadata from 4.0,
+     * which passes the command on to the app; AIOStreams answers the commands
+     * but does nothing with them.
      */
     async controllableSessions() {
-      if (isAio) return []
+      if (!(await takesRemoteControl(base, serverKind))) return []
       const sessions = await call(`/Sessions?${new URLSearchParams({ ControllableByUserId: userId, ActiveWithinSeconds: '900' })}`)
       return (Array.isArray(sessions) ? sessions : [])
         .filter((s) => s?.Id && s.SupportsRemoteControl && s.DeviceId !== device)
+        // AIOMetadata's main sign-in sees every profile's devices; each
+        // person is offered only their own.
+        .filter((s) => serverKind !== 'aiometadata' || normId(s.UserId) === normId(userId))
         .map((s) => ({ id: s.Id, device: s.DeviceName || 'A device', client: s.Client || null, playing: s.NowPlayingItem?.Name || null }))
     },
 
     /** Starts an item on one of controllableSessions(). */
     async playOn(sessionId, itemId) {
-      if (isAio) throw Object.assign(new Error('Only a Jellyfin server can start a title on a device'), { status: 400 })
+      if (!(await takesRemoteControl(base, serverKind))) {
+        throw Object.assign(new Error(serverKind === 'aiometadata'
+          ? 'AIOMetadata starts a title on a device from version 4.0'
+          : 'Only a Jellyfin server or AIOMetadata can start a title on a device'), { status: 400 })
+      }
       await call(`/Sessions/${encodeURIComponent(sessionId)}/Playing?${new URLSearchParams({ playCommand: 'PlayNow', itemIds: itemId })}`, { method: 'POST' })
       return true
     },

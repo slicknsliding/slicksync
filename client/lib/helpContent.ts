@@ -1304,7 +1304,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Pick the app you use on this device. The button now says Open in that app, and this phone, tablet or TV keeps the choice.',
       'In Continue Watching, Resume on a Jellyfin or AIOStreams card opens that app on the person’s own server. Before anything is picked on this device, Resume asks which app; the pick opens the title straight away and is kept. To change it, right-click the card (press and hold on a phone, the ... on a TV) and choose Choose app….',
       'With more than one server or person here, it asks which one to open it on.',
-      'On a real Jellyfin server, Play on a device lists screens that have a Jellyfin app open right now (the official apps too) and starts the title there.',
+      'On a real Jellyfin server, and on AIOMetadata 4.0 or newer, Play on a device lists screens that have a Jellyfin app open right now (the official apps too) and starts the title there. The heading says which: · JELLYFIN or · AIOMETADATA. On AIOMetadata each person sees their own devices, profiles included.',
       'For an app that can\'t be opened from a link (Odin, for example), choose Any app (through a Shortcut): make a Shortcut once in the Shortcuts app with the action Open App, give it a name, and type that name in. The button then opens the app - you find the title there.',
     ],
     tips: [
@@ -2937,7 +2937,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'The row is only yours - nobody else in the household sees your cards, and you do not see theirs.',
       'Removing a card keeps your watch history. It only takes the title out of this row.',
       'Nuvio\'s app can open a title but not a particular episode, so it lands on the show\'s page.',
-      'The app you pick is remembered on that phone, tablet or computer only - each device keeps its own. Swiftfin and Streamyfin need to be signed in to your server already, and on a Jellyfin server the list also offers Play on a device for your own devices that have a Jellyfin app open.',
+      'The app you pick is remembered on that phone, tablet or computer only - each device keeps its own. Swiftfin and Streamyfin need to be signed in to your server already, and on a Jellyfin server or AIOMetadata 4.0 and newer the list also offers Play on a device for your own devices that have a Jellyfin app open.',
     ],
     tips: [
       'Opening an app needs the app installed on that device. If nothing opens, press the ... on the card, then Choose app…, and pick another - your server’s own page works in any browser.',
