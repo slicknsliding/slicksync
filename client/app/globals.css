@@ -1341,8 +1341,10 @@ body {
 .user-card-avatar { grid-area: avatar; display: flex; margin-right: 12px; }
 .user-card-name-cell { grid-area: name; min-width: 0; }
 .user-card-toggle { grid-area: toggle; display: flex; margin-left: 10px; }
-/* The time starts its own line, with Limits and Caught up after it. */
+/* The time starts its own line, and Limits, History and Caught up get one
+   of their own under it, so every card is laid out the same. */
 .user-card-break { flex-basis: 100%; height: 0; }
+.user-card-pills { flex-basis: 100%; margin-top: 4px; }
 .user-card-badges {
   grid-area: badges;
   display: flex;

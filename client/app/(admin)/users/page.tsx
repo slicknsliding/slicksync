@@ -13,6 +13,7 @@ import { ProfilesCard } from '@/components/user/ProfilesCard';
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
 import { SyncHistoryButton, syncHistoryAccount } from '@/components/user/SyncHistoryButton';
+import { AioHistoryPill } from '@/components/jellyfin/AioHistoryButton';
 import { HouseholdsCard } from '@/components/jellyfin/HouseholdCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -1486,9 +1487,9 @@ function UserCard({
             />
           </div>
         </div>
-        {/* Group, addons and time, then Limits and Caught up - no dots, like
-            the Groups cards. The time starts a second line
-            with the two after it. */}
+        {/* Group, addons and time, then Limits, History and Caught up - no
+            dots, like the Groups cards. The time starts a second line and
+            the three pills a third, so every card stands the same height. */}
         <div className="user-card-meta mt-3 flex flex-wrap items-center gap-x-2.5 text-sm text-muted whitespace-nowrap">
           <span className="flex items-center gap-1.5">
             <UserGroupIcon className="w-4 h-4 text-secondary" />
@@ -1514,14 +1515,20 @@ function UserCard({
             <ClockIcon className="w-4 h-4 text-secondary" />
             {formatWatchTime(user.watchTime)}
           </span>
-          <span className="inline-flex items-center gap-1.5">
+          <span className="user-card-pills inline-flex items-center gap-1.5">
             <LimitsButton
               id={user.id}
               name={user.name}
               summary={limits}
               onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
             />
-            {syncAccount && <SyncHistoryButton userId={user.id} name={user.name} account={syncAccount} size="sm" pointer />}
+            {/* One History in the same spot on every card: their AIOStreams
+                configuration's versions, or what each sync changed. */}
+            {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' ? (
+              <AioHistoryPill userId={user.id} name={user.name} />
+            ) : (
+              syncAccount && <SyncHistoryButton userId={user.id} name={user.name} account={syncAccount} size="sm" pointer label="History" />
+            )}
             <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
           </span>
         </div>

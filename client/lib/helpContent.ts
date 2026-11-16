@@ -866,9 +866,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Putting an AIOStreams configuration back the way it was',
     category: 'Users & Groups',
     keywords: ['aiostreams history', 'undo aiostreams', 'restore aiostreams', 'aiostreams changed', 'revert configuration', 'config backup', 'aiostreams backup', 'someone changed aiostreams'],
-    answer: 'On the person’s page, press AIOStreams history. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
+    answer: 'Press History on their card on the Users page, or AIOStreams history on their own page. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
     steps: [
-      'Open the person on the Users page and press AIOStreams history - or tap the "changed outside SlickSync" notification, which opens it.',
+      'On Users, press History on their card, between Limits and Caught up. Or open the person and press AIOStreams history - or tap the "changed outside SlickSync" notification, which opens it.',
       'Find the version from before the change; each one says what changed since the one before it.',
       'Press Put back, choose what to keep as it is now, and confirm.',
     ],
@@ -1473,9 +1473,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'What a sync changed: Sync history',
     category: 'Users & Groups',
     keywords: ['sync history', 'sync log', 'what changed', 'who synced', 'sync failed', 'addons removed', 'addons added', 'audit', 'sync record'],
-    answer: 'Press Sync history on their card on the Users page, or on their own page, next to Limits. Each line says when a sync ran, who or what started it (you, the schedule, a group change, an invite, an automation…), and which addons it added, removed or updated, or whether it changed the order.',
+    answer: 'Press History on their card on the Users page, or Sync history on their own page, next to Limits. Each line says when a sync ran, who or what started it (you, the schedule, a group change, an invite, an automation…), and which addons it added, removed or updated, or whether it changed the order.',
     steps: [
-      'On Users, press Sync history on their card, between Limits and Caught up (in the list view it sits in Actions). In the v2 design it is in the card’s ⋯ menu, under Sync.',
+      'On Users, press History on their card, between Limits and Caught up (in the list view it is Sync history, in Actions). In the v2 design it is Sync history in the card’s ⋯ menu, under Sync.',
       'Or open the person and press Sync history in the row of buttons under their name. In the v2 design it is a tile in Tools.',
       'Read the newest line first. A sync that didn’t work says so, with the technical reason under Details.',
     ],

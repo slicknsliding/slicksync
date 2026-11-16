@@ -161,12 +161,14 @@ export function SyncHistoryPopup({ userId, name, account = 'account', anchor, po
  * account: what the line names, e.g. "Stremio account". size 'sm' and
  * `pointer` on a Users card, beside Limits and Caught up.
  */
-export function SyncHistoryButton({ userId, name, account = 'account', size = 'md', pointer = false }: {
+export function SyncHistoryButton({ userId, name, account = 'account', size = 'md', pointer = false, label = 'Sync history' }: {
   userId: string;
   name: string;
   account?: string;
   size?: 'sm' | 'md';
   pointer?: boolean;
+  /** "History" on a Users card, where AIOStreams cards have a History of their own in the same spot. */
+  label?: string;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -185,7 +187,7 @@ export function SyncHistoryButton({ userId, name, account = 'account', size = 'm
       onMouseDown={(e) => e.stopPropagation()}
     >
       <ActionPill ref={button} icon={ClockIcon} size={size} open={open} onClick={() => setOpen((v) => !v)}>
-        Sync history
+        {label}
       </ActionPill>
       <HistoryPopup
         open={open}
