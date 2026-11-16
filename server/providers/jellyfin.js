@@ -130,9 +130,10 @@ function dateMs(value) {
   return Number.isFinite(t) ? t : 0
 }
 
-// Whether a server passes Play commands on to its apps' devices: a real
-// Jellyfin always; AIOMetadata from 4.0 (older ones answer and do nothing);
-// AIOStreams never. Read from the server's public info, kept 10 minutes.
+// Whether a server passes commands (Play, Stop, a message) on to its apps'
+// devices: a real Jellyfin always; AIOMetadata from 4.0 (older ones answer and
+// do nothing); AIOStreams never. Read from the server's public info, kept 10
+// minutes. Also used by screen time (utils/aiomPause.js messageAiomScreens).
 const remoteControlByServer = new Map() // address -> { at, ok }
 async function takesRemoteControl(address, serverKind) {
   if (serverKind === 'jellyfin') return true
@@ -767,4 +768,4 @@ function createJellyfinProvider({ serverUrl, token, userId, serverKind = 'jellyf
   }
 }
 
-module.exports = { createJellyfinProvider, stremioIdFromProviderIds, decodePackedId, encodePackedId, ticksToMs, splitStremioId }
+module.exports = { createJellyfinProvider, stremioIdFromProviderIds, decodePackedId, encodePackedId, ticksToMs, splitStremioId, takesRemoteControl }

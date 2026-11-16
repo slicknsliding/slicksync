@@ -20,6 +20,8 @@
 //   those refusals for a broken connection while they're paused.
 //   With stopPlaying, what they're watching is stopped too, after a warning
 //   on their screen ten minutes before (Jellyfin's own session messages).
+//   AIOMetadata 4.0+ takes the same stop and message (aiomPause.js
+//   messageAiomScreens).
 // - AIOStreams: a variant that takes the streams out of every addon, given to
 //   their users in the configuration (utils/aioPause.js). Needs the
 //   configuration password, like every write to it.
@@ -475,8 +477,21 @@ async function settleGate(prisma, accountId, person, limit, entry, { now, age = 
 const setAioPaused = (...args) => require('./aioPause').setAioPaused(...args)
 const setAiomPaused = (...args) => require('./aiomPause').setAiomPaused(...args)
 
+// Where "Stop what's playing" works: a real Jellyfin, and AIOMetadata 4.0+
+// (checked per server - canStopAiom).
+const STOPS_PLAYING = new Set(['jellyfin', 'aiometadata'])
+
+/** A message on their screens, and with `stop` what's playing stopped: on Jellyfin or AIOMetadata. */
+function messageTheirScreens(d, prisma, accountId, person, opts) {
+  return pauseKind(person) === 'aiometadata'
+    ? d.messageAiomScreens(prisma, accountId, person, opts)
+    : d.messageScreens(prisma, accountId, person.id, opts)
+}
+
 const defaultDeps = {
   syncPerson, setJellyfinBlocked, setAioPaused, setAiomPaused, messageScreens: messageJellyfinScreens, readAddons: readAccountAddons,
+  messageAiomScreens: (...args) => require('./aiomPause').messageAiomScreens(...args),
+  aiomCanStop: (...args) => require('./aiomPause').canStopAiom(...args),
   gateUsable: (...args) => require('./streamGate').gateUsable(...args),
   wrapProfile: (...args) => require('./streamGate').wrapProfile(...args),
   gateAiom: (...args) => require('./streamGate').gateAiom(...args),
@@ -552,8 +567,8 @@ async function pausePerson(prisma, accountId, person, want, deps = {}, { day = n
     const left = await d.readAddons(prisma, accountId, person.id).catch(() => null)
     if (left) await patchEntry(prisma, accountId, PAUSES, person.id, { ...entry, pausedPrint: addonPrint(left) })
   }
-  if (kind === 'jellyfin' && stopPlaying) {
-    await d.messageScreens(prisma, accountId, person.id, { text: `Streaming is paused until ${untilLabel || 'later'}.`, stop: true, decrypt: deps.decrypt }).catch((e) => console.warn(`[ScreenTime] stopping ${person.id}:`, e?.message))
+  if (STOPS_PLAYING.has(kind) && stopPlaying) {
+    await messageTheirScreens(d, prisma, accountId, person, { text: `Streaming is paused until ${untilLabel || 'later'}.`, stop: true, decrypt: deps.decrypt }).catch((e) => console.warn(`[ScreenTime] stopping ${person.id}:`, e?.message))
   }
   return true
 }
@@ -667,8 +682,10 @@ async function getLimit(prisma, accountId, userId, deps = {}) {
       ? { until: pause.until, untilLabel: untilLabelFor(timezone, pause.until), reason: pause.night && bed && bed.night === pause.night ? 'bedtime' : 'limit' }
       : null,
     canPause: await canPause(prisma, accountId, person, deps),
-    // Stopping what's playing works on a real Jellyfin server only.
-    canStopPlaying: kind === 'jellyfin',
+    // Stopping what's playing works on a real Jellyfin server, and on
+    // AIOMetadata from 4.0.
+    canStopPlaying: kind === 'jellyfin'
+      || (kind === 'aiometadata' && !!(await (deps.aiomCanStop || defaultDeps.aiomCanStop)(prisma, accountId, person).catch(() => false))),
     // Whether a pause on Stremio or Nuvio takes hold without reopening the
     // app (utils/streamGate.js) - false when devices can't reach the gate.
     ...(await (async () => {
@@ -757,14 +774,14 @@ async function send(prisma, accountId, { title, body, url, dedupeKey }) {
 // In memory - after a restart one may be shown twice, never missed.
 const warned = new Set()
 
-/** Ten minutes' notice on a Jellyfin screen before the limit or bedtime stops it. */
+/** Ten minutes' notice on a Jellyfin or AIOMetadata screen before the limit or bedtime stops it. */
 async function warnScreens(prisma, accountId, person, limit, { watched, today, now, timezone, entry }, deps) {
-  if (!limit.stopPlaying || pauseKind(person) !== 'jellyfin' || pauseInForce(entry)) return
+  if (!limit.stopPlaying || !STOPS_PLAYING.has(pauseKind(person)) || pauseInForce(entry)) return
   const d = { ...defaultDeps, ...deps }
   const say = async (key, text) => {
     if (warned.has(key)) return
     warned.add(key)
-    await d.messageScreens(prisma, accountId, person.id, { text, decrypt: deps.decrypt }).catch(() => 0)
+    await messageTheirScreens(d, prisma, accountId, person, { text, decrypt: deps.decrypt }).catch(() => 0)
   }
   if (limit.minutes && limit.onReach === 'pause' && appliesToday(limit, today.weekday) && entry?.resumedOn !== today.date) {
     const left = limit.minutes - watched

@@ -139,4 +139,57 @@ async function setAiomPaused(prisma, accountId, person, paused, { decrypt, state
   return null
 }
 
-module.exports = { pauseAccess, setAiomPaused, pausedAddress }
+/**
+ * The configuration's main sign-in, for commands to its apps' screens: the
+ * main user may command every profile's devices (AIOMetadata 4.0 lists and
+ * reaches them all); a profile's own sign-in reaches only its own. Null when
+ * there is none, or the server is older than 4.0 and passes nothing on.
+ */
+async function screensAccess(prisma, accountId, person, decrypt) {
+  const found = await pauseAccess(prisma, accountId, person)
+  if (!found) return null
+  const row = await prisma.user.findFirst({ where: { id: found.owner.id, accountId }, select: { jellyfinServerUrl: true, jellyfinToken: true, jellyfinUserId: true } })
+  if (!row?.jellyfinToken || !row.jellyfinServerUrl || !row.jellyfinUserId) return null
+  if (!(await require('../providers/jellyfin').takesRemoteControl(row.jellyfinServerUrl, 'aiometadata'))) return null
+  const dec = decrypt || require('./encryption').decrypt
+  return { base: row.jellyfinServerUrl, userId: row.jellyfinUserId, token: dec(row.jellyfinToken, { appAccountId: found.owner.accountId || accountId }), users: found.users }
+}
+
+/** Whether "Stop what's playing" can work for them: AIOMetadata 4.0 and newer. */
+async function canStopAiom(prisma, accountId, person) {
+  // The version only; no sign-in is needed to know.
+  const found = await pauseAccess(prisma, accountId, person)
+  return !!found && require('../providers/jellyfin').takesRemoteControl(found.owner.jellyfinServerUrl, 'aiometadata')
+}
+
+/**
+ * Their screens on AIOMetadata 4.0+ that are playing something: put a message
+ * on each, and with `stop`, stop the playback - what a real Jellyfin server
+ * does (screenTime.js messageJellyfinScreens). AIOMetadata takes the message
+ * as a DisplayMessage command (it has no /Message). Returns how many screens
+ * it reached; 0 on an older AIOMetadata.
+ */
+async function messageAiomScreens(prisma, accountId, person, { text, stop = false, decrypt } = {}) {
+  const access = await screensAccess(prisma, accountId, person, decrypt)
+  if (!access) return 0
+  const { jfRequest, signInDeviceId } = require('../providers/jellyfinAuth')
+  const deviceId = signInDeviceId(access.base, 'slicksync-screen-time')
+  const call = (path, opts = {}) => jfRequest(access.base, path, { token: access.token, deviceId, ...opts })
+  const sessions = await call(`/Sessions?${new URLSearchParams({ ControllableByUserId: access.userId, ActiveWithinSeconds: '600' })}`)
+  const playing = (Array.isArray(sessions) ? sessions : [])
+    .filter((s) => s?.Id && s.NowPlayingItem && s.SupportsRemoteControl && access.users.includes(plainId(s.UserId)))
+  let reached = 0
+  for (const s of playing) {
+    const id = encodeURIComponent(s.Id)
+    try {
+      if (stop) await call(`/Sessions/${id}/Playing/Stop`, { method: 'POST' })
+      await call(`/Sessions/${id}/Command`, { method: 'POST', body: { Name: 'DisplayMessage', Arguments: { Header: 'SlickSync', Text: text, TimeoutMs: '15000' } } })
+      reached++
+    } catch (e) {
+      console.warn(`[ScreenTime] could not reach an AIOMetadata screen of ${person.id}:`, e?.message)
+    }
+  }
+  return reached
+}
+
+module.exports = { pauseAccess, setAiomPaused, pausedAddress, messageAiomScreens, canStopAiom }

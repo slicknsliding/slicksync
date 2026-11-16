@@ -355,6 +355,48 @@ test('Jellyfin with "stop what\'s playing": a warning ten minutes before, then s
   assert.deepEqual(screens[1], ['Streaming is paused until midnight.', true])
 })
 
+test('AIOMetadata 4.0 with "stop what\'s playing": a warning ten minutes before, then stopped, the same as Jellyfin', async () => {
+  st.forgetWarningsForTests()
+  const limits = { mia: { minutes: 90, days: [], onReach: 'pause', stopPlaying: true } }
+  const activity = [row('mia', 82, MON_NOON_LA)]
+  const w = world({ limits, activity })
+  const mia = { id: 'mia', username: 'Mia', providerType: 'jellyfin', jellyfinServerKind: 'aiometadata' }
+  w.prisma.user.findMany = async () => [mia]
+  w.prisma.user.findFirst = async () => mia
+  const screens = []
+  const deps = {
+    setAiomPaused: async () => ({ address: 'x', users: [], main: null }),
+    messageAiomScreens: async (_p, _a, person, opts) => { screens.push([person.id, opts.text, !!opts.stop]); return 1 },
+    messageScreens: async () => { throw new Error('the Jellyfin way is not used for AIOMetadata') },
+  }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 60000), emit: quiet, deps })
+  assert.deepEqual(screens, [['mia', '8 minutes of watching left today.', false]], 'warned once')
+  activity.push(row('mia', 10, MON_NOON_LA))
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 120000), emit: quiet, deps })
+  assert.deepEqual(screens[1], ['mia', 'Streaming is paused until midnight.', true])
+})
+
+test('AIOStreams has no "stop what\'s playing": nothing is put on a screen', async () => {
+  st.forgetWarningsForTests()
+  const limits = { mia: { minutes: 90, days: [], onReach: 'pause', stopPlaying: true } }
+  const activity = [row('mia', 82, MON_NOON_LA)]
+  const w = world({ limits, activity })
+  const mia = { id: 'mia', username: 'Mia', providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' }
+  w.prisma.user.findMany = async () => [mia]
+  w.prisma.user.findFirst = async () => mia
+  const screens = []
+  const deps = {
+    setAioPaused: async () => ({ users: [] }),
+    messageAiomScreens: async () => { screens.push('aiom') },
+    messageScreens: async () => { screens.push('jellyfin') },
+  }
+  await st.checkScreenTime(w.prisma, { now: MON_NOON_LA, emit: quiet, deps })
+  activity.push(row('mia', 10, MON_NOON_LA))
+  await st.checkScreenTime(w.prisma, { now: new Date(MON_NOON_LA.getTime() + 120000), emit: quiet, deps })
+  assert.deepEqual(screens, [])
+})
+
 test('switching the limit off forgets a "Resume now", so switching it on again applies at once', async () => {
   const w = world({ limits: { mia: { bedtime: { from: '21:00', to: '07:00', days: [] } } }, activity: [] })
   const deps = { syncPerson: async () => {} }

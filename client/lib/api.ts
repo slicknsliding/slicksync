@@ -4052,7 +4052,7 @@ export interface ScreenTimeLimit {
   /** When a pause ends, "HH:MM" on the account's clock; midnight when absent. */
   resumeAt?: string;
   bedtime?: ScreenTimeBedtime;
-  /** Real Jellyfin: also stop what's playing, after a warning on screen. */
+  /** Real Jellyfin or AIOMetadata 4.0+: also stop what's playing, after a warning on screen. */
   stopPlaying?: boolean;
 }
 
@@ -4064,7 +4064,7 @@ export interface ScreenTimeView {
   paused: { until: string; untilLabel: string; reason: 'limit' | 'bedtime' } | null;
   /** Whether a pause can work for this person, and why not. */
   canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'needs-config-password' | 'not-supported' | 'shares-addons' | 'needs-address'; reason?: string };
-  /** Whether what's playing can be stopped too (a real Jellyfin server). */
+  /** Whether what's playing can be stopped too (a real Jellyfin server, or AIOMetadata 4.0+). */
   canStopPlaying?: boolean;
   /** Stremio and Nuvio: whether a pause takes hold without reopening the app (false: devices can't reach SlickSync's gate). */
   instant?: boolean | null;

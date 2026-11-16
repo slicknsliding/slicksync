@@ -524,7 +524,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
 
         {after}
 
-      {/* A real Jellyfin server can stop what's on, not just what's next. */}
+      {/* A real Jellyfin server, or AIOMetadata 4.0+, can stop what's on, not just what's next. */}
         {state?.canStopPlaying && pausesSomething && !locked && (
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2 min-w-0">
