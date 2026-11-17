@@ -1660,6 +1660,8 @@ export function MediaDetailModal({
                           {aioBtn}
                         </TVFocusable>
                       )}
+                      {/* Play on a device, when a Jellyfin app is open on one. */}
+                      <OpenWithButton imdbId={details.imdb_id!} type={aioType} isTV />
                       {aioNoteShown && <AppOpenNote onClose={hideAioNote} isTV />}
                     </div>
                   );

@@ -21,6 +21,35 @@ const DEVICE_KINDS = [
   { kind: 'aiometadata', label: 'AIOMETADATA' },
 ] as const;
 
+type Device = OpenTargets['devices'][number];
+
+/** "Play on a device": one heading per kind of server the devices play
+ *  through. Also the whole of the TV title popup's Play on a device list. */
+export function PlayOnDeviceList({ devices, onPlayOn }: { devices: Device[]; onPlayOn: (device: Device) => void }) {
+  return (
+    <>
+      {DEVICE_KINDS.map(({ kind, label }) => {
+        const list = devices.filter((d) => (d.kind === 'aiometadata' ? 'aiometadata' : 'jellyfin') === kind);
+        if (!list.length) return null;
+        return (
+          <Fragment key={kind}>
+            <div className="px-2 pt-2.5 pb-1 text-[12px] tracking-wide text-muted">PLAY ON A DEVICE · {label}</div>
+            {list.map((d) => (
+              <button key={`${d.address}|${d.sessionId}`} type="button" className={row} onClick={() => onPlayOn(d)}>
+                <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-white shrink-0" style={{ background: 'var(--color-success)' }}><PlayIcon className="w-3.5 h-3.5" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] text-default truncate">{d.device}</span>
+                  <span className="block text-[13px] text-muted truncate">{[d.client, d.person].filter(Boolean).join(' · ')}</span>
+                </span>
+              </button>
+            ))}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSaved, onPlayOn, hrefFor }: {
   targets: OpenTargets;
   /** The apps that can open this title (availableApps). */
@@ -114,25 +143,7 @@ export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSav
           {currentId === 'shortcut' && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
         </button>
       )}
-      {/* One heading per kind of server the devices play through. */}
-      {DEVICE_KINDS.map(({ kind, label }) => {
-        const list = targets.devices.filter((d) => (d.kind === 'aiometadata' ? 'aiometadata' : 'jellyfin') === kind);
-        if (!list.length) return null;
-        return (
-          <Fragment key={kind}>
-            <div className="px-2 pt-2.5 pb-1 text-[12px] tracking-wide text-muted">PLAY ON A DEVICE · {label}</div>
-            {list.map((d) => (
-              <button key={`${d.address}|${d.sessionId}`} type="button" className={row} onClick={() => onPlayOn(d)}>
-                <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-white shrink-0" style={{ background: 'var(--color-success)' }}><PlayIcon className="w-3.5 h-3.5" /></span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[15px] text-default truncate">{d.device}</span>
-                  <span className="block text-[13px] text-muted truncate">{[d.client, d.person].filter(Boolean).join(' · ')}</span>
-                </span>
-              </button>
-            ))}
-          </Fragment>
-        );
-      })}
+      <PlayOnDeviceList devices={targets.devices} onPlayOn={onPlayOn} />
       {apps.some((a) => a.id === 'swiftfin' || a.id === 'streamyfin') && (
         <div className="px-2 pt-2 mt-1.5 border-t border-default text-[13px] text-muted">The app needs to be signed in to that server already.</div>
       )}

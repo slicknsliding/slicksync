@@ -1305,6 +1305,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'In Continue Watching, Resume on a Jellyfin or AIOStreams card opens that app on the person’s own server. Before anything is picked on this device, Resume asks which app; the pick opens the title straight away and is kept. To change it, right-click the card (press and hold on a phone, the ... on a TV) and choose Choose app….',
       'With more than one server or person here, it asks which one to open it on.',
       'On a real Jellyfin server, and on AIOMetadata 4.0 or newer, Play on a device lists screens that have a Jellyfin app open right now (the official apps too) and starts the title there. The heading says which: · JELLYFIN or · AIOMETADATA. On AIOMetadata each person sees their own devices, profiles included.',
+      'In TV mode the title popup has Play on a device after the Open in buttons, while a Jellyfin app is open on a device. Press OK for the list, OK on a device to start the title there, and Back to close it.',
       'For an app that can\'t be opened from a link (Odin, for example), choose Any app (through a Shortcut): make a Shortcut once in the Shortcuts app with the action Open App, give it a name, and type that name in. The button then opens the app - you find the title there.',
     ],
     tips: [
