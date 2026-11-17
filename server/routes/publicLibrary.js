@@ -3108,6 +3108,15 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         nowPlaying.length = 0;
         nowPlaying.push(...keep);
       }
+      if (user.providerType === 'nuvio') {
+        // Each card names the Nuvio profile that last played its title (the
+        // page-wide profileLabel below is only the one used last).
+        const { nuvioProfileFor } = require('../utils/profileLabels');
+        for (const np of nowPlaying) {
+          const playing = nuvioProfileFor(libraryCache, np.item?.id);
+          if (playing) np.profileLabel = playing;
+        }
+      }
       try {
         // Runtime, the episode's name, and an estimate when the app hasn't said (shown only).
         const { addEstimate, prepareEstimates } = require('../utils/nowPlayingEstimate');

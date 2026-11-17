@@ -4,6 +4,7 @@
 
 const { StremioAPIClient } = require('stremio-api-client')
 const { getCachedLibrary, setCachedLibrary } = require('./libraryCache')
+const { libraryItemFor, nuvioProfileFor, latestProfileLabels } = require('./profileLabels')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
 const { enrichPostersFromCinemeta } = require('./libraryHelpers')
 const { getAccountDateString, getAccountDayKey, resolveAccountTimezone } = require('./dateUtils')
@@ -401,11 +402,15 @@ function deepActivityTake(step) {
 const NUVIO_RECENT_MS = 5 * 60 * 1000
 const NOW_PLAYING_DONE_RATIO = 0.92
 
+/** This person's library from the last read, read once per build. */
+function cachedLibraryOf(accountIdValue, user, libraries) {
+  if (!libraries.has(user.id)) libraries.set(user.id, getCachedLibrary(accountIdValue || 'default', user) || [])
+  return libraries.get(user.id)
+}
+
 /** Nuvio's own save time for this session's title, from the library read, in ms (null when unknown). */
 function nuvioCheckpointAt(accountIdValue, user, session, libraries) {
-  if (!libraries.has(user.id)) libraries.set(user.id, getCachedLibrary(accountIdValue || 'default', user) || [])
-  const base = (id) => /^tt\d+/.exec(String(id || ''))?.[0] || String(id || '')
-  const item = libraries.get(user.id).find((i) => base(i?._id || i?.id) === base(session.itemId))
+  const item = libraryItemFor(cachedLibraryOf(accountIdValue, user, libraries), session.itemId)
   const at = Date.parse(item?.state?.lastWatched || '')
   return Number.isFinite(at) ? at : null
 }
@@ -672,22 +677,18 @@ async function buildNowPlaying(prisma, accountIdValue, activeUsers) {
   nowPlaying.length = 0
   nowPlaying.push(...keep)
 
-  // Which Nuvio (or AIOStreams) profile each person watches under - the one
-  // their own watch history last recorded, as the history cards show it.
+  // Which profile is playing: for a Nuvio person, the profile Nuvio's library
+  // says last played this title (several profiles can count as one person,
+  // so the person's newest history label is only the one used last). Anyone
+  // else, or a title the library doesn't have yet, gets the profile their
+  // watch history last recorded.
   try {
-    const ids = [...new Set(nowPlaying.map((np) => np.user?.id).filter(Boolean))]
-    if (ids.length) {
-      const labels = await prisma.watchActivity.findMany({
-        where: { accountId: accountIdValue || 'default', userId: { in: ids }, profileLabel: { not: null } },
-        orderBy: { createdAt: 'desc' },
-        distinct: ['userId'],
-        select: { userId: true, profileLabel: true },
-      })
-      const byUser = new Map(labels.map((l) => [l.userId, l.profileLabel]))
-      for (const np of nowPlaying) {
-        const label = byUser.get(np.user?.id)
-        if (label) np.profileLabel = label
-      }
+    const latest = await latestProfileLabels(prisma, accountIdValue || 'default', nowPlaying.map((np) => np.user?.id))
+    for (const np of nowPlaying) {
+      const user = userMap.get(np.user?.id)
+      const playing = user?.providerType === 'nuvio' ? nuvioProfileFor(cachedLibraryOf(accountIdValue, user, libraries), np.item?.id) : null
+      const label = playing || latest.get(np.user?.id)
+      if (label) np.profileLabel = label
     }
   } catch (error) {
     console.warn('[MetricsBuilder] Failed to read profile names:', error.message)

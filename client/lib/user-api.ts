@@ -587,6 +587,8 @@ export interface NowPlayingItem {
   };
   startTime: string;
   videoId?: string;
+  // The Nuvio profile that last played this title, when the server knows it.
+  profileLabel?: string | null;
   // For the freshness line (lib/playbackFreshness.ts): where the row comes
   // from, when it was last reconfirmed / saved (ms), and a pause the player
   // itself reported.

@@ -38,7 +38,7 @@ const agoText = (ms: number) => {
 
 // What the banner reads from a row: a person's own Now Playing item and the
 // admin pages' rows (who is watching what) both fit.
-export type NowPlayingBannerRow = Pick<NowPlayingItem, 'item' | 'lastPosition' | 'totalDuration' | 'positionAt' | 'positionEstimated' | 'durationEstimated' | 'stremioAppUrl' | 'nuvioAppUrl' | 'source' | 'elapsedFrozen' | 'reportedAtTimestamp' | 'paused' | 'playingUntilTimestamp'> & {
+export type NowPlayingBannerRow = Pick<NowPlayingItem, 'item' | 'lastPosition' | 'totalDuration' | 'positionAt' | 'positionEstimated' | 'durationEstimated' | 'stremioAppUrl' | 'nuvioAppUrl' | 'source' | 'elapsedFrozen' | 'reportedAtTimestamp' | 'paused' | 'playingUntilTimestamp' | 'profileLabel'> & {
   /** The room or device it is on, when the app reports one ("Living room"). */
   device?: { name: string | null; client: string | null } | null;
 };
@@ -102,7 +102,9 @@ export function NowPlayingBanner({ row, provider, profileLabel, through, who, co
       {estimateNote && <p className="text-[11.5px]" style={{ color: onPicture ? '#9ca3af' : 'var(--color-text-muted)' }}>{estimateNote}</p>}
     </div>
   ) : null;
-  const where = [app, profileLabel, row.device?.name || row.device?.client].filter(Boolean).join(' · ');
+  // The profile playing this title (the row's own), else the one passed in
+  // (a person's Home passes the profile they used last).
+  const where = [app, row.profileLabel || profileLabel, row.device?.name || row.device?.client].filter(Boolean).join(' · ');
   // Who and where: on a line under the picture (the default) or on it.
   const under = useNowPlayingWho().where === 'under';
   const [detailsOpen, setDetailsOpen] = useState(false);
