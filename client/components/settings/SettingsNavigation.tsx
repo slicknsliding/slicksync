@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDownIcon, ChevronRightIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { TVFocusable } from '@/components/tv/TVFocusable';
+import { doesFocusableExist, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 import type { SettingsIndexEntry } from '@/lib/settingsIndex';
 
@@ -333,6 +334,10 @@ function SectionDropdown({ tabs, active, onSelect }: {
   );
 }
 
+/** TV: the settings themselves, one remote area (TVControlZone), and each tab's stop. */
+export const SETTINGS_TV_CONTENT = 'settings-content';
+export const settingsTabTVKey = (key: string) => `settings-tab-${key}`;
+
 export function SettingsNavigation({ tabs, active, onSelect, rail, isTV, getEntries, onPick }: {
   tabs: readonly SettingsTabDef[];
   active: string;
@@ -358,7 +363,9 @@ export function SettingsNavigation({ tabs, active, onSelect, rail, isTV, getEntr
 
       {rail ? (
         <nav
-          className="hidden md:block w-56 shrink-0 sticky top-4"
+          // TV: stops below the top bar (about 120px there), which would
+          // otherwise cover the first tabs - and the remote's ring on them.
+          className={`hidden md:block w-56 shrink-0 sticky ${isTV ? 'top-[136px]' : 'top-4'}`}
           // Safety net for the pointer that leaves the rail fast enough to
           // skip a row's own leave event (or leaves the window entirely).
           onPointerLeave={() => setHovered(null)}
@@ -395,7 +402,21 @@ export function SettingsNavigation({ tabs, active, onSelect, rail, isTV, getEntr
                     </button>
                   );
                   return isTV
-                    ? <TVFocusable key={t.key} onEnterPress={() => onSelect(t.key)}>{btn}</TVFocusable>
+                    ? (
+                      <TVFocusable
+                        key={t.key}
+                        focusKey={settingsTabTVKey(t.key)}
+                        onEnterPress={() => onSelect(t.key)}
+                        // Right goes into the settings, whatever sits nearer.
+                        onArrowPress={(dir) => {
+                          if (dir !== 'right' || !doesFocusableExist(SETTINGS_TV_CONTENT)) return true;
+                          setFocus(SETTINGS_TV_CONTENT);
+                          return false;
+                        }}
+                      >
+                        {btn}
+                      </TVFocusable>
+                    )
                     : <div key={t.key}>{btn}</div>;
                 })}
               </div>

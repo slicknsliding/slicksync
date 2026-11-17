@@ -1672,14 +1672,15 @@ html[data-motion="reduced"] .airing-date:active { transform: none; }
   html:not([data-tv]) .hover-reveal:focus-within { opacity: 1; }
 }
 
-/* TV: a window's buttons and fields are reached with the remote's own focus
-   (components/tv/useTVModal), so they show the same thick ring a remote stop
-   does - whatever the control's own outline says. */
+/* TV: a window's buttons and fields, and the controls of a remote area like
+   the Settings tabs, are reached with the remote's own focus
+   (components/tv/useTVModal, TVControlZone), so they show the same thick ring
+   a remote stop does - whatever the control's own outline says. */
 /* TV: the page jumps straight to the remote's focus. Smooth scrolling made
    every press an animation that the next press interrupted, leaving the
    focused control off screen in the meantime. */
 html[data-tv] { scroll-behavior: auto; }
-html[data-tv] [data-tv-modal] :is(a, button, input, select, textarea, [tabindex]):focus {
+html[data-tv] :is([data-tv-modal], [data-tv-zone]) :is(a, button, input, select, textarea, [tabindex]):focus {
   outline: 4px solid var(--color-primary) !important;
   outline-offset: 2px;
 }
