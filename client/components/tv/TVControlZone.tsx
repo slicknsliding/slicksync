@@ -208,7 +208,7 @@ function Zone({ focusKey, backKey, memoryKey, children }: ZoneProps) {
           target.click();
           return;
         }
-        // A dropdown or colour picker opens its own list.
+        // A dropdown or color picker opens its own list.
         if (target instanceof HTMLSelectElement || (target instanceof HTMLInputElement && target.type === 'color')) {
           const field = target as HTMLElement & { showPicker?: () => void };
           try {
