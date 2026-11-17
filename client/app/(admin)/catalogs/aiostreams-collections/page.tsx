@@ -723,7 +723,7 @@ function AccountCollections({ account, profile, accounts, onProfileChanged, v2 =
                     </Button>
                   </TV>
                   {transferOpen && (
-                    <div className="absolute top-full mt-2 z-20 w-60 rounded-xl border border-default bg-surface shadow-xl p-1.5" style={{ left: transferLeft }}>
+                    <div data-mh-root="" className="absolute top-full mt-2 z-20 w-60 rounded-xl border border-default bg-surface shadow-xl p-1.5" style={{ left: transferLeft }}>
                       <TV onEnter={() => { setTransferOpen(false); setCopyOpen(true); }} off={collections.length === 0 || targets.length === 0}>
                       <button type="button" disabled={collections.length === 0 || targets.length === 0} onClick={() => { setTransferOpen(false); setCopyOpen(true); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left text-default hover:bg-surface-hover disabled:opacity-40 disabled:pointer-events-none">

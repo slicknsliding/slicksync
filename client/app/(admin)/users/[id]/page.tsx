@@ -2841,7 +2841,7 @@ export default function UserDetailPage() {
               style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             />
           </div>
-          <div className="max-h-80 overflow-y-auto space-y-1">
+          <div data-mh-root="" className="max-h-80 overflow-y-auto space-y-1">
             {mergePickerUsers === null ? (
               <p className="text-sm text-muted py-4 text-center">Loading users...</p>
             ) : (() => {

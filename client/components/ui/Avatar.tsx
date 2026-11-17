@@ -157,6 +157,7 @@ export function AvatarColorSwatches({ value, onChange }: { value: number; onChan
             aria-label={c.name}
             title={c.name}
             aria-pressed={picked}
+            data-mh-chip=""
             className={`w-8 h-8 rounded-full transition-transform ${picked ? 'swatch-picked' : ''}`}
             style={{
               background: c.gradient,

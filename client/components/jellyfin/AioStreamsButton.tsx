@@ -98,6 +98,7 @@ export function AioStreamsButton({ userId, name }: { userId: string; name: strin
           <div
             ref={panel}
             role="dialog"
+            data-mh-root=""
             aria-label={`AIOStreams for ${name}`}
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
             style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
@@ -112,6 +113,7 @@ export function AioStreamsButton({ userId, name }: { userId: string; name: strin
                   key={v.id}
                   type="button"
                   role="tab"
+                  data-mh-chip=""
                   aria-selected={view === v.id}
                   data-tv-initial={view === v.id ? '' : undefined}
                   onClick={() => pick(v.id)}

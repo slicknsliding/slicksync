@@ -244,7 +244,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
   const timeChips = (presets: string[], value: string, set: (v: string) => void, label: string) => (
     <div className="flex flex-wrap items-center gap-1.5">
       {presets.map((t) => (
-        <button key={t} type="button" onClick={() => set(t)} aria-pressed={value === t} className={chip(value === t)}>{clock(t)}</button>
+        <button key={t} type="button" onClick={() => set(t)} data-mh-chip="" aria-pressed={value === t} className={chip(value === t)}>{clock(t)}</button>
       ))}
       <label className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs cursor-pointer ${presets.includes(value) ? 'border-default text-subtle' : 'border-primary bg-primary/15 text-default'}`}>
         <span className="sr-only">{label}</span>
@@ -335,6 +335,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
             <button
               type="button"
               aria-pressed={!pausing}
+              data-mh-chip=""
               onClick={() => change({ ...draft, onReach: undefined })}
               className={`flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-colors ${!pausing ? 'border-primary bg-primary/15' : 'border-default hover:bg-surface-hover'}`}
             >
@@ -367,6 +368,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
               <button
                 type="button"
                 aria-pressed={pausing}
+                data-mh-chip=""
                 onClick={() => change({ ...draft, onReach: 'pause' })}
                 className={`flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-colors ${pausing ? 'border-primary bg-primary/15' : 'border-default hover:bg-surface-hover'}`}
               >
@@ -386,7 +388,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
             <p className="text-xs font-medium text-muted mb-1.5">Back on at</p>
             <div className="flex flex-wrap items-center gap-1.5">
               {BACK_ON_PRESETS.map((t) => (
-                <button key={t} type="button" onClick={() => change({ ...draft, resumeAt: t })} aria-pressed={(draft.resumeAt || '00:00') === t} className={chip((draft.resumeAt || '00:00') === t)}>
+                <button key={t} type="button" onClick={() => change({ ...draft, resumeAt: t })} data-mh-chip="" aria-pressed={(draft.resumeAt || '00:00') === t} className={chip((draft.resumeAt || '00:00') === t)}>
                   {t === '00:00' ? 'Midnight' : backOnLabel(t).replace(':00', '')}
                 </button>
               ))}
@@ -409,7 +411,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
           <p className="text-xs font-medium text-muted mb-1.5">How long</p>
           <div className="flex flex-wrap gap-1.5">
             {MINUTE_PRESETS.map((m) => (
-              <button key={m} type="button" onClick={() => setMinutes(m)} aria-pressed={draft.minutes === m} className={chip(draft.minutes === m)}>
+              <button key={m} type="button" onClick={() => setMinutes(m)} data-mh-chip="" aria-pressed={draft.minutes === m} className={chip(draft.minutes === m)}>
                 {formatMinutes(m)}
               </button>
             ))}
@@ -438,6 +440,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
                   type="button"
                   onClick={() => toggleDay(d)}
                   aria-pressed={picked}
+                  data-mh-chip=""
                   aria-label={WEEKDAY_NAMES[d]}
                   title={WEEKDAY_NAMES[d]}
                   className={`w-9 h-9 rounded-full border text-xs font-medium transition-colors ${picked ? 'border-primary bg-primary/15 text-default' : 'border-default text-subtle hover:bg-surface-hover'}`}
@@ -449,7 +452,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
           </div>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {DAY_PRESETS.map((p) => (
-              <button key={p.label} type="button" onClick={() => change({ ...draft, days: p.days })} aria-pressed={draft.days.join() === p.days.join()} className={chip(draft.days.join() === p.days.join())}>
+              <button key={p.label} type="button" onClick={() => change({ ...draft, days: p.days })} data-mh-chip="" aria-pressed={draft.days.join() === p.days.join()} className={chip(draft.days.join() === p.days.join())}>
                 {p.label}
               </button>
             ))}
@@ -501,6 +504,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
                         type="button"
                         onClick={() => toggleNight(d)}
                         aria-pressed={picked}
+                        data-mh-chip=""
                         aria-label={`${WEEKDAY_NAMES[d]} night`}
                         title={`${WEEKDAY_NAMES[d]} night`}
                         className={`w-8 h-8 rounded-full border text-xs font-medium transition-colors ${picked ? 'border-primary bg-primary/15 text-default' : 'border-default text-subtle hover:bg-surface-hover'}`}
@@ -512,7 +516,7 @@ export function ScreenTimePanel({ userId, name, onPickGroup, onReconnect, onClos
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {NIGHT_PRESETS.map((p) => (
-                    <button key={p.label} type="button" onClick={() => setBedtime({ days: p.days })} aria-pressed={bedtime.days.join() === p.days.join()} className={chip(bedtime.days.join() === p.days.join())}>
+                    <button key={p.label} type="button" onClick={() => setBedtime({ days: p.days })} data-mh-chip="" aria-pressed={bedtime.days.join() === p.days.join()} className={chip(bedtime.days.join() === p.days.join())}>
                       {p.label}
                     </button>
                   ))}

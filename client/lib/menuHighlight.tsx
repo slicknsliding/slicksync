@@ -262,7 +262,7 @@ const DEFS = '<defs><linearGradient id="mh-orbit-grad" x1="0" y1="0" x2="1" y2="
 // of its own active row (the quick menu, moved by the arrow keys as well as
 // the pointer) marks itself data-mh-list and lights that row with lightActive.
 const ROOTS = '.popup-panel, [role="menu"], [role="listbox"], .arrange-menu, [data-mh-root]';
-const ITEMS = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [data-mh-item], button, a[href]';
+const ITEMS = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [data-mh-item], [data-mh-chip], button, a[href]';
 const ROLES = new Set(['menuitem', 'menuitemradio', 'menuitemcheckbox', 'option']);
 
 let lit: HTMLElement | null = null;
@@ -280,9 +280,12 @@ function optionAt(target: EventTarget | null): HTMLElement | null {
   if (item.matches(':disabled, [aria-disabled="true"]')) return null;
   // An option: a menu role, or a row the menu already marks as hoverable.
   const role = item.getAttribute('role');
-  if (!(role && ROLES.has(role)) && !item.classList.contains('hover:bg-surface-hover') && !item.hasAttribute('data-mh-item')) return null;
+  const chip = item.hasAttribute('data-mh-chip');
+  if (!(role && ROLES.has(role)) && !item.classList.contains('hover:bg-surface-hover') && !item.hasAttribute('data-mh-item') && !chip) return null;
   // A row across the menu, not a small button in a corner (a close ×).
-  if (item.getBoundingClientRect().width < root.clientWidth * 0.5) return null;
+  // Chips, tiles and swatches to pick from say so (data-mh-chip) and light at
+  // any size.
+  if (!chip && item.getBoundingClientRect().width < root.clientWidth * 0.5) return null;
   return item;
 }
 
@@ -290,7 +293,10 @@ function light(el: HTMLElement, by: NonNullable<typeof litBy>) {
   if (lit === el && el.getAttribute('data-mh') === current.style) { litBy = by; return; }
   unlight();
   el.setAttribute('data-mh', current.style);
-  const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 8;
+  // A pill's corners (rounded-full) are its height's half; a larger radius
+  // would make Orbit's and Aurora's outline corners oval.
+  const r0 = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 8;
+  const r = el.offsetHeight > 0 ? Math.min(r0, el.offsetHeight / 2) : r0;
   el.style.setProperty('--mh-rx', `${Math.max(0, r - 0.75)}px`);
   el.style.setProperty('--mh-r', `${r}px`);
   if (!MH_FILLS.includes(current.style)) {
@@ -319,6 +325,16 @@ function unlight() {
 export function lightActive(el: HTMLElement | null) {
   if (!el) { if (litBy === 'list') unlight(); return; }
   if (el.isConnected) light(el, 'list');
+}
+
+/**
+ * The option the TV remote is on, where the remote moves without moving real
+ * focus (Discover's Sort and genre pills): lit while it is there.
+ */
+export function lightRemote(el: HTMLElement | null, on: boolean) {
+  if (!el) return;
+  if (on) { if (el.isConnected) light(el, 'focus'); }
+  else if (lit === el) unlight();
 }
 
 /** After a change of style, light the same option again in the new one. */

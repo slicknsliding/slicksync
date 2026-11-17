@@ -90,6 +90,7 @@ function MoreMenuItem({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      data-mh-item=""
       className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-left transition-colors enabled:hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
       style={{ '--tint': tintVar } as React.CSSProperties}
     >
@@ -934,6 +935,7 @@ export default function ListDetailPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -8 }}
                 transition={{ duration: 0.15 }}
+                data-mh-root=""
                 className="absolute right-0 top-full mt-2.5 z-50 w-72 rounded-2xl overflow-hidden"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', boxShadow: '0 20px 40px -12px rgba(0,0,0,0.5)' }}
               >

@@ -313,6 +313,7 @@ function SectionDropdown({ tabs, active, onSelect }: {
                   key={t.key}
                   type="button"
                   role="menuitem"
+                  data-mh-chip=""
                   aria-current={on ? 'true' : undefined}
                   onClick={() => { onSelect(t.key); close(); }}
                   className="flex flex-col items-start gap-1 rounded-xl p-3 text-left min-w-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"

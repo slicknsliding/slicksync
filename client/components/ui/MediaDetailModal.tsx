@@ -1417,7 +1417,7 @@ export function MediaDetailModal({
                       extra={<OpenWithButton imdbId={imdb} type={aioKind} />}
                     />
                     {catalogOpen && (
-                      <div className="rounded-xl p-2 border border-default" style={{ background: 'var(--color-surface-hover)' }}>
+                      <div data-mh-root="" className="rounded-xl p-2 border border-default" style={{ background: 'var(--color-surface-hover)' }}>
                         <CatalogPickerMenu item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
                       </div>
                     )}
@@ -1614,7 +1614,7 @@ export function MediaDetailModal({
                     {aioPickerOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setAioPickerOpen(false)} />
-                        <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] z-50 rounded-xl bg-surface border border-default shadow-xl p-2">
+                        <div data-mh-root="" className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] z-50 rounded-xl bg-surface border border-default shadow-xl p-2">
                           <p className="text-sm font-semibold text-default px-1.5 pb-1">Open in AIOStreams on…</p>
                           {aioLinks.map((srv) => (
                             <a key={srv.address} href={srv.url} onClick={() => { setAioPickerOpen(false); watchAio(srv.url); }} className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover">

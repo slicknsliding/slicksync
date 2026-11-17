@@ -1497,8 +1497,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'menu-highlight',
     title: 'How the option you are on stands out: Menu highlight',
     category: 'Appearance',
-    keywords: ['menu highlight', 'highlight', 'hover', 'hover colour', 'hover color', 'selected option', 'menu option', 'right-click menu', 'pop-up menu', 'popup', 'aurora', 'warm to cool', 'orbit', 'glow', 'ring', 'side bar', 'outline', 'which option', 'cannot see', 'tv remote', 'focus'],
-    answer: 'Settings → Themes → Menu highlight. Pick how the option under your mouse, under your finger, or on your TV remote stands out in every menu that pops up: right-click or press-and-hold on a poster, Open in, user and addon menus, pickers, Add to list, your notifications and the quick menu (Ctrl+K). Aurora is the default: a glow of colors that runs round the option.',
+    keywords: ['menu highlight', 'highlight', 'hover', 'hover colour', 'hover color', 'selected option', 'menu option', 'right-click menu', 'pop-up menu', 'popup', 'aurora', 'warm to cool', 'orbit', 'glow', 'ring', 'side bar', 'outline', 'which option', 'cannot see', 'tv remote', 'focus', 'filters', 'chips', 'sort'],
+    answer: 'Settings → Themes → Menu highlight. Pick how the option under your mouse, under your finger, or on your TV remote stands out in every menu that pops up: right-click or press-and-hold on a poster, Open in, user and addon menus, pickers, Add to list, your notifications and the quick menu (Ctrl+K). It lights the chips and tiles you pick from in pop-ups too, like Discover’s Filters and Sort, Limits, Caught up to and Change picture. Aurora is the default: a glow of colors that runs round the option.',
     steps: [
       'Open Settings → Themes and find Menu highlight, under Theme.',
       'Pick a style and its tile lights up right there. Point at (or touch) Resume, Details or Remove in the tile and the light follows, like a real menu. Fills (Soft, Solid, Side bar, Outline) color the option; Edges and lights (Edge, Edge and glow, Ring and glow, Soft ring, Orbit, Aurora) light its edge.',
@@ -1510,6 +1510,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'On a phone the highlight shows while your finger is on an option. With a TV remote or keyboard it shows on the option you have moved to.',
       'In the quick menu it is on the result Enter would open, whether you got there with the mouse or the arrow keys.',
+      'Dropdowns your browser draws itself (a plain list of choices, like the time period on Metrics) aren’t lit; the browser decides how those look.',
       'Orbit and Aurora move only on the option you are on. With less motion asked for (your device, or Themes → Layout → Motion → Reduced) they show a still ring instead.',
       'It’s saved to your account, so it follows you to every device you sign in on.',
     ],

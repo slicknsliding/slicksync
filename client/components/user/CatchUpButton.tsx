@@ -273,6 +273,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
           <div
             ref={panel}
             role="dialog"
+            data-mh-root=""
             aria-label={`Mark ${name} caught up`}
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
             style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
@@ -388,7 +389,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                     ) : (
                       <div className="grid grid-cols-4 gap-2 max-h-[300px] overflow-y-auto -mx-1 px-1 pb-1">
                         {shows.map((s) => (
-                          <button key={s.id} type="button" onClick={() => pick(s)} className="text-left group" title={s.name || s.id}>
+                          <button key={s.id} type="button" onClick={() => pick(s)} data-mh-chip="" className="text-left group" title={s.name || s.id}>
                             <Poster item={s} className="aspect-[2/3] rounded-lg group-hover:border-primary transition-colors" />
                             <p className="mt-1 text-[11px] text-default leading-tight line-clamp-1">{s.name || s.id}</p>
                             {s.last && <p className="text-[10px] text-subtle">Last S{s.last.season}E{s.last.episode}</p>}
@@ -436,6 +437,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                               type="button"
                               onClick={() => setSeason(s)}
                               aria-pressed={season === s}
+                              data-mh-chip=""
                               aria-label={`Season ${s}${seasonDone(s) ? ', all watched' : ''}`}
                               className={`relative min-w-[34px] h-7 px-2 rounded-full border text-xs tabular-nums transition-colors ${season === s ? 'border-primary bg-primary/15 text-default font-medium' : 'border-default text-subtle hover:text-default hover:bg-surface-hover'}`}
                             >
@@ -454,6 +456,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                           <button
                             key={e.episode}
                             type="button"
+                            data-mh-chip=""
                             disabled={!aired}
                             onClick={() => setTarget({ season: e.season, episode: e.episode })}
                             title={`E${e.episode}${e.title ? ` · ${e.title}` : ''}${e.kind === 'filler' ? ' - filler' : e.kind === 'recap' ? ' - recap' : ''}${!aired ? ' - not out yet' : e.watched ? ' - watched' : ''}`}
@@ -493,6 +496,7 @@ export function CatchUpButton({ userId, name, hasServer, size = 'md' }: {
                         type="button"
                         disabled={busy}
                         onClick={unmarkTarget}
+                        data-mh-off=""
                         className="w-full px-3 py-2 rounded-xl text-xs font-medium border border-default text-default hover:bg-surface-hover disabled:opacity-40 transition-colors"
                       >
                         Mark S{targetEpisode.season}E{targetEpisode.episode} not watched

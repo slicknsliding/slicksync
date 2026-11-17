@@ -73,7 +73,7 @@ function ModePicker({ mode, onPick }: { mode: KeepInStepMode; onPick: (m: KeepIn
         <ChevronDownIcon className="w-3 h-3 opacity-60" />
       </button>
       {open && (
-        <div className={`absolute z-30 right-0 w-56 rounded-xl border border-default p-1.5 shadow-2xl ${up ? 'bottom-full mb-2' : 'top-full mt-2'}`} style={{ background: 'var(--color-surface)' }}>
+        <div data-mh-root="" className={`absolute z-30 right-0 w-56 rounded-xl border border-default p-1.5 shadow-2xl ${up ? 'bottom-full mb-2' : 'top-full mt-2'}`} style={{ background: 'var(--color-surface)' }}>
           {(['both', 'receive', 'off'] as KeepInStepMode[]).map((m) => (
             <button
               key={m}

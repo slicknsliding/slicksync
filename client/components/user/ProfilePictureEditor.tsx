@@ -155,6 +155,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
             key={t.id}
             type="button"
             role="tab"
+            data-mh-chip=""
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 min-w-0 px-2 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${tab === t.id ? 'bg-surface-hover text-default' : 'text-muted hover:text-default'}`}
@@ -264,6 +265,7 @@ function NuvioCovers({ onPick }: { onPick: (url: string) => void }) {
               key={cover.id}
               type="button"
               onClick={() => onPick(cover.image_url)}
+              data-mh-chip=""
               title={cover.title || 'Use this cover'}
               className="aspect-square rounded-lg overflow-hidden border border-default hover:ring-2 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
             >

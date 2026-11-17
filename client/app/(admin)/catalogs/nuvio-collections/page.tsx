@@ -388,6 +388,7 @@ function CollectionActionsMenu({
       <button
         type="button"
         disabled={opts?.disabled}
+        data-mh-item={opts?.danger ? "" : undefined}
         onClick={() => { onClick(); setOpen(false); }}
         className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none ${opts?.danger ? 'text-error hover:bg-error/10' : 'text-default hover:bg-surface-hover'}`}
       >
@@ -410,7 +411,7 @@ function CollectionActionsMenu({
         </button>
       </TV>
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-default bg-surface shadow-xl z-20 p-1.5">
+        <div data-mh-root="" className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-default bg-surface shadow-xl z-20 p-1.5">
           {item(isPinned ? 'Unpin from top' : 'Pin to top of home screen', isPinned ? <MapPinIconSolid className="w-4 h-4 text-primary" /> : <MapPinIcon className="w-4 h-4" />, onTogglePin)}
           {item('Copy to another profile', <DocumentDuplicateIcon className="w-4 h-4" />, onCopy, { disabled: !canCopy })}
           {item('Move up', <ArrowUpIcon className="w-4 h-4" />, onMoveUp, { disabled: !canMoveUp })}
@@ -1565,31 +1566,31 @@ export default function NuvioCollectionsPage() {
                         </Button>
                       </TV>
                       {transferMenuOpen && (
-                        <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
+                        <div data-mh-root="" className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
                           <p className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a file</p>
                           <TV onEnter={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
-                            <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
+                            <button type="button" data-mh-item="" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
                               Import from JSON…
                             </button>
                           </TV>
                           <TV onEnter={() => { setTransferMenuOpen(false); exportCollectionsJson(); }} off={collections.length === 0}>
-                            <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
+                            <button type="button" data-mh-item="" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
                               Export as JSON
                             </button>
                           </TV>
                           <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a share code</p>
                           <TV onEnter={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
-                            <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
+                            <button type="button" data-mh-item="" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
                               Paste a code…
                             </button>
                           </TV>
                           <TV onEnter={() => { setTransferMenuOpen(false); openShareCode(); }} off={collections.length === 0}>
-                            <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
+                            <button type="button" data-mh-item="" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
                               Create a code…
                             </button>
                           </TV>
                           <TV onEnter={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
-                            <button type="button" className="w-full text-left px-3 py-2 mt-1 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(147,197,253)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
+                            <button type="button" data-mh-item="" className="w-full text-left px-3 py-2 mt-1 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(147,197,253)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
                               Where do I use these?
                             </button>
                           </TV>
@@ -1632,9 +1633,9 @@ export default function NuvioCollectionsPage() {
                       </button>
                       </TV>
                       {homeRowsMenuOpen && (
-                        <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
+                        <div data-mh-root="" className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
                           <TV onEnter={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
-                            <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
+                            <button type="button" data-mh-item="" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
                               Edit this profile&apos;s rows…
                             </button>
                           </TV>
@@ -1645,6 +1646,7 @@ export default function NuvioCollectionsPage() {
                                 <TV key={p.profile_index} onEnter={() => copyHomeRows(p.profile_index)} off={homeRowsBusy}>
                                 <button
                                   type="button"
+                                  data-mh-item=""
                                   disabled={homeRowsBusy}
                                   onClick={() => copyHomeRows(p.profile_index)}
                                   className={`w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 ${homeRowsArmed === p.profile_index ? 'armed-on' : 'armed-off'}`}

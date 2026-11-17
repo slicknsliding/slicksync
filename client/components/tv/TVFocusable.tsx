@@ -7,6 +7,8 @@ import { initSpatialNav } from './spatialInit';
 interface TVFocusableProps {
   onEnterPress?: () => void;
   onFocus?: () => void;
+  /** The remote moved off it. */
+  onBlur?: () => void;
   className?: string;
   style?: CSSProperties;
   focusKey?: string;
@@ -29,7 +31,7 @@ interface TVFocusableProps {
 // picks up the active theme's own accent color instead of a hardcoded one.
 // Enter/OK on the remote fires onEnterPress, same handler the onClick
 // would've called on PC/mobile - no separate TV-only logic to keep in sync.
-export function TVFocusable({ onEnterPress, onFocus, onArrowPress, className = '', style, focusKey, inline = false, ringInside = false, children }: TVFocusableProps) {
+export function TVFocusable({ onEnterPress, onFocus, onBlur, onArrowPress, className = '', style, focusKey, inline = false, ringInside = false, children }: TVFocusableProps) {
   // Norigin moves the focus KEY, not the viewport - nothing scrolls on its
   // own. A poster a few rows down gains focus exactly like one on-screen,
   // just invisibly, which reads as "the remote stopped working" (confirmed:
@@ -50,6 +52,7 @@ export function TVFocusable({ onEnterPress, onFocus, onArrowPress, className = '
       ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
       onFocus?.();
     },
+    onBlur: onBlur ? () => onBlur() : undefined,
     focusKey,
     onArrowPress: onArrowPress ? (direction) => onArrowPress(direction) : undefined,
   });

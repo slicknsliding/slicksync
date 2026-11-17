@@ -67,6 +67,7 @@ export function AioHealthBody({ userId, active }: { userId: string; active: bool
                       type="button"
                       onClick={() => setRange(r)}
                       aria-pressed={range === r}
+                      data-mh-chip=""
                       className={`px-2 py-0.5 rounded-md border text-[11px] ${range === r ? 'border-primary bg-primary/10 text-default' : 'border-default text-subtle hover:bg-surface-hover'}`}
                     >
                       {r === '24h' ? 'Last day' : 'Last week'}
