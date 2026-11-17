@@ -194,6 +194,9 @@ function warmAt(t: number) {
   return labToHex(a.map((v, k) => v + (b[k] - v) * f));
 }
 
+/** Aurora's Warm to cool colours as one swatch, tail to head. */
+export const MH_WARM_GRADIENT = `linear-gradient(135deg, ${WARM.map(([t, c]) => `${c} ${Math.round(t * 100)}%`).join(', ')})`;
+
 /** One set of comet pieces: its colour variables (warm and own-colour) and its rects. */
 function comet(pieces: number, prefix: 'a' | 'b') {
   const SHARE = 48; // how much of the outline the comet covers, in pathLength units

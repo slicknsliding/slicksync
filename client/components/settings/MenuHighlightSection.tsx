@@ -1,13 +1,13 @@
 'use client';
 
-// Settings → Themes → Menu highlight: the ten styles as tiles, the light
-// panel for Orbit and Aurora, colour, strength, a live preview and Reset.
-// The choice itself lives in lib/menuHighlight.tsx.
+// Settings → Themes → Menu highlight: the ten styles as tiles (the picked one
+// is a live example), the light panel for Orbit and Aurora, colour, strength
+// and Reset. The choice itself lives in lib/menuHighlight.tsx.
 
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowPathIcon, CheckIcon, InformationCircleIcon, PlayIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import {
-  useMenuHighlight, menuHighlightFxMarkup, MH_FILLS, MH_EDGES, MH_DEFAULT,
+  useMenuHighlight, menuHighlightFxMarkup, MH_FILLS, MH_EDGES, MH_DEFAULT, MH_WARM_GRADIENT,
   type MenuHighlight, type MhStyle,
 } from '@/lib/menuHighlight';
 
@@ -61,10 +61,12 @@ function Group({ children }: { children: ReactNode }) {
   return <div className="text-[11px] font-semibold tracking-[.06em] uppercase text-muted mb-2">{children}</div>;
 }
 
-/** A row lit in a style, drawn by React (the previews); live menus are lit by lib/menuHighlight. */
-function Lit({ style, r, className, children }: { style: MhStyle; r: number; className: string; children: ReactNode }) {
+/** A row lit in a style, drawn by React (the tiles); live menus are lit by lib/menuHighlight. */
+function Lit({ style, r, className, children, ...row }: {
+  style: MhStyle; r: number; className: string; children: ReactNode; 'data-row': number; onPointerEnter: () => void;
+}) {
   return (
-    <div data-mh={style} className={className} style={{ '--mh-rx': `${r - 0.75}px`, '--mh-r': `${r}px`, borderRadius: r } as CSSProperties}>
+    <div {...row} data-mh={style} className={className} style={{ '--mh-rx': `${r - 0.75}px`, '--mh-r': `${r}px`, borderRadius: r } as CSSProperties}>
       {children}
       {!MH_FILLS.includes(style) && <span className="mh-fx" aria-hidden="true" dangerouslySetInnerHTML={{ __html: menuHighlightFxMarkup() }} />}
     </div>
@@ -103,26 +105,47 @@ function Pills<T extends string>({ label, value, options, onChange, disabled }: 
   );
 }
 
-function Tile({ id, on, onPick }: { id: MhStyle; on: boolean; onPick: () => void }) {
+function Tile({ id, on, again, onPick }: { id: MhStyle; on: boolean; again: string; onPick: () => void }) {
   const [name, blurb] = STYLES[id];
   const moves = id === 'orbit' || id === 'aurora';
+  // The picked tile is the example: the option under the pointer or finger is
+  // lit, as in a real menu. Each tap and each change lights it afresh, so
+  // Orbit and Aurora start again. The other tiles keep Details lit.
+  const [at, setAt] = useState(1);
+  const [taps, setTaps] = useState(0);
+  const lit = on ? at : 1;
   return (
     <button
       type="button"
       role="radio"
       aria-checked={on}
-      onClick={onPick}
+      onPointerDown={(e) => {
+        const row = (e.target as Element).closest('[data-row]');
+        setAt(row ? Number(row.getAttribute('data-row')) : 1);
+      }}
+      onClick={(e) => {
+        if (e.detail === 0) setAt(1); // TV remote or keyboard
+        setTaps((n) => n + 1);
+        onPick();
+      }}
       className="relative flex flex-col gap-2.5 p-3 rounded-[14px] text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       style={{ background: on ? 'var(--color-primary-muted)' : 'var(--color-bg-subtle)', border: on ? '2px solid var(--color-primary)' : `1px solid ${BORDER}` }}
     >
-      <div aria-hidden="true" className="flex flex-col gap-[3px] p-[5px] rounded-[10px] w-full" style={{ background: 'var(--color-surface)', border: `1px solid ${BORDER}` }}>
+      <div
+        aria-hidden="true"
+        className="flex flex-col gap-[3px] p-[5px] rounded-[10px] w-full"
+        style={{ background: 'var(--color-surface)', border: `1px solid ${BORDER}` }}
+        // A finger lifting keeps its option lit; a mouse leaving goes back to Details.
+        onPointerLeave={(e) => { if (on && e.pointerType !== 'touch') setAt(1); }}
+      >
         {(['Resume', 'Details', 'Remove'] as const).map((t, i) => {
           const Icon = i === 0 ? PlayIcon : i === 1 ? InformationCircleIcon : XMarkIcon;
           const body = <><Icon className="w-[13px] h-[13px] shrink-0" style={{ color: MUTED }} />{t}</>;
           const cls = 'flex items-center gap-[7px] px-2 py-1.5 text-xs text-default';
-          return i === 1
-            ? <Lit key={t} style={id} r={7} className={cls}>{body}</Lit>
-            : <div key={t} className={cls} style={{ borderRadius: 7 }}>{body}</div>;
+          const enter = () => { if (on) setAt(i); };
+          return i === lit
+            ? <Lit key={on ? `${t}:${taps}:${again}` : t} style={id} r={7} className={cls} data-row={i} onPointerEnter={enter}>{body}</Lit>
+            : <div key={t} className={cls} style={{ borderRadius: 7 }} data-row={i} onPointerEnter={enter}>{body}</div>;
         })}
       </div>
       <div className="flex flex-col gap-0.5">
@@ -180,11 +203,13 @@ export function MenuHighlightSettings() {
   const [mh, set] = useMenuHighlight();
   const isFill = MH_FILLS.includes(mh.style);
   const picker = useRef<HTMLInputElement>(null);
-  // The preview's lit option: Details, or the one the pointer or finger is on.
-  const [hover, setHover] = useState<number | null>(null);
-  const previewOn = hover ?? 1;
-  // A new choice lights the preview again from the start.
-  const replay = JSON.stringify(mh);
+  // A new choice lights the picked tile again from the start.
+  const again = JSON.stringify(mh);
+  // Aurora has its own colours, Warm to cool, as the first swatch; any other
+  // swatch turns the whole comet that colour.
+  const aurora = mh.style === 'aurora';
+  const ownColour = !aurora || mh.aucolours === 'own';
+  const colour = (c: Partial<MenuHighlight>) => set(aurora ? { ...c, aucolours: 'own' } : c);
 
   const waitOptions: [MenuHighlight['wait'], string][] = [['now', 'Right away'], ['half', 'After a moment'], ['long', 'After a longer wait']];
   const speedOptions: [MenuHighlight['speed'], string][] = [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']];
@@ -197,11 +222,11 @@ export function MenuHighlightSettings() {
         <Label text="Style" />
         <Group>Fills</Group>
         <div role="radiogroup" aria-label="Fills" className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          {MH_FILLS.map((id) => <Tile key={id} id={id} on={mh.style === id} onPick={() => set({ style: id })} />)}
+          {MH_FILLS.map((id) => <Tile key={id} id={id} on={mh.style === id} again={again} onPick={() => set({ style: id })} />)}
         </div>
         <Group>Edges and lights</Group>
         <div role="radiogroup" aria-label="Edges and lights" className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {MH_EDGES.map((id) => <Tile key={id} id={id} on={mh.style === id} onPick={() => set({ style: id })} />)}
+          {MH_EDGES.map((id) => <Tile key={id} id={id} on={mh.style === id} again={again} onPick={() => set({ style: id })} />)}
         </div>
 
         {(mh.style === 'orbit' || mh.style === 'aurora') && (
@@ -220,7 +245,6 @@ export function MenuHighlightSettings() {
                 <div><Label text="Goes round" /><Pills label="Goes round" value={mh.aulaps} options={[['always', 'The whole time'], ['four', '4 times, then a still glow']]} onChange={(v) => set({ aulaps: v })} /></div>
                 <div><Label text="Direction" /><Pills label="Direction" value={mh.audir} options={[['acw', acw], ['cw', cw]]} onChange={(v) => set({ audir: v })} /></div>
                 <div><Label text="Speed" hint="one lap takes 3.2, 2 or 1.25 seconds" /><Pills label="Speed" value={mh.auspeed} options={speedOptions} onChange={(v) => set({ auspeed: v })} /></div>
-                <div><Label text="Colours" /><Pills label="Colours" value={mh.aucolours} options={[['warm', 'Warm to cool'], ['own', 'Your colour']]} onChange={(v) => set({ aucolours: v })} /></div>
               </>
             )}
           </div>
@@ -228,21 +252,31 @@ export function MenuHighlightSettings() {
       </div>
 
       <div>
-        <Label text="Colour" />
+        <Label text="Colour" hint={aurora ? 'Warm to cool, or one colour for the whole comet' : undefined} />
         <div role="radiogroup" aria-label="Colour" className="flex flex-wrap gap-x-1.5 gap-y-2.5">
+          {aurora && (
+            <Swatch
+              name="Warm to cool"
+              c={MH_WARM_GRADIENT}
+              dark={false}
+              on={!ownColour}
+              onPick={() => set({ aucolours: 'warm' })}
+              extra={<><br /><span className="text-[10px] font-normal text-muted">default</span></>}
+            />
+          )}
           {COLOURS.map((x) => (
             <Swatch
               key={x.id}
               name={x.name}
               c={x.c}
               dark={x.dark}
-              on={mh.colour === x.id}
-              onPick={() => set({ colour: x.id })}
-              extra={x.id === 'accent' ? <><br /><span className="text-[10px] font-normal text-muted">default</span></> : undefined}
+              on={ownColour && mh.colour === x.id}
+              onPick={() => colour({ colour: x.id })}
+              extra={x.id === 'accent' && !aurora ? <><br /><span className="text-[10px] font-normal text-muted">default</span></> : undefined}
             />
           ))}
           {mh.colour === 'custom' ? (
-            <Swatch name="Custom" c={mh.custom} dark={isLight(mh.custom)} on onPick={() => picker.current?.click()} />
+            <Swatch name="Custom" c={mh.custom} dark={isLight(mh.custom)} on={ownColour} onPick={() => picker.current?.click()} />
           ) : (
             <button
               type="button"
@@ -264,7 +298,7 @@ export function MenuHighlightSettings() {
             ref={picker}
             type="color"
             value={mh.custom}
-            onChange={(e) => set({ colour: 'custom', custom: e.target.value })}
+            onChange={(e) => colour({ colour: 'custom', custom: e.target.value })}
             className="sr-only"
             tabIndex={-1}
             aria-hidden="true"
@@ -283,33 +317,7 @@ export function MenuHighlightSettings() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,300px)_minmax(0,1fr)] gap-[22px] items-center">
-        <div>
-          <Label text="Preview" />
-          <div
-            aria-hidden="true"
-            className="w-full max-w-[300px] py-1.5 rounded-xl"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-popup-border, var(--color-surface-border))', boxShadow: '0 20px 50px -14px rgba(0,0,0,.85), 0 3px 10px rgba(0,0,0,.45)' }}
-            onPointerLeave={() => setHover(null)}
-          >
-            <div className="flex items-center justify-between px-4 pt-2 pb-1.5">
-              <span className="text-sm font-semibold text-default">Resident Evil</span>
-              <XMarkIcon className="w-[18px] h-[18px]" style={{ color: MUTED }} />
-            </div>
-            {([[PlayIcon, 'Choose an app to resume in'], [InformationCircleIcon, 'Details'], [XMarkIcon, 'Remove from Continue Watching']] as const).map(([Icon, t], i) => {
-              const cls = 'mx-2 my-[3px] flex items-center gap-3 px-3 py-2.5 text-[15px] text-default cursor-default';
-              const body = <><Icon className="w-[18px] h-[18px] shrink-0" style={{ color: MUTED }} />{t}</>;
-              return (
-                <div key={t} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
-                  {i === previewOn
-                    ? <Lit key={replay} style={mh.style} r={10} className={cls}>{body}</Lit>
-                    : <div className={cls} style={{ borderRadius: 10 }}>{body}</div>}
-                </div>
-              );
-            })}
-            <div className="px-5 pt-1.5 pb-2 text-xs text-muted">Their watch history is kept.</div>
-          </div>
-        </div>
+      <div>
         <div className="flex flex-col gap-3 items-start">
           <p className="m-0 text-[13px] leading-[1.5] text-muted max-w-[420px]">Used in every menu that pops up: right-click or press-and-hold on a poster, Open in, user and addon menus, pickers. On a phone it shows while your finger is on an option; with a TV remote or keyboard, on the option you are on.</p>
           <p className="m-0 text-[13px] leading-[1.5] text-muted max-w-[420px]">Orbit and Aurora move only on the option you are on, and stand still if your device asks for less motion. Saved to your account, so it follows you to every device.</p>
