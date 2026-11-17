@@ -267,7 +267,7 @@ const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 // wears (experience) against how the instance is wired up (setup).
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone', group: 'experience' },
-  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds', group: 'experience' },
+  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colors, layout, custom builds', group: 'experience' },
   { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed', group: 'setup' },
   { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest', group: 'experience' },
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover', group: 'setup' },

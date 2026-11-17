@@ -3607,7 +3607,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         data.avatarUrl = checked.url;
       }
       if (colorIndex !== undefined) {
-        if (!validAvatarColor(colorIndex)) return res.status(400).json({ error: 'Pick one of the colours offered', message: 'Pick one of the colours offered' });
+        if (!validAvatarColor(colorIndex)) return res.status(400).json({ error: 'Pick one of the colors offered', message: 'Pick one of the colors offered' });
         data.colorIndex = colorIndex;
       }
       const saved = await prisma.user.update({ where: { id: user.id }, data, select: { avatarUrl: true, colorIndex: true } });

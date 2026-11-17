@@ -172,8 +172,11 @@ export function NowPlayingBanner({ row, provider, profileLabel, through, who, co
   return (
     <div className={`min-w-0 ${flush ? '' : 'mb-8'}`}>
       {banner}
-      {progressUnder && progressBlock(false)}
-      {under && whoLine}
+      {/* Part of the banner: a tap here opens the details too. */}
+      <div onClick={canOpen ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) setDetailsOpen(true); } : undefined} className={canOpen ? 'cursor-pointer' : undefined}>
+        {progressUnder && progressBlock(false)}
+        {under && whoLine}
+      </div>
       {details}
     </div>
   );

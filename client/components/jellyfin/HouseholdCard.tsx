@@ -243,7 +243,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
 
   const mergeBack = (p: HouseholdProfile) => setPending({
     title: `Merge ${p.person?.username || p.name} back into ${personName}?`,
-    description: `Everything ${p.person?.username || p.name} recorded becomes part of ${personName}'s history again, labelled as the ${p.name} profile, and they leave the Users list. You can separate it again at any time.`,
+    description: `Everything ${p.person?.username || p.name} recorded becomes part of ${personName}'s history again, labeled as the ${p.name} profile, and they leave the Users list. You can separate it again at any time.`,
     confirmText: 'Merge back',
     variant: 'warning',
     run: () => perform(() => api.mergeHouseholdProfileBack(p.id), `${p.name} merged back into ${personName}`, true),

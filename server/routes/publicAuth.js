@@ -2112,7 +2112,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         const shape = configData && typeof configData === 'object'
           ? `an object with keys: ${Object.keys(configData).slice(0, 12).join(', ')}`
           : typeof configData;
-        return responseUtils.badRequest(res, `Not a recognised config export - expected "users" and/or "addons" arrays (Syncio-family format). This file is ${shape}.`);
+        return responseUtils.badRequest(res, `Not a recognized config export - expected "users" and/or "addons" arrays (Syncio-family format). This file is ${shape}.`);
       }
 
       const accountId = req.appAccountId || 'default';

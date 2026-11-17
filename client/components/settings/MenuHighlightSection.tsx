@@ -12,8 +12,8 @@ import {
 } from '@/lib/menuHighlight';
 
 const STYLES: Record<MhStyle, [string, string]> = {
-  soft: ['Soft', 'A tint of the colour behind it'],
-  solid: ['Solid', 'Filled with the colour'],
+  soft: ['Soft', 'A tint of the color behind it'],
+  solid: ['Solid', 'Filled with the color'],
   bar: ['Side bar', 'A tint and a bar on the left'],
   outline: ['Outline', 'A ring around it'],
   edge: ['Edge', 'A bright edge that fades out'],
@@ -21,7 +21,7 @@ const STYLES: Record<MhStyle, [string, string]> = {
   ringGlow: ['Ring and glow', 'A full ring, with a glow inside'],
   softRing: ['Soft ring', 'A full ring that softens'],
   orbit: ['Orbit', 'A light goes round a thin ring'],
-  aurora: ['Aurora', 'A glow of colours runs round the edge'],
+  aurora: ['Aurora', 'A glow of colors runs round the edge'],
 };
 
 export function menuHighlightName(style: MhStyle) {
@@ -61,12 +61,13 @@ function Group({ children }: { children: ReactNode }) {
   return <div className="text-[11px] font-semibold tracking-[.06em] uppercase text-muted mb-2">{children}</div>;
 }
 
-/** A row lit in a style, drawn by React (the tiles); live menus are lit by lib/menuHighlight. */
-function Lit({ style, r, className, children, ...row }: {
-  style: MhStyle; r: number; className: string; children: ReactNode; 'data-row': number; onPointerEnter: () => void;
+/** A row lit in a style, drawn by React (the tiles); live menus are lit by lib/menuHighlight.
+ *  `still` shows Orbit and Aurora as they look once they stop; `now` starts them without the wait. */
+function Lit({ style, r, className, children, still, now, ...row }: {
+  style: MhStyle; r: number; className: string; children: ReactNode; 'data-row': number; onPointerEnter: () => void; still?: boolean; now?: boolean;
 }) {
   return (
-    <div {...row} data-mh={style} className={className} style={{ '--mh-rx': `${r - 0.75}px`, '--mh-r': `${r}px`, borderRadius: r } as CSSProperties}>
+    <div {...row} data-mh={style} data-mh-still={still || undefined} className={className} style={{ '--mh-rx': `${r - 0.75}px`, '--mh-r': `${r}px`, borderRadius: r, ...(now ? { '--mh-wait': '0s', '--mh-auwait': '0s' } : {}) } as CSSProperties}>
       {children}
       {!MH_FILLS.includes(style) && <span className="mh-fx" aria-hidden="true" dangerouslySetInnerHTML={{ __html: menuHighlightFxMarkup() }} />}
     </div>
@@ -114,11 +115,22 @@ function Tile({ id, on, again, onPick }: { id: MhStyle; on: boolean; again: stri
   const [at, setAt] = useState(1);
   const [taps, setTaps] = useState(0);
   const lit = on ? at : 1;
+  // Orbit and Aurora when not picked: they rest as they look once they stop,
+  // and play from the start, straight away, while pointed at or focused.
+  const [shows, setShows] = useState(0);
+  const preview = moves && !on;
+  const showing = preview && shows > 0;
+  const show = () => { if (preview) setShows((n) => n + 1); };
+  const rest = () => setShows(0);
   return (
     <button
       type="button"
       role="radio"
       aria-checked={on}
+      onPointerEnter={(e) => { if (e.pointerType !== 'touch') show(); }}
+      onPointerLeave={(e) => { if (e.pointerType !== 'touch') rest(); }}
+      onFocus={show}
+      onBlur={rest}
       onPointerDown={(e) => {
         const row = (e.target as Element).closest('[data-row]');
         setAt(row ? Number(row.getAttribute('data-row')) : 1);
@@ -144,7 +156,7 @@ function Tile({ id, on, again, onPick }: { id: MhStyle; on: boolean; again: stri
           const cls = 'flex items-center gap-[7px] px-2 py-1.5 text-xs text-default';
           const enter = () => { if (on) setAt(i); };
           return i === lit
-            ? <Lit key={on ? `${t}:${taps}:${again}` : t} style={id} r={7} className={cls} data-row={i} onPointerEnter={enter}>{body}</Lit>
+            ? <Lit key={on ? `${t}:${taps}:${again}` : preview ? `${t}:show${shows}:${again}` : t} style={id} r={7} className={cls} data-row={i} onPointerEnter={enter} still={preview && !showing} now={showing}>{body}</Lit>
             : <div key={t} className={cls} style={{ borderRadius: 7 }} data-row={i} onPointerEnter={enter}>{body}</div>;
         })}
       </div>
@@ -214,7 +226,7 @@ export function MenuHighlightSettings() {
   const waitOptions: [MenuHighlight['wait'], string][] = [['now', 'Right away'], ['half', 'After a moment'], ['long', 'After a longer wait']];
   const speedOptions: [MenuHighlight['speed'], string][] = [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']];
   const cw: ReactNode = <><CircleArrow />Clockwise</>;
-  const acw: ReactNode = <><CircleArrow acw />Anticlockwise</>;
+  const acw: ReactNode = <><CircleArrow acw />Counterclockwise</>;
 
   return (
     <div className="flex flex-col gap-[26px]">
@@ -252,8 +264,8 @@ export function MenuHighlightSettings() {
       </div>
 
       <div>
-        <Label text="Colour" hint={aurora ? 'Warm to cool, or one colour for the whole comet' : undefined} />
-        <div role="radiogroup" aria-label="Colour" className="flex flex-wrap gap-x-1.5 gap-y-2.5">
+        <Label text="Color" hint={aurora ? 'Warm to cool, or one color for the whole comet' : undefined} />
+        <div role="radiogroup" aria-label="Color" className="flex flex-wrap gap-x-1.5 gap-y-2.5">
           {aurora && (
             <Swatch
               name="Warm to cool"
@@ -282,7 +294,7 @@ export function MenuHighlightSettings() {
               type="button"
               role="radio"
               aria-checked={false}
-              aria-label="Custom colour"
+              aria-label="Custom color"
               onClick={() => picker.current?.click()}
               className="flex flex-col items-center gap-1.5 w-20 cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
@@ -307,7 +319,7 @@ export function MenuHighlightSettings() {
       </div>
 
       <div>
-        <Label text="Strength" hint={isFill ? 'How much colour shows' : 'For the fills; edges and lights always use the full colour'} />
+        <Label text="Strength" hint={isFill ? 'How much color shows' : 'For the fills; edges and lights always use the full color'} />
         <Pills
           label="Strength"
           value={mh.strength}

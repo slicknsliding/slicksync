@@ -576,7 +576,7 @@ function MoreMenuRow({ v2 }: { v2: boolean }) {
 // The title row at the top of each page: one slim row, the big centred title, or
 // just the buttons. Phones open on Compact and wide screens on Full until a
 // choice is saved; it applies to every page in either layout.
-const PAGE_HEADER_LINE = 'The title and buttons at the top of each page. Compact is one slim row; Full is the big centred title; Minimal drops the title and keeps just the buttons.';
+const PAGE_HEADER_LINE = 'The title and buttons at the top of each page. Compact is one slim row; Full is the big centered title; Minimal drops the title and keeps just the buttons.';
 function PageHeaderRow({ v2 }: { v2: boolean }) {
   const { mode, setMode } = usePageHeader();
   if (v2) {
@@ -882,7 +882,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
         </ThemeBlock>
 
         {/* Theme Selection */}
-        <ThemeBlock v2={v2} arrange={arrange} id="colours" title="Colours" meta={(themeMeta as Record<string, { name: string }>)[themeId]?.name ?? activeCustomTheme?.name} delay={0.05} icon={<PaintBrushIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="Choose your preferred color scheme">
+        <ThemeBlock v2={v2} arrange={arrange} id="colours" title="Theme" meta={(themeMeta as Record<string, { name: string }>)[themeId]?.name ?? activeCustomTheme?.name} delay={0.05} icon={<PaintBrushIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="Choose your preferred color scheme">
             {v2 ? (
               <div className="flex flex-wrap gap-x-3.5 gap-y-4 items-start">
                 {themeIds.map((id) => (
@@ -1438,7 +1438,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
         </ThemeBlock>
         {v2 && arrange && (
           <div style={{ order: 99 }}>
-            <HiddenTray arrange={arrange} labelOf={(k) => ({ colours: 'Colours', layout: 'Layout', build: 'Build your own theme' } as Record<string, string>)[k] ?? k} />
+            <HiddenTray arrange={arrange} labelOf={(k) => ({ colours: 'Theme', layout: 'Layout', build: 'Build your own theme' } as Record<string, string>)[k] ?? k} />
           </div>
         )}
       </div>

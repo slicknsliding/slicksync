@@ -146,7 +146,7 @@ export function AnchoredConfirm({ open, ...rest }: {
 /** What deleting a library title also does, in the person's own app. */
 export function libraryDeleteLine(provider: string | null | undefined, count = 1): string | undefined {
   const it = count === 1 ? 'It comes' : 'They come';
-  if (provider === 'jellyfin') return `${it} off your favourites and Continue Watching on your Jellyfin server.`;
+  if (provider === 'jellyfin') return `${it} off your favorites and Continue Watching on your Jellyfin server.`;
   if (provider === 'stremio') return `${it} out of your library in Stremio too.`;
   return undefined;
 }

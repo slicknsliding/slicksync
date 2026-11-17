@@ -281,27 +281,38 @@ function CardMenu({ anchorRef, open, onClose, item, onRemove, onOpenDetails, res
   );
 }
 
-/** The card's own frame: tap for details, right-click or long press for the menu. */
-function Frame({ item, handlers, ignoreClick, wasDraggedRef, onActivate, className, style, children }: {
-  item: ContinueWatchingItem;
+type Press = {
   handlers: ReturnType<typeof useCardMenu>['handlers'];
   /** True for the click that follows a long press, or while the menu is open. */
   ignoreClick: () => boolean;
   wasDraggedRef: RefObject<boolean>;
   /** A tap on the card itself: its details, or its menu. */
   onActivate: () => void;
+};
+
+/** Tap for details, right-click or long press for the menu: the card and the lines under it alike. */
+function pressProps({ handlers, ignoreClick, wasDraggedRef, onActivate }: Press) {
+  return {
+    ...handlers,
+    onClick: (e: React.MouseEvent) => {
+      if (ignoreClick() || wasDraggedRef.current) return;
+      if ((e.target as HTMLElement).closest('a,button')) return;
+      onActivate();
+    },
+  };
+}
+
+/** The card's own frame: tap for details, right-click or long press for the menu. */
+function Frame({ item, press, className, style, children }: {
+  item: ContinueWatchingItem;
+  press: Press;
   className: string;
   style: React.CSSProperties;
   children: ReactNode;
 }) {
   return (
     <div
-      {...handlers}
-      onClick={(e) => {
-        if (ignoreClick() || wasDraggedRef.current) return;
-        if ((e.target as HTMLElement).closest('a,button')) return;
-        onActivate();
-      }}
+      {...pressProps(press)}
       draggable={false}
       onDragStart={(e) => e.preventDefault()}
       className={`cwb relative min-w-0 overflow-hidden select-none cursor-pointer tap-card ${className}`}
@@ -323,12 +334,13 @@ function useUnderParts() {
 
 /** The lines under the card, each where its own switch puts it: the bar, the
  *  time left with the episode, where they stopped, and who is watching. */
-function UnderParts({ item, parts, extra, self }: { item: ContinueWatchingItem; parts: ReturnType<typeof useUnderParts>; extra?: string; self?: boolean }) {
+function UnderParts({ item, parts, press, extra, self }: { item: ContinueWatchingItem; parts: ReturnType<typeof useUnderParts>; press: Press; extra?: string; self?: boolean }) {
   const ep = episodeShort(item);
   // "Up next" already says the next episode waits.
   const stopped = parts.time ? stoppedLine(item).replace(/^Next episode · w/, 'W') : stoppedLine(item);
   return (
-    <div className="cwb-under flex flex-col gap-1 px-1 mt-2.5 min-w-0">
+    // Part of the card: a tap here does what a tap on the card does.
+    <div {...pressProps(press)} className="cwb-under flex flex-col gap-1 px-1 mt-2.5 min-w-0 cursor-pointer">
       {/* No bar (Up next): the same room, so every card in the row stays one height. */}
       {parts.progress && (item.resume && item.progressPercent != null ? <ProgressBar item={item} onPicture={false} under /> : <div className="h-1.5" aria-hidden="true" />)}
       {parts.time && (
@@ -359,10 +371,11 @@ export const ContinueBannerCard = memo(function ContinueBannerCard({ item, wasDr
   const resume = useResumeWithApp(item, resumeApps);
   const onPicture = !plain;
   const ep = episodeLong(item);
+  const press: Press = { handlers, ignoreClick: () => justOpened() || open, wasDraggedRef, onActivate: () => (onOpenDetails ? onOpenDetails(item) : setOpen(true)) };
   return (
     <>
-      <Cell under={parts.any ? <UnderParts item={item} parts={parts} self={self} /> : null}>
-      <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onActivate={() => (onOpenDetails ? onOpenDetails(item) : setOpen(true))}
+      <Cell under={parts.any ? <UnderParts item={item} parts={parts} press={press} self={self} /> : null}>
+      <Frame item={item} press={press}
         className={`rounded-2xl flex flex-col ${parts.any ? 'flex-1' : 'h-full'} ${plain ? '' : 'min-h-[230px] sm:min-h-[250px]'}`}
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (
@@ -409,10 +422,11 @@ export const ContinueLeadBanner = memo(function ContinueLeadBanner({ item, wasDr
   const onPicture = !plain;
   const ep = episodeLong(item);
   const extra = 'Pick up where you left off';
+  const press: Press = { handlers, ignoreClick: () => justOpened() || open, wasDraggedRef, onActivate: () => (onOpenDetails ? onOpenDetails(item) : setOpen(true)) };
   return (
     <>
-      <Cell under={parts.any ? <UnderParts item={item} parts={parts} extra={extra} self={self} /> : null}>
-      <Frame item={item} handlers={handlers} ignoreClick={() => justOpened() || open} wasDraggedRef={wasDraggedRef} onActivate={() => (onOpenDetails ? onOpenDetails(item) : setOpen(true))}
+      <Cell under={parts.any ? <UnderParts item={item} parts={parts} press={press} extra={extra} self={self} /> : null}>
+      <Frame item={item} press={press}
         className={`rounded-[20px] flex flex-col min-h-[230px] sm:min-h-[250px] ${parts.any ? 'flex-1' : ''}`}
         style={{ background: plain ? 'var(--color-surface-elevated, var(--color-surface))' : 'var(--color-surface)' }}>
         {onPicture && art && (

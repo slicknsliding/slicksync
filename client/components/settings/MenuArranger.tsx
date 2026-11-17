@@ -133,7 +133,7 @@ export function MenuArranger({ topNavi }: { topNavi: boolean }) {
       <Segment label="Logo" value={menu.logo ?? 'large'} onChange={(v) => set({ logo: v === 'large' ? undefined : v })}
         options={[{ id: 'large', label: 'Large' }, { id: 'small', label: 'Small' }, { id: 'hidden', label: 'Hidden' }]} />
       <Segment label="Position" value={menu.align ?? 'center'} onChange={(v) => set({ align: v === 'center' ? undefined : v })}
-        options={[{ id: 'center', label: 'Centred' }, { id: 'left', label: 'Left' }]}
+        options={[{ id: 'center', label: 'Centered' }, { id: 'left', label: 'Left' }]}
         disabled={rows !== 1} note={rows !== 1 ? 'With one row' : 'Logo on the left, pages beside it'} />
       </>)}
       <p className="text-xs text-muted mt-3">{topNavi ? '' : 'Rows, logo and position are for Top Navi. '}On a phone the menu keeps its stacked shape; your order and More still apply. A TV always uses the standard menu.</p>

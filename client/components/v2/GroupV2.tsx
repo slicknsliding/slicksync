@@ -129,7 +129,7 @@ export function GroupV2(p: Props) {
 
   const more: V2MenuItem[] = [
     { label: active ? 'Switch off' : 'Switch on', icon: <PowerIcon className="w-4 h-4" />, onClick: p.onToggleActive },
-    { label: 'Change picture or colour', icon: <PhotoIcon className="w-4 h-4" />, onClick: p.onChangePicture },
+    { label: 'Change picture or color', icon: <PhotoIcon className="w-4 h-4" />, onClick: p.onChangePicture },
     { label: 'Clear all members', icon: <UserMinusIcon className="w-4 h-4" />, onClick: p.onClearMembers, disabled: nPeople === 0 },
     { label: 'Clear all addons', icon: <ArrowUturnLeftIcon className="w-4 h-4" />, onClick: p.onClearAddons, disabled: nAddons === 0 },
     { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, onClick: p.onDelete, danger: true },

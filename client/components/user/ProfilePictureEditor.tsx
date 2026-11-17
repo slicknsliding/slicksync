@@ -134,7 +134,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
   };
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'color', label: 'Colour' },
+    { id: 'color', label: 'Color' },
     { id: 'url', label: 'Image link' },
     { id: 'upload', label: 'Upload' },
     ...(isNuvio ? [{ id: 'nuvio' as Tab, label: 'Nuvio Covers' }] : []),
@@ -145,7 +145,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
       <div className="flex items-center gap-3.5">
         <Avatar name={name} email={email} src={preview} colorIndex={previewColor} size="xl" className="w-[72px] h-[72px] shrink-0" />
         <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
-          {tab === 'color' ? 'Initial on the colour you pick.' : 'An animated picture keeps moving everywhere it shows.'}
+          {tab === 'color' ? 'Initial on the color you pick.' : 'An animated picture keeps moving everywhere it shows.'}
         </p>
       </div>
 
@@ -166,7 +166,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
 
       {tab === 'color' && (
         <div>
-          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Pick a colour</p>
+          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Pick a color</p>
           <AvatarColorSwatches value={color} onChange={setColor} />
         </div>
       )}

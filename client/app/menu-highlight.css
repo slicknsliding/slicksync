@@ -94,6 +94,14 @@ html[data-mh-aulaps=four] .mh-au { animation: mh-off .6s ease-in calc(var(--mh-a
 html[data-mh-aulaps=four] .mh-au-rest { animation: mh-on .6s ease-out calc(var(--mh-auwait) + 4 * var(--mh-aulap)) forwards; }
 @keyframes mh-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
 
+/* Settings tiles not picked: Orbit and Aurora rest as they look once they stop
+   (Orbit's ring, Aurora's still ring) until pointed at. Before the less-motion
+   rules, which keep their own still look. */
+html [data-mh-still] .mh-orbit-light { animation: none; opacity: 0; }
+html [data-mh-still] > .mh-fx > .mh-aurora { animation: none; opacity: 1; }
+html [data-mh-still] .mh-au { display: none; }
+html [data-mh-still] .mh-au-rest { animation: none !important; opacity: 1; }
+
 /* Less motion: the device's setting unless the account chose Full, or the
    account's Reduced (Themes -> Layout -> Motion), as in globals.css. Orbit
    becomes a still lit ring and Aurora its still glowing ring. */
