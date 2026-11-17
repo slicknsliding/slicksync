@@ -1945,8 +1945,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
       const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14))
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      // Cleared rows a timed check still owns stay out (utils/bellState.js).
       const notifications = await prisma.notification.findMany({
-        where: { accountId, createdAt: { gte: since } },
+        where: { accountId, createdAt: { gte: since }, dismissedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 100,
       })
@@ -1975,22 +1976,58 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
-  // POST /users/notifications/dismiss - delete specific ids, or all when no
-  // ids are given (the bell's "Clear"). Deletion (not a hidden flag) matches
-  // the bell's existing Clear semantics and keeps the table from growing
-  // unbounded on a long-lived instance.
+  // POST /users/notifications/dismiss - specific ids, or all when no ids are
+  // given (the bell's "Clear"). One-off events are deleted; a row a timed
+  // check owns is hidden instead, so the check doesn't raise it again a
+  // minute later (utils/bellState.js). The read-row prune in dbMaintenance
+  // still removes hidden rows once they're old.
   router.post('/notifications/dismiss', async (req, res) => {
     try {
       const accountId = getAccountId(req)
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
-      const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
-      await prisma.notification.deleteMany({
-        where: { accountId, ...(ids ? { id: { in: ids } } : {}) },
-      })
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id) => typeof id === 'string') : null
+      await require('../utils/bellState').dismissStored(prisma, accountId, ids)
       res.json({ success: true })
     } catch (error) {
       console.error('Error dismissing notifications:', error)
       res.status(500).json({ error: 'Failed to dismiss notifications' })
+    }
+  })
+
+  // GET / POST /users/notifications/state - the bell's cleared, dismissed and
+  // read state, the same on every device (utils/bellState.js). POST takes
+  // { clearAll?: true, dismiss?: [ids], read?: [ids] } and answers with the
+  // whole state.
+  router.get('/notifications/state', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      res.json(await require('../utils/bellState').getBellState(prisma, accountId))
+    } catch (error) {
+      console.error('Error reading the bell state:', error)
+      res.status(500).json({ error: 'Failed to read the notifications state' })
+    }
+  })
+
+  router.post('/notifications/state', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const body = req.body || {}
+      const list = (v) => (Array.isArray(v) ? v.slice(0, 1000) : undefined)
+      const bell = require('../utils/bellState')
+      // Clear empties the stored rows too, in the same request.
+      if (body.clearAll === true) await bell.dismissStored(prisma, accountId)
+      const state = await bell.updateBellState(prisma, accountId, {
+        clearAll: body.clearAll === true,
+        dismiss: list(body.dismiss),
+        read: list(body.read),
+      })
+      if (body.clearAll === true) { try { require('../utils/liveEvents').emitLive(accountId, 'notification') } catch {} }
+      res.json(state)
+    } catch (error) {
+      console.error('Error saving the bell state:', error)
+      res.status(500).json({ error: 'Failed to save the notifications state' })
     }
   })
 

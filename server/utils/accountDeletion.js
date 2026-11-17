@@ -22,7 +22,7 @@ const PERSON_TABLES = [
 // Every table scoped to an account (an accountId column), children first;
 // User and AppAccount go last. Checked against the schemas the same way.
 const ACCOUNT_TABLES = [
-  'addonHealthAlert', 'addonSnapshot', 'aioConfigSnapshot', 'automationRun', 'automationRule', 'customList',
+  'addonHealthAlert', 'addonSnapshot', 'aioConfigSnapshot', 'automationRun', 'automationRule', 'bellState', 'customList',
   'dbSizeSample', 'dismissedContinueWatching', 'dismissedThemedCatalog', 'dismissedUpcomingEpisode', 'episodeAlert',
   'episodeWatchHistory', 'followedSubject', 'inviteRequest', 'jellyfinProfile', 'manualWatchOverride',
   'movieWatchHistory', 'mutedShow', 'notInterestedItem', 'notification', 'notificationDigestEntry',

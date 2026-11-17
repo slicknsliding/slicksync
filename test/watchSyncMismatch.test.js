@@ -155,3 +155,41 @@ test('a warning goes away once the show is recorded', async () => {
   await checkWatchSyncMismatch(db.prisma, 'acc', [])
   assert.equal(db.notifications.length, 0)
 })
+
+// A play shorter than history's own minimum never becomes history on any
+// sign-in (5% of the runtime, or 5 minutes with none - AIOStreams gives none),
+// so it is no sign of a missing sign-in. Real case Nov 2026: every alert on an
+// AIOStreams sign-in was a 2-5 minute play.
+const shortStream = (displayName, metadataItemId, startMinsAgo, mins) => ({
+  accountId: 'acc', displayName, metadataItemId, metadataName: null,
+  startTime: ago(startMinsAgo), lastSeenAt: ago(startMinsAgo - mins), requestCount: 4,
+})
+
+test('a play of a few minutes raises nothing', async () => {
+  const db = fakePrisma({ streams: [shortStream('Moana (2026)', 'tt27419466', 120, 3)] })
+  await checkWatchSyncMismatch(db.prisma, 'acc', [])
+  assert.equal(db.raised.length, 0)
+})
+
+test("a player's back-to-back connections are one viewing, and a long one still warns", async () => {
+  // Four 3-minute connections a minute apart: one 15-minute viewing.
+  const db = fakePrisma({ streams: [0, 4, 8, 12].map((m) => shortStream('Moana (2026)', 'tt27419466', 120 - m, 3)) })
+  await checkWatchSyncMismatch(db.prisma, 'acc', [])
+  assert.equal(db.raised.length, 1)
+})
+
+test('short plays hours apart are still short', async () => {
+  const db = fakePrisma({ streams: [shortStream('Moana (2026)', 'tt27419466', 600, 3), shortStream('Moana (2026)', 'tt27419466', 120, 4)] })
+  await checkWatchSyncMismatch(db.prisma, 'acc', [])
+  assert.equal(db.raised.length, 0)
+})
+
+test('a warning cleared from the bell is not raised again', async () => {
+  // Clear hides the row (dismissedAt) instead of deleting it - utils/bellState.js.
+  const db = fakePrisma({
+    streams: [stream('Carrie S01E05', 'tt11540908')],
+    notifications: [{ id: 'n0', accountId: 'acc', type: 'mismatch', dedupeKey: 'untracked-carrie', dismissedAt: ago(5) }],
+  })
+  await checkWatchSyncMismatch(db.prisma, 'acc', [])
+  assert.equal(db.raised.length, 0)
+})

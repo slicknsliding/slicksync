@@ -38,7 +38,9 @@ function fakePrisma() {
     rows,
     syncLog: {
       create: async ({ data }) => { const r = { id: `r${++n}`, repeats: 1, reordered: false, at: new Date(), lastAt: new Date(), groupName: null, added: null, removed: null, updated: null, total: null, error: null, ...data }; rows.push(r); return r },
-      findFirst: async ({ where }) => rows.filter((r) => match(r, where)).sort((a, b) => b.lastAt - a.lastAt)[0] || null,
+      // Lines written in the same millisecond tie on lastAt: the later one
+      // is the newest (without this the test failed about 1 run in 8).
+      findFirst: async ({ where }) => rows.filter((r) => match(r, where)).sort((a, b) => b.lastAt - a.lastAt || rows.indexOf(b) - rows.indexOf(a))[0] || null,
       update: async ({ where, data }) => {
         const r = rows.find((x) => x.id === where.id)
         if (data.repeats?.increment) r.repeats += data.repeats.increment

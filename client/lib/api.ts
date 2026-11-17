@@ -1826,6 +1826,20 @@ class ApiClient {
     });
   }
 
+  // The bell's cleared / dismissed / read state, kept per account so Clear on
+  // one device clears every device (server/utils/bellState.js).
+  async getBellState() {
+    return this.fetch<BellState>('/users/notifications/state');
+  }
+
+  // { clearAll: true } is Clear (stored rows included); dismiss/read add ids.
+  async updateBellState(change: { clearAll?: boolean; dismiss?: string[]; read?: string[] }) {
+    return this.fetch<BellState>('/users/notifications/state', {
+      method: 'POST',
+      body: JSON.stringify(change),
+    });
+  }
+
   // PWA web-push
   async getPushVapidKey() {
     return this.fetch<{ enabled: boolean; publicKey: string | null }>('/push/vapid-key');
@@ -5475,6 +5489,14 @@ export interface StoredNotification {
   read: boolean;
   readAt: string | null;
   createdAt: string;
+}
+
+// The bell's state on the server: the last Clear (server time), and the rows
+// dismissed or read one by one since.
+export interface BellState {
+  clearedBefore: string | null;
+  dismissed: string[];
+  read: string[];
 }
 
 export interface ContinueWatchingItem {

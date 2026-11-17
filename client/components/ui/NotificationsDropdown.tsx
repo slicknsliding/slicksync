@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
-import { api } from '@/lib/api';
+import { api, type BellState } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
 import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
@@ -78,6 +78,8 @@ const fetchedRecently = (key: string, ms = 30000) => Date.now() - (fetchedAt[key
 
 const DISMISSED_STORAGE_KEY = 'notifications-dismissed-ids';
 const READ_STORAGE_KEY = 'notifications-read-ids';
+// The account's last Clear (server time) this device has already applied.
+const SERVER_CLEAR_KEY = 'notifications-server-cleared';
 
 export function NotificationsDropdown({ activities = [], inviteHistory = [], taskHistory = [], floating = false }: NotificationsDropdownProps) {
   const router = useRouter();
@@ -148,11 +150,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       }
       return next;
     });
-    // Persisted bell notifications (id prefixed "stored-") are deleted
-    // server-side too, so they don't just reappear on the next poll.
+    // Persisted bell notifications (id prefixed "stored-") are dismissed
+    // server-side, so they don't just reappear on the next poll; the ones the
+    // bell builds itself go to the account's list, so every device drops them.
     if (id.startsWith('stored-')) {
       const realId = id.slice('stored-'.length);
       api.dismissNotifications([realId]).catch(() => {});
+    } else {
+      saveBellState({ dismiss: [id] });
     }
   };
 
@@ -176,6 +181,44 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     if (typeof window !== 'undefined') {
       localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(Array.from(next)));
     }
+  };
+
+  // The same bell on every device: Clear, dismissals and reads are saved to
+  // the account (server/utils/bellState.js) and read back with the bell. A
+  // Clear made anywhere since the last one this device saw replaces what is
+  // here; otherwise the two are joined. localStorage stays as the cache that
+  // shows the right thing before the first answer comes back.
+  const applyBellState = useCallback((s: BellState | null | undefined) => {
+    if (!s || typeof window === 'undefined') return;
+    const save = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* storage blocked */ } };
+    const at = s.clearedBefore ? new Date(s.clearedBefore) : null;
+    let seen = NaN;
+    try { seen = new Date(localStorage.getItem(SERVER_CLEAR_KEY) || '').getTime(); } catch { /* storage blocked */ }
+    if (at && !Number.isNaN(at.getTime()) && (Number.isNaN(seen) || at.getTime() > seen)) {
+      const iso = at.toISOString();
+      save(SERVER_CLEAR_KEY, iso);
+      save('notifications-last-checked', iso);
+      save('notifications-cleared-before', iso);
+      save(DISMISSED_STORAGE_KEY, JSON.stringify(s.dismissed));
+      save(READ_STORAGE_KEY, JSON.stringify(s.read));
+      setLastChecked(at);
+      setClearedBefore(at);
+      setDismissedIds(new Set(s.dismissed));
+      setReadIds(new Set(s.read));
+      return;
+    }
+    const join = (key: string) => (prev: Set<string>) => {
+      const add = (key === DISMISSED_STORAGE_KEY ? s.dismissed : s.read).filter((id) => !prev.has(id));
+      if (add.length === 0) return prev;
+      const next = new Set([...prev, ...add]);
+      save(key, JSON.stringify(Array.from(next)));
+      return next;
+    };
+    setDismissedIds(join(DISMISSED_STORAGE_KEY));
+    setReadIds(join(READ_STORAGE_KEY));
+  }, []);
+  const saveBellState = (change: { dismiss?: string[]; read?: string[] }) => {
+    api.updateBellState(change).catch(() => {});
   };
 
   // Where tapping a notification should land. Stored bell notifications
@@ -205,6 +248,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     const url = getNotificationUrl(notification);
     if (!url) return;
     persistReadIds(new Set(readIds).add(notification.id));
+    saveBellState({ read: [notification.id] });
     setIsOpen(false);
     router.push(url);
   };
@@ -230,6 +274,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       // tab has no reason to keep firing this every 30s, and the interval
       // itself catches back up on its own next tick once it's visible again.
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      api.getBellState().then(applyBellState).catch(() => {});
       try {
         fetchedAt.stored = Date.now();
         setStoredNotifications(await api.getNotifications());
@@ -237,6 +282,9 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         // Endpoint may not exist yet on an older backend - stay silent.
       }
     };
+    // Straight away, not after the delay below: a Clear made on another
+    // device should be in place before the badge shows a count.
+    if (!fetchedRecently('stored')) api.getBellState().then(applyBellState).catch(() => {});
     const initialDelay = fetchedRecently('stored') ? undefined : setTimeout(fetchStored, 200 + Math.random() * 600);
     const stopPoll = startAdaptivePoll(fetchStored, 30000, 180000);
     // SSE accelerant: a server-side notification refetches the bell right
@@ -244,7 +292,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     const onLive = () => { fetchStored(); };
     window.addEventListener('slicksync:live-notification', onLive);
     return () => { clearTimeout(initialDelay); stopPoll(); window.removeEventListener('slicksync:live-notification', onLive); };
-  }, []);
+  }, [applyBellState]);
 
   // Fetch pending + accepted invite requests
   useEffect(() => {
@@ -522,8 +570,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     notifications.forEach((n) => next.add(n.id));
     persistReadIds(next);
     // Persist read state server-side for the stored subset so it stays read
-    // across devices / reloads, not just in this browser's localStorage.
+    // across devices / reloads, not just in this browser's localStorage; the
+    // rest go to the account's read list.
     api.markNotificationsRead().catch(() => {});
+    const built = notifications.map((n) => n.id).filter((id) => !id.startsWith('stored-'));
+    if (built.length > 0) saveBellState({ read: built });
   };
 
   const handleClearAll = () => {
@@ -541,10 +592,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     persistDismissedIds(new Set());
     persistReadIds(new Set());
     // The lastChecked window hides the derived sources (episode/addon/etc.);
-    // stored bell notifications aren't windowed, so Clear deletes them
-    // server-side (and locally) to actually empty them.
+    // stored bell notifications aren't windowed, so Clear empties them
+    // server-side (and locally) too. The account keeps the time of the
+    // Clear, so every other device clears with it; the answer carries the
+    // server's own time, which replaces this device's clock.
     setStoredNotifications([]);
-    api.dismissNotifications().catch(() => {});
+    api.updateBellState({ clearAll: true }).then(applyBellState).catch(() => {});
     setIsOpen(false);
   };
 

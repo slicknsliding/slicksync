@@ -38,12 +38,37 @@
  *  - AIOStreams lists its own usenet streams beside proxied ones, and those
  *    are checked the same way. Usenet an app fetches itself (newznab) never
  *    reaches AIOStreams, so it is never seen here and never flagged.
+ *  - A title only ever played for a few minutes isn't flagged: no sign-in
+ *    would have recorded it either. History counts a play after 5% of the
+ *    runtime, or 5 minutes when the sign-in gives no runtime (AIOStreams
+ *    never does - metricsProcessor's isActuallyWatched), so anything whose
+ *    longest viewing is under 5 minutes is left alone. A player's
+ *    back-to-back connections are joined into one viewing first.
+ *  - Cleared from the bell, it stays cleared: the row is hidden, not deleted
+ *    (utils/bellState.js), and a hidden row still counts as standing below.
  */
 
 const { createNotification } = require('./notificationStore')
 
 const WINDOW_MS = 3 * 24 * 60 * 60 * 1000 // 3 days: how far back we look at proxy activity
 const STABILIZE_MS = 30 * 60 * 1000 // ignore titles still/just streaming - give them time to land natively
+const SHORTEST_COUNTED_MS = 5 * 60 * 1000 // a viewing shorter than this never becomes history anywhere
+const SAME_VIEWING_GAP_MS = 10 * 60 * 1000 // connections closer than this are one viewing
+
+// The longest viewing among [start, end] spans: spans that overlap or sit
+// within SAME_VIEWING_GAP_MS of each other are one viewing (a player opens
+// and reopens connections while it plays).
+function longestViewingMs(spans) {
+  const sorted = spans.filter(([s, e]) => e >= s && s > 0).sort((a, b) => a[0] - b[0])
+  let best = 0
+  let cur = null
+  for (const [s, e] of sorted) {
+    if (cur && s - cur[1] <= SAME_VIEWING_GAP_MS) cur[1] = Math.max(cur[1], e)
+    else cur = [s, e]
+    best = Math.max(best, cur[1] - cur[0])
+  }
+  return best
+}
 
 // Normalize a title for loose comparison: drop year and episode markers,
 // lowercase, collapse to alphanumeric words. Same spirit as
@@ -103,10 +128,11 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
       )
       let entry = byTitle.get(norm)
       if (!entry) {
-        entry = { display: null, matched: false, lastActivity: 0, ids: new Set(), ips: new Set() }
+        entry = { display: null, matched: false, lastActivity: 0, ids: new Set(), ips: new Set(), spans: [] }
         byTitle.set(norm, entry)
       }
       if (lastActivity > entry.lastActivity) entry.lastActivity = lastActivity
+      entry.spans.push([row.startTime ? row.startTime.getTime() : 0, lastActivity])
       // A matched title's own name beats a name parsed from a stream.
       if (!entry.display || (row.metadataName && !entry.matched)) {
         entry.display = shownNameOf(row)
@@ -150,6 +176,7 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
     const untracked = [] // { dedupeKey, display }
     for (const [norm, info] of byTitle.entries()) {
       if (now - info.lastActivity < STABILIZE_MS) continue // still settling
+      if (longestViewingMs(info.spans) < SHORTEST_COUNTED_MS) continue // too short to be recorded anywhere
       if (trackedTitles.has(norm)) continue // recorded by some connected account
       if ([...info.ids].some((id) => trackedIds.has(id))) continue // recorded under its id
       if (onlyUnknownDevices(info)) continue // a stranger's device, not a sign-in to add
@@ -172,7 +199,9 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
 
     // Raise one standing notification per untracked title. One already
     // standing is left alone: raising it again every pass would only make
-    // every open page refetch the bell each minute.
+    // every open page refetch the bell each minute. "Standing" includes one
+    // cleared from the bell (hidden, see utils/bellState.js) - otherwise a
+    // Clear would bring it straight back on the next pass.
     const standing = new Set(existing.map((n) => n.dedupeKey).filter(Boolean))
     for (const u of untracked) {
       if (standing.has(u.dedupeKey)) continue
