@@ -113,7 +113,7 @@ export function PaletteV2Panel({
   const pages = results.map((r, i) => ({ r, i })).filter((x) => !x.r.recent);
 
   return (
-    <div className="popup-panel overflow-hidden" style={{ borderRadius: 22 }}>
+    <div data-mh-off="" className="popup-panel overflow-hidden" style={{ borderRadius: 22 }}>
       <div className="px-3.5 pt-3.5 pb-1.5">
         <div className="flex items-center gap-2.5 px-3.5 py-3 rounded-xl" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
           <MagnifyingGlassIcon className="w-[18px] h-[18px] shrink-0" style={{ color: 'var(--color-text-muted)' }} />

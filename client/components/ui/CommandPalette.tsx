@@ -366,6 +366,7 @@ export function CommandPalette() {
                 />
               ) : (
               <div
+                data-mh-off=""
                 className="popup-panel rounded-2xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--color-surface-border)' }}>

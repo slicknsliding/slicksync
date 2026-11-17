@@ -124,7 +124,7 @@ export function NotificationsPanelV2({
   };
 
   return (
-    <div className="popup-panel max-h-[min(560px,80dvh)] flex flex-col overflow-hidden rounded-[22px] max-sm:rounded-b-none!">
+    <div data-mh-off="" className="popup-panel max-h-[min(560px,80dvh)] flex flex-col overflow-hidden rounded-[22px] max-sm:rounded-b-none!">
       <div className="flex items-center gap-3 px-4 py-3.5 shrink-0">
         <h3 className="text-base font-bold flex-1">Notifications</h3>
         {items.length > 0 && (

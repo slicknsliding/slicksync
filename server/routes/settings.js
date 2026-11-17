@@ -1541,6 +1541,52 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // How the option you are on stands out in pop-up menus (Settings → Themes →
+  // Menu highlight). Loose JSON like arrange: the client owns the shape and
+  // falls back to the default for anything it doesn't know. Its own key on
+  // AppAccount.sync so saving it never touches themePref, whose PUT replaces
+  // the whole object.
+  const MENU_HIGHLIGHT_MAX_BYTES = 4 * 1024
+  router.get('/menu-highlight', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      const menuHighlight = (syncCfg && typeof syncCfg === 'object' && syncCfg.menuHighlight && typeof syncCfg.menuHighlight === 'object') ? syncCfg.menuHighlight : null
+      return res.json({ menuHighlight })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to read your menu highlight' })
+    }
+  })
+
+  router.put('/menu-highlight', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const { menuHighlight } = req.body || {}
+      if (menuHighlight !== null && (typeof menuHighlight !== 'object' || Array.isArray(menuHighlight))) {
+        return res.status(400).json({ message: 'menuHighlight must be an object or null' })
+      }
+      if (menuHighlight && Buffer.byteLength(JSON.stringify(menuHighlight)) > MENU_HIGHLIGHT_MAX_BYTES) {
+        return res.status(413).json({ message: 'That menu highlight is too large to save' })
+      }
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      if (!syncCfg || typeof syncCfg !== 'object') syncCfg = {}
+      const nextCfg = { ...syncCfg, menuHighlight: menuHighlight || undefined }
+      try { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } }) }
+      catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } }) }
+      return res.json({ menuHighlight: menuHighlight || null })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to save your menu highlight' })
+    }
+  })
+
   // POST /account-sync/discover-nuvio - point at a self-hosted Nuvio backend
   // and let it configure itself from /.well-known/nuvio, rather than making
   // the operator copy an anon key out of `./nuvio credentials` by hand.

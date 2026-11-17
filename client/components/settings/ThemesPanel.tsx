@@ -3,6 +3,8 @@
 import { PersonalTouches, MotionRow } from '@/components/settings/PersonalTouches';
 import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
+import { MenuHighlightSettings, menuHighlightName } from '@/components/settings/MenuHighlightSection';
+import { useMenuHighlight } from '@/lib/menuHighlight';
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
@@ -27,6 +29,7 @@ import { V2SetRow, V2Seg, V2Switch } from '@/components/v2/SettingsV2';
 import { V2Button } from '@/components/v2/V2Bits';
 import {
   PaintBrushIcon,
+  CursorArrowRaysIcon,
   ExclamationTriangleIcon,
   SwatchIcon,
   CheckIcon,
@@ -488,7 +491,7 @@ const AccountButtonCard = memo(function AccountButtonCard({
   );
 });
 
-export const THEME_KEYS = ['colours', 'layout', 'build'];
+export const THEME_KEYS = ['colours', 'menuHighlight', 'layout', 'build'];
 
 // One block of the Themes tab. Classic draws it as the card it always was; the
 // v2 page design draws it as an arrangeable section (so the account can move,
@@ -658,6 +661,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
     previewCustom, cancelPreview,
   } = useTheme();
   const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
+  const [menuHighlight] = useMenuHighlight();
   // The font choices preview in their own typefaces.
   useEffect(() => { loadOptionalFonts(); }, []);
   const { viewMode, setViewMode } = useDefaultViewMode({ global: true });
@@ -939,6 +943,11 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
               ))}
             </div>
             )}
+        </ThemeBlock>
+
+        {/* How the option you are on stands out in pop-up menus. */}
+        <ThemeBlock v2={v2} arrange={arrange} id="menuHighlight" title="Menu highlight" meta={menuHighlightName(menuHighlight.style)} delay={0.08} icon={<CursorArrowRaysIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="How the option you are on stands out in menus that pop up">
+          <MenuHighlightSettings />
         </ThemeBlock>
 
         {/* Custom Theme builder - pick your own accent colors on top of any

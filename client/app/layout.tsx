@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./menu-highlight.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
 import { LayoutModeProvider } from "@/lib/layout-mode";
@@ -7,6 +8,7 @@ import { UserCacheProvider } from "@/components/providers/UserCacheProvider";
 import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
 import { BuildWatcher } from "@/components/pwa/BuildWatcher";
 import { ScrollToTopOnNavigate } from "@/components/layout/ScrollToTopOnNavigate";
+import { MenuHighlightRoot } from "@/lib/menuHighlight";
 
 export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
@@ -131,6 +133,7 @@ export default function RootLayout({
                 <ServiceWorkerRegistrar />
                 <BuildWatcher />
                 <ScrollToTopOnNavigate />
+                <MenuHighlightRoot />
                 {children}
               </ToastProvider>
             </UserCacheProvider>

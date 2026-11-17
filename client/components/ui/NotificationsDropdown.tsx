@@ -719,6 +719,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                 />
               ) : (
               <div
+                data-mh-off=""
                 className="popup-panel max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
               >
                 {/* Header */}

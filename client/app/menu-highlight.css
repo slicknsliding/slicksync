@@ -1,0 +1,109 @@
+/* Menu highlight (Settings -> Themes -> Menu highlight): how the option you
+   are on stands out in every pop-up menu. lib/menuHighlight.tsx lights one
+   option at a time by giving it data-mh="<style>" and, for the edges and
+   lights, a .mh-fx layer; the account's choices sit on <html> as
+   data-mh-* attributes. Aurora's comet colours (--mh-a0..31, --mh-b0..11)
+   are generated there too, from the same maths as its pieces. */
+:root { --mh-c: var(--color-primary); --mh-c2: var(--color-secondary); --mh-ink: #fff; --mh-s: 24%; --mh-wait: .5s;
+  }
+html[data-mh-colour=white] { --mh-c: #ffffff; --mh-c2: #cbd5e1; --mh-ink: #0b0b10; }
+html[data-mh-colour=blue] { --mh-c: #60a5fa; --mh-c2: #a5f3fc; }
+html[data-mh-colour=green] { --mh-c: #34d399; --mh-c2: #bef264; --mh-ink: #0b0b10; }
+html[data-mh-colour=amber] { --mh-c: #fbbf24; --mh-c2: #fb7185; --mh-ink: #0b0b10; }
+html[data-mh-colour=pink] { --mh-c: #f472b6; --mh-c2: #c4b5fd; }
+html[data-mh-strength=subtle] { --mh-s: 14%; }
+html[data-mh-strength=strong] { --mh-s: 38%; }
+html[data-mh-wait=now] { --mh-wait: 0s; }
+html[data-mh-wait=long] { --mh-wait: 1.5s; }
+
+/* Fills */
+[data-mh] { position: relative; isolation: isolate; transition: none !important; }
+[data-mh=soft] { background: color-mix(in srgb, var(--mh-c) var(--mh-s), var(--color-surface)) !important; }
+[data-mh=solid] { background: var(--mh-c) !important; color: var(--mh-ink) !important; }
+[data-mh=solid] * { color: var(--mh-ink) !important; }
+[data-mh=bar] { background: color-mix(in srgb, var(--mh-c) calc(var(--mh-s) * .6), var(--color-surface)) !important; box-shadow: inset 3px 0 0 var(--mh-c) !important; }
+[data-mh=outline] { background: color-mix(in srgb, var(--mh-c) calc(var(--mh-s) / 3), var(--color-surface)) !important; box-shadow: inset 0 0 0 1.5px var(--mh-c) !important; }
+/* Edges and lights: a faint tint behind, the light on the edge */
+[data-mh=edge], [data-mh=edgeGlow], [data-mh=ringGlow], [data-mh=softRing], [data-mh=orbit] { background: color-mix(in srgb, var(--mh-c) 7%, var(--color-surface)) !important; }
+
+.mh-fx { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; }
+.mh-fx > * { display: none; }
+.mh-edge { position: absolute; inset: 0; border-radius: inherit; }
+.mh-edge::before { content: ''; position: absolute; inset: 0; padding: 2px; border-radius: inherit;
+  background: linear-gradient(90deg, var(--mh-c), var(--mh-c2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+:is([data-mh=edge], [data-mh=edgeGlow], [data-mh=ringGlow], [data-mh=softRing]) > .mh-fx > .mh-edge { display: block; }
+:is([data-mh=edge], [data-mh=edgeGlow]) > .mh-fx > .mh-edge { mask-image: linear-gradient(90deg, #000 35%, transparent 85%); }
+:is([data-mh=edgeGlow], [data-mh=ringGlow]) > .mh-fx > .mh-edge::after { content: ''; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: inset 0 0 14px color-mix(in srgb, var(--mh-c2) 55%, transparent); }
+[data-mh=ringGlow] > .mh-fx > .mh-edge::before { background: linear-gradient(135deg, var(--mh-c), var(--mh-c2)); }
+[data-mh=softRing] > .mh-fx > .mh-edge { mask-image: linear-gradient(90deg, #000 30%, rgb(0 0 0 / .4)); }
+
+/* Speed and direction of the two moving styles. Orbit goes clockwise and
+   Aurora anticlockwise unless changed; "Normal" is the default speed. */
+:root { --mh-lap: 2.6s; --mh-aulap: 2s; }
+html[data-mh-speed=slow] { --mh-lap: 4s; }
+html[data-mh-speed=fast] { --mh-lap: 1.6s; }
+html[data-mh-auspeed=slow] { --mh-aulap: 3.2s; }
+html[data-mh-auspeed=fast] { --mh-aulap: 1.25s; }
+
+/* Orbit: a thin ring, and a light going round it */
+.mh-orbit { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+html[data-mh-dir=acw] .mh-orbit { transform: scaleX(-1); }
+[data-mh=orbit] > .mh-fx > .mh-orbit { display: block; }
+.mh-orbit rect { x: .75px; y: .75px; width: calc(100% - 1.5px); height: calc(100% - 1.5px); rx: var(--mh-rx, 9px); fill: none; }
+.mh-orbit-ring { stroke: color-mix(in srgb, var(--mh-c) 45%, transparent); stroke-width: 1.5px; }
+.mh-orbit-light { stroke: url(#mh-orbit-grad); stroke-width: 2.5px; stroke-linecap: round; stroke-dasharray: 18 82; opacity: 0;
+  animation: mh-orbit var(--mh-lap) linear var(--mh-wait) 4, mh-on 1ms linear var(--mh-wait) forwards, mh-off 1ms linear calc(var(--mh-wait) + 4 * var(--mh-lap)) forwards; }
+html[data-mh-laps=always] .mh-orbit-light { animation: mh-orbit var(--mh-lap) linear var(--mh-wait) infinite, mh-on 1ms linear var(--mh-wait) forwards; }
+@keyframes mh-orbit { to { stroke-dashoffset: -100; } }
+@keyframes mh-on { to { opacity: 1; } }
+@keyframes mh-off { to { opacity: 0; } }
+
+/* Aurora: a comet of colour runs round the inside of the edge, for as long as
+   the option is lit (or 4 laps, then the whole ring still). The comet is many
+   short pieces (see lib/menuHighlight.tsx) drawn three times: a wide faint bloom that
+   tints the inside, a softer glow along the edge, and a crisp 2px line. All
+   three are cut off at the row's edge, so light only falls inward. */
+:root { --mh-auwait: 0s; }
+html[data-mh-auwait=half] { --mh-auwait: .5s; }
+html[data-mh-auwait=long] { --mh-auwait: 1.5s; }
+[data-mh=aurora] { background: color-mix(in srgb, var(--color-text) 5%, var(--color-surface)) !important; }
+[data-mh=aurora] > .mh-fx { overflow: hidden; }
+.mh-aurora { position: absolute; inset: 0; border-radius: inherit; opacity: 0; }
+html:not([data-mh-audir=cw]) .mh-aurora { transform: scaleX(-1); }
+[data-mh=aurora] > .mh-fx > .mh-aurora { display: block; animation: mh-on 1ms linear var(--mh-auwait) forwards; }
+.mh-au-base { position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 7%, transparent); }
+.mh-au { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.mh-au rect { x: var(--in); y: var(--in); width: calc(100% - 2 * var(--in)); height: calc(100% - 2 * var(--in));
+  rx: max(0px, calc(var(--mh-r, 10px) - var(--in))); fill: none; stroke-width: var(--sw);
+  animation: mh-run var(--mh-aulap) linear var(--mh-auwait) infinite; }
+.mh-au-bloom { --sw: 48px; --in: 0px; filter: blur(15px); opacity: .5; }
+.mh-au-glow { --sw: 16px; --in: 0px; filter: blur(6px); opacity: .88; }
+.mh-au-line { --sw: 2.5px; --in: 1.25px; }
+.mh-au-line rect:last-child { stroke-linecap: round; }
+/* 4 laps, then the comet fades into a still ring of the same colours with a soft glow inside. */
+.mh-au-rest { position: absolute; inset: 0; border-radius: inherit; opacity: 0;
+  box-shadow: inset 0 0 14px color-mix(in srgb, var(--mh-aM) 38%, transparent); }
+.mh-au-rest::before { content: ''; position: absolute; inset: 0; padding: 2px; border-radius: inherit;
+  background: linear-gradient(90deg, var(--mh-aH), var(--mh-aM), var(--mh-aL), var(--mh-aT));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+html[data-mh-aulaps=four] .mh-au { animation: mh-off .6s ease-in calc(var(--mh-auwait) + 4 * var(--mh-aulap)) forwards; }
+html[data-mh-aulaps=four] .mh-au-rest { animation: mh-on .6s ease-out calc(var(--mh-auwait) + 4 * var(--mh-aulap)) forwards; }
+@keyframes mh-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
+
+/* Less motion: the device's setting unless the account chose Full, or the
+   account's Reduced (Themes -> Layout -> Motion), as in globals.css. Orbit
+   becomes a still lit ring and Aurora its still glowing ring. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .mh-orbit-light { opacity: 1; animation: none; stroke-dasharray: none; }
+  html:not([data-motion="full"]) [data-mh=aurora] > .mh-fx > .mh-aurora { animation: none; opacity: 1; }
+  html:not([data-motion="full"]) .mh-au { display: none; }
+  html:not([data-motion="full"]) .mh-au-rest { animation: none !important; opacity: 1; }
+}
+html[data-motion="reduced"] .mh-orbit-light { opacity: 1; animation: none; stroke-dasharray: none; }
+html[data-motion="reduced"] [data-mh=aurora] > .mh-fx > .mh-aurora { animation: none; opacity: 1; }
+html[data-motion="reduced"] .mh-au { display: none; }
+html[data-motion="reduced"] .mh-au-rest { animation: none !important; opacity: 1; }

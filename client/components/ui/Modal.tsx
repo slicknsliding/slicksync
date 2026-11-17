@@ -227,6 +227,7 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
             <DialogPanel
               ref={tvPanelRef}
               data-tv-modal={isTV ? '' : undefined}
+              data-mh-off=""
               className={clsx(
                 'relative w-full flex flex-col max-h-[85dvh]',
                 sizeStyles[size],
@@ -310,6 +311,7 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
           aria-label={titleId ? undefined : (ariaLabel || 'Details')}
           tabIndex={-1}
           data-tv-modal={isTV ? '' : undefined}
+          data-mh-off=""
           className={clsx(
             'relative w-full flex flex-col max-h-[85dvh] pointer-events-auto outline-none',
             sizeStyles[size],

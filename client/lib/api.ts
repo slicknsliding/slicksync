@@ -3237,6 +3237,17 @@ class ApiClient {
     });
   }
 
+  /** How the option you are on stands out in pop-up menus (see lib/menuHighlight.tsx). */
+  async getMenuHighlight() {
+    return this.fetch<{ menuHighlight: Record<string, unknown> | null }>('/settings/menu-highlight', { quiet401: true });
+  }
+  async saveMenuHighlight(menuHighlight: Record<string, unknown> | null) {
+    return this.fetch<{ menuHighlight: Record<string, unknown> | null }>('/settings/menu-highlight', {
+      method: 'PUT',
+      body: JSON.stringify({ menuHighlight }),
+    });
+  }
+
   /** How this account has arranged SlickSync (see lib/arrange.tsx). */
   async getArrangement() {
     return this.fetch<{ arrange: import('./arrange-core').Arrangement | null }>('/settings/arrange', { quiet401: true });
