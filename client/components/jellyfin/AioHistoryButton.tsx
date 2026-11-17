@@ -2,24 +2,21 @@
 
 // "AIOStreams history": every version of this person's AIOStreams
 // configuration SlickSync has seen, what changed between them, and putting
-// an earlier one back (server/utils/aioConfigHistory.js). The change alert
-// links here with ?aioHistory=1, which opens it. Same anchored popup as the
-// other pills beside it.
+// an earlier one back (server/utils/aioConfigHistory.js).
 //
-// Ways in: AioStreamsButton's History on the person's page (AioHistoryButton
-// in the v2 design), and AioHistoryPill - "History" on their Users card, in
-// the same spot and the same box as Sync history on everyone else's card.
+// Ways in: History in AioStreamsButton's box (the person page's AIOStreams
+// pill, or its tile in the v2 design - the change alert opens it there with
+// ?aioHistory=1), and AioHistoryPill - "History" on their Users card, in the
+// same spot and the same box as Sync history on everyone else's card.
 
 import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { ArrowUturnLeftIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ClockIcon } from '@heroicons/react/24/outline';
 import { ActionPill } from '@/components/user/ActionPill';
 import { HistoryPopup } from '@/components/ui/HistoryPopup';
 import { toast } from '@/components/ui/Toast';
 import { Button, Modal } from '@/components/ui';
 import { api, type AioHistory } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 const REASON: Record<string, string> = {
   seen: 'Seen',
@@ -129,80 +126,6 @@ export function PutBackDialog({ userId, name, version, onClose, onDone }: {
         </div>
       </div>
     </Modal>
-  );
-}
-
-export function AioHistoryButton({ userId, name }: { userId: string; name: string }) {
-  const button = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
-  const [restoring, setRestoring] = useState<Version | null>(null);
-
-  const open = !!anchor;
-  const history = useAioHistory(userId, open);
-  const close = () => setAnchor(null);
-  const place = () => {
-    const r = button.current?.getBoundingClientRect();
-    if (!r) return null;
-    return placePopup(r, 380, panel.current?.scrollHeight);
-  };
-  const toggle = () => {
-    if (open) { close(); return; }
-    const at = place();
-    if (at) setAnchor(at);
-  };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
-  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
-
-  // The change alert links here with ?aioHistory=1.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (new URLSearchParams(window.location.search).get('aioHistory') !== '1') return;
-    const t = setTimeout(() => { const at = place(); if (at) setAnchor(at); }, 300);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    const onMove = () => { const at = place(); if (at) setAnchor(at); };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onMove);
-    window.addEventListener('scroll', onMove, true);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onMove);
-      window.removeEventListener('scroll', onMove, true);
-    };
-  }, [open]);
-
-  return (
-    <>
-      <ActionPill ref={button} icon={ArrowUturnLeftIcon} open={open} onClick={toggle}>
-        AIOStreams history
-      </ActionPill>
-      {open && anchor && typeof document !== 'undefined' && createPortal(
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={close} />
-          <div
-            ref={panel}
-            role="dialog"
-            aria-label={TITLE(name)}
-            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
-            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
-          >
-            <div>
-              <p className="text-sm font-semibold text-default">{TITLE(name)}</p>
-              <p className="text-xs text-muted mt-0.5">{LINE}</p>
-            </div>
-            {/* The confirmation is a dialog of its own; the popup would sit on top of it. */}
-            <AioHistoryBody {...history} onPutBack={(v) => { setRestoring(v); close(); }} />
-          </div>
-        </>,
-        document.body,
-      )}
-      <PutBackDialog userId={userId} name={name} version={restoring} onClose={() => setRestoring(null)} onDone={history.setState} />
-    </>
   );
 }
 

@@ -3,20 +3,15 @@
 // "AIOStreams health": what AIOStreams itself says about this person's
 // configuration - which addons it sees failing, coming back empty, slow or
 // redundant (its own words), and which apps use it - plus a one-off "test
-// this title" search (server/utils/aioHealth.js). Same anchored popup as
-// Devices and Age limit beside it. Read-only.
+// this title" search (server/utils/aioHealth.js). Read-only.
 //
-// AioHealthBody is the content on its own: the person page's AIOStreams pill
-// (AioStreamsButton) shows it under Health, beside the history.
+// The content only: the person page's AIOStreams pill and v2 tile
+// (AioStreamsButton) show it under Health, beside the history.
 
 import { LoadErrorInline } from '@/components/ui/LoadState';
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { HeartIcon } from '@heroicons/react/24/outline';
-import { ActionPill } from '@/components/user/ActionPill';
+import { useEffect, useState } from 'react';
 import { toast } from '@/components/ui/Toast';
 import { api, type AioHealth, type AioTestSearch } from '@/lib/api';
-import { placePopup, popupStyle, useFitPopup, useFollowAnchor, type PopupPlacement } from '@/lib/anchoredPopup';
 
 /** What AIOStreams says about their configuration, read while `active`. */
 export function AioHealthBody({ userId, active }: { userId: string; active: boolean }) {
@@ -182,67 +177,5 @@ export function AioHealthBody({ userId, active }: { userId: string; active: bool
         </>
       )}
     </div>
-  );
-}
-
-export function AioHealthButton({ userId, name }: { userId: string; name: string }) {
-  const button = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const [anchor, setAnchor] = useState<PopupPlacement | null>(null);
-
-  const open = !!anchor;
-  const close = () => setAnchor(null);
-  const place = () => {
-    const r = button.current?.getBoundingClientRect();
-    if (!r) return null;
-    return placePopup(r, 380, panel.current?.scrollHeight);
-  };
-  const toggle = () => {
-    if (open) { close(); return; }
-    const at = place();
-    if (at) setAnchor(at);
-  };
-  useFitPopup(panel, open, () => { const at = place(); if (at) setAnchor(at); }, close);
-  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], () => { const at = place(); if (at) setAnchor(at); });
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    const onMove = () => { const at = place(); if (at) setAnchor(at); };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onMove);
-    window.addEventListener('scroll', onMove, true);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onMove);
-      window.removeEventListener('scroll', onMove, true);
-    };
-  }, [open]);
-
-  return (
-    <>
-      <ActionPill ref={button} icon={HeartIcon} open={open} onClick={toggle}>
-        AIOStreams health
-      </ActionPill>
-      {open && anchor && typeof document !== 'undefined' && createPortal(
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={close} />
-          <div
-            ref={panel}
-            role="dialog"
-            aria-label={`AIOStreams health for ${name}`}
-            className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
-            style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
-          >
-            <div>
-              <p className="text-sm font-semibold text-default">AIOStreams health for {name}</p>
-              <p className="text-xs text-muted mt-0.5">What AIOStreams itself reports about their configuration.</p>
-            </div>
-            <AioHealthBody userId={userId} active={open} />
-          </div>
-        </>,
-        document.body,
-      )}
-    </>
   );
 }

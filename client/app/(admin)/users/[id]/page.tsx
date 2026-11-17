@@ -27,8 +27,6 @@ import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
 import { JellyfinDevicesButton } from '@/components/jellyfin/JellyfinDevicesButton';
 import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
-import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
-import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
 import { AioStreamsButton } from '@/components/jellyfin/AioStreamsButton';
 import { SyncHistoryButton, syncHistoryAccount } from '@/components/user/SyncHistoryButton';
 import { HistoryImportFlow, type HistoryImportFlowHandle } from '@/components/user/HistoryImportFlow';
@@ -1824,8 +1822,8 @@ export default function UserDetailPage() {
       />,
     );
     if (aio) {
-      tiles.push(<PillTool key="aiohealth" icon={toolIcon(ShieldCheckIcon)} title="AIOStreams health" line="What AIOStreams says about their setup"><AioHealthButton userId={user.id} name={name} /></PillTool>);
-      tiles.push(<PillTool key="aiohistory" icon={toolIcon(ClockIcon)} title="AIOStreams history" line="Changes made to their setup"><AioHistoryButton userId={user.id} name={name} /></PillTool>);
+      // One tile, the same box as the classic page's pill: Health | History.
+      tiles.push(<PillTool key="aiostreams" icon={toolIcon(ShieldCheckIcon)} title="AIOStreams" line="Health, and every version of their setup"><AioStreamsButton userId={user.id} name={name} /></PillTool>);
     }
     const syncAccount = personSyncAccount(user, mergeInfo);
     if (syncAccount) tiles.push(<PillTool key="synchistory" icon={toolIcon(ClockIcon)} title="Sync history" line="What each sync changed, and when"><SyncHistoryButton userId={user.id} name={name} account={syncAccount} /></PillTool>);

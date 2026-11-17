@@ -10,8 +10,8 @@
 // the remote stays inside the box and moves between its controls
 // (useTVModal).
 //
-// The v2 design keeps them as two tool tiles (AioHealthButton,
-// AioHistoryButton); the Users card keeps its History pill (AioHistoryPill).
+// The v2 design shows the same pill in its AIOStreams tool tile; the Users
+// card keeps its History pill (AioHistoryPill).
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

@@ -868,7 +868,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['aiostreams history', 'undo aiostreams', 'restore aiostreams', 'aiostreams changed', 'revert configuration', 'config backup', 'aiostreams backup', 'someone changed aiostreams'],
     answer: 'Press History on their card on the Users page, or AIOStreams on their own page and then History. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
     steps: [
-      'On Users, press History on their card, between Limits and Caught up. Or open the person, press AIOStreams and switch to History - or tap the "changed outside SlickSync" notification, which opens it there. In the v2 design it is the AIOStreams history tile.',
+      'On Users, press History on their card, between Limits and Caught up. Or open the person, press AIOStreams and switch to History - or tap the "changed outside SlickSync" notification, which opens it there. In the v2 design it is the AIOStreams tile in Tools.',
       'Find the version from before the change; each one says what changed since the one before it.',
       'Press Put back, choose what to keep as it is now, and confirm.',
     ],
@@ -888,7 +888,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['aiostreams health', 'aiostreams addon failing', 'no streams', 'addon errors', 'slow addon', 'redundant addon', 'test search', 'why no streams', 'aiostreams stats'],
     answer: 'On the person’s page, press AIOStreams - it opens on Health. It shows what AIOStreams itself reports about their configuration - each addon’s errors and empty answers over the last day or week, which ones it calls slow or redundant - and lets you test a title to see what every addon finds for it right now.',
     steps: [
-      'Open the person on the Users page and press AIOStreams. It opens on Health; History beside it lists every version of their configuration. In the v2 design it is the AIOStreams health tile.',
+      'Open the person on the Users page and press AIOStreams. It opens on Health; History beside it lists every version of their configuration. In the v2 design it is the AIOStreams tile in Tools.',
       'Read the addon list: the ones in trouble are at the top.',
       'Under Test a title, pick something they watched lately - or type an IMDb id, with :season:episode for a show - and see what each addon found, and any errors.',
     ],
