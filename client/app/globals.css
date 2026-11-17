@@ -1344,7 +1344,7 @@ body {
 /* The time starts its own line, and Limits, History and Caught up get one
    of their own under it, so every card is laid out the same. */
 .user-card-break { flex-basis: 100%; height: 0; }
-.user-card-pills { flex-basis: 100%; margin-top: 4px; }
+.user-card-pills { flex-basis: 100%; margin-bottom: 2px; }
 .user-card-badges {
   grid-area: badges;
   display: flex;

@@ -1392,8 +1392,8 @@ function UserCard({
       <Card
         variant="interactive"
         padding="md"
-        // One thing per line: name and switch, the badges, group and addons,
-        // then time with Limits and Caught up (see .user-card-head).
+        // One thing per line: name and switch, the badges, Limits, History
+        // and Caught up, then group and addons, then time (see .user-card-head).
         className={`user-card group cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
@@ -1487,10 +1487,27 @@ function UserCard({
             />
           </div>
         </div>
-        {/* Group, addons and time, then Limits, History and Caught up - no
-            dots, like the Groups cards. The time starts a second line and
-            the three pills a third, so every card stands the same height. */}
+        {/* Limits, History and Caught up first, then group, addons and
+            time - no dots, like the Groups cards. The pills take a line of
+            their own and the time starts another, so every card stands the
+            same height. */}
         <div className="user-card-meta mt-3 flex flex-wrap items-center gap-x-2.5 text-sm text-muted whitespace-nowrap">
+          <span className="user-card-pills inline-flex items-center gap-1.5">
+            <LimitsButton
+              id={user.id}
+              name={user.name}
+              summary={limits}
+              onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
+            />
+            {/* One History in the same spot on every card: their AIOStreams
+                configuration's versions, or what each sync changed. */}
+            {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' ? (
+              <AioHistoryPill userId={user.id} name={user.name} />
+            ) : (
+              syncAccount && <SyncHistoryButton userId={user.id} name={user.name} account={syncAccount} size="sm" pointer label="History" />
+            )}
+            <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
+          </span>
           <span className="flex items-center gap-1.5">
             <UserGroupIcon className="w-4 h-4 text-secondary" />
             {user.groups.length > 0 ? (
@@ -1514,22 +1531,6 @@ function UserCard({
           <span className="flex items-center gap-1.5">
             <ClockIcon className="w-4 h-4 text-secondary" />
             {formatWatchTime(user.watchTime)}
-          </span>
-          <span className="user-card-pills inline-flex items-center gap-1.5">
-            <LimitsButton
-              id={user.id}
-              name={user.name}
-              summary={limits}
-              onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
-            />
-            {/* One History in the same spot on every card: their AIOStreams
-                configuration's versions, or what each sync changed. */}
-            {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' ? (
-              <AioHistoryPill userId={user.id} name={user.name} />
-            ) : (
-              syncAccount && <SyncHistoryButton userId={user.id} name={user.name} account={syncAccount} size="sm" pointer label="History" />
-            )}
-            <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
           </span>
         </div>
         <div className="mt-2.5 flex items-center justify-between gap-3">

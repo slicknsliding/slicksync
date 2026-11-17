@@ -29,6 +29,7 @@ import { MarkPlayedRow } from '@/components/jellyfin/MarkPlayedRow';
 import { AioRotateKeysRow } from '@/components/jellyfin/AioRotateKeysRow';
 import { AioHealthButton } from '@/components/jellyfin/AioHealthButton';
 import { AioHistoryButton } from '@/components/jellyfin/AioHistoryButton';
+import { AioStreamsButton } from '@/components/jellyfin/AioStreamsButton';
 import { SyncHistoryButton, syncHistoryAccount } from '@/components/user/SyncHistoryButton';
 import { HistoryImportFlow, type HistoryImportFlowHandle } from '@/components/user/HistoryImportFlow';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -2121,12 +2122,10 @@ export default function UserDetailPage() {
                         {user.providerType === 'nuvio' && (
                           <SignInNuvioTvButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
-                        {/* What AIOStreams itself says about their configuration. */}
+                        {/* Their AIOStreams configuration: what AIOStreams says about
+                            it (Health) and every version of it (History), one pill. */}
                         {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' && (
-                          <>
-                            <AioHealthButton userId={user.id} name={user.username || user.name || 'them'} />
-                            <AioHistoryButton userId={user.id} name={user.username || user.name || 'them'} />
-                          </>
+                          <AioStreamsButton userId={user.id} name={user.username || user.name || 'them'} />
                         )}
                         {/* Only a real Jellyfin server keeps a device list. */}
                         {user.providerType === 'jellyfin' && (user.jellyfinServerKind || 'jellyfin') === 'jellyfin' && (

@@ -6,9 +6,9 @@
 // links here with ?aioHistory=1, which opens it. Same anchored popup as the
 // other pills beside it.
 //
-// Two ways in: AioHistoryButton on the person's page, and AioHistoryPill -
-// "History" on their Users card, in the same spot and the same box as Sync
-// history on everyone else's card.
+// Ways in: AioStreamsButton's History on the person's page (AioHistoryButton
+// in the v2 design), and AioHistoryPill - "History" on their Users card, in
+// the same spot and the same box as Sync history on everyone else's card.
 
 import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useRef, useState } from 'react';
@@ -30,12 +30,13 @@ const REASON: Record<string, string> = {
 };
 
 const TITLE = (name: string) => `AIOStreams history for ${name}`;
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 const LINE = 'Every version of their configuration SlickSync has seen, newest first.';
 
-type Version = AioHistory['versions'][number];
+export type Version = AioHistory['versions'][number];
 
 /** Reads the history each time it opens, and again on Try again. */
-function useAioHistory(userId: string, open: boolean) {
+export function useAioHistory(userId: string, open: boolean) {
   const [state, setState] = useState<AioHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -47,7 +48,7 @@ function useAioHistory(userId: string, open: boolean) {
   return { state, setState, error, retry: () => setAttempt((n) => n + 1) };
 }
 
-function AioHistoryBody({ state, error, retry, onPutBack }: {
+export function AioHistoryBody({ state, error, retry, onPutBack }: {
   state: AioHistory | null;
   error: string | null;
   retry: () => void;
@@ -75,7 +76,7 @@ function AioHistoryBody({ state, error, retry, onPutBack }: {
               </button>
             )}
           </div>
-          <p className="text-subtle">{v.addons} addons · {v.services} services · {v.users} household users</p>
+          <p className="text-subtle">{plural(v.addons, 'addon')} · {plural(v.services, 'service')} · {plural(v.users, 'household user')}</p>
           {v.changes.length > 0 && <p className="text-muted">Since the one before: {v.changes.join(', ')}</p>}
         </div>
       ))}
@@ -84,7 +85,7 @@ function AioHistoryBody({ state, error, retry, onPutBack }: {
 }
 
 /** "Put it back?" - choosing what to keep as it is now, then putting the version back. */
-function PutBackDialog({ userId, name, version, onClose, onDone }: {
+export function PutBackDialog({ userId, name, version, onClose, onDone }: {
   userId: string;
   name: string;
   version: Version | null;

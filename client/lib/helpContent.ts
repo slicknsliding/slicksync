@@ -866,9 +866,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Putting an AIOStreams configuration back the way it was',
     category: 'Users & Groups',
     keywords: ['aiostreams history', 'undo aiostreams', 'restore aiostreams', 'aiostreams changed', 'revert configuration', 'config backup', 'aiostreams backup', 'someone changed aiostreams'],
-    answer: 'Press History on their card on the Users page, or AIOStreams history on their own page. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
+    answer: 'Press History on their card on the Users page, or AIOStreams on their own page and then History. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
     steps: [
-      'On Users, press History on their card, between Limits and Caught up. Or open the person and press AIOStreams history - or tap the "changed outside SlickSync" notification, which opens it.',
+      'On Users, press History on their card, between Limits and Caught up. Or open the person, press AIOStreams and switch to History - or tap the "changed outside SlickSync" notification, which opens it there. In the v2 design it is the AIOStreams history tile.',
       'Find the version from before the change; each one says what changed since the one before it.',
       'Press Put back, choose what to keep as it is now, and confirm.',
     ],
@@ -886,9 +886,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Checking which AIOStreams addons are failing for someone',
     category: 'Users & Groups',
     keywords: ['aiostreams health', 'aiostreams addon failing', 'no streams', 'addon errors', 'slow addon', 'redundant addon', 'test search', 'why no streams', 'aiostreams stats'],
-    answer: 'On the person’s page, press AIOStreams health. It shows what AIOStreams itself reports about their configuration - each addon’s errors and empty answers over the last day or week, which ones it calls slow or redundant - and lets you test a title to see what every addon finds for it right now.',
+    answer: 'On the person’s page, press AIOStreams - it opens on Health. It shows what AIOStreams itself reports about their configuration - each addon’s errors and empty answers over the last day or week, which ones it calls slow or redundant - and lets you test a title to see what every addon finds for it right now.',
     steps: [
-      'Open the person on the Users page and press AIOStreams health.',
+      'Open the person on the Users page and press AIOStreams. It opens on Health; History beside it lists every version of their configuration. In the v2 design it is the AIOStreams health tile.',
       'Read the addon list: the ones in trouble are at the top.',
       'Under Test a title, pick something they watched lately - or type an IMDb id, with :season:episode for a show - and see what each addon found, and any errors.',
     ],
@@ -1618,7 +1618,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['screen time', 'daily limit', 'time limit', 'watch limit', 'kids limit', 'too much tv', 'budget', 'minutes a day', 'school days', 'parental', 'pause streaming', 'block streaming', 'stop watching', 'turn off addons', 'bedtime', 'night', 'school nights', 'no tv at night', 'stop what is playing', 'warning before', 'limits', 'profile limit', 'kids profile', 'household user limit'],
     answer: 'Press Limits - on someone’s card on the Users page, under a Nuvio profile or household user there, or on the person’s own page - and switch on a daily limit, a bedtime, or both - each works on its own. At the limit you get a bell and push notification - or, with Pause streaming, their streaming also stops until midnight or a time you pick. A bedtime switches streaming off between two times on the nights you choose.',
     steps: [
-      'Press Limits on their card on the Users page (just before Synced), or on their own page. The popup has a card with a switch for each of Daily limit, Bedtime and Age limit; changes save as you make them.',
+      'Press Limits on their card on the Users page (the first pill under their badges), under a Nuvio profile’s or household user’s name there, or on their own page. The popup has a card with a switch for each of Daily limit, Bedtime and Age limit; changes save as you make them.',
       'Switch on Daily limit, then under How long pick the minutes and which days - every day, school days, weekends or your own.',
       'Under When they reach it, choose Tell me (an alert) or Pause streaming (an alert, and nothing new plays until Back on at - midnight, 6, 7 or 8 AM, or any time).',
       'Switch on Bedtime to set when streaming goes off and comes back (9 PM to 7 AM, say) and on which nights - every night, school nights (Sunday to Thursday) or your own.',
