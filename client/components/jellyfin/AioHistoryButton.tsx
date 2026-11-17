@@ -61,8 +61,14 @@ export function AioHistoryBody({ state, error, retry, onPutBack }: {
         <div key={v.id} className="rounded-xl px-3 py-2 text-xs space-y-1" style={{ background: 'var(--color-surface-hover)' }}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-default">
-              {new Date(v.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} · {REASON[v.reason] || v.reason}{v.current ? ' · now' : ''}
+              {new Date(v.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} · {REASON[v.reason] || v.reason}
             </span>
+            {/* The date is when it was first seen; this one is still the setup today. */}
+            {v.current && (
+              <span className="shrink-0 whitespace-nowrap text-[11px] font-medium" style={{ color: 'var(--color-success, #22c55e)' }}>
+                In use now
+              </span>
+            )}
             {!v.current && (
               <button
                 type="button"

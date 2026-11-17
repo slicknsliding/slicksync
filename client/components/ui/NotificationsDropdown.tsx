@@ -757,6 +757,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                   when={formatNotificationTime}
                   canOpen={(n) => !!getNotificationUrl(n as NotificationItem)}
                   swipe={swipeToDismiss}
+                  tv={isTV}
                   onOpen={(n) => handleNotificationClick(n as NotificationItem)}
                   onDismiss={dismissOne}
                   onAccept={handleAcceptRequest}
@@ -772,7 +773,6 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                 />
               ) : (
               <div
-                data-mh-off=""
                 className="popup-panel max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
               >
                 {/* Header */}
@@ -808,18 +808,28 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                       <p className="text-sm text-muted">No new notifications</p>
                     </div>
                   ) : (
-                    <div className="divide-y divide-default">
+                    // Rows set in from the panel's edge and rounded, like
+                    // the options in other menus; the one you are on lights
+                    // with the menu highlight (data-mh-item).
+                    <div className="flex flex-col gap-1.5 p-1.5">
                       {notifications.map((notification) => (
                         <SwipeToDismiss
                           key={notification.id}
                           enabled={swipeToDismiss && notification.type !== 'request'}
                           onDismiss={() => dismissOne(notification.id)}
+                          className="rounded-[14px]"
                         >
                         <motion.div
+                          data-mh-item=""
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           onClick={() => handleNotificationClick(notification)}
-                          className={`p-4 hover:bg-surface-hover transition-colors duration-500 ${getNotificationUrl(notification) ? 'cursor-pointer' : ''} ${notification.read ? 'notif-read' : 'notif-lit'}`}
+                          // A TV remote stops on each row; OK opens it. The
+                          // press stops here: the panel closes before it is
+                          // over, and the page's remote would take it next.
+                          tabIndex={isTV ? 0 : undefined}
+                          onKeyDown={isTV ? (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); e.stopPropagation(); handleNotificationClick(notification); } } : undefined}
+                          className={`p-4 rounded-[14px] hover:bg-surface-hover transition-colors duration-500 ${getNotificationUrl(notification) ? 'cursor-pointer' : ''} ${notification.read ? 'notif-read' : 'notif-lit'}`}
                           // Lit/read look is a class pair (see globals.css) so it
                           // fades via transition-colors and survives recolouring extensions.
                         >

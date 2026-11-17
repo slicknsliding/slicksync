@@ -253,14 +253,17 @@ const DEFS = '<defs><linearGradient id="mh-orbit-grad" x1="0" y1="0" x2="1" y2="
 
 // --- Lighting the option you are on ---------------------------------------------
 
-// Pop-up menus and pickers. Dialogs, the command palette and the notification
-// lists mark themselves data-mh-off: they are not menus of options.
-const ROOTS = '.popup-panel, [role="menu"], [role="listbox"], .arrange-menu';
-const ITEMS = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], button, a[href]';
+// Pop-up menus, pickers and lists of things to pick (the notifications, the
+// quick menu). Dialogs mark themselves data-mh-off: their buttons are not
+// options, though a menu opened inside one still is. A list that keeps track
+// of its own active row (the quick menu, moved by the arrow keys as well as
+// the pointer) marks itself data-mh-list and lights that row with lightActive.
+const ROOTS = '.popup-panel, [role="menu"], [role="listbox"], .arrange-menu, [data-mh-root]';
+const ITEMS = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [data-mh-item], button, a[href]';
 const ROLES = new Set(['menuitem', 'menuitemradio', 'menuitemcheckbox', 'option']);
 
 let lit: HTMLElement | null = null;
-let litBy: 'pointer' | 'touch' | 'focus' | null = null;
+let litBy: 'pointer' | 'touch' | 'focus' | 'list' | null = null;
 
 /** The menu option an event is on, or null when it isn't on one. */
 function optionAt(target: EventTarget | null): HTMLElement | null {
@@ -268,7 +271,9 @@ function optionAt(target: EventTarget | null): HTMLElement | null {
   const item = target.closest<HTMLElement>(ITEMS);
   if (!item) return null;
   const root = item.closest<HTMLElement>(ROOTS);
-  if (!root || root === item || root.closest('[data-mh-off]')) return null;
+  if (!root || root === item || root.hasAttribute('data-mh-list')) return null;
+  const off = item.closest('[data-mh-off]');
+  if (off && root.contains(off)) return null;
   if (item.matches(':disabled, [aria-disabled="true"]')) return null;
   // An option: a menu role, or a row the menu already marks as hoverable.
   const role = item.getAttribute('role');
@@ -278,7 +283,7 @@ function optionAt(target: EventTarget | null): HTMLElement | null {
   return item;
 }
 
-function light(el: HTMLElement, by: 'pointer' | 'touch' | 'focus') {
+function light(el: HTMLElement, by: NonNullable<typeof litBy>) {
   if (lit === el && el.getAttribute('data-mh') === current.style) { litBy = by; return; }
   unlight();
   el.setAttribute('data-mh', current.style);
@@ -305,6 +310,12 @@ function unlight() {
   el.style.removeProperty('--mh-rx');
   el.style.removeProperty('--mh-r');
   el.querySelectorAll(':scope > .mh-fx').forEach((n) => n.remove());
+}
+
+/** Lights the active row of a data-mh-list list; null puts it out. */
+export function lightActive(el: HTMLElement | null) {
+  if (!el) { if (litBy === 'list') unlight(); return; }
+  if (el.isConnected) light(el, 'list');
 }
 
 /** After a change of style, light the same option again in the new one. */
@@ -382,21 +393,24 @@ export function MenuHighlightRoot() {
       if (litBy === 'focus' && e.target === lit) unlight();
     };
 
-    doc.addEventListener('pointerover', over, { passive: true });
-    doc.addEventListener('pointerout', out, { passive: true });
-    doc.addEventListener('pointerdown', down, { passive: true });
-    doc.addEventListener('pointerup', up, { passive: true });
-    doc.addEventListener('pointercancel', up, { passive: true });
-    doc.addEventListener('focusin', focusIn);
-    doc.addEventListener('focusout', focusOut);
+    // Capture: a row that can be swiped away (the notifications on a phone)
+    // takes the finger before it would reach the document.
+    const opts = { passive: true, capture: true } as const;
+    doc.addEventListener('pointerover', over, opts);
+    doc.addEventListener('pointerout', out, opts);
+    doc.addEventListener('pointerdown', down, opts);
+    doc.addEventListener('pointerup', up, opts);
+    doc.addEventListener('pointercancel', up, opts);
+    doc.addEventListener('focusin', focusIn, true);
+    doc.addEventListener('focusout', focusOut, true);
     return () => {
-      doc.removeEventListener('pointerover', over);
-      doc.removeEventListener('pointerout', out);
-      doc.removeEventListener('pointerdown', down);
-      doc.removeEventListener('pointerup', up);
-      doc.removeEventListener('pointercancel', up);
-      doc.removeEventListener('focusin', focusIn);
-      doc.removeEventListener('focusout', focusOut);
+      doc.removeEventListener('pointerover', over, true);
+      doc.removeEventListener('pointerout', out, true);
+      doc.removeEventListener('pointerdown', down, true);
+      doc.removeEventListener('pointerup', up, true);
+      doc.removeEventListener('pointercancel', up, true);
+      doc.removeEventListener('focusin', focusIn, true);
+      doc.removeEventListener('focusout', focusOut, true);
       unlight();
     };
   }, []);

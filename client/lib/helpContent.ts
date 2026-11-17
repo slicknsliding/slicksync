@@ -376,6 +376,11 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Getting started',
     keywords: ['command palette', 'ctrl k', 'cmd k', 'search everything', 'keyboard shortcut', 'find a setting', 'settings search', 'find a movie', 'find a show'],
     answer: 'Press Ctrl+K (Cmd+K on Mac) anywhere to jump to a page, user, addon, or catalog by typing part of its name - or to a movie or series from your household\'s watchlist and history, which opens in Discover with its poster ready - or type a how-to question like this one for a quick answer, no AI setup required. Individual settings are searchable too: type "digest" or "2fa" and picking the result lands on Settings with that exact control scrolled into view and flashed.',
+    details: [
+      'Before you type it lists the main pages and Guides, so every guide is one pick away.',
+      'The result Enter would open is lit with your menu highlight; the mouse and the arrow keys both move it.',
+    ],
+    related: ['menu-highlight'],
   },
   {
     id: 'onboarding-wizard',
@@ -870,7 +875,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Press History on their card on the Users page, or AIOStreams on their own page and then History. Every version of their configuration SlickSync has seen is listed, newest first, with what changed from the one before - press Put back on an earlier one to return to it.',
     steps: [
       'On Users, press History on their card, between Limits and Caught up. Or open the person, press AIOStreams and switch to History - or tap the "changed outside SlickSync" notification, which opens it there. In the v2 design it is the AIOStreams tile in Tools.',
-      'Find the version from before the change; each one says what changed since the one before it.',
+      'Find the version from before the change; each one says what changed since the one before it. The one marked In use now is their setup today - its date is when SlickSync first saw it.',
       'Press Put back, choose what to keep as it is now, and confirm.',
     ],
     details: [
@@ -1493,7 +1498,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'How the option you are on stands out: Menu highlight',
     category: 'Appearance',
     keywords: ['menu highlight', 'highlight', 'hover', 'hover colour', 'hover color', 'selected option', 'menu option', 'right-click menu', 'pop-up menu', 'popup', 'aurora', 'orbit', 'glow', 'ring', 'side bar', 'outline', 'which option', 'cannot see', 'tv remote', 'focus'],
-    answer: 'Settings → Themes → Menu highlight. Pick how the option under your mouse, under your finger, or on your TV remote stands out in every menu that pops up: right-click or press-and-hold on a poster, Open in, user and addon menus, pickers. Aurora is the default: a glow of colours that runs round the option.',
+    answer: 'Settings → Themes → Menu highlight. Pick how the option under your mouse, under your finger, or on your TV remote stands out in every menu that pops up: right-click or press-and-hold on a poster, Open in, user and addon menus, pickers, Add to list, your notifications and the quick menu (Ctrl+K). Aurora is the default: a glow of colours that runs round the option.',
     steps: [
       'Open Settings → Themes and find Menu highlight, under Colours.',
       'Pick a style. Fills (Soft, Solid, Side bar, Outline) colour the option; Edges and lights (Edge, Edge and glow, Ring and glow, Soft ring, Orbit, Aurora) light its edge.',
@@ -1503,6 +1508,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     ],
     details: [
       'On a phone the highlight shows while your finger is on an option. With a TV remote or keyboard it shows on the option you have moved to.',
+      'In the quick menu it is on the result Enter would open, whether you got there with the mouse or the arrow keys.',
       'Orbit and Aurora move only on the option you are on. With less motion asked for (your device, or Themes → Layout → Motion → Reduced) they show a still ring instead.',
       'It’s saved to your account, so it follows you to every device you sign in on.',
     ],

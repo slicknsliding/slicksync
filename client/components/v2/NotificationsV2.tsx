@@ -40,13 +40,15 @@ const TINT: Record<string, string> = {
 };
 
 export function NotificationsPanelV2({
-  items, icon, when, canOpen, swipe, onOpen, onDismiss, onAccept, onReject, onMarkAll, onClear, onSettings, onActivity,
+  items, icon, when, canOpen, swipe, tv = false, onOpen, onDismiss, onAccept, onReject, onMarkAll, onClear, onSettings, onActivity,
 }: {
   items: BellItem[];
   icon: (type: string) => ReactNode;
   when: (d: Date) => string;
   canOpen: (n: BellItem) => boolean;
   swipe: boolean;
+  /** A TV remote stops on each row, and OK opens it. */
+  tv?: boolean;
   onOpen: (n: BellItem) => void;
   onDismiss: (id: string) => void;
   onAccept: (e: MouseEvent, reqId: string) => void;
@@ -69,11 +71,15 @@ export function NotificationsPanelV2({
     const tint = TINT[n.type] || '#60a5fa';
     const isRequest = n.type === 'request' && n.data;
     return (
-      <SwipeToDismiss key={n.id} enabled={swipe && n.type !== 'request'} onDismiss={() => onDismiss(n.id)}>
+      <SwipeToDismiss key={n.id} enabled={swipe && n.type !== 'request'} onDismiss={() => onDismiss(n.id)} className="rounded-[14px]">
+        {/* Set in from the panel's edge and rounded, like the options in
+            other menus; the one you are on lights with the menu highlight. */}
         <div
+          data-mh-item=""
           onClick={() => onOpen(n)}
-          className={`flex items-start gap-3 px-4 py-3 border-t transition-colors duration-500 ${canOpen(n) ? 'cursor-pointer' : ''} ${n.read ? 'notif-read' : 'notif-lit'}`}
-          style={{ borderColor: 'var(--color-surface-border)' }}
+          tabIndex={tv ? 0 : undefined}
+          onKeyDown={tv ? (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onOpen(n); } } : undefined}
+          className={`flex items-start gap-3 px-4 py-3 rounded-[14px] transition-colors duration-500 ${canOpen(n) ? 'cursor-pointer' : ''} ${n.read ? 'notif-read' : 'notif-lit'}`}
         >
           {n.poster ? (
             <div className="w-9 h-[52px] rounded-lg overflow-hidden shrink-0 border border-default">
@@ -124,7 +130,7 @@ export function NotificationsPanelV2({
   };
 
   return (
-    <div data-mh-off="" className="popup-panel max-h-[min(560px,80dvh)] flex flex-col overflow-hidden rounded-[22px] max-sm:rounded-b-none!">
+    <div className="popup-panel max-h-[min(560px,80dvh)] flex flex-col overflow-hidden rounded-[22px] max-sm:rounded-b-none!">
       <div className="flex items-center gap-3 px-4 py-3.5 shrink-0">
         <h3 className="text-base font-bold flex-1">Notifications</h3>
         {items.length > 0 && (
@@ -143,8 +149,8 @@ export function NotificationsPanelV2({
           </div>
         ) : (
           <>
-            {today.length > 0 && <>{label('Today')}{today.map(row)}</>}
-            {earlier.length > 0 && <>{label('Earlier')}{earlier.map(row)}</>}
+            {today.length > 0 && <>{label('Today')}<div className="flex flex-col gap-1.5 px-1.5 pb-1.5">{today.map(row)}</div></>}
+            {earlier.length > 0 && <>{label('Earlier')}<div className="flex flex-col gap-1.5 px-1.5 pb-1.5">{earlier.map(row)}</div></>}
           </>
         )}
       </div>

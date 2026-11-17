@@ -169,7 +169,7 @@ export function AddToListButton({ item, compact = false, pill = false }: { item:
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 mt-2 w-60 z-50 rounded-xl bg-surface border border-default shadow-xl p-1.5 max-h-72 overflow-y-auto">
+          <div data-mh-root="" className="absolute left-0 mt-2 w-60 z-50 rounded-xl bg-surface border border-default shadow-xl p-1.5 max-h-72 overflow-y-auto">
             <CatalogPickerMenu item={item} />
           </div>
         </>
