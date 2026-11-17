@@ -6,7 +6,7 @@ const { StremioAPIClient } = require('stremio-api-client')
 const { getCachedLibrary, setCachedLibrary } = require('./libraryCache')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
 const { enrichPostersFromCinemeta } = require('./libraryHelpers')
-const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
+const { getAccountDateString, getAccountDayKey, resolveAccountTimezone } = require('./dateUtils')
 const { calculateAddonAnalytics, calculateServerHealth, generateOperationalAlerts } = require('./adminAnalytics')
 const { calculateTopItemsWithUsers, calculateWatchVelocity, calculateInterestingMetrics } = require('./enhancedMetrics')
 const { buildStremioLinks, buildNuvioAppUrl } = require('./appLinks')
@@ -1564,17 +1564,21 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       const daysByPrefix = new Map()
       for (const row of activity) {
         const day = new Date(row.date).toISOString().slice(0, 10)
-        const k = keyOf(row.userId, row.itemId, row.videoId, day)
+        // A film's rows can carry its own id as the videoId, while its History
+        // entry has none: the same title, so they share a key.
+        const videoId = row.videoId === row.itemId ? '' : row.videoId
+        const k = keyOf(row.userId, row.itemId, videoId, day)
         secondsByKey.set(k, (secondsByKey.get(k) || 0) + (row.watchTimeSeconds || 0))
-        const prefix = keyOf(row.userId, row.itemId, row.videoId, '')
+        const prefix = keyOf(row.userId, row.itemId, videoId, '')
         let days = daysByPrefix.get(prefix)
         if (!days) { days = new Map(); daysByPrefix.set(prefix, days) }
         days.set(day, secondsByKey.get(k))
       }
 
       for (const entry of [...movieEntries, ...episodeEntries]) {
-        const ownDay = getAccountDateString(new Date(entry.watchedAtTimestamp), accountTimeZone)
+        const ownDay = getAccountDayKey(new Date(entry.watchedAtTimestamp), accountTimeZone)
         const prefix = `${entry.user.id}\u0000${entry.item.id}\u0000${entry.videoId || ''}\u0000`
+        const days = daysByPrefix.get(prefix)
 
         // Upgrade the History row's OWN day to the per-day total when that is
         // larger. Its durationSeconds is backfilled from a matching proxy
@@ -1588,12 +1592,21 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         // max(), never sum(): both numbers describe the SAME viewing, so
         // adding them would double-count. Same rule the cross-pipeline session
         // merge further down already follows.
+        //
+        // Except when the title was also watched on another day: the History
+        // figure is the most it ever reached across all of those days, so on
+        // the day it moved to it showed earlier days' time as that day's (a
+        // film finished in 23 minutes read 2h 39m). Then the day's own record
+        // is the card's.
         const ownDaySeconds = secondsByKey.get(prefix + ownDay) || 0
-        if (ownDaySeconds > (entry.durationSeconds || 0)) {
+        const otherDays = !!days && [...days.keys()].some((day) => day !== ownDay)
+        if (otherDays && ownDaySeconds > 0) {
+          entry.durationSeconds = ownDaySeconds
+        } else if (ownDaySeconds > (entry.durationSeconds || 0)) {
           entry.durationSeconds = ownDaySeconds
         }
 
-        for (const [day, seconds] of daysByPrefix.get(prefix) || []) {
+        for (const [day, seconds] of days || []) {
           // Its own day is handled above - it keeps the real clock time from
           // the History row rather than becoming a second, date-only card.
           if (day === ownDay) continue
@@ -1927,9 +1940,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       let currentStreak = 0
       const dates = Array.from(user.dates).sort((a, b) => b.localeCompare(a))
       if (dates.length > 0) {
-        const today = getAccountDateString(new Date(), accountTimeZone)
+        const today = getAccountDayKey(new Date(), accountTimeZone)
         const yesterdayDate = new Date(); yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-        const yesterday = getAccountDateString(yesterdayDate, accountTimeZone)
+        const yesterday = getAccountDayKey(yesterdayDate, accountTimeZone)
         let checkDateStr = dates.includes(today) ? today : (dates.includes(yesterday) ? yesterday : null)
         if (checkDateStr) {
           let checkDate = new Date(checkDateStr)
@@ -2011,7 +2024,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // land on the wrong key whenever the viewer's clock and the account's
     // configured timezone disagree about what day it currently is - this
     // field removes the need for the client to guess at all.
-    today: getAccountDateString(new Date(), accountTimeZone),
+    today: getAccountDayKey(new Date(), accountTimeZone),
     summary: {
       totalUsers: allUsers.length,
       activeUsers: activeUserCount,
