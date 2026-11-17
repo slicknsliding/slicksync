@@ -14,6 +14,7 @@ const { findDebridServiceForWatch, hasConfirmedProxyPlayback } = require('./debr
 const { postDiscord } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { notifyPushForType } = require('./pushNotifications')
+const ownWrites = require('./ownWrites')
 
 // notifyNativeWatchDetected's own gate (!existing && !session) only answers
 // "have we ever recorded this item for this user before" - it says nothing
@@ -587,6 +588,16 @@ const HOLD_BASELINE_WINDOW_MS = 5 * 60 * 1000
 // How recently a title seen for the first time must have been played for the
 // progress already on it to count (see processLibraryItem).
 const FIRST_SIGHTING_WINDOW_MS = 24 * 60 * 60 * 1000
+// Progress carried over from another sign-in (see carriedFromElsewhere): how
+// close two positions must be to be the same resume point, the smallest jump
+// looked at, how many account days back the other sign-in's position counts,
+// and how far into the runtime a position is left alone because finishing
+// puts every app at the end.
+const CARRIED_TOLERANCE_MS = 90 * 1000
+const CARRIED_MIN_SECONDS = 10 * 60
+const CARRIED_WINDOW_DAYS = 2
+const CARRIED_END_RATIO = 0.9
+const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
  * Seconds to credit for a title on its first sighting: its position in the
@@ -605,6 +616,44 @@ function firstSightingSeconds(state, lastWatched) {
   const bounds = [overallMs, runtimeMs]
   if (positionMs > 0) bounds.push(positionMs)
   return Math.floor(Math.min(...bounds) / 1000)
+}
+
+/**
+ * Whether a jump in a title's progress is a resume point carried over from
+ * another sign-in rather than watching: it lands, within a minute and a half,
+ * on the spot another sign-in on this account reached for the same video in
+ * the last couple of days. Real case (Nov 15 2026): Nuvio's Main Profile went
+ * from 7 minutes to 1h59m two minutes after the AIOStreams sign-in got there,
+ * and the same 1h52m was booked a second time.
+ *
+ * Left alone, so ordinary viewing is never lost: jumps under ten minutes
+ * (live progress, short sittings), positions near the end (finishing puts
+ * every app there), and titles with no known runtime to tell. Two people
+ * pausing their own copies at the same spot would look the same - rare enough
+ * to accept against counting a film twice. Any failure reads as "not carried".
+ */
+async function carriedFromElsewhere(prisma, { accountId, userId, itemId, videoId, positionMs, runtimeMs, todayDate }) {
+  if (!(positionMs > 0) || !(runtimeMs > 0) || positionMs >= runtimeMs * CARRIED_END_RATIO) return null
+  try {
+    const todayMs = new Date(todayDate).getTime()
+    const since = new Date((Number.isFinite(todayMs) ? todayMs : Date.now()) - CARRIED_WINDOW_DAYS * DAY_MS)
+    const rows = await prisma.watchSnapshot.findMany({
+      where: { accountId, itemId, userId: { not: userId }, date: { gte: since } },
+      select: { userId: true, videoId: true, timeOffset: true, overallTimeWatched: true, timeWatched: true },
+    })
+    if (!Array.isArray(rows)) return null
+    // A film's video is its own id, or nothing, depending on the app.
+    const videoOf = (v) => (!v || v === itemId ? '' : String(v))
+    const near = (v) => {
+      const ms = Number(v)
+      return Number.isFinite(ms) && ms > 0 && Math.abs(ms - positionMs) <= CARRIED_TOLERANCE_MS
+    }
+    // A snapshot's position, and its furthest point where that is a position
+    // too (Stremio's overallTimeWatched is a lifetime figure instead).
+    return rows.find((r) => videoOf(r.videoId) === videoOf(videoId) && (near(r.timeOffset) || (!r.timeWatched && near(r.overallTimeWatched)))) || null
+  } catch {
+    return null
+  }
 }
 
 // Ratio of runtime a movie's position must drop below to count as "restarted".
@@ -967,6 +1016,38 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // position can jump without anyone watching.
         if (!seenBefore && !item.state?.wallClockCapped) {
           totalDeltaSeconds = firstSightingSeconds(item.state, current.lastWatched)
+        }
+      }
+
+      // Progress that arrived from somewhere else is not watching here: a
+      // resume point SlickSync wrote itself (Copy watch history, Keep in
+      // step), or one carried over from another sign-in (see
+      // carriedFromElsewhere). The baseline still moves to it below, so what
+      // is played from there on counts as usual.
+      if (totalDeltaSeconds > 0) {
+        let carriedFrom = null
+        // A copy into a merged person's absorbed login is noted under the
+        // person (watchCopy's signInId), not the login's own id.
+        if (ownWrites.isOwn(userId, itemId, item) || (recordUserId !== userId && ownWrites.isOwn(recordUserId, itemId, item))) {
+          carriedFrom = 'a copy SlickSync wrote'
+        } else if (totalDeltaSeconds >= CARRIED_MIN_SECONDS) {
+          const offsetMs = Number(item.state?.timeOffset)
+          const match = await carriedFromElsewhere(prisma, {
+            accountId: accountIdValue,
+            userId,
+            itemId,
+            videoId: current.videoId,
+            // Where playback stands. Nuvio and Jellyfin have no other figure;
+            // Stremio's overallTimeWatched is a lifetime count, never used.
+            positionMs: offsetMs > 0 ? offsetMs : (current.timeWatched ? NaN : Number(current.overallTimeWatched)),
+            runtimeMs: Number(item.state?.duration),
+            todayDate,
+          })
+          if (match) carriedFrom = 'the spot another sign-in reached'
+        }
+        if (carriedFrom) {
+          console.log(`[MetricsProcessor] Not counting ${totalDeltaSeconds}s for ${userId}/${itemId}: progress from ${carriedFrom}, not watched here`)
+          totalDeltaSeconds = 0
         }
       }
 

@@ -1244,6 +1244,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Each title lands as far along as the source has it and never moves back: a title the destination already has further along is left as it is ("further along there").',
       'A title the destination can\'t look up by id (some Jellyfin libraries name titles only) shows as "need a match" - pick the right title and it copies too.',
       'Undo puts back exactly what the copy changed, and leaves alone anything watched since the copy.',
+      'A copied resume point is not watch time: the destination only counts what is played there afterwards.',
       'Someone with a single sign-in copies to or from another person\'s.',
     ],
     tips: [
@@ -1938,6 +1939,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'Timezone is auto-detected from your browser on first visit then stored explicitly, precisely because scheduled jobs cannot re-check it later. Travelling or moving without updating it will skew daily figures.',
       'Resuming something days later used to re-stamp the entire accumulated watch time as freshly watched today; now only genuinely new progress counts toward today and the rest stays on the day it actually happened.',
+      'Picking up in one app where another sign-in left off is not counted twice: when a title jumps straight to the spot another sign-in reached, or to a resume point AIOSync or Keep in step copied over, only what is played from there on counts.',
       'Proxy connection lifetime is deliberately not treated as watch time - a long-open connection is not the same as a long watch, and conflating them once produced wildly inflated totals.',
       'Stremio watch time counts the time each video really played, a minute or two at a time while it plays. Some Stremio apps only add a video to their running total once the next one starts, so before this some Stremio viewing showed as no time at all; that earlier time can not be added back.',
     ],

@@ -225,3 +225,141 @@ test('processLibraryItem: a new title never counts a lifetime figure, an old ent
     assert.ok(prisma.calls.transactions[0].some((o) => o.__op === 'watchSnapshot.upsert'), `${name}: the baseline is still set`)
   }
 })
+
+// --- progress carried over from somewhere else -------------------------------
+
+// The Nov 15 2026 case: Nuvio's Main Profile sat at 7m22s for The Odyssey
+// since September; two minutes after the AIOStreams sign-in reached 1h59m51s,
+// Nuvio showed 1h59m13s, and the 1h52m jump was booked a second time.
+const ODYSSEY = 'tt33764258'
+const RUNTIME_MS = 10355744
+
+function nuvioItem(positionMs, { videoId = ODYSSEY, lastWatched = new Date() } = {}) {
+  return { _id: ODYSSEY, type: 'movie', name: 'The Odyssey', state: { overallTimeWatched: String(positionMs), timeOffset: String(positionMs), timeWatched: 0, duration: String(RUNTIME_MS), video_id: videoId, lastWatched: lastWatched.toISOString(), nuvioProfile: 'Main Profile' } }
+}
+
+// The mock's snapshot table: this sign-in's own high-water mark for
+// getMaxSeen, and other sign-ins' rows for the carried-over lookup.
+function withSnapshots(prisma, { own = [], others = [], fail = false } = {}) {
+  prisma.calls.othersLookups = 0
+  prisma.watchSnapshot.findMany = async (args) => {
+    if (typeof args.where.userId === 'string') return own
+    prisma.calls.othersLookups++
+    if (fail) throw new Error('database unavailable')
+    return others.filter((r) => r.userId !== args.where.userId.not)
+  }
+  return prisma
+}
+
+function booked(prisma) {
+  const activity = prisma.calls.transactions[0]?.find((o) => o.__op === 'watchActivity.create')
+  return activity ? activity.args.data.watchTimeSeconds : null
+}
+
+function nuvioJump(others, { from = 442280, to = 7153280, item, fail } = {}) {
+  const prior = { overallTimeWatched: String(from), timeOffset: String(from), videoId: ODYSSEY, lastWatched: new Date('2026-09-06T02:31:58Z') }
+  const prisma = withSnapshots(makeMockPrisma({ previousSnapshot: prior }), { own: [prior], others, fail })
+  return { prisma, run: () => processLibraryItem(prisma, 'acct-1', 'nuvio-user', item || nuvioItem(to), new Date()) }
+}
+
+test('processLibraryItem: a jump onto the spot another sign-in just reached is not counted again', async () => {
+  const aio = { userId: 'aio-user', videoId: ODYSSEY, timeOffset: '7191758', overallTimeWatched: '7191758', timeWatched: null }
+  const { prisma, run } = nuvioJump([aio])
+  await run()
+  assert.equal(booked(prisma), null, 'the carried-over 1h52m books nothing')
+  assert.ok(prisma.calls.transactions[0].some((o) => o.__op === 'watchSnapshot.upsert'), 'the baseline moves to the carried spot')
+})
+
+test('processLibraryItem: what is played after a carried-over resume point still counts', async () => {
+  // Next pass: Nuvio went on from 1h59m13s to 2h29m21s; the other sign-in stayed put.
+  const aio = { userId: 'aio-user', videoId: ODYSSEY, timeOffset: '7191758', overallTimeWatched: '7191758', timeWatched: null }
+  const { prisma, run } = nuvioJump([aio], { from: 7153280, to: 8961384 })
+  await run()
+  assert.equal(booked(prisma), 1808)
+})
+
+test('processLibraryItem: a jump is counted when no other sign-in is at that spot', async () => {
+  const cases = {
+    nobody: [],
+    // Another sign-in somewhere else in the film.
+    elsewhere: [{ userId: 'aio-user', videoId: ODYSSEY, timeOffset: String(7153280 - 5 * 60000), overallTimeWatched: String(7153280 - 5 * 60000) }],
+    // The same spot in another episode.
+    otherVideo: [{ userId: 'aio-user', videoId: 'tt0000001:1:2', timeOffset: '7153280', overallTimeWatched: '7153280' }],
+    // A Stremio lifetime figure that happens to be close is not a position.
+    lifetime: [{ userId: 'stremio-user', videoId: ODYSSEY, timeOffset: '60000', overallTimeWatched: '7153000', timeWatched: '60000' }],
+    // The sign-in's own older row is not someone else's.
+    own: [{ userId: 'nuvio-user', videoId: ODYSSEY, timeOffset: '7153280', overallTimeWatched: '7153280' }],
+  }
+  for (const [name, others] of Object.entries(cases)) {
+    const { prisma, run } = nuvioJump(others)
+    await run()
+    assert.equal(booked(prisma), 6711, name)
+  }
+})
+
+test('processLibraryItem: finishing, short advances and failures are never treated as carried over', async () => {
+  // Two people finishing the same film both end at the runtime.
+  const atEnd = { userId: 'aio-user', videoId: ODYSSEY, timeOffset: String(RUNTIME_MS), overallTimeWatched: String(RUNTIME_MS) }
+  let t = nuvioJump([atEnd], { from: 8966494, to: RUNTIME_MS })
+  await t.run()
+  assert.equal(booked(t.prisma), 1389, 'finishing counts')
+
+  // Under ten minutes: not even looked up.
+  const near = { userId: 'aio-user', videoId: ODYSSEY, timeOffset: String(442280 + 5 * 60000), overallTimeWatched: String(442280 + 5 * 60000) }
+  t = nuvioJump([near], { to: 442280 + 5 * 60000 })
+  await t.run()
+  assert.equal(booked(t.prisma), 300)
+  assert.equal(t.prisma.calls.othersLookups, 0)
+
+  // No runtime to tell the end from the middle: counted.
+  const noRuntime = nuvioItem(7153280)
+  delete noRuntime.state.duration
+  t = nuvioJump([{ userId: 'aio-user', videoId: ODYSSEY, timeOffset: '7191758' }], { item: noRuntime })
+  await t.run()
+  assert.equal(booked(t.prisma), 6711)
+
+  // The lookup failing reads as "not carried".
+  t = nuvioJump([], { fail: true })
+  await t.run()
+  assert.equal(booked(t.prisma), 6711)
+})
+
+test('processLibraryItem: a first sighting on another sign-in\'s spot is not counted', async () => {
+  const prisma = withSnapshots(makeMockPrisma(), { others: [{ userId: 'aio-user', videoId: null, timeOffset: '3600000', overallTimeWatched: '3600000' }] })
+  const item = nuvioItem(3600000 + 20000)
+  await processLibraryItem(prisma, 'acct-1', 'nuvio-user', item, new Date())
+  assert.equal(booked(prisma), null)
+  assert.ok(prisma.calls.transactions[0].some((o) => o.__op === 'watchSnapshot.upsert'))
+})
+
+test('processLibraryItem: a resume point SlickSync wrote itself is not counted', async () => {
+  const ownWrites = require('../server/utils/ownWrites')
+  const lastWatched = new Date()
+  ownWrites.note('nuvio-user', [{ id: ODYSSEY, lastWatched: lastWatched.toISOString(), position: 7153280 }])
+  try {
+    const { prisma, run } = nuvioJump([], { item: nuvioItem(7153280, { lastWatched }) })
+    await run()
+    assert.equal(booked(prisma), null)
+    // Once it is played, the item no longer looks as written and counts again.
+    const later = nuvioJump([], { from: 7153280, to: 8961384, item: nuvioItem(8961384, { lastWatched: new Date(lastWatched.getTime() + 1800000) }) })
+    await later.run()
+    assert.equal(booked(later.prisma), 1808)
+  } finally {
+    ownWrites.forget()
+  }
+})
+
+test('processLibraryItem: a copy into a merged person\'s absorbed login is not counted either', async () => {
+  // AIOSync notes the write under the person; the absorbed login keeps its own baselines.
+  const ownWrites = require('../server/utils/ownWrites')
+  const lastWatched = new Date()
+  ownWrites.note('person-1', [{ id: ODYSSEY, lastWatched: lastWatched.toISOString(), position: 7153280 }])
+  try {
+    const prior = { overallTimeWatched: '442280', timeOffset: '442280', videoId: ODYSSEY }
+    const prisma = withSnapshots(makeMockPrisma({ previousSnapshot: prior }), { own: [prior] })
+    await processLibraryItem(prisma, 'acct-1', 'absorbed-cred-1', nuvioItem(7153280, { lastWatched }), new Date(), [], { recordUserId: 'person-1' })
+    assert.equal(booked(prisma), null)
+  } finally {
+    ownWrites.forget()
+  }
+})
