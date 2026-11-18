@@ -128,7 +128,10 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
     const r = el?.getBoundingClientRect();
     setMenu({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80, mode });
   };
+  // A second press on what opened a list closes it again.
+  const onArrow = () => (menu?.mode === 'apps' ? setMenu(null) : openMenuAt(arrowRef.current, 'apps'));
   const onMain = () => {
+    if (menu?.mode === 'which') return setMenu(null);
     if (!current) return openMenuAt(arrowRef.current, 'apps');
     if (links.length === 1) return go(links[0].url);
     openMenuAt(mainRef.current, 'which');
@@ -175,7 +178,8 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
           ref={arrowRef}
           type="button"
           aria-label="Choose the app"
-          onClick={() => openMenuAt(arrowRef.current, 'apps')}
+          aria-expanded={menu?.mode === 'apps'}
+          onClick={onArrow}
           className="absolute right-0 inset-y-0 sm:static flex items-center px-3 rounded-r-lg border-l"
           style={{ ...STYLE, borderLeft: '1px solid rgba(159, 146, 255, 0.35)' }}
         >
