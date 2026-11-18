@@ -1185,6 +1185,30 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Getting started',
     keywords: ['public mode', 'self registration', 'superadmin', 'multi tenant'],
     answer: 'On a public multi-tenant deployment, new accounts can self-register instead of an admin creating them, and a Superadmin console handles search, bulk enable/disable/delete, an audit log, and abandoned-account cleanup across every tenant. Not applicable on a private, single-household instance.',
+    related: ['superadmin-console'],
+  },
+  {
+    id: 'superadmin-console',
+    title: 'The Superadmin page: last used, alerts and panel sign-ins',
+    category: 'Security & account',
+    keywords: ['superadmin', 'last used', 'never used', 'superadmin alerts', 'sign-up surge', 'wrong passwords', 'fast growing account', 'panel sign-ins', 'operator'],
+    answer: 'Public instances only. Each account shows the day it was last used (by any way in) and what it has set up, so "Never used" and "Empty, never used" stand out. Alerts can warn you about a sign-up surge, an account growing very fast, or repeated wrong passwords on the Superadmin page, by push to your browser or Discord. Panel sign-ins lists who signed in to the page itself.',
+    steps: [
+      'Set SUPERADMIN_PASSWORD on the server, then open /superadmin and sign in.',
+      'Each account row shows its setup (users, groups, addons, catalogs, Vault entries) and "Last used today", "yesterday", "N days ago" or a date. Watch history is never shown or counted.',
+      'Open Alerts to choose which alerts you want: Sign-up surge (10 or more new accounts within an hour), Fast-growing account (200 or more records added in a day) and Wrong passwords (5 or more within 15 minutes).',
+      'To get them as notifications, press Turn on next to "Push to this browser". Discord works too once SUPERADMIN_NOTIFY_WEBHOOK_URL is set on the server, and has its own switch.',
+      'Open Panel sign-ins to see recent sign-ins to the page. Your current browser is marked "this browser", and a run of wrong passwords shows as one line.',
+    ],
+    details: [
+      'Last used is kept as a day only, never a time, and is recorded at most once a day per account.',
+      'Alerts carry counts and the first 8 characters of an account ID only - never a name, nickname or email.',
+      'Panel sign-ins keep a shortened address (the end is hidden) and the browser family only, and are kept for 90 days.',
+    ],
+    tips: [
+      'Turning push off here only stops Superadmin alerts in this browser - it leaves the account\'s own notifications alone.',
+    ],
+    related: ['public-registration'],
   },
   {
     id: 'vault-organize',

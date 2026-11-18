@@ -1,6 +1,7 @@
 // Auth and CSRF middlewares (factory-style for DI/testing)
 const { checkAccountClaims, pathNeedsLiveAccount } = require('../utils/auth')
 const { portalImageCookie, PORTAL_IMAGE_COOKIE } = require('../utils/portalImageCookie')
+const { markUsed } = require('../utils/lastUsed')
 
 module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, jsonwebtoken, prisma, DEFAULT_ACCOUNT_ID }) {
   const jwt = jsonwebtoken || require('jsonwebtoken')
@@ -41,12 +42,15 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
   // And when the lookup itself fails the account is not allowed in either:
   // waving the token through would let a disabled or deleted account back in
   // whenever the database hiccups.
+  //
+  // The same lookup records the day the account was used (see lastUsed.js).
   async function refusalFor(accId) {
     try {
-      const acct = await prisma.appAccount.findUnique({ where: { id: accId }, select: { disabled: true } });
+      const acct = await prisma.appAccount.findUnique({ where: { id: accId }, select: { id: true, disabled: true, createdAt: true, lastActiveDay: true } });
       if (!acct || acct.disabled) {
         return { status: 401, message: acct ? 'This account has been disabled' : 'This account no longer exists' };
       }
+      markUsed(prisma, acct);
       return null;
     } catch {
       return { status: 503, message: 'Could not check this account just now - try again in a moment' };

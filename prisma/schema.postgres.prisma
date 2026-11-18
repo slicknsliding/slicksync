@@ -263,6 +263,11 @@ model AppAccount {
   // operator-only cross-account visibility/moderation for public mode.
   createdAt   DateTime  @default(now())
   lastLoginAt DateTime?
+  // The last day (YYYY-MM-DD, server time zone) the account was used after the
+  // day it signed up - any sign-in, or opening SlickSync while signed in.
+  // Day only on purpose: the Superadmin panel never learns when anyone uses
+  // their own account (see server/utils/lastUsed.js).
+  lastActiveDay String?
   disabled    Boolean   @default(false) // login blocked when true; data untouched
   // Self-service - the account holder names themselves (Settings), NOT
   // something an operator assigns. Superadmin's account list displays it
@@ -309,6 +314,59 @@ model SuperadminAuditLog {
 
   @@index([createdAt])
   @@map("superadmin_audit_log")
+}
+
+// Superadmin panel switches and small state, one JSON value per key ('alerts':
+// which alerts are on; 'growthBaseline': each account's setup-record count at
+// the start of the day, counts only). See server/utils/superadminAlerts.js.
+model SuperadminSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("superadmin_settings")
+}
+
+// An alert raised for the operator: counts and a short account id only, never
+// a name, email or anything from inside an account.
+model SuperadminAlert {
+  id        String   @id @default(cuid())
+  type      String // 'signupSurge' | 'fastGrowth' | 'wrongPasswords'
+  count     Int
+  shortId   String? // fastGrowth: first 8 characters of the account id
+  address   String? // wrongPasswords: the shortened address, when they all came from one
+  day       String // YYYY-MM-DD, server time zone
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("superadmin_alerts")
+}
+
+// Sign-ins to the Superadmin page. A run of wrong passwords from one address
+// and browser within 15 minutes is one row with a count. The address is cut
+// short before it is saved and only the browser family is kept.
+model SuperadminSignin {
+  id      String   @id @default(cuid())
+  ok      Boolean
+  count   Int      @default(1)
+  address String
+  browser String
+  firstAt DateTime @default(now())
+  lastAt  DateTime @default(now())
+
+  @@index([lastAt])
+  @@map("superadmin_signins")
+}
+
+// Browsers that asked for Superadmin alerts as push notifications.
+model SuperadminPushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@map("superadmin_push_subscriptions")
 }
 
 // Automation rules - see schema.sqlite.prisma for the full comment.

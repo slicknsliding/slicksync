@@ -7,12 +7,12 @@ import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { PubFrame, PubLogo, PubCard, PubHeading } from '@/components/v2/PublicV2';
 import { V2DetailHead, V2Numbers, V2MoreMenu, type V2MenuItem } from '@/components/v2/V2Detail';
 import { V2Button, V2Status, type V2Tone } from '@/components/v2/V2Bits';
+import { AlertsSection, PanelSigninsSection, formatDay } from './PanelSections';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-// An account counts as "abandoned" once it's been sitting empty (no users,
-// groups, or addons set up) and untouched (never logged in past the initial
-// registration) for a while - long enough that it's very unlikely someone's
+// An account counts as "abandoned" once it's been sitting empty (nothing set
+// up) and unused (nobody came back after the day it signed up) for a while - long enough that it's very unlikely someone's
 // still mid-setup. Not "email" - that field isn't fetched at all anymore
 // (see the server route's own comment on why).
 const ABANDONED_AGE_MS = 24 * 60 * 60 * 1000;
@@ -21,16 +21,17 @@ interface SuperAdminAccount {
   id: string;
   uuid: string | null;
   createdAt: string;
-  lastLoginAt: string | null;
+  // The last day (YYYY-MM-DD, the server's day) it was used after the day it
+  // signed up - a day only, never a time. null = never used.
+  lastActiveDay: string | null;
   disabled: boolean;
   userCount: number;
   groupCount: number;
   addonCount: number;
-  // Row count across key account-scoped tables (users/groups/addons/
-  // catalogs/watch sessions/vault entries) - a proxy for "how much data
-  // does this account hold" for spotting heavy vs. empty accounts. Not a
-  // byte-accurate size - public mode is one shared Postgres database, not
-  // a file per account, so there's no real per-account disk size to report.
+  catalogCount: number;
+  vaultCount: number;
+  // The account's setup added up (users, groups, addons, catalogs, Vault
+  // entries) - what the quota measures. Watch history isn't counted.
   resourceRowCount: number;
   // Self-service nickname the account holder set themselves in their own
   // Settings - read-only here, purely so accounts are easier to tell apart
@@ -47,7 +48,7 @@ interface AuditLogEntry {
   createdAt: string;
 }
 
-type SortKey = 'createdAt' | 'lastLoginAt' | 'resourceRowCount';
+type SortKey = 'createdAt' | 'lastActiveDay' | 'resourceRowCount';
 
 interface MaintenanceState {
   supported: boolean;
@@ -58,9 +59,23 @@ interface MaintenanceState {
 }
 
 function isAbandoned(a: SuperAdminAccount): boolean {
-  if (a.lastLoginAt) return false;
-  if (a.userCount > 0 || a.groupCount > 0 || a.addonCount > 0) return false;
+  if (a.lastActiveDay) return false;
+  if (a.resourceRowCount > 0) return false;
   return Date.now() - new Date(a.createdAt).getTime() > ABANDONED_AGE_MS;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// "today", "yesterday", "3 days ago" or the date, from two YYYY-MM-DD days.
+function lastUsedWords(day: string, today: string | null): string {
+  const utc = (d: string) => { const [y, m, dd] = d.split('-').map(Number); return Date.UTC(y, m - 1, dd); };
+  const now = new Date();
+  const ref = today || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const diff = Math.round((utc(ref) - utc(day)) / 86400000);
+  if (diff <= 0) return 'today';
+  if (diff === 1) return 'yesterday';
+  if (diff < 7) return `${diff} days ago`;
+  return formatDay(day);
 }
 
 const NEW_ACCOUNT_AGE_MS = 48 * 60 * 60 * 1000;
@@ -74,9 +89,9 @@ function isRecentlyRegistered(a: SuperAdminAccount): boolean {
 // store a setting on (it's a single shared password, not a tenant), and no
 // push-notification identity to deliver an alert to either - so this lives
 // as a live-computed, in-panel indicator (mirroring the existing
-// "abandoned" pattern exactly: a summary count + quick-select) rather than
-// a push/bell notification, which this instance's notification pipeline has
-// no way to address to "the superadmin" specifically.
+// "abandoned" pattern exactly: a summary count + quick-select). Alerts that
+// do reach the operator (push to this browser, Discord) are in the Alerts
+// section (PanelSections.tsx).
 const QUOTA_THRESHOLD_STORAGE_KEY = 'slicksync:superadmin:quotaThreshold';
 const DEFAULT_QUOTA_THRESHOLD = 500;
 function isOverQuota(a: SuperAdminAccount, threshold: number): boolean {
@@ -148,12 +163,14 @@ function GrowthSparkline({ series }: { series: { date: string; count: number }[]
 // account login) - see server/routes/superadmin.js for the full reasoning.
 // This page never requests or displays anything from inside a tenant's own
 // data (their addons, Vault, watch history) - only whether the account
-// exists, when it registered/last logged in, and coarse counts.
+// exists, when it registered, the last day it was used, and coarse counts.
 export default function SuperAdminPage() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [password, setPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [accounts, setAccounts] = useState<SuperAdminAccount[]>([]);
+  // The server's own day, so "today" / "yesterday" match how it records them.
+  const [serverToday, setServerToday] = useState<string | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<SuperAdminAccount | null>(null);
@@ -185,15 +202,14 @@ export default function SuperAdminPage() {
     const sorted = [...base];
     if (sortBy === 'resourceRowCount') {
       sorted.sort((a, b) => b.resourceRowCount - a.resourceRowCount);
-    } else if (sortBy === 'lastLoginAt') {
-      // Never-logged-in accounts sort last, not first (as they would with a
-      // naive null-as-epoch-0 comparison) - "most recently active" is the
-      // useful ordering here, and "never" isn't recent.
+    } else if (sortBy === 'lastActiveDay') {
+      // Never-used accounts sort last, not first - "most recently active" is
+      // the useful ordering here, and "never" isn't recent.
       sorted.sort((a, b) => {
-        if (!a.lastLoginAt && !b.lastLoginAt) return 0;
-        if (!a.lastLoginAt) return 1;
-        if (!b.lastLoginAt) return -1;
-        return new Date(b.lastLoginAt).getTime() - new Date(a.lastLoginAt).getTime();
+        if (!a.lastActiveDay && !b.lastActiveDay) return 0;
+        if (!a.lastActiveDay) return 1;
+        if (!b.lastActiveDay) return -1;
+        return b.lastActiveDay.localeCompare(a.lastActiveDay);
       });
     } else {
       sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -209,7 +225,7 @@ export default function SuperAdminPage() {
   const summary = useMemo(() => ({
     active: accounts.filter((a) => !a.disabled).length,
     disabled: accounts.filter((a) => a.disabled).length,
-    neverLoggedIn: accounts.filter((a) => !a.lastLoginAt).length,
+    neverUsed: accounts.filter((a) => !a.lastActiveDay).length,
     abandoned: accounts.filter(isAbandoned).length,
     overQuota: accounts.filter((a) => isOverQuota(a, quotaThreshold)).length,
   }), [accounts, quotaThreshold]);
@@ -221,6 +237,7 @@ export default function SuperAdminPage() {
       if (!res.ok) throw new Error('Failed to load accounts');
       const data = await res.json();
       setAccounts(data.accounts || []);
+      setServerToday(typeof data.today === 'string' ? data.today : null);
     } catch {
       toast.error('Failed to load accounts');
     } finally {
@@ -532,9 +549,9 @@ export default function SuperAdminPage() {
   const accountStatus = (a: SuperAdminAccount): { tone: V2Tone; words: string } => {
     if (a.disabled) return { tone: 'off', words: 'Switched off' };
     if (isOverQuota(a, quotaThreshold)) return { tone: 'bad', words: 'Over quota' };
-    if (isAbandoned(a)) return { tone: 'warn', words: 'Empty, never signed in' };
+    if (isAbandoned(a)) return { tone: 'warn', words: 'Empty, never used' };
     if (isRecentlyRegistered(a)) return { tone: 'live', words: 'New' };
-    if (!a.lastLoginAt) return { tone: 'warn', words: 'Never signed in' };
+    if (!a.lastActiveDay) return { tone: 'warn', words: 'Never used' };
     return { tone: 'live', words: 'Active' };
   };
 
@@ -586,7 +603,7 @@ export default function SuperAdminPage() {
               { label: 'Active', value: summary.active },
               { label: 'New (48 h)', value: recentCount },
               { label: 'Switched off', value: summary.disabled },
-              { label: 'Never signed in', value: summary.neverLoggedIn },
+              { label: 'Never used', value: summary.neverUsed },
             ]}
           />
         )}
@@ -614,7 +631,7 @@ export default function SuperAdminPage() {
           {search && (
             <span className="text-xs text-subtle">{filteredAccounts.length} of {accounts.length}</span>
           )}
-          <div className="flex items-center gap-1.5 text-xs text-muted" title="An account at or above this many total records (users/groups/addons/catalogs/watch sessions/vault entries) is flagged as over quota - saved on this device only">
+          <div className="flex items-center gap-1.5 text-xs text-muted" title="An account at or above this many records (users, groups, addons, catalogs, Vault entries - watch history isn't counted) is flagged as over quota - saved on this device only">
             <span>Quota</span>
             <input
               type="number"
@@ -632,7 +649,7 @@ export default function SuperAdminPage() {
             className="py-2 px-3 rounded-xl bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
           >
             <option value="createdAt">Newest first</option>
-            <option value="lastLoginAt">Most recently active</option>
+            <option value="lastActiveDay">Most recently active</option>
             <option value="resourceRowCount">Heaviest usage first</option>
           </select>
         </div>
@@ -664,14 +681,16 @@ export default function SuperAdminPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted mt-0.5">
-                      {a.userCount} user{a.userCount !== 1 ? 's' : ''} · {a.groupCount} group{a.groupCount !== 1 ? 's' : ''} · {a.addonCount} addon{a.addonCount !== 1 ? 's' : ''}
-                      <span className="text-subtle" title="Row count across users/groups/addons/catalogs/watch sessions/vault entries - a usage proxy, not a byte-accurate size"> · {a.resourceRowCount} record{a.resourceRowCount !== 1 ? 's' : ''} total</span>
+                      {plural(a.userCount, 'user', 'users')} · {plural(a.groupCount, 'group', 'groups')} · {plural(a.addonCount, 'addon', 'addons')} · {plural(a.catalogCount, 'catalog', 'catalogs')} · {plural(a.vaultCount, 'Vault entry', 'Vault entries')}
+                      <span className="text-subtle" title="Users, groups, addons, catalogs and Vault entries added up - what the quota measures. Watch history isn't counted."> · {plural(a.resourceRowCount, 'record', 'records')}</span>
                     </p>
                     <p className="text-xs text-subtle mt-0.5">
-                      Registered {new Date(a.createdAt).toLocaleDateString()} · Last login {a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : 'never'}
+                      Registered {new Date(a.createdAt).toLocaleDateString()} · {a.lastActiveDay ? `Last used ${lastUsedWords(a.lastActiveDay, serverToday)}` : 'Never used'}
                     </p>
+                    {/* Phones: the status goes under the text, so the text has the row's width. */}
+                    <div className="sm:hidden mt-1"><V2Status tone={st.tone}>{st.words}</V2Status></div>
                   </div>
-                  <V2Status tone={st.tone}>{st.words}</V2Status>
+                  <span className="hidden sm:inline-flex"><V2Status tone={st.tone}>{st.words}</V2Status></span>
                   <V2MoreMenu
                     label="Account actions"
                     items={[
@@ -715,6 +734,9 @@ export default function SuperAdminPage() {
             </div>
           </div>
         )}
+
+        <AlertsSection />
+        <PanelSigninsSection />
 
         {/* Operator action trail - who got disabled/enabled/deleted and
             when. Collapsed by default and lazy-loaded, same reasoning as
