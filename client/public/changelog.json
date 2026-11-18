@@ -1,5 +1,34 @@
 [
   {
+    "version": "1.106.0",
+    "date": "2026-11-18",
+    "title": "1.106.0 - Menu highlight, episode tiles, AIOMetadata's own rows and devices, truer Now Playing and watch time, and History on every card",
+    "features": [
+      "Menu highlight in Settings → Themes: ten styles, from a soft fill to Orbit and Aurora, lights that run round the option you’re on. Pick the color and strength, and for the moving lights when they start, how many laps, which way and how fast. Works in every pop-up menu, notification rows, the quick menu and the chips you pick from in pop-ups like Discover’s Filters and Sort, and is saved to your account.",
+      "Their own rows: on an AIOStreams with AIOMetadata 3.9 or newer, turn it on for a household user on the household card and they see their own AIOMetadata Recommendations and lists in Jellyfin apps. Off until you turn it on.",
+      "AIOMetadata 4.0 and newer: Play on a device in a title’s Open titles with list, and screen time’s Stop what’s playing warns ten minutes before, then stops what’s on screen.",
+      "Now Playing shows one card per viewing with the real paused spot, streams named only by a code go to the person whose app recorded them, and a device that isn’t the household’s shows as Unknown device.",
+      "Now Playing, Continue Watching and a person’s Home name the Nuvio profile actually playing.",
+      "Resume on Jellyfin and AIOStreams cards opens your app (Choose app… in the card menu), and the words under a card open its details.",
+      "A History pill on every Users card: Sync history for Stremio and Nuvio, AIOStreams history with Put back for AIOStreams. Limits, History and Caught up sit on their own line, and a person’s page has one AIOStreams pill with Health and History.",
+      "The bell remembers Clear, dismiss and read on every device, and cleared alerts stay cleared until the problem comes back.",
+      "Seasons and episodes shows every episode as a tile: its picture, title, length, air date and summary, with watched checks, minutes left on a half-watched one, Up next, and upcoming episodes with the day they air. Click one to open that episode in Stremio."
+    ],
+    "bugFixes": [
+      "Watch time no longer counts progress twice when it moves from one sign-in to another, or when Copy watch history or Keep in step writes a resume point.",
+      "A day’s card on Activity shows that day’s watch time, and Watch Time Today and streaks use the right day.",
+      "“Streamed but not recorded” names the show and skips titles played for under 5 minutes.",
+      "The “Playback not being tracked” check works again.",
+      "Right-click and Resume work after dragging the Continue Watching row.",
+      "American spelling throughout, and the first Themes section is called Theme again.",
+      "A Vault sign-in test that Nuvio or Stremio was too busy to answer no longer counts as failed or sends an alert.",
+      "The page behind a title’s details stays put while you scroll the details.",
+      "The Open in list closes with a second press on its arrow, and opens above the button when there’s no room below.",
+      "A catalog’s buttons fit on a phone with the Compact page header.",
+      "Superadmin’s account list loads quickly however many accounts there are."
+    ]
+  },
+  {
     "version": "1.105.0",
     "date": "2026-11-13",
     "title": "1.105.0 - Sync history, Vault key History and end dates, a Motion setting, and safer backups",
