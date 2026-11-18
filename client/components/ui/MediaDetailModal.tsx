@@ -346,10 +346,13 @@ export function MediaDetailModal({
   // modal open AND close. isTV is stable for the entire session (see
   // useIsTV), so the conditional hook call below never changes order for a
   // mounted component in practice.
+  // A focus boundary: the remote stays inside the open window. Without it,
+  // Right from the last button in a row (or Down past the last row) moved
+  // the remote onto the page behind while the window stayed open.
   const fallbackModalRef = useRef<HTMLDivElement>(null);
   const noopFocusModal = useCallback(() => {}, []);
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const tvFocus = isTV ? useFocusable<object, HTMLDivElement>({ trackChildren: true }) : null;
+  const tvFocus = isTV ? useFocusable<object, HTMLDivElement>({ trackChildren: true, isFocusBoundary: true }) : null;
   const modalRef = tvFocus ? tvFocus.ref : fallbackModalRef;
   const modalFocusKey = tvFocus?.focusKey ?? 'media-detail-modal';
   const focusModal = tvFocus ? tvFocus.focusSelf : noopFocusModal;
