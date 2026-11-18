@@ -13,7 +13,8 @@ import { AppOpenNote } from './AppOpenNote';
 import { useAppOpenCheck } from '@/lib/useAppOpenCheck';
 import { CastMenu, type CastMenuTarget } from './CastMenu';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
-import { api, MediaDetails, DiscoverItem, SeriesSeason, type ContinueWatchingItem } from '@/lib/api';
+import { api, MediaDetails, DiscoverItem, SeriesSeason, type ContinueWatchingItem, type EpisodeResume } from '@/lib/api';
+import { EpisodeTiles } from '@/components/ui/EpisodeTiles';
 import { toast } from './Toast';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -21,7 +22,7 @@ import { posterUrl } from '@/lib/posterUrl';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useDragScroll } from '@/lib/hooks/useDragScroll';
 import { TVFocusable } from '@/components/tv/TVFocusable';
-import { useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
+import { useFocusable, FocusContext, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -445,9 +446,12 @@ export function MediaDetailModal({
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const [seasonsLoading, setSeasonsLoading] = useState(false);
   const [activeSeason, setActiveSeason] = useState<number | null>(null);
+  // The show's usual length, and where someone here stopped partway through.
+  const [seasonRuntime, setSeasonRuntime] = useState<number | null>(null);
+  const [seasonResume, setSeasonResume] = useState<EpisodeResume | null>(null);
   useEffect(() => {
     // Reset whenever the modal moves to a different title.
-    setSeasons(null); setSeasonsOpen(false); setActiveSeason(null);
+    setSeasons(null); setSeasonsOpen(false); setActiveSeason(null); setSeasonRuntime(null); setSeasonResume(null);
   }, [effectiveId]);
   const loadSeasons = async () => {
     setSeasonsOpen((v) => !v);
@@ -456,14 +460,20 @@ export function MediaDetailModal({
     try {
       const r = await api.getMediaEpisodes(effectiveId);
       setSeasons(r.seasons || []);
+      setSeasonRuntime(r.runtime ?? null);
+      setSeasonResume(r.resume ?? null);
       // Open on the season the current episode belongs to, falling back to
       // the first - landing on season 1 of a show you are deep into is the
       // kind of small wrongness that makes a feature feel unfinished.
       // MediaDetails carries the episode's title but not its numbers; the
       // season comes from the videoId the modal was opened with
       // (tt123:2:5), when there is one.
+      // Without one, the season someone here stopped partway through.
       const current = Number(String(effectiveVideoId || '').split(':')[1]);
-      setActiveSeason(Number.isFinite(current) && r.seasons.some((x) => x.season === current) ? current : (r.seasons[0]?.season ?? null));
+      const resumeSeason = r.resume?.season;
+      setActiveSeason(Number.isFinite(current) && r.seasons.some((x) => x.season === current) ? current
+        : resumeSeason != null && r.seasons.some((x) => x.season === resumeSeason) ? resumeSeason
+          : (r.seasons[0]?.season ?? null));
     } catch {
       setSeasons([]);
     } finally {
@@ -1724,19 +1734,33 @@ export function MediaDetailModal({
                       onToggle={loadSeasons}
                     />
                   )}
-                  {!v2 && <button
-                    type="button"
-                    onClick={loadSeasons}
-                    className="w-full flex items-center justify-between gap-3 p-3 text-left"
-                  >
-                    <span className="text-sm font-medium text-default">
-                      Seasons &amp; episodes
-                      {seasons && seasons.length > 0 && (
-                        <span className="text-xs text-muted font-normal"> · {seasons.length} season{seasons.length === 1 ? '' : 's'}</span>
-                      )}
-                    </span>
-                    <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
-                  </button>}
+                  {!v2 && (() => {
+                    // A remote stop on a TV, like the window's other folds.
+                    const header = (
+                      <button
+                        type="button"
+                        onClick={loadSeasons}
+                        className="w-full flex items-center justify-between gap-3 p-3 text-left"
+                      >
+                        <span className="text-sm font-medium text-default">
+                          Seasons &amp; episodes
+                          {seasons && seasons.length > 0 && (
+                            <span className="text-xs text-muted font-normal"> · {seasons.length} season{seasons.length === 1 ? '' : 's'}</span>
+                          )}
+                        </span>
+                        <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
+                      </button>
+                    );
+                    // Down goes to the season's pill: the remote scores by
+                    // centers, so on its own it skips the pills on the left
+                    // for the first full-width tile.
+                    const down = (direction: string) => {
+                      if (direction !== 'down' || !seasonsOpen || !seasons?.length || activeSeason == null) return true;
+                      try { setFocus(`ep-season-${activeSeason}`); } catch {}
+                      return false;
+                    };
+                    return isTV ? <TVFocusable onEnterPress={loadSeasons} onArrowPress={down} className="block w-full">{header}</TVFocusable> : header;
+                  })()}
 
                   {seasonsOpen && (
                     <div className="px-3 pb-3">
@@ -1747,39 +1771,46 @@ export function MediaDetailModal({
                       {!seasonsLoading && seasons && seasons.length > 0 && (
                         <>
                           <ScrollRow className="flex gap-1.5 pb-2">
-                            {seasons.map((s) => (
-                              <button
-                                key={s.season}
-                                type="button"
-                                onClick={() => setActiveSeason(s.season)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary-solid text-white' : 'text-muted bg-surface'}`}
-                              >
-                                Season {s.season}
-                                {s.watchedCount > 0 && (
-                                  <span className={activeSeason === s.season ? 'opacity-80' : 'opacity-60'}> · {s.watchedCount}/{s.episodes.length}</span>
-                                )}
-                              </button>
-                            ))}
+                            {seasons.map((s) => {
+                              const pill = (
+                                <button
+                                  key={s.season}
+                                  type="button"
+                                  onClick={() => setActiveSeason(s.season)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary-solid text-white' : 'text-muted bg-surface'}`}
+                                >
+                                  Season {s.season}
+                                  {s.watchedCount > 0 && (
+                                    <span className={activeSeason === s.season ? 'opacity-80' : 'opacity-60'}> · {s.watchedCount}/{s.episodes.length}</span>
+                                  )}
+                                </button>
+                              );
+                              return isTV ? <TVFocusable key={s.season} focusKey={`ep-season-${s.season}`} onEnterPress={() => setActiveSeason(s.season)} className="shrink-0">{pill}</TVFocusable> : pill;
+                            })}
                           </ScrollRow>
-                          <div className="max-h-56 overflow-y-auto pr-1 space-y-px">
-                            {seasons.find((s) => s.season === activeSeason)?.episodes.map((ep) => (
-                              <div
-                                key={`${ep.season}-${ep.episode}`}
-                                className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-colors hover:bg-surface-hover ${ep.watched ? 'ep-watched' : 'ep-unwatched'}`}
-                              >
-                                <span className="text-xs shrink-0 w-10 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-                                  E{String(ep.episode).padStart(2, '0')}
-                                </span>
-                                <span className="text-xs flex-1 min-w-0 truncate text-default">{ep.title || `Episode ${ep.episode}`}</span>
-                                {ep.released && (
-                                  <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-                                    {new Date(ep.released).getFullYear() || ''}
-                                  </span>
-                                )}
-                                {ep.watched && <CheckCircleIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-success)' }} />}
-                              </div>
-                            ))}
-                          </div>
+                          {(() => {
+                            const cur = seasons.find((s) => s.season === activeSeason);
+                            if (!cur || !details.imdb_id) return null;
+                            // v2 opens the one app its main button uses; the original
+                            // design offers both, like its Open in buttons.
+                            const lead = householdOn.find((i) => i.showId === effectiveId);
+                            const leadApp = lead ? (lead.providerType === 'nuvio' ? 'nuvio' : 'stremio') : null;
+                            const one = sessionApp ?? leadApp ?? rememberedTitleApp ?? 'stremio';
+                            return (
+                              <EpisodeTiles
+                                key={cur.season}
+                                imdbId={details.imdb_id}
+                                season={cur.season}
+                                episodes={cur.episodes}
+                                runtime={seasonRuntime}
+                                resume={seasonResume}
+                                started={!!seasonResume || seasons.some((s) => s.watchedCount > 0)}
+                                apps={v2 ? [one] : ['stremio', 'nuvio']}
+                                isTV={isTV}
+                                aboveFocusKey={`ep-season-${cur.season}`}
+                              />
+                            );
+                          })()}
                         </>
                       )}
                     </div>

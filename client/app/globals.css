@@ -1435,8 +1435,6 @@ body {
 .tint-ico-on { background: var(--tint); color: var(--color-bg); }
 .tint-ico-off { background: color-mix(in srgb, var(--tint) 16%, transparent); color: var(--tint); }
 .tint-lbl-on { color: var(--tint); }
-.ep-watched, .ep-watched:hover { background: color-mix(in srgb, var(--color-success) 8%, transparent); }
-.ep-unwatched, .ep-unwatched:hover { background: transparent; }
 .tgl-on { background: var(--color-primary-solid); border: 1px solid var(--color-surface-border); }
 .tgl-off { background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
 .tgl-knob-on { background: white; }

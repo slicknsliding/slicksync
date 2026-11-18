@@ -1373,6 +1373,21 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'A title\'s detail popup includes a collapsed "More Like This" row (TMDb-powered recommendations) and, for franchise entries, a "Part of the X Collection" row - both are disclosures, tap to expand. Box office figures (via OMDb) show there too when available.',
   },
   {
+    id: 'seasons-and-episodes',
+    title: 'Seasons and episodes on a show\'s detail popup',
+    category: 'Watching & Discover',
+    keywords: ['seasons', 'episodes', 'episode list', 'episode pictures', 'up next', 'resume', 'episode length', 'air date', 'upcoming episodes'],
+    answer: 'Open a show\'s detail popup and expand Seasons and episodes. Each episode is a tile with its picture, number, title, length, the day it aired and the start of its summary. Click a tile (OK on a TV remote) for the whole summary and the apps to open that episode in.',
+    details: [
+      'A green check marks an episode anyone here has watched. One someone stopped partway through shows a bar and how many minutes are left, tagged Resume; otherwise the next one to watch is tagged Up next.',
+      'Episodes still to come are dimmed and show the day they air. The line above the tiles gives the episode count, the show\'s usual length, how many are watched and when the next new one airs.',
+      'The length is the show\'s usual length. With a TMDb key in Settings → Integrations → External API Keys, each tile shows that episode\'s own length.',
+      'Open in Stremio opens that exact episode. Open in Nuvio opens the show, because Nuvio\'s app link can\'t name an episode.',
+      'Long seasons show their first 12 episodes; Show all lists the rest.',
+    ],
+    related: ['more-like-this-collection', 'now-playing-continue-watching', 'watching-together'],
+  },
+  {
     id: 'nuvio-collections-covers',
     title: 'Cover art for Nuvio Collections folders',
     category: 'Catalogs & Collections',

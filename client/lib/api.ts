@@ -843,7 +843,12 @@ class ApiClient {
   /** A series' episode list grouped by season, with watched state. Lazy -
    *  the detail modal only asks when someone expands the season list. */
   async getMediaEpisodes(itemId: string) {
-    return this.fetch<{ seasons: SeriesSeason[] }>(`/users/media-episodes?itemId=${encodeURIComponent(itemId)}`);
+    return this.fetch<{ seasons: SeriesSeason[]; runtime?: number | null; resume?: EpisodeResume | null }>(`/users/media-episodes?itemId=${encodeURIComponent(itemId)}`);
+  }
+
+  /** Each episode's own length in minutes (TMDb); {} without a TMDb key. */
+  async getEpisodeLengths(itemId: string, season: number) {
+    return this.fetch<{ lengths: Record<string, number> }>(`/users/media-episodes/lengths?itemId=${encodeURIComponent(itemId)}&season=${season}`);
   }
 
   /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
@@ -5152,7 +5157,15 @@ export interface NuvioCollection {
 export interface SeriesSeason {
   season: number;
   watchedCount: number;
-  episodes: Array<{ season: number; episode: number; title: string | null; released: string | null; watched: boolean }>;
+  episodes: Array<{ season: number; episode: number; title: string | null; released: string | null; watched: boolean; thumbnail?: string | null; overview?: string | null }>;
+}
+
+/** Where someone here stopped partway through an episode of a show. */
+export interface EpisodeResume {
+  season: number;
+  episode: number;
+  progressPercent: number;
+  remainingMinutes: number;
 }
 
 export interface SmartCatalogRule {

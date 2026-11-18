@@ -1359,6 +1359,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           episode: e.episode,
           title: e.title,
           released: e.released,
+          thumbnail: e.thumbnail || null,
+          overview: e.overview || null,
           watched: seen.has(`${e.season}:${e.episode}`),
         })
       }
@@ -1369,10 +1371,77 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           episodes,
           watchedCount: episodes.filter((e) => e.watched).length,
         }))
-      res.json({ seasons })
+
+      // The show's usual length ("41 min"); each episode's own comes from
+      // /media-episodes/lengths when there is a TMDb key.
+      const rt = String(metadata?.runtime || '').match(/^(\d+)\s*min/i)
+      const runtime = rt ? Number(rt[1]) : null
+
+      // Where someone here stopped partway through an episode - the same spot
+      // Continue Watching resumes from (latest viewing first, unwatched only).
+      let resume = null
+      try {
+        const { resumeStateOf } = require('../utils/continueWatching')
+        const sessions = await prisma.watchSession.findMany({
+          where: { accountId, itemId: String(itemId), videoId: { not: null } },
+          orderBy: { updatedAt: 'desc' },
+          take: 10,
+          select: { videoId: true, lastPosition: true, totalDuration: true },
+        })
+        for (const s of sessions) {
+          const [, se, ep] = String(s.videoId).split(':').map(Number)
+          const st = resumeStateOf(s, s.videoId)
+          if (st.inProgress && Number.isInteger(se) && Number.isInteger(ep) && !seen.has(`${se}:${ep}`)) {
+            resume = { season: se, episode: ep, progressPercent: st.progressPercent, remainingMinutes: st.remainingMinutes }
+            break
+          }
+        }
+      } catch { /* no resume spot is fine */ }
+
+      res.json({ seasons, runtime, resume })
     } catch (error) {
       console.error('Error fetching episodes:', error)
       res.status(500).json({ error: 'Failed to fetch episodes' })
+    }
+  })
+
+  // GET /users/media-episodes/lengths?itemId=tt..&season=N - each episode's
+  // own length in minutes, from TMDb, for an account with a TMDb key; {} for
+  // one without (the tiles then show the show's usual length). Lengths are the
+  // same for everyone, so the cache is shared; a failed lookup isn't cached.
+  const episodeLengthCache = new Map()
+  const EPISODE_LENGTH_TTL_MS = 24 * 60 * 60 * 1000
+  router.get('/media-episodes/lengths', async (req, res) => {
+    const accountId = getAccountId(req)
+    if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+    const itemId = String(req.query.itemId || '')
+    const season = Number(req.query.season)
+    if (!/^tt\d+$/.test(itemId) || !Number.isInteger(season) || season < 0) return res.status(400).json({ error: 'A valid itemId and season are required' })
+    const cacheKey = `${itemId}:${season}`
+    const hit = episodeLengthCache.get(cacheKey)
+    if (hit && Date.now() - hit.at < EPISODE_LENGTH_TTL_MS) return res.json({ lengths: hit.lengths })
+    const key = await resolveTmdbKeyForBackdrop(req).catch(() => null)
+    if (!key) return res.json({ lengths: {} })
+    try {
+      const k = encodeURIComponent(key)
+      const find = await fetch(`https://api.themoviedb.org/3/find/${itemId}?api_key=${k}&external_source=imdb_id`, { signal: AbortSignal.timeout(8000) })
+      if (!find.ok) return res.json({ lengths: {} })
+      const show = ((await find.json()).tv_results || [])[0]
+      const lengths = {}
+      if (show?.id) {
+        const rsp = await fetch(`https://api.themoviedb.org/3/tv/${show.id}/season/${season}?api_key=${k}`, { signal: AbortSignal.timeout(8000) })
+        if (!rsp.ok && rsp.status !== 404) return res.json({ lengths: {} })
+        if (rsp.ok) {
+          for (const e of (await rsp.json()).episodes || []) {
+            if (Number.isInteger(e.episode_number) && e.runtime > 0) lengths[e.episode_number] = e.runtime
+          }
+        }
+      }
+      if (episodeLengthCache.size >= 500) episodeLengthCache.delete(episodeLengthCache.keys().next().value)
+      episodeLengthCache.set(cacheKey, { lengths, at: Date.now() })
+      res.json({ lengths })
+    } catch {
+      res.json({ lengths: {} })
     }
   })
 
