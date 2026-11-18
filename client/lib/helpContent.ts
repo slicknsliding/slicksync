@@ -118,7 +118,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     ],
     details: [
       'Right-clicking a catalog on the Catalogs index gives you Pin to top, Cover art, Rename, Content Rating, and Delete without opening it first.',
-      'Imported catalogs remember their source URL, so Refresh re-pulls from it and shows you a diff before applying anything.',
+      'Imported catalogs remember their source URL, so Refresh re-pulls from it and shows you a diff before applying anything. On a phone, Refresh is in the catalog\'s ⋯ menu.',
     ],
     tips: [
       'Suggest Titles and Describe-a-catalog both need a (free) TMDb key in Settings → External API Keys to do real keyword matching. Without one they fall back to plain title search, which is much weaker.',

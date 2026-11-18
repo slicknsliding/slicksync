@@ -140,6 +140,7 @@ export function NebulaPageHeading({
   stats,
   leading,
   trailing,
+  phoneRow,
 }: {
   title: string;
   subtitle?: string;
@@ -160,6 +161,11 @@ export function NebulaPageHeading({
   leading?: ReactNode;
   /** Right of the title, on the bell's row (Catalogs' Collections pills moved there). */
   trailing?: ReactNode;
+  /** Compact, on a phone: the buttons get a whole line of their own, from the
+      left edge to the right, and the palette and bell sit at the right below
+      (a catalog's page, whose buttons keep their words and would otherwise
+      run off the right edge). */
+  phoneRow?: boolean;
 }) {
   // Themes → Layout → Page header: Compact and Minimal draw their own, slimmer
   // row; Full is the layout below, as it has always been.
@@ -202,14 +208,14 @@ export function NebulaPageHeading({
             <div
               ref={actionsRef}
               data-ph-actions={compact ? 'icons' : 'slim'}
-              className={`flex items-center flex-wrap ${compact ? 'gap-1.5 shrink-0 ml-auto' : 'gap-2 flex-1 min-w-0'}`}
+              className={`flex items-center flex-wrap ${!compact ? 'gap-2 flex-1 min-w-0' : phoneRow ? 'gap-1.5 shrink-0 ml-auto max-sm:ml-0 max-sm:basis-full' : 'gap-1.5 shrink-0 ml-auto'}`}
             >
               {actions}
             </div>
           )}
           {!actions && !compact && <div className="flex-1" />}
           {trailing}
-          <TopbarActions />
+          <TopbarActions className={compact && phoneRow ? 'max-sm:ml-auto' : undefined} />
         </div>
         {stats && (
           <div className="mt-3 w-full flex justify-center">
