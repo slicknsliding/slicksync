@@ -8,7 +8,10 @@ import { useTVModal } from '@/components/tv/useTVModal';
 
 interface ContextMenuProps {
   isOpen: boolean;
-  position: { x: number; y: number };
+  // aboveY: for a menu opened from a button (y = just under it), where it
+  // should end when it has to open upwards - just over the button, so the
+  // button stays in view and can close it again.
+  position: { x: number; y: number; aboveY?: number };
   onClose: () => void;
   children: React.ReactNode;
 }
@@ -73,7 +76,8 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
     const height = el.offsetHeight;
     let { x, y } = position;
     if (x + width > vw - pad) x = position.x - width >= pad ? position.x - width : vw - width - pad;
-    if (y + height > vh - pad) y = position.y - height >= pad ? position.y - height : vh - height - pad;
+    const upFrom = position.aboveY ?? position.y;
+    if (y + height > vh - pad) y = upFrom - height >= pad ? upFrom - height : vh - height - pad;
     x = Math.min(x, vw - width - pad);
     y = Math.min(y, vh - height - pad);
     setAdjustedPosition({ x: Math.max(pad, x), y: Math.max(pad, y) });

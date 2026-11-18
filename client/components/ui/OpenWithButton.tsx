@@ -102,7 +102,7 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
   const [targets, setTargets] = useState<OpenTargets | null>(null);
   // Read straight away: nothing renders until the targets load, on the client.
   const [chosen, setChosen] = useState<OpenWithAppId | null>(() => (typeof window === 'undefined' ? null : rememberedApp()));
-  const [menu, setMenu] = useState<{ x: number; y: number; mode: 'apps' | 'which' } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; aboveY: number; mode: 'apps' | 'which' } | null>(null);
   // A counter that makes the list re-read the Shortcut's names once saved.
   const [scSaved, setScSaved] = useState(0);
   const arrowRef = useRef<HTMLButtonElement>(null);
@@ -126,7 +126,8 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
   const note = noteShown ? <AppOpenNote onClose={hideNote} isTV={isTV} /> : null;
   const openMenuAt = (el: HTMLElement | null, mode: 'apps' | 'which') => {
     const r = el?.getBoundingClientRect();
-    setMenu({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80, mode });
+    // Under the button; with no room there, over it (never on top of it).
+    setMenu({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80, aboveY: r ? r.top - 6 : 80, mode });
   };
   // A second press on what opened a list closes it again.
   const onArrow = () => (menu?.mode === 'apps' ? setMenu(null) : openMenuAt(arrowRef.current, 'apps'));
@@ -187,7 +188,7 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
         </button>
       </div>
 
-      <ContextMenu isOpen={!!menu} position={{ x: menu?.x ?? 0, y: menu?.y ?? 0 }} onClose={() => setMenu(null)}>
+      <ContextMenu isOpen={!!menu} position={{ x: menu?.x ?? 0, y: menu?.y ?? 0, aboveY: menu?.aboveY }} onClose={() => setMenu(null)}>
         <div className="w-[min(320px,calc(100vw-1.5rem))] p-1.5">
           {menu?.mode === 'which' && current ? (
             <>
