@@ -27,7 +27,9 @@ async function validateNuvioCredentials(email, password, serverConfig) {
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
     let detail = bodyText
-    try { detail = JSON.parse(bodyText)?.error_description || JSON.parse(bodyText)?.msg || bodyText } catch {}
+    // Supabase's own errors carry error_description or msg; its gateway's
+    // (a rate limit, for one) carry message.
+    try { const j = JSON.parse(bodyText); detail = j?.error_description || j?.msg || j?.message || bodyText } catch {}
     console.error(`Nuvio auth failed (${res.status}): ${detail}`)
     const err = new Error(detail || 'Authentication failed')
     err.status = res.status
@@ -61,7 +63,9 @@ async function refreshNuvioToken(refreshToken, serverConfig) {
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
     let detail = bodyText
-    try { detail = JSON.parse(bodyText)?.error_description || JSON.parse(bodyText)?.msg || bodyText } catch {}
+    // Supabase's own errors carry error_description or msg; its gateway's
+    // (a rate limit, for one) carry message.
+    try { const j = JSON.parse(bodyText); detail = j?.error_description || j?.msg || j?.message || bodyText } catch {}
     console.error(`Nuvio token refresh failed (${res.status}): ${detail}`)
     const err = new Error(detail || 'Token refresh failed')
     err.status = res.status

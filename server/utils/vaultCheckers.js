@@ -442,7 +442,7 @@ async function checkStremioAuth(secret, config = {}) {
     const msg = String(err?.message || '').toLowerCase()
     if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
     if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
-    if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: false, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
+    if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: null, transient: true, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
     logDebug({ event: 'stremio_auth_threw', message: err?.message, stack: err?.stack })
     console.warn('[VaultCheck] Stremio auth threw:', err?.message)
     return { ok: false, message: err?.message || 'Stremio login failed' }
@@ -460,6 +460,9 @@ async function checkNuvioAuth(secret, config = {}) {
     await validateNuvioCredentials(identifier, secret)
     return { ok: true, message: 'Nuvio login succeeded' }
   } catch (err) {
+    // Turned away for being busy (rate limit) or down: no answer about the
+    // password, so not a failure (transient: the monitor keeps the last one).
+    if (err?.status === 429 || err?.status >= 500) return { ok: null, transient: true, message: 'Nuvio was too busy to check this login - try again later, not necessarily a bad password' }
     return { ok: false, message: err?.message || 'Nuvio login failed' }
   }
 }
