@@ -40,6 +40,7 @@ const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 let timer = null
 
 async function checkAccount(prisma, accountId, deps) {
+  if (!accountId) return
   const { getAccountId, decrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, canonicalizeManifestUrl, StremioAPIClient, createProvider } = deps
   const { createGetUserSyncStatus } = require('./sync')
   const { notifyPushForType } = require('./pushNotifications')
@@ -160,10 +161,27 @@ async function checkAccount(prisma, accountId, deps) {
   }
 }
 
+let inFlight = null
+
+async function checkAllAccounts(prisma, deps, accountId) {
+  try {
+    const { scheduledAccountIds } = require('./helpers/database')
+    for (const id of await scheduledAccountIds(prisma, accountId)) {
+      await checkAccount(prisma, id, deps).catch((e) => console.warn('[SyncGuardian] check failed:', e?.message))
+    }
+  } catch (e) {
+    console.warn('[SyncGuardian] check failed:', e?.message)
+  }
+}
+
+// accountId: the household on private, undefined on public = every account,
+// one after another. A pass over many accounts can outlast the 5 minutes, so
+// a tick that finds one still going skips instead of starting a second.
 function scheduleSyncGuardian(prisma, deps, accountId) {
   if (timer) { clearInterval(timer); timer = null }
   const run = () => {
-    checkAccount(prisma, accountId, deps).catch((e) => console.warn('[SyncGuardian] check failed:', e?.message))
+    if (inFlight) return
+    inFlight = checkAllAccounts(prisma, deps, accountId).finally(() => { inFlight = null })
   }
   run()
   timer = setInterval(run, CHECK_INTERVAL_MS)

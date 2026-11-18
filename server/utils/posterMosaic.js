@@ -153,6 +153,7 @@ let mosaicTimer = null
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // matches vault monitor's cadence - a month rollover only needs catching once, no finer granularity needed
 
 async function checkAndPostIfNewMonth(prisma, accountId) {
+  if (!accountId) return
   try {
     const { getAccountMonthString, previousMonthString, resolveAccountTimezone } = require('./dateUtils')
     const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
@@ -178,10 +179,22 @@ async function checkAndPostIfNewMonth(prisma, accountId) {
   }
 }
 
+// accountId: the household on private, undefined on public = every account.
+async function checkAllAccounts(prisma, accountId) {
+  let ids
+  try {
+    ids = await require('./helpers/database').scheduledAccountIds(prisma, accountId)
+  } catch (e) {
+    console.warn('[PosterMosaic] Monthly check failed:', e?.message)
+    return
+  }
+  for (const id of ids) await checkAndPostIfNewMonth(prisma, id)
+}
+
 function scheduleMosaicMonitor(prisma, accountId) {
   if (mosaicTimer) clearInterval(mosaicTimer)
-  checkAndPostIfNewMonth(prisma, accountId)
-  mosaicTimer = setInterval(() => checkAndPostIfNewMonth(prisma, accountId), CHECK_INTERVAL_MS)
+  checkAllAccounts(prisma, accountId)
+  mosaicTimer = setInterval(() => checkAllAccounts(prisma, accountId), CHECK_INTERVAL_MS)
 }
 
 module.exports = { getMonthTitles, buildMosaicBuffer, generateAndPostMosaic, scheduleMosaicMonitor, MAX_TILES }

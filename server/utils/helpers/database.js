@@ -164,6 +164,18 @@ function getAccountId(req) {
 }
 
 /**
+ * The accounts a background job runs for. Private mode starts its jobs with
+ * the household's account; a public instance starts them with none, which
+ * means every account that hasn't been switched off - each run on its own,
+ * never one query across them all.
+ */
+async function scheduledAccountIds(prisma, accountId) {
+  if (accountId) return [accountId];
+  const rows = await prisma.appAccount.findMany({ where: { disabled: false }, select: { id: true } });
+  return rows.map((r) => r.id);
+}
+
+/**
  * Create scoped where clause for account-based queries
  */
 function scopedWhere(req, extra = {}) {
@@ -522,6 +534,7 @@ module.exports = {
   getGroupUsers,
   getAccountId,
   idsInAccount,
+  scheduledAccountIds,
   scopedWhere,
   getGroupAddons,
   assignUserToGroup,
