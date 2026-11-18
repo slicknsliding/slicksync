@@ -96,7 +96,7 @@ export function AgeLimitCard({ userId, name, onChange, onClose }: {
             <p className="text-xs text-muted mb-1">Highest rating</p>
             <div className="flex flex-wrap gap-1.5">
               {levels.map((l) => (
-                <button key={l.value} type="button" disabled={saving} onClick={() => save(l.value)} aria-pressed={state?.current === l.value} className={chipClass(state?.current === l.value)}>
+                <button key={l.value} type="button" disabled={saving} onClick={() => save(l.value)} data-mh-chip="" aria-pressed={state?.current === l.value} className={chipClass(state?.current === l.value)}>
                   {l.label}
                 </button>
               ))}

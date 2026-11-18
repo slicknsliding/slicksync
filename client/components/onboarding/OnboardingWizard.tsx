@@ -79,7 +79,7 @@ const STEPS: Step[] = [
     title: 'Bring in your addons',
     body: 'Import the addons you already use, then tag, reorder, and assign them to users or groups instead of repeating yourself per account.',
     bullets: [
-      'Drag to reorder, drag to protect, or drag onto a colour-coded tag.',
+      'Drag to reorder, drag to protect, or drag onto a color-coded tag.',
       'Protected addons are never removed by a sync - useful for the one addon that keeps disappearing.',
       'Addon Snapshots save a named addon set you can deploy onto any user or group later.',
     ],

@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { usePageHeader } from '@/lib/pageHeader';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -90,6 +91,7 @@ function MoreMenuItem({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      data-mh-item=""
       className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-left transition-colors enabled:hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
       style={{ '--tint': tintVar } as React.CSSProperties}
     >
@@ -223,6 +225,11 @@ type SortKey = typeof SORT_OPTIONS[number]['key'];
 // IS a quick preview, unlike the list itself.
 export default function ListDetailPage() {
   const { layoutMode } = useLayoutMode();
+  // Compact page header on a phone: the buttons drop their small icons so
+  // all of them and the ... fit on one line (see editActions).
+  const { mode: headerMode } = usePageHeader();
+  const phoneRow = layoutMode === 'nebula' && headerMode === 'compact';
+  const rowIcon = phoneRow ? 'w-4 h-4 max-sm:hidden' : 'w-4 h-4';
   // v2 page design (Themes → Layout → Page design); Classic stays as it is.
   const { design } = usePageDesign();
   const isTV = useIsTV();
@@ -882,18 +889,28 @@ export default function ListDetailPage() {
   // account, so gating this one variable (used by both the non-nebula
   // Header and NebulaPageHeading below) hides every header-level mutating
   // action at once instead of needing a per-button check.
+  // data-ph-keep: the buttons keep their words in the Compact header.
+  // phoneRow (Compact header on a phone): one line from the left edge to the
+  // ... above the bell, every gap 4px - the buttons widen to fill it, and wrap
+  // among themselves before ... would ever leave the line. Refresh moves into
+  // the ... menu there. Elsewhere PillWrap is a Fragment: nothing changes.
+  const PillWrap: React.ElementType = phoneRow ? 'div' : Fragment;
+  const pillWrapProps = phoneRow ? { className: 'contents max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-1 max-sm:gap-y-1.5 max-sm:flex-1 max-sm:min-w-0' } : {};
+  const pill = phoneRow ? 'max-sm:flex-auto max-sm:whitespace-nowrap max-sm:px-1.5' : undefined;
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
-    <div className="flex items-center gap-2 flex-wrap justify-end">
+    <div data-ph-keep className={phoneRow ? 'flex items-center gap-2 flex-wrap justify-end max-sm:flex-nowrap max-sm:items-start max-sm:w-full max-sm:gap-1' : 'flex items-center gap-2 flex-wrap justify-end'}>
+      <PillWrap {...pillWrapProps}>
       {tv(<Button
         variant={(list.keptRatings?.length ?? 0) > 0 ? 'primary' : 'secondary'}
         size="sm"
-        leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
+        leftIcon={<ShieldExclamationIcon className={rowIcon} />}
         onClick={openPolicyModal}
+        className={pill}
         title={(list.keptRatings?.length ?? 0) > 0 ? `Keeping only: ${(list.keptRatings || []).join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
       >
         {(list.keptRatings?.length ?? 0) > 0 ? `Content Rating (${(list.keptRatings?.length ?? 0)})` : 'Content Rating'}
       </Button>, openPolicyModal)}
-      {tv(<Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
+      {tv(<Button variant="secondary" size="sm" leftIcon={<SparklesIcon className={rowIcon} />} onClick={handleOpenSuggest} className={pill}>
         Suggest titles
       </Button>, handleOpenSuggest)}
       {/* Smart rule: criteria the catalog keeps re-evaluating, as opposed to
@@ -901,19 +918,21 @@ export default function ListDetailPage() {
       {tv(<Button
         variant={list.smartRuleJson ? 'primary' : 'secondary'}
         size="sm"
-        leftIcon={<FunnelIcon className="w-4 h-4" />}
+        leftIcon={<FunnelIcon className={rowIcon} />}
         onClick={() => setSmartOpen(true)}
+        className={pill}
         title="Give this catalog criteria it keeps re-evaluating, instead of a fixed list"
       >
         {list.smartRuleJson ? 'Smart rule on' : 'Smart rule'}
       </Button>, () => setSmartOpen(true))}
       {list.importSourceUrl && tv(
-        <Button variant="secondary" size="sm" leftIcon={<ArrowPathIcon className="w-4 h-4" />} onClick={handleOpenRefresh} isLoading={loadingRefreshDiff}>
+        <Button variant="secondary" size="sm" leftIcon={<ArrowPathIcon className={rowIcon} />} onClick={handleOpenRefresh} isLoading={loadingRefreshDiff} className={phoneRow ? 'max-sm:hidden' : undefined}>
           Refresh
         </Button>,
         handleOpenRefresh,
       )}
-      <div className="relative" ref={moreMenuRef}>
+      </PillWrap>
+      <div className={phoneRow ? 'relative max-sm:shrink-0' : 'relative'} ref={moreMenuRef}>
         {tv(<Button
           ref={moreMenuButtonRef}
           variant="secondary"
@@ -921,7 +940,7 @@ export default function ListDetailPage() {
           onClick={() => setShowMoreMenu((v) => !v)}
           aria-label="More actions"
           aria-expanded={showMoreMenu}
-          className="!px-2.5"
+          className={phoneRow ? '!px-2.5 max-sm:!px-2' : '!px-2.5'}
         >
           <EllipsisVerticalIcon className="w-4 h-4" />
         </Button>, () => setShowMoreMenu((v) => !v))}
@@ -934,6 +953,7 @@ export default function ListDetailPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -8 }}
                 transition={{ duration: 0.15 }}
+                data-mh-root=""
                 className="absolute right-0 top-full mt-2.5 z-50 w-72 rounded-2xl overflow-hidden"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', boxShadow: '0 20px 40px -12px rgba(0,0,0,0.5)' }}
               >
@@ -946,6 +966,14 @@ export default function ListDetailPage() {
                 />
                 <div className="relative py-2">
                   <MoreMenuSection label="Organize">
+                    {/* Phones: Refresh sits here, so the button line never breaks. */}
+                    {phoneRow && list.importSourceUrl && (
+                      <div className="sm:hidden">
+                        <MoreMenuItem icon={<ArrowPathIcon className="w-4 h-4" />} tint="secondary" disabled={loadingRefreshDiff} onClick={() => { setShowMoreMenu(false); handleOpenRefresh(); }}>
+                          Refresh
+                        </MoreMenuItem>
+                      </div>
+                    )}
                     <MoreMenuItem icon={<PhotoIcon className="w-4 h-4" />} tint="secondary" onClick={() => { setShowMoreMenu(false); setShowCoverPicker(true); }}>
                       Cover art
                     </MoreMenuItem>
@@ -1070,7 +1098,7 @@ export default function ListDetailPage() {
         {layoutMode === 'nebula' && (
           v2Head
             ? <NebulaPageHeading title="Catalogs" leading={backButton} />
-            : <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
+            : <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} phoneRow />
         )}
 
         {v2Head && list && (

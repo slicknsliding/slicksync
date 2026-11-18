@@ -231,7 +231,7 @@ function RenameTile({ device, userId, authKey, onDone }: {
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onDone(); }}
       />
-      <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-subtle)' }}>A name you will recognise, like Kitchen tablet.</p>
+      <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-subtle)' }}>A name you will recognize, like Kitchen tablet.</p>
       <div className="flex gap-2 justify-end mt-3">
         <Button type="button" variant="secondary" size="md" disabled={busy} onClick={() => onDone()}>Cancel</Button>
         <Button type="button" variant="primary" size="md" isLoading={busy} disabled={busy || !name.trim()} onClick={save}>Save name</Button>

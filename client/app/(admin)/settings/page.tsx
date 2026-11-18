@@ -47,9 +47,10 @@ import {
   ArrowTopRightOnSquareIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
-import { SettingsNavigation, collectSettingsEntries, type SettingsTabDef } from '@/components/settings/SettingsNavigation';
+import { SETTINGS_TV_CONTENT, SettingsNavigation, collectSettingsEntries, settingsTabTVKey, type SettingsTabDef } from '@/components/settings/SettingsNavigation';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVControlZone } from '@/components/tv/TVControlZone';
 import { LumiereDbField } from '@/components/settings/LumiereDbField';
 import { AboutPanel, AboutV2, ABOUT_KEYS } from '@/components/settings/AboutPanel';
 import { THEME_KEYS } from '@/components/settings/ThemesPanel';
@@ -266,7 +267,7 @@ const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 // wears (experience) against how the instance is wired up (setup).
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone', group: 'experience' },
-  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds', group: 'experience' },
+  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colors, layout, custom builds', group: 'experience' },
   { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed', group: 'setup' },
   { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest', group: 'experience' },
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover', group: 'setup' },
@@ -1202,6 +1203,8 @@ export default function SettingsPage() {
           />
 
           <div ref={contentRef} className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
+          {/* TV: every setting reachable with the remote - Right from a tab. */}
+          <TVControlZone enabled={isTV} focusKey={SETTINGS_TV_CONTENT} backKey={settingsTabTVKey(activeTab)} memoryKey={activeTab}>
 
 
         {v2 && <ArrangeBar arrange={arranges[activeTab]} />}
@@ -2906,6 +2909,7 @@ export default function SettingsPage() {
             </div>
           )}
         </Modal>
+          </TVControlZone>
           </div>
         </div>
       </div>

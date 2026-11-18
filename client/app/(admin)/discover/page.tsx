@@ -43,6 +43,7 @@ import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
+import { lightRemote } from '@/lib/menuHighlight';
 import { ScrollRow } from '@/components/ui/ScrollRow';
 
 type Lens = 'titles' | 'people' | 'foryou' | 'nobody' | 'watchlist';
@@ -77,17 +78,23 @@ function usePopover() {
 }
 
 /** D-pad reachable in TV mode, a plain element everywhere else. */
-function Focus({ tv, onEnter, children }: { tv: boolean; onEnter: () => void; children: React.ReactElement }) {
-  return tv ? <TVFocusable onEnterPress={onEnter}>{children}</TVFocusable> : children;
+function Focus({ tv, onEnter, onFocus, onBlur, children }: { tv: boolean; onEnter: () => void; onFocus?: () => void; onBlur?: () => void; children: React.ReactElement }) {
+  return tv ? <TVFocusable onEnterPress={onEnter} onFocus={onFocus} onBlur={onBlur}>{children}</TVFocusable> : children;
 }
 
+// A chip to pick: lit in the menu highlight under the pointer or a finger
+// (data-mh-chip, inside the Filters panel), and on a TV while the remote is on
+// it - the remote doesn't move real focus here, so it is lit from the remote's.
 function Pill({ on, onClick, children, tv = false }: { on: boolean; onClick: () => void; children: React.ReactNode; tv?: boolean }) {
+  const ref = useRef<HTMLButtonElement>(null);
   return (
-    <Focus tv={tv} onEnter={onClick}>
+    <Focus tv={tv} onEnter={onClick} onFocus={tv ? () => lightRemote(ref.current, true) : undefined} onBlur={tv ? () => lightRemote(ref.current, false) : undefined}>
       <button
+        ref={ref}
         type="button"
         onClick={onClick}
         aria-pressed={on}
+        data-mh-chip=""
         className={`h-8 px-3 rounded-full text-[13px] font-medium transition-colors ${on ? 'text-default disc-pill-on' : 'text-muted hover:text-default disc-pill-off'}`}
       >
         {children}
@@ -802,7 +809,7 @@ export default function DiscoverPage() {
               <ChevronDownIcon className="w-3.5 h-3.5" />
             </button>
             {sortPop.open && (
-              <div ref={sortPop.fit} className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-52 p-1.5 rounded-2xl overflow-y-auto" style={panelStyle}>
+              <div ref={sortPop.fit} data-mh-root="" className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-52 p-1.5 rounded-2xl overflow-y-auto" style={panelStyle}>
                 {sortOptions.map((o) => (
                   <button
                     key={o.key}
@@ -835,7 +842,7 @@ export default function DiscoverPage() {
               )}
             </button>
             {filtersPop.open && (
-              <div ref={filtersPop.fit} data-filters-panel className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-[min(560px,92vw)] p-5 rounded-2xl flex flex-col gap-4 overflow-y-auto overscroll-contain" style={panelStyle}>
+              <div ref={filtersPop.fit} data-filters-panel data-mh-root="" className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-30 sm:w-[min(560px,92vw)] p-5 rounded-2xl flex flex-col gap-4 overflow-y-auto overscroll-contain" style={panelStyle}>
                 {filtersBody}
               </div>
             )}

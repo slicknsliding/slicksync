@@ -17,10 +17,13 @@ export function SwipeToDismiss({
   enabled,
   onDismiss,
   children,
+  className = '',
 }: {
   enabled: boolean;
   onDismiss: () => void;
   children: ReactNode;
+  /** The row's own shape (rounded corners), so the swipe is cut to it. */
+  className?: string;
 }) {
   const x = useMotionValue(0);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -49,7 +52,7 @@ export function SwipeToDismiss({
   };
 
   return (
-    <div ref={rowRef} className="relative overflow-hidden">
+    <div ref={rowRef} className={`relative overflow-hidden ${className}`}>
       <motion.div
         aria-hidden="true"
         className="absolute inset-0 flex items-center justify-end gap-1.5 pr-5 text-xs font-medium"

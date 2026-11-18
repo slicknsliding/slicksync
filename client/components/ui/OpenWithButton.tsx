@@ -4,12 +4,17 @@
 // AIOMetadata: the main part opens the title in the app this device chose
 // (lib/openWith.ts), the arrow picks the app - and on a real Jellyfin, "Play
 // on a device" starts it on a device that has a Jellyfin app open. The picker
-// uses the shared ContextMenu, so it always stays whole on screen.
+// uses the shared ContextMenu, so it always stays whole on screen. In TV mode
+// only "Play on a device" shows (TVPlayOnDevice).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { PlayIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { PlayIcon, ChevronDownIcon, TvIcon } from '@heroicons/react/24/outline';
 import { ContextMenu } from '@/components/ui/ContextMenu';
-import { OpenWithPicker } from '@/components/ui/OpenWithPicker';
+import { OpenWithPicker, PlayOnDeviceList } from '@/components/ui/OpenWithPicker';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { useTVModal } from '@/components/tv/useTVModal';
+import { placeAtPill, popupStyle, useFitPopup, useFollowAnchor, type OutsidePlacement } from '@/lib/anchoredPopup';
 import { AppOpenNote } from '@/components/ui/AppOpenNote';
 import { toast } from '@/components/ui/Toast';
 import { useAppOpenCheck } from '@/lib/useAppOpenCheck';
@@ -31,11 +36,73 @@ const STYLE = {
   border: '1px solid rgba(159, 146, 255, 0.25)',
 };
 
+type Device = OpenTargets['devices'][number];
+const SPOT = ['left', 'width', 'top', 'bottom', 'maxHeight', 'side', 'tipX', 'tipY'] as const;
+
+/** The TV title popup's "Play on a device": OK opens the devices as a popup
+ *  pointing at the button, the remote moves through them, OK plays on one
+ *  and Back closes it (useTVModal). */
+function TVPlayOnDevice({ devices, onPlayOn }: { devices: Device[]; onPlayOn: (d: Device) => void }) {
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<OutsidePlacement | null>(null);
+  const open = !!at;
+  const close = useCallback(() => setAt(null), []);
+  const place = () => {
+    const r = button.current?.getBoundingClientRect();
+    return r ? placeAtPill(r, 340, panel.current?.scrollHeight) : null;
+  };
+  // Unchanged spot: keep the old one so React skips the redraw.
+  const replace = () => { const p = place(); if (p) setAt((old) => (old && SPOT.every((k) => old[k] === p[k]) ? old : p)); };
+  useFitPopup(panel, open, replace);
+  // The remote stays in the list and Back closes it. Escape closes only the
+  // list, stopped before the title window behind it hears it and closes too.
+  useTVModal(open, panel, close, true);
+  useFollowAnchor(open, () => [button.current?.getBoundingClientRect() ?? null], replace);
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('resize', replace);
+    window.addEventListener('scroll', replace, true);
+    return () => {
+      window.removeEventListener('resize', replace);
+      window.removeEventListener('scroll', replace, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const toggle = () => (open ? close() : replace());
+
+  return (
+    <>
+      <TVFocusable onEnterPress={toggle}>
+        <button ref={button} type="button" tabIndex={-1} onClick={toggle} aria-expanded={open} className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium" style={STYLE}>
+          <TvIcon className="w-4 h-4" /><span className="whitespace-nowrap">Play on a device</span>
+        </button>
+      </TVFocusable>
+      {at && typeof document !== 'undefined' && createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={close} />
+          <div ref={panel} role="dialog" aria-label="Play on a device" className="popup-panel fixed z-[9999] rounded-2xl p-1.5" style={popupStyle(at)}>
+            <PlayOnDeviceList devices={devices} onPlayOn={(d) => { close(); onPlayOn(d); }} />
+          </div>
+          {(at.side === 'below' || at.side === 'above') && at.tipX != null && at.tipY != null && (
+            <span
+              aria-hidden
+              className="popup-caret fixed z-[10000] w-3.5 h-3.5 bg-surface pointer-events-none"
+              style={{ left: at.tipX - 7, top: at.tipY - 7, transform: 'rotate(45deg)', borderStyle: 'solid', borderWidth: at.side === 'below' ? '1px 0 0 1px' : '0 1px 1px 0' }}
+            />
+          )}
+        </>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string; type: 'movie' | 'series'; isTV?: boolean }) {
   const [targets, setTargets] = useState<OpenTargets | null>(null);
   // Read straight away: nothing renders until the targets load, on the client.
   const [chosen, setChosen] = useState<OpenWithAppId | null>(() => (typeof window === 'undefined' ? null : rememberedApp()));
-  const [menu, setMenu] = useState<{ x: number; y: number; mode: 'apps' | 'which' } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; aboveY: number; mode: 'apps' | 'which' } | null>(null);
   // A counter that makes the list re-read the Shortcut's names once saved.
   const [scSaved, setScSaved] = useState(0);
   const arrowRef = useRef<HTMLButtonElement>(null);
@@ -59,9 +126,13 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
   const note = noteShown ? <AppOpenNote onClose={hideNote} isTV={isTV} /> : null;
   const openMenuAt = (el: HTMLElement | null, mode: 'apps' | 'which') => {
     const r = el?.getBoundingClientRect();
-    setMenu({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80, mode });
+    // Under the button; with no room there, over it (never on top of it).
+    setMenu({ x: r ? r.left : 16, y: r ? r.bottom + 6 : 80, aboveY: r ? r.top - 6 : 80, mode });
   };
+  // A second press on what opened a list closes it again.
+  const onArrow = () => (menu?.mode === 'apps' ? setMenu(null) : openMenuAt(arrowRef.current, 'apps'));
   const onMain = () => {
+    if (menu?.mode === 'which') return setMenu(null);
     if (!current) return openMenuAt(arrowRef.current, 'apps');
     if (links.length === 1) return go(links[0].url);
     openMenuAt(mainRef.current, 'which');
@@ -82,18 +153,9 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
     : current?.id === 'shortcut' ? <>Open in {rememberedShortcut()?.app || 'your app'}</>
     : current ? <>Open in {current.id === 'web' ? 'browser' : current.name}</> : <>Play on…</>;
 
-  // TV: Enter opens the first link of this device's pick; no picker on a remote.
-  if (isTV) {
-    if (!links.length) return null;
-    return (
-      <>
-        <a href={links[0].url} onClick={() => watch(links[0].url)} tabIndex={-1} className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium" style={STYLE}>
-          <PlayIcon className="w-4 h-4" /><span>{label}</span>
-        </a>
-        {note}
-      </>
-    );
-  }
+  // TV: only Play on a device. The apps the picker opens (Swiftfin,
+  // Streamyfin, Infuse, a Shortcut) don't run on a TV box.
+  if (isTV) return targets.devices.length ? <TVPlayOnDevice devices={targets.devices} onPlayOn={playOn} /> : null;
 
   const row = 'w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover text-left';
   return (
@@ -117,7 +179,8 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
           ref={arrowRef}
           type="button"
           aria-label="Choose the app"
-          onClick={() => openMenuAt(arrowRef.current, 'apps')}
+          aria-expanded={menu?.mode === 'apps'}
+          onClick={onArrow}
           className="absolute right-0 inset-y-0 sm:static flex items-center px-3 rounded-r-lg border-l"
           style={{ ...STYLE, borderLeft: '1px solid rgba(159, 146, 255, 0.35)' }}
         >
@@ -125,7 +188,7 @@ export function OpenWithButton({ imdbId, type, isTV = false }: { imdbId: string;
         </button>
       </div>
 
-      <ContextMenu isOpen={!!menu} position={{ x: menu?.x ?? 0, y: menu?.y ?? 0 }} onClose={() => setMenu(null)}>
+      <ContextMenu isOpen={!!menu} position={{ x: menu?.x ?? 0, y: menu?.y ?? 0, aboveY: menu?.aboveY }} onClose={() => setMenu(null)}>
         <div className="w-[min(320px,calc(100vw-1.5rem))] p-1.5">
           {menu?.mode === 'which' && current ? (
             <>

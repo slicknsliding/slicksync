@@ -31,9 +31,12 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.round((seconds % 3600) / 60);
+  // Whole minutes first, then hours: rounding the leftover minutes on their
+  // own turned 1h 59m 51s into "1h 60m".
+  const total = Math.round(seconds / 60);
+  if (total < 60) return `${total}m`;
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 

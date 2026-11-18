@@ -185,72 +185,77 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
             config.identifier = entry.provider || config.identifier
             const result = await runCheck(entry.testType, secret, config)
 
-            const wasOk = entry.lastCheckStatus === 'ok'
-            const nowOk = result.ok === true
+            // Turned away for being busy (a rate limit, an outage): that says
+            // nothing about the credential, so the last real answer stands and
+            // nothing is raised. The next run checks again.
+            if (!result.transient) {
+              const wasOk = entry.lastCheckStatus === 'ok'
+              const nowOk = result.ok === true
 
-            const updateData = {
-              lastCheckedAt: new Date(),
-              lastCheckStatus: result.ok === null ? 'unknown' : (nowOk ? 'ok' : 'error'),
-              lastCheckMessage: result.message || null,
-            }
-            if (result.expiresAt instanceof Date && !isNaN(result.expiresAt)) {
-              updateData.expiresAt = result.expiresAt
-            }
-            await prisma.vaultEntry.update({ where: { id: entry.id }, data: updateData })
-
-            // Promotion round trip: this entry is the BACKUP half of an
-            // automatic promotion (it holds the demoted original secret),
-            // and it just passed - swap the secrets back, clear the stamp,
-            // rewrite addons carrying the interim key, and say so.
-            try {
-              const promos = (cfg && cfg.vaultPromotions) || {}
-              const primaryId = Object.keys(promos).find((pid) => promos[pid]?.backupId === entry.id)
-              if (nowOk && primaryId) {
-                const primaryEntry = await prisma.vaultEntry.findFirst({ where: { id: primaryId, accountId: account.id } })
-                if (primaryEntry) {
-                  let interimPlain = null
-                  let recoveredPlain = null
-                  try { interimPlain = decrypt(primaryEntry.encryptedSecret, mockReq) } catch {}
-                  try { recoveredPlain = decrypt(entry.encryptedSecret, mockReq) } catch {}
-                  await prisma.$transaction([
-                    prisma.vaultEntry.update({ where: { id: primaryEntry.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'ok', lastCheckMessage: 'Original key recovered - restored as primary' } }),
-                    prisma.vaultEntry.update({ where: { id: entry.id }, data: { encryptedSecret: primaryEntry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Back to being the backup' } }),
-                  ])
-                  for (const id of [primaryEntry.id, entry.id]) {
-                    await require('./vaultAccess').recordVaultAccess(prisma, { accountId: account.id, entryId: id, action: 'swapped' })
-                  }
-                  // Fresh read: only the vaultPromotions key is ours to change.
-                  await updateAccountSyncKey(prisma, account.id, 'vaultPromotions', (cur) => {
-                    const next = { ...(cur || {}) }
-                    delete next[primaryId]
-                    return next
-                  })
-                  if (interimPlain && recoveredPlain && interimPlain !== recoveredPlain) {
-                    try {
-                      const { propagateSecretRotation } = require('./keyRotation')
-                      const { encrypt: enc2, decrypt: dec2, getDecryptedManifestUrl } = require('./encryption')
-                      const { manifestUrlHmac } = require('./hashing')
-                      await propagateSecretRotation(prisma, mockReq, { encrypt: enc2, decrypt: dec2, getDecryptedManifestUrl, manifestUrlHmac }, {
-                        accountId: account.id, oldSecret: interimPlain, newSecret: recoveredPlain,
-                      })
-                    } catch (e) { console.warn('[VaultMonitor] swap-back rotation failed:', e?.message) }
-                  }
-                  try {
-                    const { createNotification } = require('./notificationStore')
-                    await createNotification(prisma, account.id, {
-                      type: 'vault',
-                      title: `"${primaryEntry.name}" recovered - promoted back to primary`,
-                      body: 'The original credential passed its check again, so the automatic promotion was reversed - it is the primary once more, and the spare went back to being the backup.',
-                      dedupeKey: `vaultswapback-${primaryEntry.id}-${new Date().toDateString()}`,
-                    })
-                  } catch {}
-                }
+              const updateData = {
+                lastCheckedAt: new Date(),
+                lastCheckStatus: result.ok === null ? 'unknown' : (nowOk ? 'ok' : 'error'),
+                lastCheckMessage: result.message || null,
               }
-            } catch (e) { console.warn('[VaultMonitor] promotion round-trip failed:', e?.message) }
+              if (result.expiresAt instanceof Date && !isNaN(result.expiresAt)) {
+                updateData.expiresAt = result.expiresAt
+              }
+              await prisma.vaultEntry.update({ where: { id: entry.id }, data: updateData })
 
-            // ok -> error edge: alert + automation events (see raiseCheckFailed).
-            if (wasOk && !nowOk) {
-              await raiseCheckFailed({ prisma, accountId: account.id, cfg, entry, result })
+              // Promotion round trip: this entry is the BACKUP half of an
+              // automatic promotion (it holds the demoted original secret),
+              // and it just passed - swap the secrets back, clear the stamp,
+              // rewrite addons carrying the interim key, and say so.
+              try {
+                const promos = (cfg && cfg.vaultPromotions) || {}
+                const primaryId = Object.keys(promos).find((pid) => promos[pid]?.backupId === entry.id)
+                if (nowOk && primaryId) {
+                  const primaryEntry = await prisma.vaultEntry.findFirst({ where: { id: primaryId, accountId: account.id } })
+                  if (primaryEntry) {
+                    let interimPlain = null
+                    let recoveredPlain = null
+                    try { interimPlain = decrypt(primaryEntry.encryptedSecret, mockReq) } catch {}
+                    try { recoveredPlain = decrypt(entry.encryptedSecret, mockReq) } catch {}
+                    await prisma.$transaction([
+                      prisma.vaultEntry.update({ where: { id: primaryEntry.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'ok', lastCheckMessage: 'Original key recovered - restored as primary' } }),
+                      prisma.vaultEntry.update({ where: { id: entry.id }, data: { encryptedSecret: primaryEntry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Back to being the backup' } }),
+                    ])
+                    for (const id of [primaryEntry.id, entry.id]) {
+                      await require('./vaultAccess').recordVaultAccess(prisma, { accountId: account.id, entryId: id, action: 'swapped' })
+                    }
+                    // Fresh read: only the vaultPromotions key is ours to change.
+                    await updateAccountSyncKey(prisma, account.id, 'vaultPromotions', (cur) => {
+                      const next = { ...(cur || {}) }
+                      delete next[primaryId]
+                      return next
+                    })
+                    if (interimPlain && recoveredPlain && interimPlain !== recoveredPlain) {
+                      try {
+                        const { propagateSecretRotation } = require('./keyRotation')
+                        const { encrypt: enc2, decrypt: dec2, getDecryptedManifestUrl } = require('./encryption')
+                        const { manifestUrlHmac } = require('./hashing')
+                        await propagateSecretRotation(prisma, mockReq, { encrypt: enc2, decrypt: dec2, getDecryptedManifestUrl, manifestUrlHmac }, {
+                          accountId: account.id, oldSecret: interimPlain, newSecret: recoveredPlain,
+                        })
+                      } catch (e) { console.warn('[VaultMonitor] swap-back rotation failed:', e?.message) }
+                    }
+                    try {
+                      const { createNotification } = require('./notificationStore')
+                      await createNotification(prisma, account.id, {
+                        type: 'vault',
+                        title: `"${primaryEntry.name}" recovered - promoted back to primary`,
+                        body: 'The original credential passed its check again, so the automatic promotion was reversed - it is the primary once more, and the spare went back to being the backup.',
+                        dedupeKey: `vaultswapback-${primaryEntry.id}-${new Date().toDateString()}`,
+                      })
+                    } catch {}
+                  }
+                }
+              } catch (e) { console.warn('[VaultMonitor] promotion round-trip failed:', e?.message) }
+
+              // ok -> error edge: alert + automation events (see raiseCheckFailed).
+              if (wasOk && !nowOk) {
+                await raiseCheckFailed({ prisma, accountId: account.id, cfg, entry, result })
+              }
             }
           } catch (err) {
             console.error(`[VaultMonitor] Check failed for entry ${entry.id}:`, err.message)

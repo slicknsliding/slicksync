@@ -19,6 +19,13 @@
 
 const { fetchMetadata } = require('./notify')
 const { buildStremioLinks, buildNuvioAppUrl } = require('./appLinks')
+const { profileName, latestProfileLabels } = require('./profileLabels')
+
+/** A Nuvio card's profile: the one its history row says watched that title. */
+function profileOf(user, row) {
+  const name = user.providerType === 'nuvio' ? profileName(row.profileLabel) : null
+  return name ? { profileLabel: name } : {}
+}
 
 /**
  * Given the season/episode of the last-watched episode and the show's full
@@ -312,6 +319,7 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
       userId: user.id,
       username: user.username,
       providerType: user.providerType,
+      ...profileOf(user, row),
       contentType: 'series',
       showId: row.showId,
       showName: metadata.title || row.showName,
@@ -412,6 +420,7 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
       userId: user.id,
       username: user.username,
       providerType: user.providerType,
+      ...profileOf(user, row),
       contentType: 'movie',
       showId: row.itemId,
       showName: metadata?.title || row.itemName,
@@ -453,19 +462,14 @@ async function computeContinueWatching(prisma, accountId, limit = 8, onlyUserId 
     .sort((a, b) => new Date(b.lastWatchedAt).getTime() - new Date(a.lastWatchedAt).getTime())
     .slice(0, limit)
 
-  // A Nuvio card names the profile, as the history cards do: the one that
+  // A Nuvio card names the profile that watched that title (its own history
+  // row, set above); a row without one falls back to the profile that
   // person's watch history last recorded.
-  const nuvioIds = [...new Set(merged.filter((e) => e.providerType === 'nuvio').map((e) => e.userId))]
-  if (nuvioIds.length) {
+  const unnamed = [...new Set(merged.filter((e) => e.providerType === 'nuvio' && !e.profileLabel).map((e) => e.userId))]
+  if (unnamed.length) {
     try {
-      const labels = await prisma.watchActivity.findMany({
-        where: { accountId: accountIdValue, userId: { in: nuvioIds }, profileLabel: { not: null } },
-        orderBy: { createdAt: 'desc' },
-        distinct: ['userId'],
-        select: { userId: true, profileLabel: true },
-      })
-      const byUser = new Map(labels.map((l) => [l.userId, l.profileLabel]))
-      for (const e of merged) if (byUser.has(e.userId)) e.profileLabel = byUser.get(e.userId)
+      const latest = await latestProfileLabels(prisma, accountIdValue, unnamed)
+      for (const e of merged) if (e.providerType === 'nuvio' && !e.profileLabel && latest.has(e.userId)) e.profileLabel = latest.get(e.userId)
     } catch { /* the cards show without it */ }
   }
   return merged
@@ -714,4 +718,4 @@ async function wipeBuriedShow(prisma, accountId, userId, showId) {
   return { episodesDeleted: episodes.count, moviesDeleted: movies.count }
 }
 
-module.exports = { releaseRewatched, RESUME_MIN_POSITION_MS, RESUME_MAX_RATIO, hasAired, getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }
+module.exports = { releaseRewatched, RESUME_MIN_POSITION_MS, RESUME_MAX_RATIO, hasAired, resumeStateOf, getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }

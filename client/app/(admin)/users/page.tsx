@@ -12,6 +12,8 @@ import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer
 import { ProfilesCard } from '@/components/user/ProfilesCard';
 import { LimitsButton } from '@/components/user/LimitsButton';
 import { CatchUpButton } from '@/components/user/CatchUpButton';
+import { SyncHistoryButton, syncHistoryAccount } from '@/components/user/SyncHistoryButton';
+import { AioHistoryPill } from '@/components/jellyfin/AioHistoryButton';
 import { HouseholdsCard } from '@/components/jellyfin/HouseholdCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -290,7 +292,7 @@ export default function UsersPage() {
   // stays as-is, and each user row's own status badge still shows it - only
   // this one stat's own meaning changed. The two no longer sum to Total
   // Users as a result (they measure different things now); that's expected.
-  const activeCount = new Set(nowPlaying.map((np) => np.user.id)).size;
+  const activeCount = new Set(nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size;
 
   // v2: groups as sections the account can move, fold and hide, and people
   // it can hide (lib/arrange.tsx). Sections follow the Groups page's order;
@@ -315,6 +317,7 @@ export default function UsersPage() {
     status: u.status,
     connectionError: u.providerConnectionError,
     hasAddons: hasAddonList(u),
+    syncAccount: syncHistoryAccount(u.providerType || 'stremio', u.secondaryProviderType),
     lastSeen: u.lastSeen,
     watchTime: u.watchTime,
     addonCount: u.addonCount,
@@ -1015,6 +1018,9 @@ export default function UsersPage() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
                                 <LimitsButton id={user.id} name={user.name} summary={limits[user.id] || null} />
+                                {syncHistoryAccount(user.providerType || 'stremio', user.secondaryProviderType) && (
+                                  <SyncHistoryButton userId={user.id} name={user.name} account={syncHistoryAccount(user.providerType || 'stremio', user.secondaryProviderType)!} size="sm" pointer />
+                                )}
                                 <Button
                                   variant="secondary"
                                   size="sm"
@@ -1379,12 +1385,15 @@ function UserCard({
     onDelete();
   };
 
+  // Their own Stremio or Nuvio sign-in (or a merged one): what each sync changed there.
+  const syncAccount = syncHistoryAccount(user.providerType || 'stremio', user.secondaryProviderType);
+
   const cardElement = (
       <Card
         variant="interactive"
         padding="md"
-        // One thing per line: name and switch, the badges, group and addons,
-        // then time with Limits and Caught up (see .user-card-head).
+        // One thing per line: name and switch, the badges, Limits, History
+        // and Caught up, then group and addons, then time (see .user-card-head).
         className={`user-card group cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
@@ -1478,10 +1487,27 @@ function UserCard({
             />
           </div>
         </div>
-        {/* Group, addons and time, then Limits and Caught up - no dots, like
-            the Groups cards. The time starts a second line
-            with the two after it. */}
+        {/* Limits, History and Caught up first, then group, addons and
+            time - no dots, like the Groups cards. The pills take a line of
+            their own and the time starts another, so every card stands the
+            same height. */}
         <div className="user-card-meta mt-3 flex flex-wrap items-center gap-x-2.5 text-sm text-muted whitespace-nowrap">
+          <span className="user-card-pills inline-flex items-center gap-1.5">
+            <LimitsButton
+              id={user.id}
+              name={user.name}
+              summary={limits}
+              onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
+            />
+            {/* One History in the same spot on every card: their AIOStreams
+                configuration's versions, or what each sync changed. */}
+            {user.providerType === 'jellyfin' && user.jellyfinServerKind === 'aiostreams' ? (
+              <AioHistoryPill userId={user.id} name={user.name} />
+            ) : (
+              syncAccount && <SyncHistoryButton userId={user.id} name={user.name} account={syncAccount} size="sm" pointer label="History" />
+            )}
+            <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
+          </span>
           <span className="flex items-center gap-1.5">
             <UserGroupIcon className="w-4 h-4 text-secondary" />
             {user.groups.length > 0 ? (
@@ -1505,15 +1531,6 @@ function UserCard({
           <span className="flex items-center gap-1.5">
             <ClockIcon className="w-4 h-4 text-secondary" />
             {formatWatchTime(user.watchTime)}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <LimitsButton
-              id={user.id}
-              name={user.name}
-              summary={limits}
-              onReconnect={onReconnect ? () => onReconnect(user.id, user.name) : undefined}
-            />
-            <CatchUpButton userId={user.id} name={user.name} hasServer={user.providerType === 'jellyfin'} size="sm" />
           </span>
         </div>
         <div className="mt-2.5 flex items-center justify-between gap-3">

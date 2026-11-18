@@ -75,7 +75,7 @@ async function runHistoryImport({ prisma, accountId, user, text, dryRun = false,
       // match is a one-line fix here, but only if the shape is known -
       // "no entries found" on its own is a dead end for whoever hit it.
       return fail(
-        `No importable entries found. Expected Trakt's export format (entries with a "movie" object containing ids.imdb). This file is ${parsed.shape || 'in an unrecognised shape'}.`,
+        `No importable entries found. Expected Trakt's export format (entries with a "movie" object containing ids.imdb). This file is ${parsed.shape || 'in an unrecognized shape'}.`,
         { shape: parsed.shape || null },
       )
     }

@@ -33,14 +33,42 @@
  *    flagged prematurely.
  *  - A title counts as tracked if ANY connected account recorded it natively
  *    with a recent timestamp - across every provider - so watching on a
- *    connected Nuvio account never trips it.
- *  - usenet bypasses the proxy entirely, so it never generates a proxy row.
+ *    connected Nuvio account never trips it. Matched by IMDb id as well as by
+ *    name: a sign-in can save a title under its id until its name is looked up.
+ *  - AIOStreams lists its own usenet streams beside proxied ones, and those
+ *    are checked the same way. Usenet an app fetches itself (newznab) never
+ *    reaches AIOStreams, so it is never seen here and never flagged.
+ *  - A title only ever played for a few minutes isn't flagged: no sign-in
+ *    would have recorded it either. History counts a play after 5% of the
+ *    runtime, or 5 minutes when the sign-in gives no runtime (AIOStreams
+ *    never does - metricsProcessor's isActuallyWatched), so anything whose
+ *    longest viewing is under 5 minutes is left alone. A player's
+ *    back-to-back connections are joined into one viewing first.
+ *  - Cleared from the bell, it stays cleared: the row is hidden, not deleted
+ *    (utils/bellState.js), and a hidden row still counts as standing below.
  */
 
 const { createNotification } = require('./notificationStore')
 
 const WINDOW_MS = 3 * 24 * 60 * 60 * 1000 // 3 days: how far back we look at proxy activity
 const STABILIZE_MS = 30 * 60 * 1000 // ignore titles still/just streaming - give them time to land natively
+const SHORTEST_COUNTED_MS = 5 * 60 * 1000 // a viewing shorter than this never becomes history anywhere
+const SAME_VIEWING_GAP_MS = 10 * 60 * 1000 // connections closer than this are one viewing
+
+// The longest viewing among [start, end] spans: spans that overlap or sit
+// within SAME_VIEWING_GAP_MS of each other are one viewing (a player opens
+// and reopens connections while it plays).
+function longestViewingMs(spans) {
+  const sorted = spans.filter(([s, e]) => e >= s && s > 0).sort((a, b) => a[0] - b[0])
+  let best = 0
+  let cur = null
+  for (const [s, e] of sorted) {
+    if (cur && s - cur[1] <= SAME_VIEWING_GAP_MS) cur[1] = Math.max(cur[1], e)
+    else cur = [s, e]
+    best = Math.max(best, cur[1] - cur[0])
+  }
+  return best
+}
 
 // Normalize a title for loose comparison: drop year and episode markers,
 // lowercase, collapse to alphanumeric words. Same spirit as
@@ -57,8 +85,20 @@ function normalizeTitle(name) {
     .trim()
 }
 
+// The show's or film's IMDb id ("tt0417299:1:2" -> "tt0417299"), or null.
+const imdbOf = (id) => /^tt\d+/.exec(String(id || ''))?.[0] || null
+
 const { isPlayingConnection } = require('./proxyPlaying')
-const { isOpaqueStreamName } = require('./proxyTitle')
+const { isOpaqueStreamName, proxyDisplayTitle } = require('./proxyTitle')
+
+// The name a person knows the show or film by, for the alert's title: the
+// matched title's own name, or else the stream's name up to its episode
+// marker ("Carrie S01E05 PHYSICAL EDUCATION" -> "Carrie").
+function shownNameOf(row) {
+  if (row.metadataName) return proxyDisplayTitle(row)
+  const raw = String(row.displayName || '').trim()
+  return raw.replace(/\s+S\d{1,2}E\d{1,3}\b.*$/i, '').trim() || raw
+}
 
 async function checkWatchSyncMismatch(prisma, accountId, users) {
   try {
@@ -71,11 +111,11 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
     // one request and was never watched, so it has nothing to mismatch.
     const proxyRows = (await prisma.proxyStreamSession.findMany({
       where: { accountId, startTime: { gte: windowStart } },
-      select: { displayName: true, startTime: true, lastSeenAt: true, requestCount: true },
+      select: { displayName: true, metadataName: true, metadataItemId: true, startTime: true, lastSeenAt: true, requestCount: true, clientIp: true },
     })).filter(isPlayingConnection)
     if (proxyRows.length === 0) return
 
-    const byTitle = new Map() // normalized -> { display, lastActivity }
+    const byTitle = new Map() // normalized -> { display, matched, lastActivity, ids }
     for (const row of proxyRows) {
       // An opaque stream id names no title: nothing to compare with native
       // history, and nothing readable to put in the message.
@@ -86,35 +126,60 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
         row.lastSeenAt ? row.lastSeenAt.getTime() : 0,
         row.startTime ? row.startTime.getTime() : 0
       )
-      const existing = byTitle.get(norm)
-      if (!existing || lastActivity > existing.lastActivity) {
-        byTitle.set(norm, { display: row.displayName, lastActivity })
-      } else if (existing && !existing.display) {
-        existing.display = row.displayName
+      let entry = byTitle.get(norm)
+      if (!entry) {
+        entry = { display: null, matched: false, lastActivity: 0, ids: new Set(), ips: new Set(), spans: [] }
+        byTitle.set(norm, entry)
       }
+      if (lastActivity > entry.lastActivity) entry.lastActivity = lastActivity
+      entry.spans.push([row.startTime ? row.startTime.getTime() : 0, lastActivity])
+      // A matched title's own name beats a name parsed from a stream.
+      if (!entry.display || (row.metadataName && !entry.matched)) {
+        entry.display = shownNameOf(row)
+        entry.matched = !!row.metadataName
+      }
+      const id = imdbOf(row.metadataItemId)
+      if (id) entry.ids.add(id)
+      if (row.clientIp) entry.ips.add(row.clientIp)
     }
     if (byTitle.size === 0) return
 
     // Pull recent native watches across ALL users (every provider) once, and
-    // index their normalized titles - a title recorded by any connected
-    // account counts as tracked.
+    // index their normalized titles and ids - a title recorded by any
+    // connected account counts as tracked. Episodes carry the show's name and
+    // id (showName/showId), films and sessions the item's own.
     const [movies, episodes, sessions] = await Promise.all([
-      prisma.movieWatchHistory.findMany({ where: { accountId, watchedAt: { gte: windowStart } }, select: { itemName: true } }),
-      prisma.episodeWatchHistory.findMany({ where: { accountId, watchedAt: { gte: windowStart } }, select: { itemName: true } }),
-      prisma.watchSession.findMany({ where: { accountId, startTime: { gte: windowStart } }, select: { itemName: true } }),
+      prisma.movieWatchHistory.findMany({ where: { accountId, watchedAt: { gte: windowStart } }, select: { itemName: true, itemId: true } }),
+      prisma.episodeWatchHistory.findMany({ where: { accountId, watchedAt: { gte: windowStart } }, select: { showName: true, showId: true } }),
+      prisma.watchSession.findMany({ where: { accountId, startTime: { gte: windowStart } }, select: { itemName: true, itemId: true } }),
     ])
     const trackedTitles = new Set()
-    for (const r of [...movies, ...episodes, ...sessions]) {
-      const norm = normalizeTitle(r.itemName)
+    const trackedIds = new Set()
+    const note = (name, id) => {
+      const norm = normalizeTitle(name)
       if (norm) trackedTitles.add(norm)
+      const imdb = imdbOf(id)
+      if (imdb) trackedIds.add(imdb)
     }
+    for (const r of movies) note(r.itemName, r.itemId)
+    for (const r of episodes) note(r.showName, r.showId)
+    for (const r of sessions) note(r.itemName, r.itemId)
+
+    // A device that isn't theirs (unknownDevices.js) has no sign-in of theirs
+    // to add: its streams are announced as an unknown device instead.
+    const unknownByIp = await require('./unknownDevices').unknownAddresses(
+      prisma, accountId, [...byTitle.values()].flatMap((info) => [...info.ips]))
+    const onlyUnknownDevices = (info) => info.ips.size > 0 && [...info.ips].every((ip) => unknownByIp.has(ip))
 
     // A title is "untracked" if the proxy streamed it (and it has stabilized)
     // but no connected account recorded it natively in the window.
     const untracked = [] // { dedupeKey, display }
     for (const [norm, info] of byTitle.entries()) {
       if (now - info.lastActivity < STABILIZE_MS) continue // still settling
+      if (longestViewingMs(info.spans) < SHORTEST_COUNTED_MS) continue // too short to be recorded anywhere
       if (trackedTitles.has(norm)) continue // recorded by some connected account
+      if ([...info.ids].some((id) => trackedIds.has(id))) continue // recorded under its id
+      if (onlyUnknownDevices(info)) continue // a stranger's device, not a sign-in to add
       untracked.push({ dedupeKey: `untracked-${norm}`, display: info.display || norm })
     }
 
@@ -132,12 +197,18 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
       await prisma.notification.deleteMany({ where: { id: { in: staleIds } } }).catch(() => {})
     }
 
-    // Raise one standing notification per untracked title.
+    // Raise one standing notification per untracked title. One already
+    // standing is left alone: raising it again every pass would only make
+    // every open page refetch the bell each minute. "Standing" includes one
+    // cleared from the bell (hidden, see utils/bellState.js) - otherwise a
+    // Clear would bring it straight back on the next pass.
+    const standing = new Set(existing.map((n) => n.dedupeKey).filter(Boolean))
     for (const u of untracked) {
+      if (standing.has(u.dedupeKey)) continue
       await createNotification(prisma, accountId, {
         type: 'mismatch',
-        title: 'Playback not being tracked',
-        body: `"${u.display}" was streamed but no connected account recorded it. If you watched it on a Stremio or Nuvio account that isn't added to SlickSync, add that account to track its history.`,
+        title: `${u.display} was streamed but not recorded`,
+        body: 'Add the sign-in it was watched on in Users.',
         url: '/users',
         dedupeKey: u.dedupeKey,
       })

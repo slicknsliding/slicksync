@@ -227,6 +227,7 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
             <DialogPanel
               ref={tvPanelRef}
               data-tv-modal={isTV ? '' : undefined}
+              data-mh-off=""
               className={clsx(
                 'relative w-full flex flex-col max-h-[85dvh]',
                 sizeStyles[size],
@@ -242,6 +243,24 @@ export function Modal({ isOpen, onClose, title, ariaLabel, description, size = '
     </Transition>
   );
 }
+
+// Whether something under the pointer or finger can still scroll that way: the
+// window's own content, a sideways row, a list in a menu over it. The page
+// itself doesn't count - that's what must stay put.
+function scrollsFurther(from: EventTarget | null, dx: number, dy: number): boolean {
+  for (let el = from instanceof Element ? from : null; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    if (!(el instanceof HTMLElement)) continue;
+    const cs = getComputedStyle(el);
+    if (dy !== 0 && /(auto|scroll|overlay)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1
+      && (dy > 0 ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0)) return true;
+    if (dx !== 0 && /(auto|scroll|overlay)/.test(cs.overflowX) && el.scrollWidth > el.clientWidth + 1
+      && (dx > 0 ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0)) return true;
+  }
+  return false;
+}
+
+// Keys that scroll, and which way. Space goes up with Shift.
+const SCROLL_KEYS: Record<string, 1 | -1> = { ArrowDown: 1, ArrowUp: -1, PageDown: 1, PageUp: -1, ' ': 1, End: 1, Home: -1 };
 
 // The shell behind `lightweight` - see that prop's comment on Modal.
 function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children }: {
@@ -261,6 +280,39 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
   // new function every render does not tear down and re-focus the dialog.
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  const tvRef = useRef(isTV);
+  useEffect(() => { tvRef.current = isTV; }, [isTV]);
+
+  // The page underneath stays where it is while this is open, still without
+  // touching the page: a wheel turn or swipe that nothing here can scroll any
+  // further is stopped before it reaches it. (React's onWheel can't: it
+  // listens passively, so its preventDefault is ignored.)
+  useEffect(() => {
+    if (!isOpen) return;
+    let lastX = 0, lastY = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // a trackpad pinch is zoom, not scroll
+      const dx = e.deltaX || (e.shiftKey ? e.deltaY : 0);
+      const dy = e.shiftKey && !e.deltaX ? 0 : e.deltaY;
+      if (!scrollsFurther(e.target, dx, dy)) e.preventDefault();
+    };
+    const onTouchStart = (e: TouchEvent) => { const t = e.touches[0]; if (t) { lastX = t.clientX; lastY = t.clientY; } };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || !e.cancelable) return;
+      const t = e.touches[0];
+      const dx = lastX - t.clientX, dy = lastY - t.clientY;
+      lastX = t.clientX; lastY = t.clientY;
+      if (!scrollsFurther(e.target, dx, dy)) e.preventDefault();
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -270,6 +322,27 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
     panel?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return; }
+      const dir = SCROLL_KEYS[e.key];
+      if (dir && panel && !tvRef.current && !e.defaultPrevented) {
+        const t = e.target instanceof HTMLElement ? e.target : null;
+        // Typing, a menu or picker of its own, a button Space presses: theirs.
+        if (t && t !== document.body && !panel.contains(t)) return;
+        if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+        if (e.key === ' ' && t && t !== panel && t.closest('button, a[href], [role="button"], summary, label')) return;
+        const way = e.key === ' ' && e.shiftKey ? -dir : dir;
+        if (t && t !== panel && t !== document.body) {
+          // Inside the window: its own scrolling goes ahead, the page doesn't move.
+          if (!scrollsFurther(t, 0, way)) e.preventDefault();
+          return;
+        }
+        // On the window itself, where opening it puts focus: scroll its content.
+        e.preventDefault();
+        const sc = Array.from(panel.querySelectorAll<HTMLElement>('*')).find((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY));
+        if (!sc) return;
+        const step = e.key.startsWith('Arrow') ? 40 : e.key === 'Home' || e.key === 'End' ? sc.scrollHeight : sc.clientHeight * 0.9;
+        sc.scrollBy({ top: way * step });
+        return;
+      }
       if (e.key !== 'Tab' || !panel) return;
       // Keep Tab inside the panel.
       // Only what can actually take focus: not hidden, not collapsed.
@@ -292,13 +365,12 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
   if (!isOpen || typeof document === 'undefined') return null;
   return createPortal(
     <div className="fixed inset-0 z-50">
-      {/* Overlay: closes on tap, and swallows touch and wheel so the page
-          underneath never scrolls - without ever changing the page. */}
+      {/* Overlay: closes on tap. Wheel and swipes over it are stopped by the
+          window-wide listeners above. */}
       <div
         className="fixed inset-0"
         style={{ background: 'rgba(0, 0, 0, 0.7)', touchAction: 'none' }}
         onClick={onClose}
-        onWheel={(e) => e.preventDefault()}
         aria-hidden="true"
       />
       <div className={clsx('fixed inset-0 flex justify-center pointer-events-none', sheet ? 'items-end sm:items-center p-0 sm:p-4' : 'items-center p-4')}>
@@ -310,6 +382,7 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
           aria-label={titleId ? undefined : (ariaLabel || 'Details')}
           tabIndex={-1}
           data-tv-modal={isTV ? '' : undefined}
+          data-mh-off=""
           className={clsx(
             'relative w-full flex flex-col max-h-[85dvh] pointer-events-auto outline-none',
             sizeStyles[size],

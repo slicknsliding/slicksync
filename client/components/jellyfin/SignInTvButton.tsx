@@ -104,6 +104,7 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
           <div
             ref={panel}
             role="dialog"
+            data-mh-root=""
             aria-label="Sign in a TV"
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4 space-y-3"
             style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}
@@ -124,6 +125,7 @@ export function SignInTvButton({ userId, name }: { userId: string; name: string 
                       title={c.hint}
                       onClick={() => setWho(c.id)}
                       aria-pressed={on}
+                      data-mh-chip=""
                       className={`px-2.5 py-1 rounded-lg border text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                         on ? 'border-primary bg-primary/10 text-default' : 'border-default text-subtle hover:bg-surface-hover hover:text-default'
                       }`}

@@ -53,14 +53,18 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 const LABEL = 'text-[11.5px] font-semibold uppercase tracking-wider text-muted px-3 pt-2.5 pb-1';
 
-function Row({ r, active, onPick, onHover }: { r: PaletteResult; active: boolean; onPick: () => void; onHover: () => void }) {
+// The active row is lit with the menu highlight (CommandPalette lights the
+// element carrying its data-mh-index).
+function Row({ r, i, active, onPick, onHover }: { r: PaletteResult; i: number; active: boolean; onPick: () => void; onHover: () => void }) {
   const Icon = r.icon;
   return (
     <button
       type="button"
+      data-mh-index={i}
       onClick={onPick}
       onMouseEnter={onHover}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-left transition-colors ${active ? 'row-hl' : ''}`}
+      onFocus={onHover}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-left transition-colors"
     >
       {r.poster ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -113,7 +117,7 @@ export function PaletteV2Panel({
   const pages = results.map((r, i) => ({ r, i })).filter((x) => !x.r.recent);
 
   return (
-    <div className="popup-panel overflow-hidden" style={{ borderRadius: 22 }}>
+    <div data-mh-list="" className="popup-panel overflow-hidden" style={{ borderRadius: 22 }}>
       <div className="px-3.5 pt-3.5 pb-1.5">
         <div className="flex items-center gap-2.5 px-3.5 py-3 rounded-xl" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
           <MagnifyingGlassIcon className="w-[18px] h-[18px] shrink-0" style={{ color: 'var(--color-text-muted)' }} />
@@ -146,7 +150,7 @@ export function PaletteV2Panel({
           <div key={s.title}>
             <p className={LABEL}>{s.title}</p>
             {s.items.map(({ r, i }) => (
-              <Row key={r.id} r={r} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} />
+              <Row key={r.id} r={r} i={i} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} />
             ))}
           </div>
         ))}
@@ -161,9 +165,11 @@ export function PaletteV2Panel({
                 <button
                   key={h.id}
                   type="button"
+                  data-mh-index={idx}
                   onClick={() => onPickHelp(h)}
                   onMouseEnter={() => onActive(idx)}
-                  className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-[10px] text-left transition-colors ${on ? 'row-hl' : ''}`}
+                  onFocus={() => onActive(idx)}
+                  className="w-full flex items-start gap-3 px-3 py-2.5 rounded-[10px] text-left transition-colors"
                 >
                   <SparklesIcon className="w-[18px] h-[18px] mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
                   <span className="flex-1 min-w-0">
@@ -190,7 +196,7 @@ export function PaletteV2Panel({
               <div>
                 <p className={LABEL}>Recent</p>
                 {recent.map(({ r, i }) => (
-                  <Row key={r.id} r={r} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} />
+                  <Row key={r.id} r={r} i={i} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} />
                 ))}
               </div>
             )}
@@ -203,10 +209,12 @@ export function PaletteV2Panel({
                     <button
                       key={r.id}
                       type="button"
+                      data-mh-index={i}
                       onClick={() => onPick(r)}
                       onMouseEnter={() => onActive(i)}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-left transition-colors ${i === activeIndex ? 'row-hl' : ''}`}
-                      style={{ background: i === activeIndex ? undefined : 'var(--color-surface-hover)' }}
+                      onFocus={() => onActive(i)}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-left transition-colors"
+                      style={{ background: 'var(--color-surface-hover)' }}
                     >
                       <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
                       <span className="truncate">{r.label}</span>

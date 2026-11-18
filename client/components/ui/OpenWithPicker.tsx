@@ -1,12 +1,12 @@
 'use client';
 
 // The "Open titles with" list: pick the app this device opens titles in,
-// "Any app (through a Shortcut)" and - on a real Jellyfin - "Play on a
-// device". The inside of a panel, so the admin's title popup
+// "Any app (through a Shortcut)" and - on a real Jellyfin or AIOMetadata 4.0
+// - "Play on a device". The inside of a panel, so the admin's title popup
 // (OpenWithButton, in a ContextMenu) and a member's Continue Watching card
 // (in an AnchoredPopup) show the very same thing.
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { PlayIcon, CheckIcon } from '@heroicons/react/24/outline';
 import {
   OPEN_WITH_APPS, WEB_APP, SHORTCUT_APP, rememberShortcut, rememberedShortcut,
@@ -15,13 +15,52 @@ import {
 
 const row = 'w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover text-left';
 
-export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSaved, onPlayOn }: {
+// The servers Play on a device goes through, in the order they're listed.
+const DEVICE_KINDS = [
+  { kind: 'jellyfin', label: 'JELLYFIN' },
+  { kind: 'aiometadata', label: 'AIOMETADATA' },
+] as const;
+
+type Device = OpenTargets['devices'][number];
+
+/** "Play on a device": one heading per kind of server the devices play
+ *  through. Also the whole of the TV title popup's Play on a device list. */
+export function PlayOnDeviceList({ devices, onPlayOn }: { devices: Device[]; onPlayOn: (device: Device) => void }) {
+  return (
+    <>
+      {DEVICE_KINDS.map(({ kind, label }) => {
+        const list = devices.filter((d) => (d.kind === 'aiometadata' ? 'aiometadata' : 'jellyfin') === kind);
+        if (!list.length) return null;
+        return (
+          <Fragment key={kind}>
+            <div className="px-2 pt-2.5 pb-1 text-[12px] tracking-wide text-muted">PLAY ON A DEVICE · {label}</div>
+            {list.map((d) => (
+              <button key={`${d.address}|${d.sessionId}`} type="button" className={row} onClick={() => onPlayOn(d)}>
+                <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-white shrink-0" style={{ background: 'var(--color-success)' }}><PlayIcon className="w-3.5 h-3.5" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] text-default truncate">{d.device}</span>
+                  <span className="block text-[13px] text-muted truncate">{[d.client, d.person].filter(Boolean).join(' · ')}</span>
+                </span>
+              </button>
+            ))}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSaved, onPlayOn, hrefFor }: {
   targets: OpenTargets;
   /** The apps that can open this title (availableApps). */
   apps: OpenWithApp[];
   /** The one ticked: this device's pick, when it can open the title. */
   currentId: OpenWithAppId | null;
   onPick: (id: OpenWithAppId) => void;
+  /** Where each app opens this title. Given, picking an app opens it there
+   *  too - as a plain link, since an app address opened from script is
+   *  unreliable on phones. */
+  hrefFor?: (id: OpenWithAppId) => string | null;
   /** The Shortcut's names were just saved, so lists built from them are stale. */
   onShortcutSaved: () => void;
   onPlayOn: (device: OpenTargets['devices'][number]) => void;
@@ -75,16 +114,25 @@ export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSav
         <div className="text-[15px] font-semibold text-default">Open titles with</div>
         <div className="text-[13px] text-muted">Your pick is remembered on this device only - each phone, tablet or TV keeps its own</div>
       </div>
-      {[...OPEN_WITH_APPS, WEB_APP].filter((a) => apps.some((x) => x.id === a.id)).map((a) => (
-        <button key={a.id} type="button" className={`${row} ${a.id === currentId ? 'bg-surface-hover' : ''}`} onClick={() => onPick(a.id)}>
-          <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: a.color }}>{a.letter}</span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-[15px] text-default truncate">{a.name}</span>
-            <span className="block text-[13px] text-muted truncate">{a.platforms}</span>
-          </span>
-          {a.id === currentId && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
-        </button>
-      ))}
+      {[...OPEN_WITH_APPS, WEB_APP].filter((a) => apps.some((x) => x.id === a.id)).map((a) => {
+        const inner = (
+          <>
+            <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: a.color }}>{a.letter}</span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[15px] text-default truncate">{a.name}</span>
+              <span className="block text-[13px] text-muted truncate">{a.platforms}</span>
+            </span>
+            {a.id === currentId && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
+          </>
+        );
+        const cls = `${row} ${a.id === currentId ? 'bg-surface-hover' : ''}`;
+        const href = hrefFor?.(a.id) || null;
+        if (href) {
+          const page = /^https?:/i.test(href);
+          return <a key={a.id} href={href} target={page ? '_blank' : undefined} rel={page ? 'noopener noreferrer' : undefined} className={cls} onClick={() => onPick(a.id)}>{inner}</a>;
+        }
+        return <button key={a.id} type="button" className={cls} onClick={() => onPick(a.id)}>{inner}</button>;
+      })}
       {(targets.servers?.length ?? 0) > 0 && (
         <button type="button" className={`${row} ${currentId === 'shortcut' ? 'bg-surface-hover' : ''}`} onClick={startShortcut}>
           <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-xs font-extrabold text-white shrink-0" style={{ background: SHORTCUT_APP.color }}>{SHORTCUT_APP.letter}</span>
@@ -95,20 +143,7 @@ export function OpenWithPicker({ targets, apps, currentId, onPick, onShortcutSav
           {currentId === 'shortcut' && <CheckIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />}
         </button>
       )}
-      {targets.devices.length > 0 && (
-        <>
-          <div className="px-2 pt-2.5 pb-1 text-[12px] tracking-wide text-muted">PLAY ON A DEVICE · JELLYFIN</div>
-          {targets.devices.map((d) => (
-            <button key={`${d.address}|${d.sessionId}`} type="button" className={row} onClick={() => onPlayOn(d)}>
-              <span className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-white shrink-0" style={{ background: 'var(--color-success)' }}><PlayIcon className="w-3.5 h-3.5" /></span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[15px] text-default truncate">{d.device}</span>
-                <span className="block text-[13px] text-muted truncate">{[d.client, d.person].filter(Boolean).join(' · ')}</span>
-              </span>
-            </button>
-          ))}
-        </>
-      )}
+      <PlayOnDeviceList devices={targets.devices} onPlayOn={onPlayOn} />
       {apps.some((a) => a.id === 'swiftfin' || a.id === 'streamyfin') && (
         <div className="px-2 pt-2 mt-1.5 border-t border-default text-[13px] text-muted">The app needs to be signed in to that server already.</div>
       )}

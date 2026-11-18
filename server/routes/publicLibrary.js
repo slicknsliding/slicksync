@@ -3075,7 +3075,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         // login) had nobody else to go to and showed up here as theirs.
         const household = await prisma.user.findMany({
           where: { accountId: user.accountId || DEFAULT_ACCOUNT_ID, isActive: true },
-          select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, useGravatar: true, providerType: true }
+          select: { id: true, username: true, email: true, colorIndex: true, avatarUrl: true, useGravatar: true, providerType: true, jellyfinServerKind: true }
         });
         const merged = await mergeProxyNowPlaying(prisma, user.accountId || DEFAULT_ACCOUNT_ID, household.length ? household : [user], wrapped);
         nowPlaying.length = 0;
@@ -3107,6 +3107,15 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         const keep = stremioSaveCards(nuvioOnlyCards(nowPlaying, Date.now()), Date.now());
         nowPlaying.length = 0;
         nowPlaying.push(...keep);
+      }
+      if (user.providerType === 'nuvio') {
+        // Each card names the Nuvio profile that last played its title (the
+        // page-wide profileLabel below is only the one used last).
+        const { nuvioProfileFor } = require('../utils/profileLabels');
+        for (const np of nowPlaying) {
+          const playing = nuvioProfileFor(libraryCache, np.item?.id);
+          if (playing) np.profileLabel = playing;
+        }
       }
       try {
         // Runtime, the episode's name, and an estimate when the app hasn't said (shown only).
@@ -3598,7 +3607,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         data.avatarUrl = checked.url;
       }
       if (colorIndex !== undefined) {
-        if (!validAvatarColor(colorIndex)) return res.status(400).json({ error: 'Pick one of the colours offered', message: 'Pick one of the colours offered' });
+        if (!validAvatarColor(colorIndex)) return res.status(400).json({ error: 'Pick one of the colors offered', message: 'Pick one of the colors offered' });
         data.colorIndex = colorIndex;
       }
       const saved = await prisma.user.update({ where: { id: user.id }, data, select: { avatarUrl: true, colorIndex: true } });
@@ -3917,7 +3926,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           people: s.people.map((p) => ({ name: p.name, userId: p.userId })),
         })),
         devices: found.devices.map((d) => ({
-          personId: user.id, credentialId: null, person: d.person, address: d.address, itemId: d.itemId,
+          personId: user.id, credentialId: null, person: d.person, address: d.address, kind: d.kind, itemId: d.itemId,
           sessionId: d.sessionId, device: d.device, client: d.client,
         })),
         tmdbId: found.tmdbId,
@@ -3930,7 +3939,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   });
 
   // Play on a device: only a device their own sign-in can control, on their
-  // own real Jellyfin, with an item id of the shape that server uses.
+  // own real Jellyfin or AIOMetadata (4.0 and newer - the provider checks),
+  // with an item id of the shape that server uses.
   router.post('/open-targets/play-on', async (req, res) => {
     try {
       const user = await personAsking(req, req.body?.userId);
@@ -3938,8 +3948,8 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const itemId = String(req.body?.itemId || '');
       if (!sessionId || !/^[A-Za-z0-9-]{8,64}$/.test(itemId)) return res.status(400).json({ error: 'Pick a device', message: 'Pick a device' });
       const row = await ownServerRow(user);
-      if (!row || (row.jellyfinServerKind || 'jellyfin') !== 'jellyfin') {
-        return res.status(400).json({ error: 'Only a Jellyfin server can do that', message: 'Only a Jellyfin server can do that' });
+      if (!row || !['jellyfin', 'aiometadata'].includes(row.jellyfinServerKind || 'jellyfin')) {
+        return res.status(400).json({ error: 'Only a Jellyfin server or AIOMetadata can do that', message: 'Only a Jellyfin server or AIOMetadata can do that' });
       }
       const provider = ownServerProvider(row);
       const own = await provider.controllableSessions().catch(() => []);

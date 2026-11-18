@@ -23,11 +23,13 @@ const MARGIN = 16;
 // Before the popup has been measured: room below that fits any of them.
 const COMFORTABLE = 320;
 
-export function placePopup(pill: DOMRect, preferredWidth: number, height?: number): PopupPlacement {
+export function placePopup(pill: DOMRect, preferredWidth: number, height?: number, opts: { align?: 'start' | 'end' } = {}): PopupPlacement {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const width = Math.min(preferredWidth, vw - MARGIN * 2);
-  const left = Math.max(MARGIN, Math.min(pill.left, vw - width - MARGIN));
+  // 'end' lines its right edge up with the pill's (a ⋯ button at a card's right edge).
+  const edge = opts.align === 'end' ? pill.right - width : pill.left;
+  const left = Math.max(MARGIN, Math.min(edge, vw - width - MARGIN));
   const screen = vh - MARGIN * 2;
   const below = vh - pill.bottom - GAP - MARGIN;
   const above = pill.top - GAP - MARGIN;
@@ -81,6 +83,31 @@ export function placeOutside(card: DOMRect, button: DOMRect, preferredWidth: num
   const short = need - below;
   if (Math.max(below, above) >= MIN_OUTSIDE) return below >= above ? asBelow(below, short) : asAbove(above, short);
   return { ...placePopup(button, preferredWidth, height), side: 'over', short };
+}
+
+/**
+ * A pill's popup with a pointer that touches the pill (a Users card's Sync
+ * history): below the pill when it fits, otherwise above. Too tall for either
+ * side (a long list on a phone), it takes the roomier one and scrolls inside,
+ * still pointing at the pill; only when neither side is roomy enough to read
+ * does it fall back onto the pill like placePopup, without a pointer.
+ */
+export function placeAtPill(pill: DOMRect, preferredWidth: number, height?: number, align: 'start' | 'end' = 'start'): OutsidePlacement {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(preferredWidth, vw - MARGIN * 2);
+  const edge = align === 'end' ? pill.right - width : pill.left;
+  const left = Math.max(MARGIN, Math.min(edge, vw - width - MARGIN));
+  const tipX = Math.max(left + 18, Math.min(pill.left + pill.width / 2, left + width - 18));
+  const need = height ?? COMFORTABLE;
+  const below = vh - pill.bottom - OUTSIDE_GAP - MARGIN;
+  const above = pill.top - OUTSIDE_GAP - MARGIN;
+  const asBelow = (maxHeight: number): OutsidePlacement => ({ left, width, top: pill.bottom + OUTSIDE_GAP, maxHeight, side: 'below', tipX, tipY: pill.bottom + OUTSIDE_GAP });
+  const asAbove = (maxHeight: number): OutsidePlacement => ({ left, width, bottom: vh - pill.top + OUTSIDE_GAP, maxHeight, side: 'above', tipX, tipY: pill.top - OUTSIDE_GAP });
+  if (below >= need) return asBelow(below);
+  if (above >= need) return asAbove(above);
+  if (Math.max(below, above) >= MIN_OUTSIDE) return below >= above ? asBelow(below) : asAbove(above);
+  return { ...placePopup(pill, preferredWidth, height, { align }), side: 'over' };
 }
 
 /** The nearest ancestor that scrolls up and down, or the page itself. */

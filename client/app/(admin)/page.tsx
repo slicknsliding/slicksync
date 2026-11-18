@@ -15,6 +15,7 @@ import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, MediaDetailModal } from '@/components/ui';
 import { UpcomingEpisodesPanel, type UpcomingFollower } from '@/components/ui/UpcomingEpisodesPanel';
 import { ContinueBannerCard, ContinueLeadBanner } from '@/components/dashboard/ContinueBanners';
+import type { ResumeApps } from '@/components/dashboard/ResumeWithApp';
 import { NowPlayingSection } from '@/components/admin/NowPlayingSection';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
@@ -53,6 +54,14 @@ const SyncActivityChart = dynamic(
 
 // Fixed height for activity items (5 items)
 const ACTIVITY_CARD_HEIGHT = 'h-[420px]';
+
+// Continue Watching from a Jellyfin or AIOStreams sign-in resumes on that
+// person's own server, in the app this device chose (ResumeWithApp.tsx).
+const RESUME_APPS: ResumeApps = {
+  key: 'admin',
+  load: (item) => api.getOpenTargets(item.showId, item.contentType, item.userId),
+  playOn: (d) => api.playOnDevice({ personId: d.personId, credentialId: d.credentialId, sessionId: d.sessionId, itemId: d.itemId }),
+};
 
 // Recent Addon Item component with error handling
 const RecentAddonItem = memo(function RecentAddonItem({ 
@@ -225,6 +234,11 @@ export default function DashboardPage() {
   const hasCapturedPointerRef = useRef(false);
 
   const handleRowPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Any new press starts a new gesture: the last drag is over. Cleared before
+    // the checks below - a right-click, or a press on a button in the row,
+    // used to leave it set, so after one drag a card's right-click menu and
+    // the Resume pill did nothing until a left press on a card.
+    wasDraggedRef.current = false;
     // button 0 = primary/left only - a right-click (button 2, opening the
     // context menu) was falling through this same check and calling
     // setPointerCapture on the row, which had no business engaging for a
@@ -232,7 +246,6 @@ export default function DashboardPage() {
     if (e.pointerType !== 'mouse' || e.button !== 0 || !scrollRowRef.current) return;
     if ((e.target as HTMLElement).closest('button')) return;
     isPointerDownRef.current = true;
-    wasDraggedRef.current = false;
     hasCapturedPointerRef.current = false;
     dragStartXRef.current = e.clientX;
     dragStartScrollLeftRef.current = scrollRowRef.current.scrollLeft;
@@ -282,6 +295,10 @@ export default function DashboardPage() {
       scrollRowRef.current?.releasePointerCapture(e.pointerId);
       hasCapturedPointerRef.current = false;
     }
+    // The click that follows letting go of a drag is swallowed (it fires in
+    // this same task); after that the drag is over, so a right-click or a
+    // key press on a card works again without another press first.
+    if (e.type === 'pointerup' && wasDraggedRef.current) setTimeout(() => { wasDraggedRef.current = false; }, 0);
   }, []);
 
   // Tick once a second so live watch time counts up - but ONLY while
@@ -420,8 +437,9 @@ export default function DashboardPage() {
   // Watching" stat uses - dedupe by user id since one user can have more
   // than one nowPlaying entry (e.g. the same title picked up under both
   // their Stremio and Nuvio profiles).
+  // People watching - an unknown device on their login isn't one of them.
   const activeUsers = metricsData?.nowPlaying
-    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    ? new Set(metricsData.nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size
     : 0;
   const ringCircumference = 2 * Math.PI * 28;
   const ringRatio = stats.totalUsers > 0 ? Math.min(1, activeUsers / stats.totalUsers) : 0;
@@ -492,9 +510,10 @@ export default function DashboardPage() {
     
     const items: any[] = [];
     
-    // Add live items first
+    // Add live items first - the household's people; an unknown device on
+    // their login has its own card in Now Playing and no profile to open.
     if (metricsData.nowPlaying) {
-      metricsData.nowPlaying.forEach(np => {
+      metricsData.nowPlaying.filter((np) => !np.unknownDevice).forEach(np => {
         items.push({
           ...np,
           isLive: true,
@@ -669,7 +688,7 @@ export default function DashboardPage() {
     if (!continueShown.length) return null;
     const lead = wideFirst ? continueShown[0] : null;
     const rest = wideFirst ? continueShown.slice(1) : continueShown;
-    const leadCard = lead && <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+    const leadCard = lead && <ContinueLeadBanner item={lead} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} resumeApps={RESUME_APPS} />;
     return (
       <>
         {lead && (isTV
@@ -688,7 +707,7 @@ export default function DashboardPage() {
               : 'arrange-cardrow grid grid-flow-col gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated auto-cols-[82%] min-[640px]:auto-cols-[calc((100%-24px)/3)] min-[1100px]:auto-cols-[calc((100%-36px)/4)] min-[1700px]:auto-cols-[calc((100%-48px)/5)]'}
           >
             {rest.map((item, index) => {
-              const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} />;
+              const card = <ContinueBannerCard item={item} priority={index < 6} wasDraggedRef={wasDraggedRef} onRemove={handleDismissContinueWatching} onOpenDetails={setDetailModalItem} resumeApps={RESUME_APPS} />;
               const key = `${item.userId}-${item.showId}`;
               return isTV
                 ? <TVFocusable key={key} ringInside className="w-[300px] shrink-0" onEnterPress={() => setDetailModalItem(item)}>{card}</TVFocusable>

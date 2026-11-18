@@ -109,3 +109,23 @@ test('createdAtFromCuid rejects timestamps outside a plausible range', () => {
   const farFuture = 'c' + Date.UTC(2300, 0, 1).toString(36) + '001slb2keh7fxhlh'.slice(0, 16)
   assert.equal(createdAtFromCuid(farFuture), null, 'year 2300 should be rejected')
 })
+
+test('getAccountDayKey is YYYY-MM-DD even where en-CA falls back to US order', () => {
+  // The server's runtime has no en-CA data: getAccountDateString gave
+  // 11/16/2026 there, so every lookup of a day among the stored 2026-11-16
+  // keys missed (a film's card showed its all-days total as one day's).
+  const Real = Intl.DateTimeFormat
+  const path = require.resolve('../server/utils/dateUtils')
+  Intl.DateTimeFormat = function (locale, opts) { return new Real(locale === 'en-CA' ? 'en-US' : locale, opts) }
+  delete require.cache[path]
+  try {
+    const fresh = require('../server/utils/dateUtils')
+    const at = new Date('2026-11-16T23:38:56Z')
+    assert.equal(fresh.getAccountDateString(at, 'America/Los_Angeles'), '11/16/2026')
+    assert.equal(fresh.getAccountDayKey(at, 'America/Los_Angeles'), '2026-11-16')
+    assert.equal(fresh.getAccountDayKey(new Date('2026-11-17T08:30:00Z'), 'America/Los_Angeles'), '2026-11-17')
+  } finally {
+    Intl.DateTimeFormat = Real
+    delete require.cache[path]
+  }
+})

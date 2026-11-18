@@ -171,7 +171,7 @@ function SidePicker({ sides, others, person, current, other, title, onPick }: {
     );
   };
   return (
-    <div className="absolute z-30 left-0 right-0 sm:right-auto sm:w-[22rem] mt-2 rounded-2xl border border-default p-3 shadow-2xl max-h-[70vh] overflow-y-auto" style={{ background: 'var(--color-surface)' }}>
+    <div data-mh-root="" className="absolute z-30 left-0 right-0 sm:right-auto sm:w-[22rem] mt-2 rounded-2xl border border-default p-3 shadow-2xl max-h-[70vh] overflow-y-auto" style={{ background: 'var(--color-surface)' }}>
       <div className="font-semibold text-sm mb-1">{title}</div>
       {person && <div className="text-xs text-subtle mt-2 mb-1">{person.username}</div>}
       {sides.map((s) => (
@@ -287,7 +287,7 @@ function OtherChip({ side, onUse }: { side: WatchCopySide; onUse: (role: 'from' 
         </button>
       </Tv>
       {open && (
-        <div className="absolute z-30 left-0 mt-2 rounded-xl border border-default p-1.5 shadow-2xl flex flex-col min-w-[9rem]" style={{ background: 'var(--color-surface)' }}>
+        <div data-mh-root="" className="absolute z-30 left-0 mt-2 rounded-xl border border-default p-1.5 shadow-2xl flex flex-col min-w-[9rem]" style={{ background: 'var(--color-surface)' }}>
           <Tv on={isTV} onEnter={() => { onUse('from'); setOpen(false); }}>
             <button type="button" className="text-left text-sm px-3 py-1.5 rounded-lg hover:bg-surface-hover" style={{ color: FROM_C }} onClick={() => { onUse('from'); setOpen(false); }}>Use as From</button>
           </Tv>
@@ -327,13 +327,13 @@ function MatchPicker({ userId, item, onPick, onClose }: { userId: string; item: 
     api.getWatchCopyCandidates(userId, item.name || '', item.type).then((r) => setList(r.candidates)).catch(() => setList([]));
   }, [userId, item.name, item.type]);
   return (
-    <div ref={ref} className="absolute z-30 left-0 top-[60%] w-72 rounded-2xl border border-default p-3 shadow-2xl" style={{ background: 'var(--color-surface)' }}>
+    <div ref={ref} data-mh-root="" className="absolute z-30 left-0 top-[60%] w-72 rounded-2xl border border-default p-3 shadow-2xl" style={{ background: 'var(--color-surface)' }}>
       <div className="font-semibold text-sm mb-1">Which one did they watch?</div>
       {list === null && <div className="text-xs text-muted py-2">Looking…</div>}
       {list?.length === 0 && <div className="text-xs text-muted py-2">Nothing by that name — it stays out of the copy.</div>}
       {list?.map((c) => (
         <Tv key={c.id} on={isTV} onEnter={() => onPick(c.id)}>
-          <button type="button" onClick={() => onPick(c.id)} className="w-full flex items-center gap-2.5 text-left p-2 mt-1.5 rounded-xl border border-default bg-surface-hover hover:border-primary">
+          <button type="button" data-mh-item="" onClick={() => onPick(c.id)} className="w-full flex items-center gap-2.5 text-left p-2 mt-1.5 rounded-xl border border-default bg-surface-hover hover:border-primary">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {c.poster ? <img src={c.poster} alt="" className="w-[30px] h-[45px] rounded-md object-cover" /> : <span className="w-[30px] h-[45px] rounded-md bg-surface" />}
             <span className="min-w-0"><span className="block text-sm font-semibold text-default truncate">{c.name}</span><span className="block text-xs text-muted">{c.year || ''}</span></span>

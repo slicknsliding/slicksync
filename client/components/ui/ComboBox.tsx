@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { useIsTV } from '@/lib/hooks/useIsTV';
 
 export interface ComboBoxOption {
   value: string;
@@ -29,6 +30,10 @@ interface ComboBoxProps {
 export function ComboBox({ value, onChange, onBlur, options, placeholder, className }: ComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // TV: the remote passes through the field on its way up and down the page,
+  // so the list waits for OK (opening on focus made every pass walk the whole
+  // list), and closes when the remote moves on (there is no click outside).
+  const isTV = useIsTV();
 
   // Clicking a dropdown option also blurs the input (focus moves to the
   // option button) - firing onBlur immediately would save whatever the
@@ -52,12 +57,17 @@ export function ComboBox({ value, onChange, onBlur, options, placeholder, classN
   }, []);
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div
+      className="relative"
+      ref={containerRef}
+      onBlur={isTV ? (e) => { if (!containerRef.current?.contains(e.relatedTarget as Node | null)) setIsOpen(false); } : undefined}
+    >
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setIsOpen(true)}
+        onFocus={isTV ? undefined : () => setIsOpen(true)}
+        onKeyDown={isTV ? (e) => { if (e.key === 'Enter') setIsOpen((v) => !v); } : undefined}
         onBlur={handleBlur}
         placeholder={placeholder}
         autoComplete="off"

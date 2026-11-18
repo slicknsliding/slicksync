@@ -2,6 +2,7 @@
 
 import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
 import { NowPlayingV2, type NowPlayingRows } from '@/components/v2/DashboardV2';
+import { UnknownDevicePill } from '@/components/dashboard/UnknownDevicePill';
 
 interface NowPlayingSectionProps {
   items: NowPlayingRows;
@@ -57,7 +58,12 @@ export function NowPlayingSection({ items, now, providerByUser }: NowPlayingSect
         const f = watchingFor(np);
         return (
           <>
-            {f && <p className="text-xs text-subtle">Watching for {f}</p>}
+            {np.unknownDevice ? (
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+                {f && <p className="text-xs text-subtle">Watching for {f}</p>}
+                <UnknownDevicePill device={np.unknownDevice} />
+              </div>
+            ) : f && <p className="text-xs text-subtle">Watching for {f}</p>}
             <PlaybackFreshnessLine row={np} />
           </>
         );

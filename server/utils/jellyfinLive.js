@@ -58,6 +58,8 @@ function liveViewings(userIds = null) {
         startedAt: new Date(startedAt.get(`${userId}|${videoKey(v)}`) || entry.at),
         // Where it was at the last pass, moved on by the time since unless paused.
         positionMs: v.paused ? v.positionMs : Math.min(v.positionMs + (now - entry.at), v.durationMs || Infinity),
+        // When playback stood at positionMs: now, since it was just moved on.
+        positionAt: v.paused ? entry.at : now,
         durationMs: v.durationMs,
         paused: v.paused === true,
         // The pass that last saw it, for the "updated N s ago" label.

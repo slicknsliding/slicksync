@@ -17,6 +17,7 @@ import { searchSettings } from '@/lib/settingsIndex';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { lightActive } from '@/lib/menuHighlight';
 import { useTVModal } from '@/components/tv/useTVModal';
 import { PaletteV2Panel } from '@/components/v2/PaletteV2';
 import type { V2Tone } from '@/components/v2/V2Bits';
@@ -232,7 +233,14 @@ export function CommandPalette() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return v2 ? [...recent, ...navResults.filter((n) => !recent.some((r) => r.id === n.id)).slice(0, 8)] : navResults.slice(0, 8);
+    if (!q) {
+      // Before you type: the first eight pages, then Guides.
+      const guides = navResults.find((n) => n.href === '/guides');
+      const shown = v2 ? recent : [];
+      const pages = navResults.filter((n) => n !== guides && !shown.some((r) => r.id === n.id)).slice(0, 8);
+      if (guides && !shown.some((r) => r.id === guides.id)) pages.push(guides);
+      return [...shown, ...pages];
+    }
     const pool: Result[] = [
       ...NAV_ITEMS.filter((n) => n.label.toLowerCase().includes(q) || n.keywords.includes(q))
         .map((n) => ({ id: `nav-${n.href}`, label: n.label, href: n.href, icon: n.icon, sublabel: undefined })),
@@ -268,6 +276,14 @@ export function CommandPalette() {
   }, [query]);
 
   useEffect(() => { setActiveIndex(0); }, [query]);
+
+  // The active row (moved by the pointer, the arrow keys or a TV remote) is
+  // the one lit with the menu highlight.
+  useEffect(() => {
+    if (!isOpen) { lightActive(null); return; }
+    lightActive(document.querySelector<HTMLElement>(`[data-mh-list] [data-mh-index="${activeIndex}"]`));
+  }, [isOpen, activeIndex, filtered, helpResults, v2]);
+  useEffect(() => () => lightActive(null), []);
 
   const handleSelect = (result: Result) => {
     if (v2) writeRecent(result);
@@ -366,6 +382,7 @@ export function CommandPalette() {
                 />
               ) : (
               <div
+                data-mh-list=""
                 className="popup-panel rounded-2xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--color-surface-border)' }}>
@@ -407,11 +424,15 @@ export function CommandPalette() {
                       {filtered.map((r, i) => {
                         const Icon = r.icon;
                         return (
+                          // Set in from the edge and rounded, like the options
+                          // in other menus.
                           <button
                             key={r.id}
+                            data-mh-index={i}
                             onClick={() => handleSelect(r)}
                             onMouseEnter={() => setActiveIndex(i)}
-                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${i === activeIndex ? 'row-hl' : ''}`}
+                            onFocus={() => setActiveIndex(i)}
+                            className="mx-1.5 my-px w-[calc(100%-0.75rem)] rounded-[12px] flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
                           >
                             {r.poster ? (
                               <img src={r.poster} alt="" className="w-5 h-7 rounded-sm object-cover shrink-0" loading="lazy" decoding="async" />
@@ -420,7 +441,6 @@ export function CommandPalette() {
                             )}
                             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>{r.label}</span>
                             {r.sublabel && <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{r.sublabel}</span>}
-                            <ArrowUpRightIcon className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: i === activeIndex ? 1 : 0 }} />
                           </button>
                         );
                       })}
@@ -437,9 +457,11 @@ export function CommandPalette() {
                         return (
                           <button
                             key={h.id}
+                            data-mh-index={idx}
                             onClick={() => handleSelectHelp(h)}
                             onMouseEnter={() => setActiveIndex(idx)}
-                            className={`w-full flex items-start gap-3 px-2 py-2.5 rounded-lg text-left transition-colors ${idx === activeIndex ? 'row-hl' : ''}`}
+                            onFocus={() => setActiveIndex(idx)}
+                            className="w-full flex items-start gap-3 px-2 py-2.5 rounded-lg text-left transition-colors"
                           >
                             <SparklesIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
                             <span className="flex-1 min-w-0">

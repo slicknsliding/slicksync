@@ -134,7 +134,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
   };
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'color', label: 'Colour' },
+    { id: 'color', label: 'Color' },
     { id: 'url', label: 'Image link' },
     { id: 'upload', label: 'Upload' },
     ...(isNuvio ? [{ id: 'nuvio' as Tab, label: 'Nuvio Covers' }] : []),
@@ -145,7 +145,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
       <div className="flex items-center gap-3.5">
         <Avatar name={name} email={email} src={preview} colorIndex={previewColor} size="xl" className="w-[72px] h-[72px] shrink-0" />
         <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
-          {tab === 'color' ? 'Initial on the colour you pick.' : 'An animated picture keeps moving everywhere it shows.'}
+          {tab === 'color' ? 'Initial on the color you pick.' : 'An animated picture keeps moving everywhere it shows.'}
         </p>
       </div>
 
@@ -155,6 +155,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
             key={t.id}
             type="button"
             role="tab"
+            data-mh-chip=""
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 min-w-0 px-2 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${tab === t.id ? 'bg-surface-hover text-default' : 'text-muted hover:text-default'}`}
@@ -166,7 +167,7 @@ function PicturePopup({ anchorRef, name, email, onClose }: {
 
       {tab === 'color' && (
         <div>
-          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Pick a colour</p>
+          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Pick a color</p>
           <AvatarColorSwatches value={color} onChange={setColor} />
         </div>
       )}
@@ -264,6 +265,7 @@ function NuvioCovers({ onPick }: { onPick: (url: string) => void }) {
               key={cover.id}
               type="button"
               onClick={() => onPick(cover.image_url)}
+              data-mh-chip=""
               title={cover.title || 'Use this cover'}
               className="aspect-square rounded-lg overflow-hidden border border-default hover:ring-2 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
             >

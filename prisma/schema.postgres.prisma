@@ -1149,11 +1149,27 @@ model Notification {
   dedupeKey String?
   read      Boolean   @default(false)
   readAt    DateTime?
+  // Cleared from the bell but kept, for a row a timed check owns (dedupeKey):
+  // the check still sees it and doesn't raise it again (utils/bellState.js).
+  dismissedAt DateTime?
   createdAt DateTime  @default(now())
 
   @@unique([accountId, dedupeKey])
   @@index([accountId, createdAt])
   @@map("notifications")
+}
+
+// The bell's state per account, the same on every device: when it was last
+// cleared, and the rows dismissed or read one by one (JSON arrays of the
+// bell's row ids). See utils/bellState.js.
+model BellState {
+  accountId     String    @id
+  clearedBefore DateTime?
+  dismissed     String    @default("[]")
+  readIds       String    @default("[]")
+  updatedAt     DateTime  @updatedAt
+
+  @@map("bell_state")
 }
 
 model NotificationDigestEntry {

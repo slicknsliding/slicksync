@@ -55,7 +55,7 @@ export function MarkPlayedRow({ userId }: { userId: string }) {
           <div className="min-w-0">
             <p className="text-sm font-medium text-default">Watchlist and ratings too</p>
             <p className="text-xs text-muted">
-              The household watchlist becomes their Jellyfin favourites, and ratings their ratings. Only what SlickSync adds is ever taken away again.
+              The household watchlist becomes their Jellyfin favorites, and ratings their ratings. Only what SlickSync adds is ever taken away again.
             </p>
           </div>
           <ToggleSwitch checked={state.lists} onChange={() => toggle({ lists: !state.lists })} disabled={saving} title="Watchlist and ratings too" />

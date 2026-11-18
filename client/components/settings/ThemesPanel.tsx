@@ -3,6 +3,8 @@
 import { PersonalTouches, MotionRow } from '@/components/settings/PersonalTouches';
 import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
+import { MenuHighlightSettings, menuHighlightName } from '@/components/settings/MenuHighlightSection';
+import { useMenuHighlight } from '@/lib/menuHighlight';
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
@@ -27,6 +29,7 @@ import { V2SetRow, V2Seg, V2Switch } from '@/components/v2/SettingsV2';
 import { V2Button } from '@/components/v2/V2Bits';
 import {
   PaintBrushIcon,
+  CursorArrowRaysIcon,
   ExclamationTriangleIcon,
   SwatchIcon,
   CheckIcon,
@@ -488,7 +491,7 @@ const AccountButtonCard = memo(function AccountButtonCard({
   );
 });
 
-export const THEME_KEYS = ['colours', 'layout', 'build'];
+export const THEME_KEYS = ['colours', 'menuHighlight', 'layout', 'build'];
 
 // One block of the Themes tab. Classic draws it as the card it always was; the
 // v2 page design draws it as an arrangeable section (so the account can move,
@@ -573,7 +576,7 @@ function MoreMenuRow({ v2 }: { v2: boolean }) {
 // The title row at the top of each page: one slim row, the big centred title, or
 // just the buttons. Phones open on Compact and wide screens on Full until a
 // choice is saved; it applies to every page in either layout.
-const PAGE_HEADER_LINE = 'The title and buttons at the top of each page. Compact is one slim row; Full is the big centred title; Minimal drops the title and keeps just the buttons.';
+const PAGE_HEADER_LINE = 'The title and buttons at the top of each page. Compact is one slim row; Full is the big centered title; Minimal drops the title and keeps just the buttons.';
 function PageHeaderRow({ v2 }: { v2: boolean }) {
   const { mode, setMode } = usePageHeader();
   if (v2) {
@@ -658,6 +661,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
     previewCustom, cancelPreview,
   } = useTheme();
   const { layoutMode, setLayoutMode, accountButton, setAccountButton } = useLayoutMode();
+  const [menuHighlight] = useMenuHighlight();
   // The font choices preview in their own typefaces.
   useEffect(() => { loadOptionalFonts(); }, []);
   const { viewMode, setViewMode } = useDefaultViewMode({ global: true });
@@ -878,7 +882,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
         </ThemeBlock>
 
         {/* Theme Selection */}
-        <ThemeBlock v2={v2} arrange={arrange} id="colours" title="Colours" meta={(themeMeta as Record<string, { name: string }>)[themeId]?.name ?? activeCustomTheme?.name} delay={0.05} icon={<PaintBrushIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="Choose your preferred color scheme">
+        <ThemeBlock v2={v2} arrange={arrange} id="colours" title="Theme" meta={(themeMeta as Record<string, { name: string }>)[themeId]?.name ?? activeCustomTheme?.name} delay={0.05} icon={<PaintBrushIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="Choose your preferred color scheme">
             {v2 ? (
               <div className="flex flex-wrap gap-x-3.5 gap-y-4 items-start">
                 {themeIds.map((id) => (
@@ -939,6 +943,11 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
               ))}
             </div>
             )}
+        </ThemeBlock>
+
+        {/* How the option you are on stands out in pop-up menus. */}
+        <ThemeBlock v2={v2} arrange={arrange} id="menuHighlight" title="Menu highlight" meta={menuHighlightName(menuHighlight.style)} delay={0.08} icon={<CursorArrowRaysIcon className="w-5 h-5 text-primary" />} tone="bg-primary-muted" blurb="How the option you are on stands out in menus that pop up">
+          <MenuHighlightSettings />
         </ThemeBlock>
 
         {/* Custom Theme builder - pick your own accent colors on top of any
@@ -1429,7 +1438,7 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
         </ThemeBlock>
         {v2 && arrange && (
           <div style={{ order: 99 }}>
-            <HiddenTray arrange={arrange} labelOf={(k) => ({ colours: 'Colours', layout: 'Layout', build: 'Build your own theme' } as Record<string, string>)[k] ?? k} />
+            <HiddenTray arrange={arrange} labelOf={(k) => ({ colours: 'Theme', layout: 'Layout', build: 'Build your own theme' } as Record<string, string>)[k] ?? k} />
           </div>
         )}
       </div>

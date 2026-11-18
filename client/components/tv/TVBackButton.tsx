@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { closeTopTVModal } from './useTVModal';
+import { leaveTVZone } from './TVControlZone';
 
 // Android's hardware/remote back button has no equivalent on PC/mobile web,
 // so Capacitor's WebView owns handling it - and by default that means
@@ -34,6 +35,8 @@ export function TVBackButton() {
     AppPlugin.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
       // An open window closes first, like Escape does.
       if (closeTopTVModal()) return;
+      // Inside a remote area (a Settings tab): back to its tab first.
+      if (leaveTVZone()) return;
       if (canGoBack) window.history.back();
       else AppPlugin.exitApp();
     }).then((h: { remove: () => void }) => {

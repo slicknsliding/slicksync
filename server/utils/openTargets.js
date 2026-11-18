@@ -5,7 +5,7 @@
 // Play on). Shared by the admin route (routes/jellyfin.js /open-targets, every
 // person in the household) and the member one (routes/publicLibrary.js, the
 // caller alone): the caller decides WHICH sign-in rows go in; this only reads
-// them. No token ever leaves it.
+// them. No token ever leaves it. AIOMetadata 4.0 lists devices for Play on too.
 
 const cache = new Map() // "<address>|<id>|<type>" or "tmdb|<type>|<id>" -> { at, itemId }
 const ITEM_TTL = 10 * 60 * 1000
@@ -50,9 +50,11 @@ async function buildOpenTargets({ rows, id, type, providerFor, withDevices = tru
       }
     }
     if (!s.people.some((x) => x.userId === row.jellyfinUserId)) s.people.push({ name: row.username, userId: row.jellyfinUserId || null })
-    if (withDevices && kind === 'jellyfin' && s.itemId) {
+    // A real Jellyfin, and AIOMetadata from 4.0 (the provider answers no
+    // devices for an older one).
+    if (withDevices && (kind === 'jellyfin' || kind === 'aiometadata') && s.itemId) {
       const list = await providerFor(row)?.controllableSessions().catch(() => []) || []
-      for (const d of list) devices.push({ personId: row.id, credentialId: row.__credentialId || null, person: row.username, address, itemId: s.itemId, sessionId: d.id, device: d.device, client: d.client })
+      for (const d of list) devices.push({ personId: row.id, credentialId: row.__credentialId || null, person: row.username, address, kind, itemId: s.itemId, sessionId: d.id, device: d.device, client: d.client })
     }
   }
   // Infuse opens a title by its TMDB id; Cinemeta carries it for IMDb ids.

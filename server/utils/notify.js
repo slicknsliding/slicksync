@@ -249,7 +249,9 @@ async function fetchMetadata(itemId, itemType, videoId, omdbApiKey, omdbOpts) {
                 episode: v.episode,
                 title: v.title || v.name || null,
                 released: v.released || null,
-                thumbnail: v.thumbnail || null
+                thumbnail: v.thumbnail || null,
+                // The episode's own summary, for the details window's tiles.
+                overview: v.overview || v.description || null
               }))
               .sort((a, b) => a.season - b.season || a.episode - b.episode)
 

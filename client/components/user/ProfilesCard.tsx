@@ -112,16 +112,20 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
     if (selected === null) return;
     const onDown = (e: MouseEvent) => {
       if (popoverRef.current?.contains(e.target as Node)) return;
-      if ((e.target as HTMLElement)?.closest?.('[data-profile-tile]')) return;
+      // A press on a tile opens or closes its own menu - except on its Limits pill.
+      const target = e.target as HTMLElement;
+      if (target?.closest?.('[data-profile-tile]') && !target.closest('[data-tile-limits]')) return;
       closeMenu();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeMenu(); };
-    window.addEventListener('mousedown', onDown);
+    // Capture: pills (Limits and the rest) stop their presses from going
+    // further, and a press on one still has to close the menu.
+    window.addEventListener('mousedown', onDown, true);
     window.addEventListener('keydown', onKey);
     window.addEventListener('scroll', closeMenu, true);
     window.addEventListener('resize', closeMenu);
     return () => {
-      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('scroll', closeMenu, true);
       window.removeEventListener('resize', closeMenu);
@@ -308,19 +312,30 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
               let caption = count(n);
               if (profile.index !== 1) caption = profile.ownPersonId ? `Separated · ${caption}` : `Merged · ${caption}`;
               return (
-                // The tile, and its Limits pill under it - beside it rather
-                // than inside, since the tile is a button itself.
-                <div key={profile.index} className="flex flex-col items-center gap-1.5 min-w-0 pb-2">
-                <button
-                  type="button"
+                // The tile: picture and name, its Limits pill, then who it
+                // counts as. The picture and name are the button (keyboard,
+                // remote); a press anywhere else on the tile opens its menu
+                // too, except on Limits, which is a pill of its own.
+                <div key={profile.index} className="flex flex-col items-center min-w-0 pb-2">
+                <div
                   data-profile-tile
-                  onClick={(e) => openMenu(profile.index, e.currentTarget)}
-                  aria-haspopup="menu"
-                  aria-expanded={isSelected}
-                  className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    // Presses inside the Limits pill or its box (a portal,
+                    // whose events still come up through here) are its own.
+                    if (!e.currentTarget.contains(target) || target.closest('[data-tile-limits]')) return;
+                    openMenu(profile.index, e.currentTarget);
+                  }}
+                  className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 cursor-pointer transition-colors ${
                     isSelected ? 'bg-surface-hover ring-1 ring-primary/50' : 'hover:bg-surface-hover'
                   }`}
                 >
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={isSelected}
+                    className="flex flex-col items-center gap-2 min-w-0 max-w-full rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
                   <span data-profile-circle className="relative transition-transform group-hover:scale-105">
                     <ProfileMark profile={profile} size={64} />
                     {profile.index === 1 && (
@@ -335,6 +350,12 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
                     )}
                   </span>
                   <span className={`text-sm font-medium max-w-full truncate ${tracked ? 'text-default' : 'text-muted'}`}>{profileName(profile)}</span>
+                  </button>
+                  {profile.limitId && (
+                    <span data-tile-limits className="inline-flex max-w-full">
+                      <LimitsButton id={profile.limitId} name={profileName(profile)} summary={limits?.[profile.limitId] || null} />
+                    </span>
+                  )}
                   {tracked && owner ? (
                     <span className="inline-flex items-center gap-1.5 max-w-full rounded-full pl-0.5 pr-2 py-0.5 bg-surface-hover">
                       <UserAvatar userId={owner.id} name={owner.username} email={owner.email || undefined} src={owner.avatarUrl || undefined} useGravatar={owner.useGravatar} colorIndex={owner.colorIndex} size="xs" />
@@ -344,10 +365,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
                     <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted">Not tracked</span>
                   )}
                   {tracked && <span className="text-[11px] text-subtle max-w-full truncate">{caption}</span>}
-                </button>
-                {profile.limitId && (
-                  <LimitsButton id={profile.limitId} name={profileName(profile)} summary={limits?.[profile.limitId] || null} />
-                )}
+                </div>
                 </div>
               );
             })}

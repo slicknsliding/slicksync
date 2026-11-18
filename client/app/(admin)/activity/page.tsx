@@ -279,17 +279,21 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
 // Format duration in a human-readable way
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.round((seconds % 3600) / 60);
+  // Whole minutes first, then hours: rounding the leftover minutes on their
+  // own turned 1h 59m 51s into "1h 60m".
+  const total = Math.round(seconds / 60);
+  if (total < 60) return `${total}m`;
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
 // Format fractional hours in a human-readable way (Xh Xm)
 function formatHours(hours: number): string {
   if (hours === 0) return '0h';
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
+  const total = Math.round(hours * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
 
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
@@ -2034,9 +2038,10 @@ function ActivityPageContent() {
       }
     }
 
-    // Add elapsed time from all active "Now Playing" sessions
+    // Add elapsed time from all active "Now Playing" sessions - the
+    // household's own; an unknown device on their login isn't their watch time.
     if (metricsData.nowPlaying && metricsData.nowPlaying.length > 0) {
-      metricsData.nowPlaying.forEach(np => {
+      metricsData.nowPlaying.filter((np) => !np.unknownDevice).forEach(np => {
         let startMs: number | null = null;
 
         // Find session to get accurate start time
@@ -2346,7 +2351,7 @@ function ActivityPageContent() {
   // nowPlaying entry, e.g. the same title under both their Stremio and Nuvio
   // profiles).
   const activeUsersCount = metricsData?.nowPlaying
-    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    ? new Set(metricsData.nowPlaying.filter((np) => !np.unknownDevice).map((np) => np.user.id)).size
     : 0;
 
   // Group task history by time periods (TODO: fetch from API)

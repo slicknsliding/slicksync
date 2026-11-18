@@ -204,6 +204,31 @@ test('sessions of one person within three hours of each other still fold into on
   assert.deepEqual(byId, { 1: 700, 3: 50, 4: 10 })
 })
 
+test('a film finished on a later day shows that day\'s own time, not its running total', async () => {
+  // Real case: The Odyssey watched 2h 22m one day and its last 23 minutes the
+  // next. The History row (one per film) moved to the second day carrying the
+  // most it ever reached, 2h 39m, and the card said 2h 39m for 23 minutes.
+  // Its WatchActivity rows carry the film's own id as videoId.
+  const { getAccountDayKey } = require('../server/utils/dateUtils')
+  const finished = new Date(Date.now() - 2 * HOUR)
+  const dayBefore = new Date(finished.getTime() - DAY)
+  const asStored = (d) => new Date(`${getAccountDayKey(d)}T00:00:00Z`)
+  const row = (id, d, secs) => ({ id, accountId: 'acc', userId: 'p1', itemId: 'tt0000009', videoId: 'tt0000009', itemType: 'movie', date: asStored(d), createdAt: d, watchTimeSeconds: secs, profileLabel: null })
+  const tables = {
+    user: [person('p1')],
+    movieWatchHistory: [
+      { id: 'm9', accountId: 'acc', userId: 'p1', itemId: 'tt0000009', itemName: 'Example Nine', poster: null, durationSeconds: 9516, completed: true, watchedAt: finished },
+    ],
+    watchActivity: [row('a1', dayBefore, 6711), row('a2', dayBefore, 1807), row('a3', finished, 1394)],
+  }
+  const m = await buildMetricsForAccount({ prisma: fakeDb(tables), accountId: 'acc', period: 'all', decrypt: () => null })
+  assert.match(m.today, /^\d{4}-\d{2}-\d{2}$/)
+  const own = m.recentActivity.find((a) => !a.dateOnly)
+  assert.equal(own.durationSeconds, 1394)
+  const extra = m.recentActivity.filter((a) => a.dateOnly)
+  assert.deepEqual(extra.map((a) => [a.watchedAt.slice(0, 10), a.durationSeconds]), [[getAccountDayKey(dayBefore), 8518]])
+})
+
 // --- Continue Watching ---------------------------------------------------------
 
 test('Continue Watching reads where people left off a few hundred titles at a time', async (t) => {

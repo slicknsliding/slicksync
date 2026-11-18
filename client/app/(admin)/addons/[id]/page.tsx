@@ -2670,7 +2670,7 @@ function BackupAddonPickerModal({ isOpen, onClose, onSelect, currentAddonId, exc
         </div>
       </div>
 
-      <div className="max-h-[380px] overflow-y-auto -mx-1 px-1 space-y-1.5" style={{ scrollbarWidth: 'thin' }}>
+      <div data-mh-root="" className="max-h-[380px] overflow-y-auto -mx-1 px-1 space-y-1.5" style={{ scrollbarWidth: 'thin' }}>
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <motion.div
@@ -2695,6 +2695,7 @@ function BackupAddonPickerModal({ isOpen, onClose, onSelect, currentAddonId, exc
               whileHover={{ scale: 1.005 }}
               whileTap={{ scale: 0.995 }}
               onClick={() => { onSelect(addon.id); onClose(); }}
+              data-mh-item=""
               className="w-full flex items-center gap-4 p-3.5 rounded-xl text-left transition-all group hov-outline-row"
             >
               {/* Addon icon */}

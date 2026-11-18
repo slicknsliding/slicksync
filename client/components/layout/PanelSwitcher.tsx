@@ -351,7 +351,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsOpen(false)}
-                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
                   style={{ color: 'var(--color-text)' }}
                 >
                   <div
@@ -368,7 +368,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     {tv(() => { setIsOpen(false); router.push('/tasks'); }, (
 <button
                       onClick={() => { setIsOpen(false); router.push('/tasks'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
                       style={{ color: 'var(--color-text)' }}
                     >
                       <div
@@ -383,7 +383,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     {tv(() => { setIsOpen(false); router.push('/settings'); }, (
 <button
                       onClick={() => { setIsOpen(false); router.push('/settings'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
                       style={{ color: 'var(--color-text)' }}
                     >
                       <div
@@ -398,7 +398,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     {tv(() => { setIsOpen(false); router.push('/changelog'); }, (
 <button
                       onClick={() => { setIsOpen(false); router.push('/changelog'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
                       style={{ color: 'var(--color-text)' }}
                     >
                       <div
@@ -422,7 +422,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 {tv(() => { setIsOpen(false); setAccountModalOpen(true); }, (
 <button
                   onClick={() => { setIsOpen(false); setAccountModalOpen(true); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-surface"
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-surface" data-mh-item=""
                   style={{ color: 'var(--color-text)' }}
                 >
                   <div
@@ -447,7 +447,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             {tv(() => handleLogout(), (
 <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-error"
+              className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-error" data-mh-item=""
               style={{ color: 'var(--color-error)' }}
             >
               <div

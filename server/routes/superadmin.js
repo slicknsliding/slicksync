@@ -91,21 +91,25 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
         },
         orderBy: { createdAt: 'desc' },
       });
-      const counted = await Promise.all(accounts.map(async (a) => {
-        const where = { accountId: a.id };
-        const [userCount, groupCount, addonCount, customListCount, watchSessionCount, vaultEntryCount] = await Promise.all([
-          prisma.user.count({ where }),
-          prisma.group.count({ where }),
-          prisma.addon.count({ where }),
-          prisma.customList.count({ where }),
-          prisma.watchSession.count({ where }),
-          prisma.vaultEntry.count({ where }),
-        ]);
+      // One grouped count per table (six queries in all), not six per
+      // account - the page stays quick however many accounts there are.
+      const countBy = async (model) => {
+        const rows = await prisma[model].groupBy({ by: ['accountId'], _count: { _all: true } });
+        return new Map(rows.map((r) => [r.accountId, r._count._all]));
+      };
+      const [users, groups, addons, customLists, watchSessions, vaultEntries] = await Promise.all(
+        ['user', 'group', 'addon', 'customList', 'watchSession', 'vaultEntry'].map(countBy),
+      );
+      const counted = accounts.map((a) => {
+        const n = (m) => m.get(a.id) || 0;
+        const userCount = n(users);
+        const groupCount = n(groups);
+        const addonCount = n(addons);
         return {
           ...a, userCount, groupCount, addonCount,
-          resourceRowCount: userCount + groupCount + addonCount + customListCount + watchSessionCount + vaultEntryCount,
+          resourceRowCount: userCount + groupCount + addonCount + n(customLists) + n(watchSessions) + n(vaultEntries),
         };
-      }));
+      });
       res.json({ total: counted.length, accounts: counted });
     } catch (e) {
       console.error('[Superadmin] Failed to list accounts:', e?.message);

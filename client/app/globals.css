@@ -1341,8 +1341,10 @@ body {
 .user-card-avatar { grid-area: avatar; display: flex; margin-right: 12px; }
 .user-card-name-cell { grid-area: name; min-width: 0; }
 .user-card-toggle { grid-area: toggle; display: flex; margin-left: 10px; }
-/* The time starts its own line, with Limits and Caught up after it. */
+/* The time starts its own line, and Limits, History and Caught up get one
+   of their own under it, so every card is laid out the same. */
 .user-card-break { flex-basis: 100%; height: 0; }
+.user-card-pills { flex-basis: 100%; margin-bottom: 2px; }
 .user-card-badges {
   grid-area: badges;
   display: flex;
@@ -1433,8 +1435,6 @@ body {
 .tint-ico-on { background: var(--tint); color: var(--color-bg); }
 .tint-ico-off { background: color-mix(in srgb, var(--tint) 16%, transparent); color: var(--tint); }
 .tint-lbl-on { color: var(--tint); }
-.ep-watched, .ep-watched:hover { background: color-mix(in srgb, var(--color-success) 8%, transparent); }
-.ep-unwatched, .ep-unwatched:hover { background: transparent; }
 .tgl-on { background: var(--color-primary-solid); border: 1px solid var(--color-surface-border); }
 .tgl-off { background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
 .tgl-knob-on { background: white; }
@@ -1670,14 +1670,15 @@ html[data-motion="reduced"] .airing-date:active { transform: none; }
   html:not([data-tv]) .hover-reveal:focus-within { opacity: 1; }
 }
 
-/* TV: a window's buttons and fields are reached with the remote's own focus
-   (components/tv/useTVModal), so they show the same thick ring a remote stop
-   does - whatever the control's own outline says. */
+/* TV: a window's buttons and fields, and the controls of a remote area like
+   the Settings tabs, are reached with the remote's own focus
+   (components/tv/useTVModal, TVControlZone), so they show the same thick ring
+   a remote stop does - whatever the control's own outline says. */
 /* TV: the page jumps straight to the remote's focus. Smooth scrolling made
    every press an animation that the next press interrupted, leaving the
    focused control off screen in the meantime. */
 html[data-tv] { scroll-behavior: auto; }
-html[data-tv] [data-tv-modal] :is(a, button, input, select, textarea, [tabindex]):focus {
+html[data-tv] :is([data-tv-modal], [data-tv-zone]) :is(a, button, input, select, textarea, [tabindex]):focus {
   outline: 4px solid var(--color-primary) !important;
   outline-offset: 2px;
 }

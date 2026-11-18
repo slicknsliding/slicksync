@@ -156,6 +156,21 @@ function getAccountDayNumber(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
 }
 
 /**
+ * `date`'s calendar day in `timeZone` as YYYY-MM-DD, always in that order:
+ * the form WatchActivity days are read back in (their ISO date) and the keys
+ * of watchTime.byDay. Compare days against those with this, never with
+ * getAccountDateString, whose en-CA formatter gives 11/16/2026 on this app's
+ * runtime - a lookup by it never found its day.
+ * @param {Date} [date]
+ * @param {string} [timeZone]
+ * @returns {string}
+ */
+function getAccountDayKey(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
+  const parts = dayNumberFormatterFor(timeZone).formatToParts(date).reduce((acc, p) => { acc[p.type] = p.value; return acc }, {})
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+/**
  * Converts a wall-clock date/time as experienced in `timeZone` into the
  * actual UTC instant it represents. Standard "guess, then correct by the
  * observed offset" double-conversion - there's no timezone-database library
@@ -252,6 +267,7 @@ module.exports = {
   DEFAULT_TIMEZONE,
   getAccountMonthString,
   getAccountDayNumber,
+  getAccountDayKey,
   monthBoundsInTimezone,
   previousMonthString,
   createdAtFromCuid,

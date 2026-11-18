@@ -1,6 +1,8 @@
 // Pieces of a person's own Home that the activity answer carries
 // (routes/publicLibrary.js GET /activity).
 
+const { latestProfileLabels } = require('./profileLabels')
+
 /**
  * What they watched lately, newest first, with back-to-back episodes of one
  * show folded into a single entry ("S03 · E01-E05, 5 episodes"). Five entries.
@@ -55,12 +57,7 @@ async function recentlyWatchedGroups(prisma, accountId, userId, limit = 5) {
 /** The Nuvio (or AIOStreams) profile their history last recorded, or null. */
 async function latestProfileLabel(prisma, accountId, userId) {
   try {
-    const row = await prisma.watchActivity.findFirst({
-      where: { accountId, userId, profileLabel: { not: null } },
-      orderBy: { createdAt: 'desc' },
-      select: { profileLabel: true },
-    })
-    return row?.profileLabel || null
+    return (await latestProfileLabels(prisma, accountId, [userId])).get(userId) || null
   } catch {
     return null
   }

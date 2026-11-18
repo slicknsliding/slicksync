@@ -106,6 +106,7 @@ export function LimitsButton({ id, name, summary, size = 'sm', onPickGroup, onRe
           <div
             ref={panel}
             role="dialog"
+            data-mh-root=""
             aria-label={`Limits for ${name}`}
             className="fixed z-[9999] rounded-2xl border border-default shadow-2xl p-4"
             style={{ ...popupStyle(anchor), background: 'var(--color-surface)' }}

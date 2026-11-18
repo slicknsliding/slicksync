@@ -1359,6 +1359,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           episode: e.episode,
           title: e.title,
           released: e.released,
+          thumbnail: e.thumbnail || null,
+          overview: e.overview || null,
           watched: seen.has(`${e.season}:${e.episode}`),
         })
       }
@@ -1369,10 +1371,77 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           episodes,
           watchedCount: episodes.filter((e) => e.watched).length,
         }))
-      res.json({ seasons })
+
+      // The show's usual length ("41 min"); each episode's own comes from
+      // /media-episodes/lengths when there is a TMDb key.
+      const rt = String(metadata?.runtime || '').match(/^(\d+)\s*min/i)
+      const runtime = rt ? Number(rt[1]) : null
+
+      // Where someone here stopped partway through an episode - the same spot
+      // Continue Watching resumes from (latest viewing first, unwatched only).
+      let resume = null
+      try {
+        const { resumeStateOf } = require('../utils/continueWatching')
+        const sessions = await prisma.watchSession.findMany({
+          where: { accountId, itemId: String(itemId), videoId: { not: null } },
+          orderBy: { updatedAt: 'desc' },
+          take: 10,
+          select: { videoId: true, lastPosition: true, totalDuration: true },
+        })
+        for (const s of sessions) {
+          const [, se, ep] = String(s.videoId).split(':').map(Number)
+          const st = resumeStateOf(s, s.videoId)
+          if (st.inProgress && Number.isInteger(se) && Number.isInteger(ep) && !seen.has(`${se}:${ep}`)) {
+            resume = { season: se, episode: ep, progressPercent: st.progressPercent, remainingMinutes: st.remainingMinutes }
+            break
+          }
+        }
+      } catch { /* no resume spot is fine */ }
+
+      res.json({ seasons, runtime, resume })
     } catch (error) {
       console.error('Error fetching episodes:', error)
       res.status(500).json({ error: 'Failed to fetch episodes' })
+    }
+  })
+
+  // GET /users/media-episodes/lengths?itemId=tt..&season=N - each episode's
+  // own length in minutes, from TMDb, for an account with a TMDb key; {} for
+  // one without (the tiles then show the show's usual length). Lengths are the
+  // same for everyone, so the cache is shared; a failed lookup isn't cached.
+  const episodeLengthCache = new Map()
+  const EPISODE_LENGTH_TTL_MS = 24 * 60 * 60 * 1000
+  router.get('/media-episodes/lengths', async (req, res) => {
+    const accountId = getAccountId(req)
+    if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+    const itemId = String(req.query.itemId || '')
+    const season = Number(req.query.season)
+    if (!/^tt\d+$/.test(itemId) || !Number.isInteger(season) || season < 0) return res.status(400).json({ error: 'A valid itemId and season are required' })
+    const cacheKey = `${itemId}:${season}`
+    const hit = episodeLengthCache.get(cacheKey)
+    if (hit && Date.now() - hit.at < EPISODE_LENGTH_TTL_MS) return res.json({ lengths: hit.lengths })
+    const key = await resolveTmdbKeyForBackdrop(req).catch(() => null)
+    if (!key) return res.json({ lengths: {} })
+    try {
+      const k = encodeURIComponent(key)
+      const find = await fetch(`https://api.themoviedb.org/3/find/${itemId}?api_key=${k}&external_source=imdb_id`, { signal: AbortSignal.timeout(8000) })
+      if (!find.ok) return res.json({ lengths: {} })
+      const show = ((await find.json()).tv_results || [])[0]
+      const lengths = {}
+      if (show?.id) {
+        const rsp = await fetch(`https://api.themoviedb.org/3/tv/${show.id}/season/${season}?api_key=${k}`, { signal: AbortSignal.timeout(8000) })
+        if (!rsp.ok && rsp.status !== 404) return res.json({ lengths: {} })
+        if (rsp.ok) {
+          for (const e of (await rsp.json()).episodes || []) {
+            if (Number.isInteger(e.episode_number) && e.runtime > 0) lengths[e.episode_number] = e.runtime
+          }
+        }
+      }
+      if (episodeLengthCache.size >= 500) episodeLengthCache.delete(episodeLengthCache.keys().next().value)
+      episodeLengthCache.set(cacheKey, { lengths, at: Date.now() })
+      res.json({ lengths })
+    } catch {
+      res.json({ lengths: {} })
     }
   })
 
@@ -1665,7 +1734,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const claimByIp = new Map(claims.map((c) => [c.clientIp, c]))
       const affinityByIp = new Map(affinity.map((a) => [a.clientIp, a.userId]))
       const devices = [...byIp.values()].map((d) => {
-        const claim = claimByIp.get(d.clientIp) || null
+        // A claim with no person is "known, no one in particular" (the
+        // Dashboard's "It's fine, don't ask again"); this list still guesses for it.
+        const claim = claimByIp.get(d.clientIp)?.userId ? claimByIp.get(d.clientIp) : null
         const guessId = affinityByIp.get(d.clientIp) || null
         return {
           ...d,
@@ -1682,16 +1753,25 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.post('/device-claims', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default'
-      const { clientIp, userId, label } = req.body || {}
+      const { clientIp, userId, label, known } = req.body || {}
       if (!clientIp || typeof clientIp !== 'string') return res.status(400).json({ error: 'clientIp is required' })
-      if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required' })
-      const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
-      if (!user) return res.status(404).json({ error: 'User not found' })
+      // known: true with no person - the address is the household's, no one
+      // in particular (stored as an empty userId; see unknownDevices.js).
+      const noOne = known === true && !userId
+      if (!noOne && (!userId || typeof userId !== 'string')) return res.status(400).json({ error: 'userId is required' })
+      if (!noOne) {
+        const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
+        if (!user) return res.status(404).json({ error: 'User not found' })
+      }
+      require('../utils/unknownDevices').forgetAddress(accountId, clientIp)
       await prisma.proxyDeviceClaim.upsert({
         where: { accountId_clientIp: { accountId, clientIp } },
-        create: { accountId, clientIp, userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
-        update: { userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+        create: { accountId, clientIp, userId: noOne ? '' : userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+        update: { userId: noOne ? '' : userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
       })
+      // The open Now Playing cards pick it up at once.
+      try { require('../utils/metricsBuilder').invalidateLiveNowPlaying(accountId) } catch {}
+      try { require('../utils/liveEvents').emitLive(accountId, 'nowplaying') } catch {}
       res.json({ success: true })
     } catch (e) {
       res.status(500).json({ error: publicMessage(e, 'Failed to save claim') })
@@ -1702,6 +1782,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     try {
       const accountId = getAccountId(req) || 'default'
       await prisma.proxyDeviceClaim.deleteMany({ where: { accountId, clientIp: req.params.clientIp } })
+      require('../utils/unknownDevices').forgetAddress(accountId, req.params.clientIp)
       res.json({ success: true })
     } catch (e) {
       res.status(500).json({ error: publicMessage(e, 'Failed to remove claim') })
@@ -1933,8 +2014,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
       const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14))
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      // Cleared rows a timed check still owns stay out (utils/bellState.js).
       const notifications = await prisma.notification.findMany({
-        where: { accountId, createdAt: { gte: since } },
+        where: { accountId, createdAt: { gte: since }, dismissedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 100,
       })
@@ -1963,22 +2045,58 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
-  // POST /users/notifications/dismiss - delete specific ids, or all when no
-  // ids are given (the bell's "Clear"). Deletion (not a hidden flag) matches
-  // the bell's existing Clear semantics and keeps the table from growing
-  // unbounded on a long-lived instance.
+  // POST /users/notifications/dismiss - specific ids, or all when no ids are
+  // given (the bell's "Clear"). One-off events are deleted; a row a timed
+  // check owns is hidden instead, so the check doesn't raise it again a
+  // minute later (utils/bellState.js). The read-row prune in dbMaintenance
+  // still removes hidden rows once they're old.
   router.post('/notifications/dismiss', async (req, res) => {
     try {
       const accountId = getAccountId(req)
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
-      const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
-      await prisma.notification.deleteMany({
-        where: { accountId, ...(ids ? { id: { in: ids } } : {}) },
-      })
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id) => typeof id === 'string') : null
+      await require('../utils/bellState').dismissStored(prisma, accountId, ids)
       res.json({ success: true })
     } catch (error) {
       console.error('Error dismissing notifications:', error)
       res.status(500).json({ error: 'Failed to dismiss notifications' })
+    }
+  })
+
+  // GET / POST /users/notifications/state - the bell's cleared, dismissed and
+  // read state, the same on every device (utils/bellState.js). POST takes
+  // { clearAll?: true, dismiss?: [ids], read?: [ids] } and answers with the
+  // whole state.
+  router.get('/notifications/state', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      res.json(await require('../utils/bellState').getBellState(prisma, accountId))
+    } catch (error) {
+      console.error('Error reading the bell state:', error)
+      res.status(500).json({ error: 'Failed to read the notifications state' })
+    }
+  })
+
+  router.post('/notifications/state', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const body = req.body || {}
+      const list = (v) => (Array.isArray(v) ? v.slice(0, 1000) : undefined)
+      const bell = require('../utils/bellState')
+      // Clear empties the stored rows too, in the same request.
+      if (body.clearAll === true) await bell.dismissStored(prisma, accountId)
+      const state = await bell.updateBellState(prisma, accountId, {
+        clearAll: body.clearAll === true,
+        dismiss: list(body.dismiss),
+        read: list(body.read),
+      })
+      if (body.clearAll === true) { try { require('../utils/liveEvents').emitLive(accountId, 'notification') } catch {} }
+      res.json(state)
+    } catch (error) {
+      console.error('Error saving the bell state:', error)
+      res.status(500).json({ error: 'Failed to save the notifications state' })
     }
   })
 

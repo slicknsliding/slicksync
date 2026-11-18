@@ -687,6 +687,14 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     })
     if (otherActive.some((o) => normalizeForNotify(o.displayName) === norm)) return
 
+    // From an address that isn't the household's: said as that, never as the
+    // login's own person (unknownDevices.js).
+    const at = await prisma.proxyStreamSession.findUnique({ where: { id: rowId }, select: { clientIp: true } })
+    if (at?.clientIp) {
+      const device = (await require('./unknownDevices').unknownAddresses(prisma, accountId, [at.clientIp])).get(at.clientIp)
+      if (device) return notifyUnknownDeviceStart(prisma, accountId, webhookUrl, rowId, displayName, at.clientIp)
+    }
+
     const user = resolveUserForActiveConnection(users, aiostreamsUser)
     if (!user) return
     // Per-user opt-out: this specific user's watch activity doesn't notify
@@ -755,6 +763,41 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
   } catch (error) {
     heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
   }
+}
+
+// "Unknown device started watching": the same push, bell and Discord as a
+// person's start, without the person-only parts (their own webhook, their
+// opt-out, automation rules, a guess from their Continue Watching).
+async function notifyUnknownDeviceStart(prisma, accountId, webhookUrl, rowId, displayName, clientIp) {
+  const row = await prisma.proxyStreamSession.findUnique({
+    where: { id: rowId },
+    select: { id: true, url: true, filename: true, displayName: true, posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
+  })
+  if (!row) return
+  const { nameFromSameFile } = require('./proxyNowPlaying')
+  await nameFromSameFile(prisma, accountId, [row]).catch(() => {})
+  const shownName = readableStreamTitle(proxyDisplayTitle(row) || displayName)
+  const itemId = row.metadataItemId || null
+  if (itemId && !require('./startNotifyDedupe').claimStart(accountId, `unknown-device:${clientIp}`, itemId)) return
+  const who = { id: `unknown-device:${clientIp}`, username: 'Unknown device', email: null, colorIndex: 0 }
+  if (webhookUrl) {
+    await sendSessionStartNotification(webhookUrl, {
+      itemName: shownName,
+      itemType: row.metadataItemType === 'series' ? 'series' : 'movie',
+      itemId,
+      videoId: null,
+      season: null,
+      episode: null,
+      startTime: row.startTime || new Date(),
+      poster: row.posterUrl || null,
+    }, who)
+  }
+  await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
+    title: 'Unknown device started watching',
+    body: `${shownName} · on your AIOStreams login`,
+    icon: row.posterUrl || '/android-chrome-192x192.png',
+    url: '/',
+  })
 }
 
 // What Now Playing calls a stream named only by an opaque id (see

@@ -45,6 +45,10 @@ interface PendingAction {
 }
 
 const MAIN_ID = '__main';
+// The chip under a tile names who it counts as; when that is the tile's own
+// name (the main profile, a separated one) it would only say it twice.
+const sameName = (a: string | null | undefined, b: string | null | undefined) =>
+  (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
 
 const STATUS_TEXT: Record<HouseholdProfile['status'], string> = {
   tracked: 'Tracked with this person',
@@ -164,16 +168,20 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
     if (selected === null) return;
     const onDown = (e: MouseEvent) => {
       if (popoverRef.current?.contains(e.target as Node)) return;
-      if ((e.target as HTMLElement)?.closest?.('[data-household-tile]')) return;
+      // A press on a tile opens or closes its own menu - except on its Limits pill.
+      const target = e.target as HTMLElement;
+      if (target?.closest?.('[data-household-tile]') && !target.closest('[data-tile-limits]')) return;
       closeMenu();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeMenu(); };
-    window.addEventListener('mousedown', onDown);
+    // Capture: pills (Limits and the rest) stop their presses from going
+    // further, and a press on one still has to close the menu.
+    window.addEventListener('mousedown', onDown, true);
     window.addEventListener('keydown', onKey);
     window.addEventListener('scroll', closeMenu, true);
     window.addEventListener('resize', closeMenu);
     return () => {
-      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('scroll', closeMenu, true);
       window.removeEventListener('resize', closeMenu);
@@ -185,6 +193,13 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
     const circle = (tile.querySelector('[data-household-circle]') as HTMLElement | null)?.getBoundingClientRect() || tile.getBoundingClientRect();
     setSelected(id);
     setPlacement(placeUnder(circle, profiles?.find((p) => p.id === id)?.ownRows ? 270 : 200));
+  };
+  // A press anywhere on a tile but its Limits pill. Presses inside the Limits
+  // box (a portal, whose events still come up through the tile) are its own.
+  const onTileClick = (e: React.MouseEvent<HTMLElement>, id: string) => {
+    const target = e.target as HTMLElement;
+    if (!e.currentTarget.contains(target) || target.closest('[data-tile-limits]')) return;
+    openMenu(id, e.currentTarget);
   };
 
   const perform = async (action: () => Promise<{ profiles: HouseholdProfile[] }>, message: string, peopleChange = false) => {
@@ -228,7 +243,7 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
 
   const mergeBack = (p: HouseholdProfile) => setPending({
     title: `Merge ${p.person?.username || p.name} back into ${personName}?`,
-    description: `Everything ${p.person?.username || p.name} recorded becomes part of ${personName}'s history again, labelled as the ${p.name} profile, and they leave the Users list. You can separate it again at any time.`,
+    description: `Everything ${p.person?.username || p.name} recorded becomes part of ${personName}'s history again, labeled as the ${p.name} profile, and they leave the Users list. You can separate it again at any time.`,
     confirmText: 'Merge back',
     variant: 'warning',
     run: () => perform(() => api.mergeHouseholdProfileBack(p.id), `${p.name} merged back into ${personName}`, true),
@@ -396,29 +411,37 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
       {isOpen && (
         <div className={`${embedded ? 'mt-3' : 'mt-5'} grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2`}>
           {main && (
-            <div className="flex flex-col items-center gap-1.5 min-w-0 pb-2">
-              <button
-                type="button"
+            <div className="flex flex-col items-center min-w-0 pb-2">
+              <div
                 data-household-tile
                 data-household-main
-                onClick={(e) => openMenu(MAIN_ID, e.currentTarget)}
-                aria-haspopup="menu"
-                aria-expanded={selected === MAIN_ID}
-                className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                onClick={(e) => onTileClick(e, MAIN_ID)}
+                className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 cursor-pointer transition-colors ${
                   selected === MAIN_ID ? 'bg-surface-hover ring-1 ring-primary/50' : 'hover:bg-surface-hover'
                 }`}
               >
-                <span data-household-circle className="relative transition-transform group-hover:scale-105">
-                  <Mark profile={{ id: MAIN_ID, name: main.name, status: 'tracked', person: null, avatarUrl: main.avatarUrl }} size={64} />
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary-solid text-white">
-                    Main
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={selected === MAIN_ID}
+                  className="flex flex-col items-center gap-2 min-w-0 max-w-full rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <span data-household-circle className="relative transition-transform group-hover:scale-105">
+                    <Mark profile={{ id: MAIN_ID, name: main.name, status: 'tracked', person: null, avatarUrl: main.avatarUrl }} size={64} />
+                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary-solid text-white">
+                      Main
+                    </span>
                   </span>
+                  <span className="text-sm font-medium max-w-full truncate text-default">{main.name}</span>
+                </button>
+                <span data-tile-limits className="inline-flex max-w-full">
+                  <LimitsButton id={main.limitId} name={personName} summary={limits?.[main.limitId] || null} />
                 </span>
-                <span className="text-sm font-medium max-w-full truncate text-default">{main.name}</span>
-                <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-default max-w-full truncate">{personName}</span>
+                {!sameName(personName, main.name) && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-default max-w-full truncate">{personName}</span>
+                )}
                 <span className="text-[11px] text-subtle">Main profile</span>
-              </button>
-              <LimitsButton id={main.limitId} name={personName} summary={limits?.[main.limitId] || null} />
+              </div>
             </div>
           )}
           {profiles.map((p) => {
@@ -429,19 +452,24 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
               : p.status === 'needs-pin' ? 'Needs its PIN' : 'Needs the password';
             const subline = p.status === 'own' ? 'Separated' : p.status === 'tracked' ? 'Merged' : null;
             return (
-              // The tile, and its Limits pill under it - beside it rather than
-              // inside, since the tile is a button itself.
-              <div key={p.id} className="flex flex-col items-center gap-1.5 min-w-0 pb-2">
-              <button
-                type="button"
+              // The tile: picture and name, its Limits pill, then who it
+              // counts as - only when that is someone else - and how. The
+              // picture and name are the button (keyboard, remote); a press
+              // anywhere else on the tile opens its menu too, except on Limits.
+              <div key={p.id} className="flex flex-col items-center min-w-0 pb-2">
+              <div
                 data-household-tile
-                onClick={(e) => openMenu(p.id, e.currentTarget)}
-                aria-haspopup="menu"
-                aria-expanded={isSelected}
-                className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                onClick={(e) => onTileClick(e, p.id)}
+                className={`group w-full min-w-0 flex flex-col items-center gap-2 rounded-2xl px-2 pt-4 pb-2 cursor-pointer transition-colors ${
                   isSelected ? 'bg-surface-hover ring-1 ring-primary/50' : 'hover:bg-surface-hover'
                 }`}
               >
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={isSelected}
+                  className="flex flex-col items-center gap-2 min-w-0 max-w-full rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
                 <span data-household-circle className="relative transition-transform group-hover:scale-105">
                   <Mark profile={p} size={64} />
                   {p.status === 'untracked' && (
@@ -452,12 +480,17 @@ export function HouseholdCard({ userId, personName, kindLabel, onPeopleChanged, 
                   )}
                 </span>
                 <span className="text-sm font-medium max-w-full truncate text-default">{p.name}</span>
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] max-w-full truncate ${subline ? 'text-default' : 'text-muted'}`}>{caption}</span>
+                </button>
+                {p.limitId && (
+                  <span data-tile-limits className="inline-flex max-w-full">
+                    <LimitsButton id={p.limitId} name={p.name} summary={limits?.[p.limitId] || null} />
+                  </span>
+                )}
+                {!sameName(caption, p.name) && (
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] max-w-full truncate ${subline ? 'text-default' : 'text-muted'}`}>{caption}</span>
+                )}
                 {subline && <span className="text-[11px] text-subtle">{subline}</span>}
-              </button>
-              {p.limitId && (
-                <LimitsButton id={p.limitId} name={p.name} summary={limits?.[p.limitId] || null} />
-              )}
+              </div>
               </div>
             );
           })}

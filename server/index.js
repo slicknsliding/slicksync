@@ -116,7 +116,10 @@ const prisma = new PrismaClient();
 // SQLite runtime settings (WAL, busy timeout, page cache) - see the file.
 // Postgres instances get null back and skip this.
 require('./utils/sqlitePragmas').applySqlitePragmas(prisma)
-  .then((applied) => { if (applied) console.log('[SQLite] runtime settings:', JSON.stringify(applied)) })
+  // Some PRAGMAs answer with a BigInt, which JSON.stringify refuses - that
+  // made this success line print as "could not apply" although every
+  // setting had been applied.
+  .then((applied) => { if (applied) console.log('[SQLite] runtime settings:', JSON.stringify(applied, (_k, v) => (typeof v === 'bigint' ? Number(v) : v))) })
   .catch((e) => console.warn('[SQLite] could not apply runtime settings:', e?.message));
 require('./utils/sqlitePragmas').scheduleSqliteOptimize(prisma);
 console.log('Prisma client initialized:', !!prisma);

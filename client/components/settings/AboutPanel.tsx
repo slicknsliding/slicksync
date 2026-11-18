@@ -107,7 +107,7 @@ export function AboutV2({ arrange, lumiere, shared }: { arrange: PageArrange; lu
         <V2SetRow title="Privacy" line="What leaves this server, and why" control={toggle('privacy', 'Read')} below={below('privacy', <PrivacyText shared={shared} />)} />
       </V2Rows>
       <div className="mt-4 text-xs text-subtle space-y-1">
-        <p>© 2025-present slicknsliding. SlickSync is free software under the MIT licence, built on Syncio © 2025 neur0.</p>
+        <p>© 2025-present slicknsliding. SlickSync is free software under the MIT license, built on Syncio © 2025 neur0.</p>
         <p>SlickSync isn&apos;t affiliated with or endorsed by Stremio, Nuvio, Jellyfin, IMDb or TMDB.</p>
       </div>
     </ArrangeSection>
@@ -192,7 +192,7 @@ export function AboutPanel({ lumiere, shared }: { lumiere: boolean; shared: bool
         </div>
 
         <div className="mt-5 pt-4 border-t border-default text-xs text-subtle space-y-1">
-          <p>© 2025-present slicknsliding. SlickSync is free software under the MIT licence, built on Syncio © 2025 neur0.</p>
+          <p>© 2025-present slicknsliding. SlickSync is free software under the MIT license, built on Syncio © 2025 neur0.</p>
           <p>SlickSync isn&apos;t affiliated with or endorsed by Stremio, Nuvio, Jellyfin, IMDb or TMDB.</p>
         </div>
       </Card>

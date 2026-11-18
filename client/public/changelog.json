@@ -1,5 +1,34 @@
 [
   {
+    "version": "1.106.0",
+    "date": "2026-11-18",
+    "title": "1.106.0 - Menu highlight, episode tiles, AIOMetadata's own rows and devices, truer Now Playing and watch time, and History on every card",
+    "features": [
+      "Menu highlight in Settings → Themes: ten styles, from a soft fill to Orbit and Aurora, lights that run round the option you’re on. Pick the color and strength, and for the moving lights when they start, how many laps, which way and how fast. Works in every pop-up menu, notification rows, the quick menu and the chips you pick from in pop-ups like Discover’s Filters and Sort, and is saved to your account.",
+      "Their own rows: on an AIOStreams with AIOMetadata 3.9 or newer, turn it on for a household user on the household card and they see their own AIOMetadata Recommendations and lists in Jellyfin apps. Off until you turn it on.",
+      "AIOMetadata 4.0 and newer: Play on a device in a title’s Open titles with list, and screen time’s Stop what’s playing warns ten minutes before, then stops what’s on screen.",
+      "Now Playing shows one card per viewing with the real paused spot, streams named only by a code go to the person whose app recorded them, and a device that isn’t the household’s shows as Unknown device.",
+      "Now Playing, Continue Watching and a person’s Home name the Nuvio profile actually playing.",
+      "Resume on Jellyfin and AIOStreams cards opens your app (Choose app… in the card menu), and the words under a card open its details.",
+      "A History pill on every Users card: Sync history for Stremio and Nuvio, AIOStreams history with Put back for AIOStreams. Limits, History and Caught up sit on their own line, and a person’s page has one AIOStreams pill with Health and History.",
+      "The bell remembers Clear, dismiss and read on every device, and cleared alerts stay cleared until the problem comes back.",
+      "Seasons and episodes shows every episode as a tile: its picture, title, length, air date and summary, with watched checks, minutes left on a half-watched one, Up next, and upcoming episodes with the day they air. Click one to open that episode in Stremio."
+    ],
+    "bugFixes": [
+      "Watch time no longer counts progress twice when it moves from one sign-in to another, or when Copy watch history or Keep in step writes a resume point.",
+      "A day’s card on Activity shows that day’s watch time, and Watch Time Today and streaks use the right day.",
+      "“Streamed but not recorded” names the show and skips titles played for under 5 minutes.",
+      "The “Playback not being tracked” check works again.",
+      "Right-click and Resume work after dragging the Continue Watching row.",
+      "American spelling throughout, and the first Themes section is called Theme again.",
+      "A Vault sign-in test that Nuvio or Stremio was too busy to answer no longer counts as failed or sends an alert.",
+      "The page behind a title’s details stays put while you scroll the details.",
+      "The Open in list closes with a second press on its arrow, and opens above the button when there’s no room below.",
+      "A catalog’s buttons fit on a phone with the Compact page header.",
+      "Superadmin’s account list loads quickly however many accounts there are."
+    ]
+  },
+  {
     "version": "1.105.0",
     "date": "2026-11-13",
     "title": "1.105.0 - Sync history, Vault key History and end dates, a Motion setting, and safer backups",
@@ -57,7 +86,7 @@
       "Automations fire daily rules once a day; Lists refresh AniList and MyAnimeList and don’t wipe on an empty answer.",
       "Copy watch history and Keep in step no longer show as someone watching now.",
       "Large households: faster library reads, lighter polling, charts that load only when shown.",
-      "Sync dots: green synced, red unsynced, grey while syncing; the Dashboard sync button matches Users."
+      "Sync dots: green synced, red unsynced, gray while syncing; the Dashboard sync button matches Users."
     ]
   },
   {
@@ -71,12 +100,12 @@
       "On every card: tags, a menu (long-press or right-click), rename in place, select several, drag to sort, and drop onto a tag or Protected.",
       "Arrange any page: move, fold and hide sections and single cards. Undo steps back one change and Cancel puts the page back as it was. Reset is always there.",
       "Stretch cards to size by dragging a card's corner or with the arrow keys; phones keep their own size. Sections can be Full, Half or Third wide on laptops and up.",
-      "Your own menu bar (Themes → Layout → Arrange the menu): page order, what goes into More or is hidden (still reachable from search), one row or two, the logo's size, centred or on the left. The phone menu follows your rows.",
+      "Your own menu bar (Themes → Layout → Arrange the menu): page order, what goes into More or is hidden (still reachable from search), one row or two, the logo's size, centered or on the left. The phone menu follows your rows.",
       "Your defaults: Compact density (now the default), a start page, grid or list chosen once for every page, filters that stay, pinned people and addons, and a Full, Compact or Minimal page header.",
       "Now Playing progress and Continue Watching's time left sit under the card by default; choose On the picture in Settings → Themes to have them over the artwork.",
       "Settings → Themes: Fold arrows Show or Hide (hidden by default), and a separate Tap a name to fold switch (off by default).",
       "Needs you on the Dashboard can be dismissed, snoozed for a week or turned off for a whole kind; Settings → Notifications lists what is hidden with Show again.",
-      "Catalogs: drag the Nuvio and Jellyfin Collections pills to either side of the title (above or below it on a phone), line each row up left, centre or right, and size each pill on its own.",
+      "Catalogs: drag the Nuvio and Jellyfin Collections pills to either side of the title (above or below it on a phone), line each row up left, center or right, and size each pill on its own.",
       "Classic gets Arrange too: Catalogs, the Vault, Invitations, Tasks, Guides and a person's page can be arranged in Classic as well as v2 - move, fold and hide their sections, and move, size and hide the Collections pills on Catalogs. Each design keeps its own arrangement.",
       "Now Playing shows how far in, how long is left and when it ends, plus the episode's name. When an app hasn't said where playback is, it estimates from when the title started, with a dashed bar and a short note; the app's own position always wins. Put the progress on the picture or under it in Settings → Themes.",
       "A person's Home, redesigned: a Now Playing banner with Resume in their app, Continue Watching with time left, Upcoming on a strip of dates, their numbers in one row, and Recently watched beside their top five. People can arrange their own Home, and their pages follow the Original layout too.",
@@ -116,15 +145,15 @@
       "Household users added on AIOStreams' or AIOMetadata's own page show up on the household card by themselves - within about 20 seconds, or as soon as you open it.",
       "The AIOStreams and AIOMetadata profiles card shows the configuration's main user too, as the first profile marked Main, like the Nuvio profiles card. The others say whose they are, and whether they're merged or separated.",
       "An AIOStreams or AIOMetadata addon whose configuration someone also signs in to as a Jellyfin server says so on its card, with who - tap it for the address and a way to its profiles.",
-      "People can do more on their own page: change their own picture without asking you (a colour, a link or an upload - GIFs keep moving), switch between the profiles of their Nuvio login, see their own Continue Watching on Home, and name or remove their notification devices.",
+      "People can do more on their own page: change their own picture without asking you (a color, a link or an upload - GIFs keep moving), switch between the profiles of their Nuvio login, see their own Continue Watching on Home, and name or remove their notification devices.",
       "Continue Watching on your page resumes where you left off: Stremio and Nuvio open the app at the title, and on Jellyfin or AIOStreams you choose the app it opens in - Swiftfin, Streamyfin, Infuse, the AIOStreams app or any app through a Shortcut - remembered on each device.",
       "Import your own watch history from your page: a Trakt export or a CSV, with a preview of what will be added, what is already there and what is skipped before anything changes. Importing the same file again adds nothing. The import on a person's page shows the same preview.",
       "Now Playing says how fresh each card is: \"Live · updated 8 s ago\" while the stream is still being confirmed, \"Playing · started 12 min ago\" for the AIOStreams apps, \"Paused · 2 min ago\" when the player says so, and \"Last seen\" otherwise.",
       "Coming up on Home is a strip of the dates that have episodes - pick one to see just that day, with today marked.",
       "Settings: \"Find a setting\" jumps to any setting by name, and on phones the sections open as tiles. Tasks opens on four tiles: Everyday tools, Data & templates, Backup & recovery, and Schedules & health.",
       "Your account button floats at the bottom left as before, or sits in the top bar - Themes → Layout → Account button, for Top Navi.",
-      "Popups, menus and chart tooltips are solid and easier to read, with clearer edges. Faint text and the text on accent buttons are easier to read in every theme, and the bright themes keep their colours.",
-      "\"Jellyfin\" replaces \"Jellyfin | AIOStreams\" wherever you pick how someone signs in, with a note that it is also for AIOStreams and AIOMetadata. Catalogs has a Jellyfin Collections pill, and the Jellyfin badge wears Jellyfin's own colours.",
+      "Popups, menus and chart tooltips are solid and easier to read, with clearer edges. Faint text and the text on accent buttons are easier to read in every theme, and the bright themes keep their colors.",
+      "\"Jellyfin\" replaces \"Jellyfin | AIOStreams\" wherever you pick how someone signs in, with a note that it is also for AIOStreams and AIOMetadata. Catalogs has a Jellyfin Collections pill, and the Jellyfin badge wears Jellyfin's own colors.",
       "Discover starts on Both, so a search or a browse finds movies and shows alike.",
       "The Graveyard's option to also remove a title from someone's Stremio or Jellyfin library is a clearly marked switch: while it is on it says so beside the title, Wipe reads \"Wipe + app\", and the confirm names the person and the app.",
       "Now Playing shows about where someone is while it plays (\"About 19:04 of 1:35:50\"), and the exact spot with Resume once they pause or stop. Nuvio cards on Now Playing and Continue Watching name the profile.",
@@ -187,7 +216,7 @@
       "Changing page could land partway down the new page instead of at the top.",
       "Right-click menus could open past the edge of the screen and get cut off.",
       "Deleting a person or an account now clears everything recorded for them, and a person's history goes once their Trash entry expires (unless they were restored).",
-      "Tabs, pills, toggles and buttons could stay highlighted after picking another one when a browser extension recolours the page.",
+      "Tabs, pills, toggles and buttons could stay highlighted after picking another one when a browser extension recolors the page.",
       "Jellyfin, AIOStreams and AIOMetadata people had a Sync button that could only show an error - their apps have no addon list to sync. It's gone for them; Stremio and Nuvio keep it."
     ]
   },
@@ -204,7 +233,7 @@
       "Addons cards: names wrap instead of being cut. On a phone and a laptop the version, users and groups share a row with the select box; on wider screens the version sits beside the name. An addon's label and Shared settings lead the tags row instead of taking a row of their own.",
       "Groups cards: picture, name and switch on top; members, addons and sync status with the select box underneath.",
       "Person page: the sync status sits right beside the provider pill, the buttons get a line of their own with Debug at the end, and group, expiry and join date each get their own line.",
-      "Catalogs: the Jellyfin | AIOStreams tile carries Jellyfin's logo and colours, with AIOStreams in its own lavender and indigo."
+      "Catalogs: the Jellyfin | AIOStreams tile carries Jellyfin's logo and colors, with AIOStreams in its own lavender and indigo."
     ],
     "bugFixes": [
       "Phone stat tiles on Users, Groups and Invitations show their labels in full (\"Total Members\", \"Addons Assigned\") instead of cutting them.",
@@ -327,7 +356,7 @@
       "A daily limit or bedtime can now pause AIOStreams: the streams come out of every addon for that person's users in the configuration while their catalogs stay, and go back when the pause ends. Putting back an older version of the configuration keeps the pause as it is.",
       "Stop what's playing, for a daily limit or bedtime on a Jellyfin server: a message appears on their screen ten minutes before, then playback stops.",
       "Profile pictures both ways: changing someone's picture in SlickSync can set it on their Jellyfin, AIOStreams or AIOMetadata server too (Also use it on their server, in the picture picker), and a picture changed on the server shows up in SlickSync within a couple of minutes - AIOStreams can take up to five. Household users' pictures come in as well, and a picture you chose with the box unticked is never replaced.",
-      "Keep Jellyfin in step can also carry the household watchlist (as favourites) and ratings to their Jellyfin server - per person, off by default. Only what SlickSync added there is ever taken away.",
+      "Keep Jellyfin in step can also carry the household watchlist (as favorites) and ratings to their Jellyfin server - per person, off by default. Only what SlickSync added there is ever taken away.",
       "Add User: signing in with Stremio or Nuvio adds the person straight away, named after their account. The name boxes for email and password or an auth key are optional, and a person can be renamed on their page any time.",
       "A person signing in on their own page fixes a sign-in that stopped working, and you get the \"connected again\" notice. Reconnect offers the link to send them.",
       "Now Playing names the device for AIOStreams people, and new-device notifications cover them too.",
@@ -342,8 +371,8 @@
       "Adding someone with a Stremio email and password whose name matched another person - a Nuvio or Jellyfin one, say - no longer took over that person; they are added as someone new.",
       "A person's own pages fit a phone: the header keeps their picture and name together, with Sync underneath.",
       "People signed in through a Jellyfin, AIOStreams or AIOMetadata server show their server instead of a made-up email.",
-      "A colour picked for a group or person shows straight away on their own page, also in browsers with a page-recolouring extension - a group set to red no longer stayed purple there.",
-      "An AIOMetadata server named after its owner is still recognised as AIOMetadata, in Add User and once someone is added, instead of being taken for AIOStreams."
+      "A color picked for a group or person shows straight away on their own page, also in browsers with a page-recoloring extension - a group set to red no longer stayed purple there.",
+      "An AIOMetadata server named after its owner is still recognized as AIOMetadata, in Add User and once someone is added, instead of being taken for AIOStreams."
     ]
   },
   {
@@ -360,14 +389,14 @@
       "Last seen on every person, from what they actually watched. A Dormant filter finds people who stopped watching, and a new automation can switch them off after a quiet stretch - reversibly.",
       "Health lists every Jellyfin, AIOStreams and AIOMetadata server people use as up, down or partly failing, and a whole server going down sends one alert naming who's affected instead of one per person.",
       "Posters for anime and other titles without an IMDb id on Jellyfin, AIOStreams and AIOMetadata, from the server's own artwork - including titles watched before.",
-      "One colour list for people, groups and catalog covers: your theme's colour and accent plus twelve fixed colours, and what you pick is what shows everywhere.",
+      "One color list for people, groups and catalog covers: your theme's color and accent plus twelve fixed colors, and what you pick is what shows everywhere.",
       "On phones, popups stay on screen, the bell and command palette sit in the top bar instead of over the page, and a notification swipes left to dismiss.",
-      "The buttons on a person's page look like buttons and show their state - a daily limit that's on, paused or reached is coloured to match."
+      "The buttons on a person's page look like buttons and show their state - a daily limit that's on, paused or reached is colored to match."
     ],
     "bugFixes": [
       "A setting saved while a scheduled sync was running - a daily limit, for one - could be put back when the sync finished. Settings now stay as saved.",
       "Reconnect offers Nuvio's own sign-in for a Nuvio person, instead of Stremio's.",
-      "The colour picked for a group is the one that shows - red no longer comes out teal - and editing a group from its own page saves its colour.",
+      "The color picked for a group is the one that shows - red no longer comes out teal - and editing a group from its own page saves its color.",
       "Library buttons (add, remove, back up, view) work for Jellyfin, AIOStreams and AIOMetadata people.",
       "Anime and TMDb-only titles are found on a Jellyfin server, so watched marks and library changes for them take effect.",
       "Streams an app opens while a title's page is showing no longer appear in Now Playing; a stream counts as playing once it keeps playing for about 45 seconds.",
@@ -393,7 +422,7 @@
     ],
     "bugFixes": [
       "The notification bell's count no longer jumps around (18, then 1, then 18) when you move between pages.",
-      "Add New User: only the provider picked stays highlighted, also in browsers with a page-recolouring extension.",
+      "Add New User: only the provider picked stays highlighted, also in browsers with a page-recoloring extension.",
       "A Nuvio person whose sign-in has expired is told to reconnect on their profiles card, instead of a vague \"could not read just now\".",
       "The database password no longer appears in the container's startup log."
     ]
@@ -403,7 +432,7 @@
     "date": "2026-10-04",
     "title": "1.90.0 - Jellyfin, AIOStreams and AIOMetadata as a third provider",
     "features": [
-      "Jellyfin, AIOStreams and AIOMetadata join Stremio and Nuvio. Add someone by signing in to their server - with a password, a PIN or a Quick Connect code - from Add User, the login page or an invite, and SlickSync works out which kind of server it is. Their history comes in, what they are playing shows in Now Playing, and watched marks, favourites and resume points are written back to the server.",
+      "Jellyfin, AIOStreams and AIOMetadata join Stremio and Nuvio. Add someone by signing in to their server - with a password, a PIN or a Quick Connect code - from Add User, the login page or an invite, and SlickSync works out which kind of server it is. Their history comes in, what they are playing shows in Now Playing, and watched marks, favorites and resume points are written back to the server.",
       "AIOStreams and AIOMetadata household users become profiles of the person who signed in. Separate any of them into their own person, merge them back, or stop tracking them, from the AIOStreams & AIOMetadata profiles card on the Users page.",
       "AIOStreams Collections, under Catalogs > Jellyfin | AIOStreams: each collection opens as its own page with its titles. Search to add, add from Discover, drag to reorder - everything saves as you go. Pick a household profile to give it collections of its own; SlickSync sets that profile up in AIOStreams so its apps load them.",
       "Catalogs as collections on your own Jellyfin server: pick the server on the same page and switch catalogs on. Each becomes a real Jellyfin collection holding the titles the server has, kept in step every 30 minutes, named after its catalog and given its cover.",
@@ -611,7 +640,7 @@
       "Posters arrive in a fraction of the time on a freshly opened page. A poster that is already the right size is served exactly as it came instead of being decoded and re-encoded; anything that does need resizing is prepared in parallel rather than one after another; and the posters a page is about to show are prepared the moment that page's list is known, so the browser's requests find them ready. On a small self-hosted box, a grid of twenty new posters that took nearly two seconds now completes in well under one.",
       "The installed app keeps resized posters and avatars in its own cache on the device, so a grid you have seen before is instant on the next launch - a phone's ordinary browser cache is small and cleared early, which is why repeat views used to reload everything.",
       "Faster launch: the default fonts are served from your own instance rather than fetched from a third party before anything can paint; the dashboard's charting library loads only when a chart is actually on screen; and the title popup loads after first paint instead of with it.",
-      "Installed on an iPhone, the app no longer draws its top bar under the status bar and notch, the launch screen matches the app's colour instead of flashing white, and the Home Screen icon is the proper one. Re-add the icon to pick up the last two.",
+      "Installed on an iPhone, the app no longer draws its top bar under the status bar and notch, the launch screen matches the app's color instead of flashing white, and the Home Screen icon is the proper one. Re-add the icon to pick up the last two.",
       "The Activity feed only lays out and paints the rows that are on screen, its thumbnails are requested at the size they are drawn, and still profile pictures are served resized for lists. Animated profile pictures are untouched."
     ],
     "bugFixes": [
@@ -664,7 +693,7 @@
       "Follow a person or a show: get told when an actor or director has something new out, or when a show you finished is renewed, canceled or gets a premiere date. Every follow can be muted individually.",
       "Nuvio home-row editor: reorder, rename and hide the rows on a profile's Nuvio home screen, and copy a finished arrangement onto another profile. The layout guard snapshots it first, so a bad save is recoverable.",
       "SlickTrax actions inside the player (opt-in): a title's page in Stremio or Nuvio can show 'Mark as watched' and 'Add to Watchlist' alongside its real streams.",
-      "Settings reorganised into groups - General, Themes, Sync, Notifications, Features, Integrations, Security - with Themes moving in from its own page. The groups sit wherever your layout has room: a side rail with the top-nav layout, along the top with the sidebar layout.",
+      "Settings reorganized into groups - General, Themes, Sync, Notifications, Features, Integrations, Security - with Themes moving in from its own page. The groups sit wherever your layout has room: a side rail with the top-nav layout, along the top with the sidebar layout.",
       "Watchlist ranking: drag the watchlist into the order you actually want, and the SlickTrax row on your devices follows it.",
       "Instant search: typing in Discover shows matches from your own library and history immediately, while the wider search is still loading.",
       "Import a public Trakt list by pasting its URL (needs a free Trakt Client ID; reads public lists only).",
@@ -925,7 +954,7 @@
     ],
     "bugFixes": [
       "The Proxy toggle on an addon now works. Turning it on failed with a database error every time, on every instance, since the feature shipped.",
-      "SlickSync no longer hammers Nuvio's backend when it asks for a pause. When Nuvio started rate limiting, SlickSync waited a fixed thirty seconds, resumed at full speed, was rate limited again within seconds, and repeated indefinitely. It now backs off progressively, and honours the wait Nuvio asks for.",
+      "SlickSync no longer hammers Nuvio's backend when it asks for a pause. When Nuvio started rate limiting, SlickSync waited a fixed thirty seconds, resumed at full speed, was rate limited again within seconds, and repeated indefinitely. It now backs off progressively, and honors the wait Nuvio asks for.",
       "Browsing Discover stays fast no matter how far you scroll. Sorting, opening a title, and leaving the page used to get slower the longer a session went on. Activity's day groups are lighter to scroll through for the same reason.",
       "Posters load faster and use far less data, especially on phones and TV. They are now served at the size actually shown, from your own server, instead of downloading a full-size image for a thumbnail.",
       "Pages you have already visited appear immediately with what they showed last time, then refresh in place, instead of showing a loading spinner every time. Installed as an app, SlickSync also opens straight away rather than loading from scratch.",
@@ -1032,7 +1061,7 @@
       "The Guides index left large empty gaps between category panels - a two-column grid sizes every row to its tallest card, and the categories range from 2 to 10 guides. Short topic pages also showed two \"back\" links within a few hundred pixels of each other.",
       "Renaming the section from Help to Guides would have 404'd existing bookmarks and links; /help now redirects.",
       "Adding the command-palette button to the topbar widened the mobile floating pill and shifted the notification bell off the corner spot it has always occupied. The palette button is now desktop-only, where there is room for it; mobile keeps the bell exactly where it was.",
-      "A Vault entry could be reported as failing purely because the provider was briefly slow. Measured against TorBox from a real server: five consecutive requests returned in 187ms, 632ms, 210ms, 21265ms and 625ms - one request in five blew past the checker's 10-second limit, and that single slow response was enough to mark a perfectly valid credential as failing and raise a Vault alert for it. Checks now retry up to three times on a timeout or network error before giving up. They deliberately do NOT retry on a response from the provider - a rejected key is a real answer and still surfaces immediately. Applied to TorBox, Real-Debrid, generic HTTP and Newznab checks, which all shared the same behaviour."
+      "A Vault entry could be reported as failing purely because the provider was briefly slow. Measured against TorBox from a real server: five consecutive requests returned in 187ms, 632ms, 210ms, 21265ms and 625ms - one request in five blew past the checker's 10-second limit, and that single slow response was enough to mark a perfectly valid credential as failing and raise a Vault alert for it. Checks now retry up to three times on a timeout or network error before giving up. They deliberately do NOT retry on a response from the provider - a rejected key is a real answer and still surfaces immediately. Applied to TorBox, Real-Debrid, generic HTTP and Newznab checks, which all shared the same behavior."
     ],
     "miscChores": []
   },
@@ -1630,7 +1659,7 @@
       "Found and fixed a real bug affecting every push notification type (new episodes, watch activity, vault, everything) on iOS/Safari installs: Apple's push service (web.push.apple.com) was rejecting every single push with 403 BadJwtToken because the VAPID subject's default domain (a .local address) doesn't pass Apple's stricter validation — Chrome and Firefox never had this problem, which is why it looked like \"works on web, never on the phone.\" Confirmed live against real subscriptions: both previously-failing iPhone subscriptions succeeded immediately once switched to a properly-formatted domain. No need to reinstall or resubscribe — existing subscriptions start working on the next push.",
       "Card toggle overlap fix from the last release only covered desktop widths (md: and up) for Groups and Users — their toggle switches have no mobile hiding (unlike Addons), so the same overlap was still happening on phones. Now fixed at every width.",
       "The Coming Up date badge sat pushed far off to the right when there was only one item in the list (or on a wide screen) — the title/episode text was stretching to fill the whole row width first. Now sits right next to the text instead.",
-      "Dashboard → Continue Watching cards only listened for the native right-click (contextmenu) event, which mobile browsers don't reliably synthesize from a long-press on an arbitrary card the way they do for plain text or images — long-pressing a card to remove it from watch history silently did nothing on phones. Added the same explicit long-press handling (500ms hold, cancelled if your finger moves — so it doesn't fight the row's horizontal scroll) that Addons and Coming Up already use."
+      "Dashboard → Continue Watching cards only listened for the native right-click (contextmenu) event, which mobile browsers don't reliably synthesize from a long-press on an arbitrary card the way they do for plain text or images — long-pressing a card to remove it from watch history silently did nothing on phones. Added the same explicit long-press handling (500ms hold, canceled if your finger moves — so it doesn't fight the row's horizontal scroll) that Addons and Coming Up already use."
     ],
     "miscChores": [
       "Push send failures that aren't a dead subscription (404/410) are now logged instead of disappearing silently, so a systemic failure like this one is visible in the logs instead of just \"notifications don't seem to arrive.\"",
@@ -1911,7 +1940,7 @@
     "features": [
       "New Trakt integration in Settings: connect your Trakt account and SlickSync automatically scrobbles everything you watch to your Trakt profile. It works for BOTH Nuvio and Stremio because SlickSync scrobbles from its own unified watch record (the same history that powers Metrics and Continue Watching) - Trakt never talks to either provider, so it doesn't matter which one played the title, and even usenet watches get logged.",
       "Simple, secure setup: create a free Trakt API app (one-time), paste the Client ID and Secret into Settings, click Connect, and enter the short code Trakt shows you - the classic device-code flow, no redirect URLs to wrangle. Your secrets and tokens stay server-side and never leave the box; tokens refresh themselves.",
-      "Only watches from the moment you connect onward are sent, so linking Trakt never floods your existing profile with years of back-catalogue. A background sweep syncs new watches every few minutes; a \"Sync now\" button forces it immediately, and \"Last scrobble sweep\" shows when it last ran."
+      "Only watches from the moment you connect onward are sent, so linking Trakt never floods your existing profile with years of back-catalog. A background sweep syncs new watches every few minutes; a \"Sync now\" button forces it immediately, and \"Last scrobble sweep\" shows when it last ran."
     ],
     "bugFixes": [],
     "miscChores": [
@@ -2158,7 +2187,7 @@
       "Drag-and-drop reordering on the Addons page (grid view), matching Vault's pattern. Order persists server-side via a new position field instead of resetting on refresh.",
       "Request-count detail on Activity cards, matching AIOStreams' own Proxy History tab.",
       "Vault notification settings moved into Settings -> Notifications, alongside per-type toggles for activity, sync, and invites. Vault alerts ride the same webhook as everything else - there's no separate Vault notification config to keep in sync anymore.",
-      "Vault: dropped the 'All' tab in favour of defaulting to the first real category, and AIOStreams entries now show their UUID label rather than a Dashboard URL.",
+      "Vault: dropped the 'All' tab in favor of defaulting to the first real category, and AIOStreams entries now show their UUID label rather than a Dashboard URL.",
       "Click any poster on the Activity page to see cast (with photos), IMDb rating, genres, director, runtime, and awards - all pulled from Cinemeta, the same free service already used for posters, so no new API key or account to manage.",
       "Trailers play inline in the detail modal via an embedded YouTube player instead of linking out to YouTube.",
       "New \"Continue Watching\" row on the Dashboard: the next unwatched episode for any show someone's partway through, most recently watched first. Click-and-drag to scroll the row (Pointer Events, works with mouse, touch, or pen), right-click a card to remove it from the row.",

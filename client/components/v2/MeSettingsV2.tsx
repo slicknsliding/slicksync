@@ -80,7 +80,7 @@ export function MeSettingsV2(p: SettingsV2Props) {
         return (
           <ArrangeSection key={key} arrange={p.arrange} id={key} title="Appearance" noun="section">
             <MeRows>
-              <MeRow title="Colours" line={p.themeName}>
+              <MeRow title="Theme" line={p.themeName}>
                 <V2Button onClick={() => setThemesOpen((v) => !v)}>{themesOpen ? 'Done' : 'Change'}</V2Button>
               </MeRow>
               {themesOpen && <div className="py-3 border-t" style={{ borderColor: 'var(--color-surface-border)' }}>{p.themeGrid}</div>}

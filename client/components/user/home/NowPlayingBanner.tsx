@@ -38,15 +38,17 @@ const agoText = (ms: number) => {
 
 // What the banner reads from a row: a person's own Now Playing item and the
 // admin pages' rows (who is watching what) both fit.
-export type NowPlayingBannerRow = Pick<NowPlayingItem, 'item' | 'lastPosition' | 'totalDuration' | 'positionAt' | 'positionEstimated' | 'durationEstimated' | 'stremioAppUrl' | 'nuvioAppUrl' | 'source' | 'elapsedFrozen' | 'reportedAtTimestamp' | 'paused' | 'playingUntilTimestamp'> & {
+export type NowPlayingBannerRow = Pick<NowPlayingItem, 'item' | 'lastPosition' | 'totalDuration' | 'positionAt' | 'positionEstimated' | 'durationEstimated' | 'stremioAppUrl' | 'nuvioAppUrl' | 'source' | 'elapsedFrozen' | 'reportedAtTimestamp' | 'paused' | 'playingUntilTimestamp' | 'profileLabel'> & {
   /** The room or device it is on, when the app reports one ("Living room"). */
   device?: { name: string | null; client: string | null } | null;
 };
 
-export function NowPlayingBanner({ row, provider, profileLabel, who, compact = false, flush = false }: {
+export function NowPlayingBanner({ row, provider, profileLabel, through, who, compact = false, flush = false }: {
   row: NowPlayingBannerRow;
   provider: string | null;
   profileLabel?: string | null;
+  /** Not in an app of theirs but through this ("your AIOStreams login" - an unknown device). */
+  through?: string;
   /** Admin pages: who is watching (picture and name), shown ahead of "Playing in". */
   who?: ReactNode;
   /** A smaller banner, for when several people are watching. */
@@ -100,7 +102,9 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
       {estimateNote && <p className="text-[11.5px]" style={{ color: onPicture ? '#9ca3af' : 'var(--color-text-muted)' }}>{estimateNote}</p>}
     </div>
   ) : null;
-  const where = [app, profileLabel, row.device?.name || row.device?.client].filter(Boolean).join(' · ');
+  // The profile playing this title (the row's own), else the one passed in
+  // (a person's Home passes the profile they used last).
+  const where = [app, row.profileLabel || profileLabel, row.device?.name || row.device?.client].filter(Boolean).join(' · ');
   // Who and where: on a line under the picture (the default) or on it.
   const under = useNowPlayingWho().where === 'under';
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -112,7 +116,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
     <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 ${under ? 'text-[13.5px] px-1 mt-2.5 text-default' : 'text-[13px]'}`} style={under ? undefined : { color: '#e5e7eb' }}>
       {who}
       <span className={`w-2 h-2 rounded-full shrink-0 ${playing ? 'animate-pulse' : ''}`} style={{ background: playing ? '#22c55e' : '#facc15', boxShadow: playing ? '0 0 0 4px rgba(34,197,94,.2)' : undefined }} />
-      <span className="min-w-0 break-words">{playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
+      <span className="min-w-0 break-words">{through ? (playing ? `Playing through ${through}` : `Paused on ${through}`) : playing ? `Playing in ${where}` : `Paused in ${where}`}</span>
     </div>
   );
 
@@ -168,8 +172,11 @@ export function NowPlayingBanner({ row, provider, profileLabel, who, compact = f
   return (
     <div className={`min-w-0 ${flush ? '' : 'mb-8'}`}>
       {banner}
-      {progressUnder && progressBlock(false)}
-      {under && whoLine}
+      {/* Part of the banner: a tap here opens the details too. */}
+      <div onClick={canOpen ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) setDetailsOpen(true); } : undefined} className={canOpen ? 'cursor-pointer' : undefined}>
+        {progressUnder && progressBlock(false)}
+        {under && whoLine}
+      </div>
       {details}
     </div>
   );

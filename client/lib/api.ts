@@ -843,7 +843,12 @@ class ApiClient {
   /** A series' episode list grouped by season, with watched state. Lazy -
    *  the detail modal only asks when someone expands the season list. */
   async getMediaEpisodes(itemId: string) {
-    return this.fetch<{ seasons: SeriesSeason[] }>(`/users/media-episodes?itemId=${encodeURIComponent(itemId)}`);
+    return this.fetch<{ seasons: SeriesSeason[]; runtime?: number | null; resume?: EpisodeResume | null }>(`/users/media-episodes?itemId=${encodeURIComponent(itemId)}`);
+  }
+
+  /** Each episode's own length in minutes (TMDb); {} without a TMDb key. */
+  async getEpisodeLengths(itemId: string, season: number) {
+    return this.fetch<{ lengths: Record<string, number> }>(`/users/media-episodes/lengths?itemId=${encodeURIComponent(itemId)}&season=${season}`);
   }
 
   /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
@@ -1826,6 +1831,20 @@ class ApiClient {
     });
   }
 
+  // The bell's cleared / dismissed / read state, kept per account so Clear on
+  // one device clears every device (server/utils/bellState.js).
+  async getBellState() {
+    return this.fetch<BellState>('/users/notifications/state');
+  }
+
+  // { clearAll: true } is Clear (stored rows included); dismiss/read add ids.
+  async updateBellState(change: { clearAll?: boolean; dismiss?: string[]; read?: string[] }) {
+    return this.fetch<BellState>('/users/notifications/state', {
+      method: 'POST',
+      body: JSON.stringify(change),
+    });
+  }
+
   // PWA web-push
   async getPushVapidKey() {
     return this.fetch<{ enabled: boolean; publicKey: string | null }>('/push/vapid-key');
@@ -2564,8 +2583,9 @@ class ApiClient {
 
   // AIOStreams servers people here sign in to, for "Open in AIOStreams".
   // "Open in …" on a title (lib/openWith.ts): servers, item ids, Play on devices.
-  async getOpenTargets(id: string, type: 'movie' | 'series') {
-    return this.fetch<import('./openWith').OpenTargets>(`/jellyfin/open-targets?id=${encodeURIComponent(id)}&type=${type}`);
+  // personId: that person's own sign-ins only (their Continue Watching card).
+  async getOpenTargets(id: string, type: 'movie' | 'series', personId?: string) {
+    return this.fetch<import('./openWith').OpenTargets>(`/jellyfin/open-targets?id=${encodeURIComponent(id)}&type=${type}${personId ? `&personId=${encodeURIComponent(personId)}` : ''}`);
   }
 
   async playOnDevice(body: { personId: string; credentialId: string | null; sessionId: string; itemId: string }) {
@@ -3139,6 +3159,13 @@ class ApiClient {
     });
   }
 
+  // The household's, no one in particular - the Dashboard's "It's fine, don't ask again".
+  async markDeviceKnown(clientIp: string) {
+    return this.fetch<{ success: boolean }>('/users/device-claims', {
+      method: 'POST', body: JSON.stringify({ clientIp, known: true }),
+    });
+  }
+
   async deleteDeviceClaim(clientIp: string) {
     return this.fetch<{ success: boolean }>(`/users/device-claims/${encodeURIComponent(clientIp)}`, {
       method: 'DELETE',
@@ -3226,6 +3253,17 @@ class ApiClient {
     return this.fetch<{ themePref: ThemePref | null }>('/settings/theme-pref', {
       method: 'PUT',
       body: JSON.stringify({ themePref }),
+    });
+  }
+
+  /** How the option you are on stands out in pop-up menus (see lib/menuHighlight.tsx). */
+  async getMenuHighlight() {
+    return this.fetch<{ menuHighlight: Record<string, unknown> | null }>('/settings/menu-highlight', { quiet401: true });
+  }
+  async saveMenuHighlight(menuHighlight: Record<string, unknown> | null) {
+    return this.fetch<{ menuHighlight: Record<string, unknown> | null }>('/settings/menu-highlight', {
+      method: 'PUT',
+      body: JSON.stringify({ menuHighlight }),
     });
   }
 
@@ -4044,7 +4082,7 @@ export interface ScreenTimeLimit {
   /** When a pause ends, "HH:MM" on the account's clock; midnight when absent. */
   resumeAt?: string;
   bedtime?: ScreenTimeBedtime;
-  /** Real Jellyfin: also stop what's playing, after a warning on screen. */
+  /** Real Jellyfin or AIOMetadata 4.0+: also stop what's playing, after a warning on screen. */
   stopPlaying?: boolean;
 }
 
@@ -4056,7 +4094,7 @@ export interface ScreenTimeView {
   paused: { until: string; untilLabel: string; reason: 'limit' | 'bedtime' } | null;
   /** Whether a pause can work for this person, and why not. */
   canPause: { ok: boolean; code?: 'no-group' | 'needs-admin' | 'needs-config-password' | 'not-supported' | 'shares-addons' | 'needs-address'; reason?: string };
-  /** Whether what's playing can be stopped too (a real Jellyfin server). */
+  /** Whether what's playing can be stopped too (a real Jellyfin server, or AIOMetadata 4.0+). */
   canStopPlaying?: boolean;
   /** Stremio and Nuvio: whether a pause takes hold without reopening the app (false: devices can't reach SlickSync's gate). */
   instant?: boolean | null;
@@ -5119,7 +5157,15 @@ export interface NuvioCollection {
 export interface SeriesSeason {
   season: number;
   watchedCount: number;
-  episodes: Array<{ season: number; episode: number; title: string | null; released: string | null; watched: boolean }>;
+  episodes: Array<{ season: number; episode: number; title: string | null; released: string | null; watched: boolean; thumbnail?: string | null; overview?: string | null }>;
+}
+
+/** Where someone here stopped partway through an episode of a show. */
+export interface EpisodeResume {
+  season: number;
+  episode: number;
+  progressPercent: number;
+  remainingMinutes: number;
 }
 
 export interface SmartCatalogRule {
@@ -5458,6 +5504,14 @@ export interface StoredNotification {
   createdAt: string;
 }
 
+// The bell's state on the server: the last Clear (server time), and the rows
+// dismissed or read one by one since.
+export interface BellState {
+  clearedBefore: string | null;
+  dismissed: string[];
+  read: string[];
+}
+
 export interface ContinueWatchingItem {
   userId: string;
   username: string;
@@ -5651,6 +5705,9 @@ export interface MetricsData {
     positionAt?: number | null;
     // The Nuvio (or AIOStreams) profile it is playing under.
     profileLabel?: string | null;
+    // A stream from an address that isn't the household's (the user is then
+    // "Unknown device", not a person): what its "Who is this?" box shows.
+    unknownDevice?: { address: string; firstSeen: string; titles: number; aiostreamsPage: string | null };
     // Proxy-sourced entries only: elapsed watch time we can actually stand
     // behind (seconds), frozen once proxy traffic goes quiet rather than
     // climbing forever off raw wall-clock time - see the comment in

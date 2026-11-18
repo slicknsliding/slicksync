@@ -115,6 +115,14 @@ Rules that keep falling out of this, each fixing a real reported bug:
   title moved on to the next, so it recorded nothing. `timeWatched` (time played in the current video) grows while
   playing; `WatchSnapshot.timeWatched` keeps its per-video high-water mark, and a pass counts the larger of the two
   deltas, never their sum. First sighting of a video's counter, an episode change and a drop all add nothing.
+- **Progress carried over from somewhere else books nothing; the baseline still moves to it.** Two cases in
+  `processLibraryItem`: an item still exactly as Copy watch history / Keep in step wrote it (`ownWrites.isOwn`,
+  checked under the login and under the person it records for), and a jump of 10+ minutes that lands within 90 s
+  of the position another sign-in on the account holds for the same video in the last 2 account days
+  (`carriedFromElsewhere`), unless it is in the last 10% of a known runtime (finishing puts every app at the end).
+  Confirmed real case 2026-11-15: a Nuvio profile went 7m -> 1h59m two minutes after an AIOStreams-Jellyfin
+  sign-in reached that spot, and the 1h52m was booked a second time. Accepted tradeoff: two people on separate
+  sign-ins who stop at the same spot within 90 s - the later one processed gets nothing for that stretch.
 - **A checkpoint at the end of the runtime is the one that means "stopped".** The freshness window exists
   because a checkpoint cannot tell a pause from a stop, but a position in the last 2% of `state.duration`
   (`hasReachedEnd()` in `sessionTracker.js`) is playback that ended. Such a session is still created or updated

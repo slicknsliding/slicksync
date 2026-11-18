@@ -35,6 +35,11 @@ export function useTVStops(): boolean {
 type Entry = { close: () => void };
 const stack: Entry[] = [];
 
+/** Whether a window is open: the page's own remote areas leave the keys to it. */
+export function tvModalOpen(): boolean {
+  return stack.length > 0;
+}
+
 /** The remote's Back: closes the top open window, if there is one. */
 export function closeTopTVModal(): boolean {
   const top = stack[stack.length - 1];
@@ -47,9 +52,12 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([t
 const SAFE_WORDS = /^(cancel|keep|no\b|not now|close|back|stay)/i;
 const RISKY_WORDS = /\b(delete|remove|disconnect|reset|revoke|erase|wipe|sign out|log out|leave|forget|unlink|clear)\b/i;
 
-function controls(panel: HTMLElement): HTMLElement[] {
+export function controls(panel: HTMLElement): HTMLElement[] {
+  // :disabled as well as [disabled]: a greyed-out button that also carries a
+  // tabindex matched the [tabindex] part, and the remote stopped dead trying
+  // to focus it (the webhook Test button while the address is empty).
   return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) =>
-    el.tabIndex >= 0 && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
+    el.tabIndex >= 0 && !el.matches(':disabled') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
 }
 
 function label(el: HTMLElement) {
@@ -95,7 +103,7 @@ function nextStop(panel: HTMLElement, from: HTMLElement, dir: 'up' | 'down' | 'l
 
 /** Fields keep the arrows they use for themselves (moving the cursor in text,
  *  a slider), until the cursor is already at that end. */
-function fieldKeepsArrow(el: HTMLElement, dir: string): boolean {
+export function fieldKeepsArrow(el: HTMLElement, dir: string): boolean {
   if (el instanceof HTMLTextAreaElement) {
     if (dir === 'up') return el.selectionStart !== 0;
     if (dir === 'down') return el.selectionEnd !== el.value.length;
@@ -112,12 +120,12 @@ function fieldKeepsArrow(el: HTMLElement, dir: string): boolean {
   return false;
 }
 
-const ARROWS: Record<string, 'up' | 'down' | 'left' | 'right'> = {
+export const ARROWS: Record<string, 'up' | 'down' | 'left' | 'right'> = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   Up: 'up', Down: 'down', Left: 'left', Right: 'right',
 };
 
-function focusStop(el: HTMLElement) {
+export function focusStop(el: HTMLElement) {
   el.focus({ preventScroll: true });
   el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
 }

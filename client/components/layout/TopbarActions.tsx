@@ -24,6 +24,8 @@ interface TopbarActionsProps {
   activities?: any[];
   inviteHistory?: any[];
   taskHistory?: any[];
+  /** Extra classes on the cluster's own box (a page heading placing it). */
+  className?: string;
 }
 
 // Gap between the bottom of the sticky nav bar and the pinned cluster.
@@ -65,6 +67,7 @@ export function TopbarActions({
   activities,
   inviteHistory,
   taskHistory,
+  className,
 }: TopbarActionsProps) {
   // Shown for the whole time the tour is unfinished - not only after it was
   // paused via one of its own links - and stays until the prompt's own X
@@ -280,7 +283,7 @@ export function TopbarActions({
   return (
     <div
       ref={placeholderRef}
-      className="relative flex items-center justify-end"
+      className={`relative flex items-center justify-end ${className ?? ''}`}
       // Reserves the vacated space only while pinned, so the heading row
       // keeps its shape instead of reflowing as you scroll past.
       style={pinned && size ? { width: size.width, height: size.height } : undefined}
