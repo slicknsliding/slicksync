@@ -2,8 +2,9 @@
 // from the household card - for people added with their configuration
 // password (the only way AIOStreams' user API lets anyone write).
 //
-// A household user is a persona in the configuration
-// (config.jellyfin.personas: { id, name, history: own | shared, lock? }).
+// A household user is a persona in the configuration ({ id, name, history:
+// own | shared, lock? }) - in config.jellyfin.personas, or in config.profiles
+// on newer AIOStreams; aioProfiles.js reads and writes both.
 // Writing one follows the same sequence as every other write to a
 // configuration (aiostreamsConfig.js): read, report outside changes, write,
 // re-baseline. AIOStreams replaces the whole configuration on save, so
@@ -33,6 +34,7 @@
 const { safeFetch, instancePolicy } = require('./safeUrl')
 const crypto = require('crypto')
 const { readConfig, writeConfig, rebaseline, noteOutsideChanges, instanceBase } = require('./aiostreamsConfig')
+const { othersOf, ownerOf, addOther, maxFromStatus } = require('./aioProfiles')
 
 const PIN = /^\d{4,12}$/
 const ID = /^[a-z0-9][a-z0-9_-]{0,31}$/
@@ -107,7 +109,7 @@ async function maxPersonas(owner) {
   try {
     const res = await safeFetch(`${instanceBase(owner.jellyfinServerUrl)}/api/v1/status`, { signal: AbortSignal.timeout(15000) }, instancePolicy())
     const body = await res.json()
-    return Number(body?.data?.settings?.jellyfin?.maxPersonas) || 0
+    return maxFromStatus(body?.data?.settings)
   } catch {
     return 0
   }
@@ -163,7 +165,7 @@ async function personalSettings(decrypt, owner, profiles) {
   try {
     const config = await readConfig(accessFor(owner, decrypt))
     const uuid = config.uuid || owner.aioConfigId
-    const personas = Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []
+    const personas = othersOf(config)
     const out = {}
     for (const profile of profiles) {
       const persona = personas.find((p) => personaUserId(uuid, p.id) === profile.jellyfinUserId)
@@ -187,9 +189,8 @@ async function addPersona(prisma, decrypt, encrypt, owner, { name, pin, history,
 
   const config = await readConfig(access)
   const uuid = config.uuid || owner.aioConfigId
-  config.jellyfin = config.jellyfin && typeof config.jellyfin === 'object' ? config.jellyfin : {}
-  const personas = Array.isArray(config.jellyfin.personas) ? config.jellyfin.personas : []
-  const taken = [config.jellyfin.primary?.name, ...personas.map((p) => p.name)].filter(Boolean).map((n) => String(n).toLowerCase())
+  const personas = othersOf(config)
+  const taken = [ownerOf(config)?.name, ...personas.map((p) => p.name)].filter(Boolean).map((n) => String(n).toLowerCase())
   if (taken.includes(clean.toLowerCase())) throw fail(`There is already a household user called ${clean}`)
   const max = await maxPersonas(owner)
   if (max > 0 && personas.length >= max) throw fail(`This AIOStreams allows ${max} household users, and there are ${personas.length} already.`, 409)
@@ -198,7 +199,7 @@ async function addPersona(prisma, decrypt, encrypt, owner, { name, pin, history,
   if (!ID.test(id) || personas.some((p) => p.id === id)) id = `${id.slice(0, 20)}-${crypto.randomBytes(3).toString('hex')}`.replace(/^-+/, '')
   // Never trackers on a shared one: it uses the main user's.
   const persona = { id, name: clean, history: mode, ...(lock ? { lock } : {}), ...(separate === true ? { hidden: true, address: newAddress(personas) } : {}) }
-  config.jellyfin.personas = [...personas, persona]
+  addOther(config, persona)
   await save(prisma, owner, access, config)
 
   const tracked = await signInOnce(prisma, encrypt, owner, { jellyfinUserId: personaUserId(uuid, id), name: clean }, access.password, lock)
@@ -218,7 +219,7 @@ async function setPersonaSeparation(prisma, decrypt, owner, profile, mode) {
   const access = accessFor(owner, decrypt)
   const config = await readConfig(access)
   const uuid = config.uuid || owner.aioConfigId
-  const personas = Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []
+  const personas = othersOf(config)
   const persona = personas.find((p) => personaUserId(uuid, p.id) === profile.jellyfinUserId)
   if (!persona) throw fail(`${profile.name} isn't a household user in this AIOStreams configuration any more.`, 409)
   if (mode === 'renew' && persona.hidden !== true) throw fail(`${persona.name} isn't kept separate, so there is no address to renew.`, 409)
@@ -245,7 +246,7 @@ async function setPersonaPin(prisma, decrypt, encrypt, owner, profile, pin) {
 
   const config = await readConfig(access)
   const uuid = config.uuid || owner.aioConfigId
-  const personas = Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []
+  const personas = othersOf(config)
   const persona = personas.find((p) => personaUserId(uuid, p.id) === profile.jellyfinUserId)
   if (!persona) throw fail(`${profile.name} isn't a household user in this AIOStreams configuration any more.`, 409)
   if (lock) persona.lock = lock

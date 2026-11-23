@@ -263,11 +263,12 @@ function summarize(config) {
     // Whether its key changed, never the key itself.
     keyHash: crypto.createHash('sha256').update(stableJson(s.credentials || {})).digest('hex').slice(0, 12),
   }))
-  const users = (Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []).map((p) => String(p.name || p.id || ''))
+  const { othersOf, inOldShape } = require('./aioProfiles')
+  const users = othersOf(config).map((p) => String(p.name || p.id || ''))
   // Which household users are kept separate, and a fingerprint of their
   // personal address (never the address itself).
   const apart = {}
-  for (const p of (Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : [])) {
+  for (const p of othersOf(config)) {
     apart[String(p.name || p.id || '')] = p.hidden === true
       ? (p.address ? crypto.createHash('sha256').update(String(p.address)).digest('hex').slice(0, 8) : 'none')
       : null
@@ -277,7 +278,9 @@ function summarize(config) {
   const catalogOrder = crypto.createHash('sha256')
     .update(stableJson((Array.isArray(config?.catalogModifications) ? config.catalogModifications : []).map((m) => [m?.id, m?.type, m?.enabled !== false])))
     .digest('hex').slice(0, 12)
-  const hash = crypto.createHash('sha256').update(stableJson(config || {})).digest('hex').slice(0, 16)
+  // In one shape, so an AIOStreams that moves the household to config.profiles
+  // isn't reported as a change.
+  const hash = crypto.createHash('sha256').update(stableJson(inOldShape(config || {}))).digest('hex').slice(0, 16)
   return { addons, services, users, apart, catalogOrder, hash }
 }
 

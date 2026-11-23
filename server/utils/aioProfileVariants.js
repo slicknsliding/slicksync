@@ -16,6 +16,7 @@
 // afterwards so the change warning (utils/aiostreamsConfig.js) stays quiet.
 
 const { readConfig, writeConfig, rebaseline, noteOutsideChanges } = require('./aiostreamsConfig')
+const { othersOf } = require('./aioProfiles')
 
 const VARIANT_PREFIX = 'slicksync-'
 
@@ -63,8 +64,7 @@ async function setProfileVariant(prisma, decrypt, owner, profile, on) {
     password: decrypt(owner.aioConfigPassword, { appAccountId: owner.accountId || 'default' }),
   }
   const config = await readConfig(access)
-  const personas = Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []
-  const persona = personas.find((p) => String(p.name || '').trim().toLowerCase() === String(profile.name || '').trim().toLowerCase())
+  const persona = othersOf(config).find((p) => String(p.name || '').trim().toLowerCase() === String(profile.name || '').trim().toLowerCase())
   if (!persona) throw fail(`${profile.name} isn't a household user in this AIOStreams configuration any more.`, 409)
 
   const variantId = variantIdFor(persona.id)
@@ -361,8 +361,7 @@ function ownerAccess(owner, decrypt) {
 function personaFor(config, owner, profile) {
   const { personaUserId } = require('./aioHousehold')
   const uuid = config?.uuid || owner.aioConfigId
-  const personas = Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []
-  return personas.find((p) => personaUserId(uuid, p.id) === profile.jellyfinUserId) || null
+  return othersOf(config).find((p) => personaUserId(uuid, p.id) === profile.jellyfinUserId) || null
 }
 
 async function commitConfig(prisma, owner, access, config) {
@@ -533,7 +532,7 @@ async function configFacts(decrypt, owner) {
   const uuid = config?.uuid || owner.aioConfigId
   const { preset, several } = aiometadataPreset(config)
   const names = new Map()
-  for (const p of Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []) names.set(personaUserId(uuid, p.id), p.name)
+  for (const p of othersOf(config)) names.set(personaUserId(uuid, p.id), p.name)
   const value = { several, url: preset ? presetUrl(preset) : null, names }
   configSeen.set(owner.id, { at: Date.now(), value })
   return value

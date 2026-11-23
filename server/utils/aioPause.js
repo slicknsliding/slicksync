@@ -20,6 +20,7 @@
 const { safeFetch, instancePolicy } = require('./safeUrl')
 const { readConfig, writeConfig, rebaseline, noteOutsideChanges, instanceBase } = require('./aiostreamsConfig')
 const { personaUserId } = require('./aioHousehold')
+const { othersOf, ownerOf, tidyOwner } = require('./aioProfiles')
 
 const PAUSE_VARIANT = 'slicksync-pause'
 const OWNER_SELECT = {
@@ -109,13 +110,9 @@ async function pauseScript(base, config) {
 
 /** The configuration's user objects for these Jellyfin user ids. */
 function usersIn(config, uuid, ids) {
-  config.jellyfin = config.jellyfin && typeof config.jellyfin === 'object' ? config.jellyfin : {}
   const out = []
-  if (ids.includes(plainId(uuid))) {
-    config.jellyfin.primary = config.jellyfin.primary && typeof config.jellyfin.primary === 'object' ? config.jellyfin.primary : {}
-    out.push(config.jellyfin.primary)
-  }
-  for (const p of Array.isArray(config.jellyfin.personas) ? config.jellyfin.personas : []) {
+  if (ids.includes(plainId(uuid))) out.push(ownerOf(config, { create: true }))
+  for (const p of othersOf(config)) {
     if (ids.includes(personaUserId(uuid, p.id))) out.push(p)
   }
   return out
@@ -156,13 +153,12 @@ async function setAioPaused(prisma, accountId, person, paused, { decrypt, users:
       if (refs.length) user.variants = refs
       else delete user.variants
     }
-    const j = config.jellyfin || {}
-    const stillUsed = [j.primary, ...(Array.isArray(j.personas) ? j.personas : [])].some((u) => refsOf(u).includes(PAUSE_VARIANT))
+    const stillUsed = [ownerOf(config), ...othersOf(config)].some((u) => refsOf(u).includes(PAUSE_VARIANT))
     if (!stillUsed) {
       config.variants = variants.filter((v) => v.id !== PAUSE_VARIANT)
       if (!config.variants.length) delete config.variants
     }
-    if (j.primary && !Object.keys(j.primary).length) delete j.primary
+    tidyOwner(config)
   }
 
   try {

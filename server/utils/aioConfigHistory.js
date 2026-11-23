@@ -19,6 +19,7 @@
 
 const { safeFetch, instancePolicy } = require('./safeUrl')
 const { summarize, describeChanges, readConfig, writeConfig, rebaseline, noteOutsideChanges, instanceBase } = require('./aiostreamsConfig')
+const { usesProfiles, othersOf, ownerOf, maxFromStatus } = require('./aioProfiles')
 
 const KEEP_PER_CONFIG = 20
 // Read-only or recomputed by AIOStreams - always the configuration's current values.
@@ -94,7 +95,7 @@ async function limitsOf(base) {
   try {
     const res = await safeFetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(15000) }, instancePolicy())
     const s = (await res.json())?.data?.settings || {}
-    return { variants: Number(s.variants?.max) || 0, personas: Number(s.jellyfin?.maxPersonas) || 0 }
+    return { variants: Number(s.variants?.max) || 0, personas: maxFromStatus(s) }
   } catch {
     return { variants: 0, personas: 0 }
   }
@@ -112,6 +113,9 @@ function merge(old, current, { keepServices = true, keepPersonas = true, keepApi
     next.jellyfin = { ...(next.jellyfin || {}) }
     const cur = current.jellyfin || {}
     if (keepPersonas) {
+      // Newer AIOStreams keep the household in config.profiles instead.
+      if (usesProfiles(current)) next.profiles = current.profiles
+      else delete next.profiles
       for (const k of ['personas', 'primary']) {
         if (cur[k] === undefined) delete next.jellyfin[k]
         else next.jellyfin[k] = cur[k]
@@ -138,9 +142,9 @@ function keepOwnVariants(next, current) {
   else delete next.variants
   // Each user's references to them, too, when the old version's users were kept.
   const refsNow = new Map()
-  const cur = current.jellyfin || {}
-  if (cur.primary) refsNow.set('primary', cur.primary.variants)
-  for (const p of Array.isArray(cur.personas) ? cur.personas : []) refsNow.set(`p:${p.id}`, p.variants)
+  const ownerNow = ownerOf(current)
+  if (ownerNow) refsNow.set('owner', ownerNow.variants)
+  for (const p of othersOf(current)) refsNow.set(`p:${p.id}`, p.variants)
   const fix = (user, key) => {
     if (!user || typeof user !== 'object') return
     const own = (Array.isArray(refsNow.get(key)) ? refsNow.get(key) : []).filter((id) => OWN_VARIANT.test(id))
@@ -148,10 +152,8 @@ function keepOwnVariants(next, current) {
     if (refs.length) user.variants = refs
     else delete user.variants
   }
-  if (next.jellyfin && typeof next.jellyfin === 'object') {
-    fix(next.jellyfin.primary, 'primary')
-    for (const p of Array.isArray(next.jellyfin.personas) ? next.jellyfin.personas : []) fix(p, `p:${p.id}`)
-  }
+  fix(ownerOf(next), 'owner')
+  for (const p of othersOf(next)) fix(p, `p:${p.id}`)
 }
 
 async function restore(prisma, decrypt, accountId, userId, snapshotId, options = {}) {
@@ -171,7 +173,7 @@ async function restore(prisma, decrypt, accountId, userId, snapshotId, options =
   const limits = await limitsOf(instanceBase(person.jellyfinServerUrl))
   const variants = Array.isArray(next.variants) ? next.variants.length : 0
   if (limits.variants && variants > limits.variants) throw fail(`That version has ${variants} variants, and this AIOStreams allows ${limits.variants} now.`, 409)
-  const personas = Array.isArray(next.jellyfin?.personas) ? next.jellyfin.personas.length : 0
+  const personas = othersOf(next).length
   if (limits.personas && personas > limits.personas) throw fail(`That version has ${personas} household users, and this AIOStreams allows ${limits.personas} now.`, 409)
 
   // Anything changed since the last look is reported, and kept, first.
