@@ -18,7 +18,7 @@
 // limit it doesn't publish) is passed on in plain words.
 
 const { safeFetch, instancePolicy } = require('./safeUrl')
-const { summarize, describeChanges, readConfig, writeConfig, rebaseline, noteOutsideChanges, instanceBase } = require('./aiostreamsConfig')
+const { summarize, isSameVersion, describeChanges, readConfig, writeConfig, rebaseline, noteOutsideChanges, instanceBase } = require('./aiostreamsConfig')
 const { usesProfiles, othersOf, ownerOf, maxFromStatus } = require('./aioProfiles')
 
 const KEEP_PER_CONFIG = 20
@@ -41,7 +41,7 @@ async function remember(prisma, person, config, reason) {
     const configKey = configKeyOf(person)
     const summary = summarize(config)
     const latest = await prisma.aioConfigSnapshot.findFirst({ where: { accountId, configKey }, orderBy: { createdAt: 'desc' }, select: { hash: true } })
-    if (latest?.hash === summary.hash) return false
+    if (isSameVersion(latest?.hash, config)) return false
     await prisma.aioConfigSnapshot.create({
       data: {
         accountId,

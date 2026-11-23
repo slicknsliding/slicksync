@@ -15,7 +15,7 @@ test.after(() => { dns.lookup = realLookup })
 const layout = require('../server/utils/aioProfiles')
 const hh = require('../server/utils/aioHousehold')
 const { setAioPaused, PAUSE_VARIANT } = require('../server/utils/aioPause')
-const { summarize } = require('../server/utils/aiostreamsConfig')
+const { summarize, noteOutsideChanges } = require('../server/utils/aiostreamsConfig')
 const { merge } = require('../server/utils/aioConfigHistory')
 const trax = require('../server/utils/aioSlickTrax')
 
@@ -112,6 +112,57 @@ test('layout: AIOStreams switching shapes is not a change', () => {
   // A real change still shows.
   now.profiles[1].name = 'Leon'
   assert.notEqual(summarize(now).hash, summarize(old).hash)
+})
+
+test('layout: switching shapes with an empty household list or an empty owner entry is not a change', () => {
+  const leo = { id: 'leo', name: 'Leo' }
+  for (const jellyfin of [{ personas: [] }, { primary: { history: 'own' }, personas: [] }, { primary: {}, personas: [leo] }, { primary: {} }]) {
+    const old = { presets: [], jellyfin: clone(jellyfin) }
+    const now = migrateProfiles(clone(old))
+    assert.equal(summarize(now).hash, summarize(old).hash, JSON.stringify(jellyfin))
+  }
+})
+
+// A fingerprint stored before the household was compared in one shape: the
+// configuration exactly as it was read (summarize's hash until 6c269a18).
+const VOLATILE = new Set(['encryptedPassword', 'ip', 'uuid', 'healthResults', 'trusted', 'showChanges'])
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object') return `{${Object.keys(value).filter((k) => !VOLATILE.has(k)).sort().map((k) => `${JSON.stringify(k)}:${stableJson(value[k])}`).join(',')}}`
+  return JSON.stringify(value === undefined ? null : value)
+}
+const storedBefore = (config) => require('node:crypto').createHash('sha256').update(stableJson(config)).digest('hex').slice(0, 16)
+
+function lookStore(latestHash) {
+  const notes = []
+  const snapshots = latestHash ? [{ accountId: 'acc', configKey: 'https://aio.example.com|cfg', hash: latestHash }] : []
+  return {
+    notes,
+    snapshots,
+    notification: { upsert: async (a) => { notes.push(a); return a }, create: async (a) => { notes.push(a); return a } },
+    user: { update: async () => ({}), updateMany: async () => ({}) },
+    aioConfigSnapshot: {
+      findFirst: async () => snapshots[snapshots.length - 1] || null,
+      findMany: async () => [],
+      create: async ({ data }) => { snapshots.push(data); return data },
+      deleteMany: async () => ({}),
+    },
+  }
+}
+const looked = { id: 'p1', username: 'Sam', accountId: 'acc', jellyfinServerUrl: 'https://aio.example.com/jellyfin', aioConfigId: 'cfg' }
+
+test('an AIOStreams that already moved to profiles before this update is not reported as changed', async () => {
+  const config = migrateProfiles(household())
+  const db = lookStore(storedBefore(config))
+  await noteOutsideChanges(db, looked, config, { hash: storedBefore(config), users: ['Leo'] })
+  assert.equal(db.notes.length, 0, 'no "changed outside SlickSync" alert')
+  assert.equal(db.snapshots.length, 1, 'no second copy of the same version in its history')
+  // A real change after that still shows.
+  const changed = clone(config)
+  changed.profiles[1].name = 'Leon'
+  await noteOutsideChanges(db, looked, changed, { hash: storedBefore(config), users: ['Leo'] })
+  assert.equal(db.notes.length, 1)
+  assert.equal(db.snapshots.length, 2)
 })
 
 test('add: a new household user reaches a newer AIOStreams', async () => {
