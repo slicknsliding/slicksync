@@ -1729,7 +1729,7 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Monthly poster mosaic"
                   description={syncSettings.webhookUrl?.trim()
-                    ? "Post a poster collage of everything watched last month to Discord, on the 1st"
+                    ? "On the 1st, a recap in the bell and as a push, and a poster collage of everything watched last month posted to Discord"
                     : "Sends a push+bell text recap on the 1st (e.g. \"14 titles watched\") - add a Discord webhook above for the actual poster collage image"}
                 >
                   <div className="flex items-center gap-2">

@@ -37,6 +37,7 @@ const TINT: Record<string, string> = {
   update: '#22c55e',
   announcement: '#a78bfa',
   device: '#60a5fa',
+  recap: '#a78bfa',
 };
 
 export function NotificationsPanelV2({

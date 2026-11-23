@@ -1373,10 +1373,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
   },
   {
     id: 'discord-poster-recap',
-    title: 'Monthly Discord poster-mosaic recap',
+    title: 'Monthly recap and Discord poster mosaic',
     category: 'Notifications & Automation',
-    keywords: ['discord recap', 'poster mosaic', 'monthly recap discord'],
-    answer: 'If a Discord webhook is configured (Settings → Notifications), SlickSync automatically posts a poster-mosaic recap of the household\'s watched titles once a month - no separate toggle beyond having the webhook set.',
+    keywords: ['monthly recap', 'recap bell', 'discord recap', 'poster mosaic', 'monthly recap discord'],
+    answer: 'Turn on Monthly poster mosaic in Settings → Notifications (under Recaps in page design v2). On the 1st, last month\'s recap shows up in the bell and as a push: how many titles the household watched. With a Discord webhook set, a poster collage of those titles is posted to Discord as well. Generate now sends last month\'s recap right away.',
     href: '/settings',
     linkLabel: 'Open Settings',
   },

@@ -5493,7 +5493,7 @@ export interface AddonHealthAlert {
 // same dispatch path as push/Discord; read state is server-side.
 export interface StoredNotification {
   id: string;
-  type: 'activity' | 'sync' | 'invite' | 'vault' | 'task' | 'mismatch';
+  type: 'activity' | 'sync' | 'invite' | 'vault' | 'task' | 'mismatch' | 'recap';
   title: string;
   body: string;
   poster: string | null;

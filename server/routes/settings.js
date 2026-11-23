@@ -596,8 +596,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     // waiting for the scheduler's own month-rollover check. Defaults to the
     // most recently completed month (same target the scheduler picks);
     // optionally accepts { month: "YYYY-MM" } to regenerate/test a specific
-    // one. No webhook required - generateAndPostMosaic falls back to a
-    // plain push+bell text summary when cfg.webhookUrl is unset.
+    // one. No webhook required - the recap goes to the bell and as a push
+    // either way, and the collage to Discord when cfg.webhookUrl is set.
     router.post('/mosaic/generate-now', async (req, res) => {
       try {
         const accountId = getAccountId(req) || 'default'

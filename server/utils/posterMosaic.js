@@ -24,7 +24,8 @@ const { safeFetch, instancePolicy } = require('./safeUrl')
 const { Jimp } = require('jimp')
 const { monthBoundsInTimezone } = require('./dateUtils')
 const { postDiscordFile } = require('./notify')
-const { notifyPushForType } = require('./pushNotifications')
+const { isPushEnabled, sendPushToAccount } = require('./pushNotifications')
+const { persistBellNotification } = require('./notificationStore')
 
 const MAX_TILES = 24
 const TILE_W = 200
@@ -41,6 +42,13 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
  * episodes"), newest-watched first, capped at MAX_TILES.
  */
 async function getMonthTitles(prisma, accountId, yearMonth, timeZone) {
+  return withPosters(await watchedTitles(prisma, accountId, yearMonth, timeZone))
+}
+
+const withPosters = (titles) => titles.filter((t) => t.poster).slice(0, MAX_TILES)
+
+// All of them, posters or not, newest-watched first: the recap's count.
+async function watchedTitles(prisma, accountId, yearMonth, timeZone) {
   const { start, end } = monthBoundsInTimezone(yearMonth, timeZone)
 
   const [movies, episodes] = await Promise.all([
@@ -68,10 +76,7 @@ async function getMonthTitles(prisma, accountId, yearMonth, timeZone) {
     }
   }
 
-  return Array.from(byId.values())
-    .filter((t) => t.poster)
-    .sort((a, b) => b.watchedAt - a.watchedAt)
-    .slice(0, MAX_TILES)
+  return Array.from(byId.values()).sort((a, b) => b.watchedAt - a.watchedAt)
 }
 
 async function fetchPosterTile(url) {
@@ -116,37 +121,43 @@ async function buildMosaicBuffer(titles) {
  * throwing, so both the scheduler and the manual "Generate Now" route can
  * report/log without a try/catch of their own.
  *
- * `webhookUrl` is optional - the actual collage image is a Discord-only
- * capability (posting a file to a webhook), there's no equivalent for web
- * push (image support there is inconsistent across browsers and unreliable
- * on iOS specifically). Without a webhook, this skips building the image
- * entirely and sends a plain push+bell text summary instead, so the feature
- * still does *something* useful rather than silently requiring Discord.
+ * The recap always goes to the bell and as a push. `webhookUrl` is optional:
+ * the collage image is Discord-only (posting a file to a webhook), with no
+ * equivalent for web push (image support there is inconsistent across
+ * browsers and unreliable on iOS), so with a webhook it is posted there too.
+ *
+ * `notice: false` skips the bell and push - the scheduler passes it when it
+ * already sent them this month and is only retrying a failed Discord post.
+ * `posted` reports the whole job; `noticeSent` the bell and push alone.
  */
-async function generateAndPostMosaic(prisma, accountId, webhookUrl, yearMonth, timeZone) {
-  const titles = await getMonthTitles(prisma, accountId, yearMonth, timeZone)
-  if (titles.length === 0) return { posted: false, reason: 'nothing watched', count: 0 }
+async function generateAndPostMosaic(prisma, accountId, webhookUrl, yearMonth, timeZone, { notice = true } = {}) {
+  const watched = await watchedTitles(prisma, accountId, yearMonth, timeZone)
+  if (watched.length === 0) return { posted: false, reason: 'nothing watched', count: 0 }
 
   const [y, m] = yearMonth.split('-').map(Number)
   const label = `${MONTH_NAMES[m - 1]} ${y}`
+  const count = watched.length
+  const watchedLine = `${count} title${count === 1 ? '' : 's'} watched`
 
-  if (!webhookUrl) {
-    await notifyPushForType(prisma, accountId, 'notifyOnMosaic', {
-      title: `📊 ${label} recap`,
-      body: `${titles.length} title${titles.length === 1 ? '' : 's'} watched this month.`,
-      icon: '/android-chrome-192x192.png',
-      url: '/metrics',
-    })
-    return { posted: true, reason: null, count: titles.length, month: label }
+  if (notice) {
+    const payload = { title: `${label} recap`, body: `${watchedLine} in ${MONTH_NAMES[m - 1]}`, icon: '/android-chrome-192x192.png', url: '/metrics' }
+    // Not notifyPushForType: that checks the switch, and Generate now has to
+    // work before the switch is turned on. The scheduler checks it itself.
+    try {
+      await persistBellNotification(prisma, accountId, 'notifyOnMosaic', payload)
+      if (isPushEnabled()) await sendPushToAccount(prisma, accountId, payload)
+    } catch (e) {
+      console.warn('[PosterMosaic] Recap notice failed:', e?.message)
+    }
   }
+  const done = { count, month: label, noticeSent: notice }
+  if (!webhookUrl) return { posted: true, reason: null, ...done }
 
-  const buffer = await buildMosaicBuffer(titles)
-  if (!buffer) return { posted: false, reason: 'no posters resolved', count: 0 }
+  const buffer = await buildMosaicBuffer(withPosters(watched))
+  if (!buffer) return { posted: false, reason: 'no posters resolved', ...done }
 
-  const content = `**${label} — ${titles.length} title${titles.length === 1 ? '' : 's'} watched**`
-
-  const ok = await postDiscordFile(webhookUrl, buffer, `slicksync-${yearMonth}.png`, content)
-  return { posted: !!ok, reason: ok ? null : 'discord post failed', count: titles.length, month: label }
+  const ok = await postDiscordFile(webhookUrl, buffer, `slicksync-${yearMonth}.png`, `**${label} — ${watchedLine}**`)
+  return { posted: !!ok, reason: ok ? null : 'discord post failed', ...done }
 }
 
 let mosaicTimer = null
@@ -166,13 +177,19 @@ async function checkAndPostIfNewMonth(prisma, accountId) {
     const targetMonth = previousMonthString(getAccountMonthString(new Date(), timeZone))
     if (cfg.lastMosaicMonth === targetMonth) return // already handled this month
 
-    const result = await generateAndPostMosaic(prisma, accountId, cfg.webhookUrl, targetMonth, timeZone)
+    const result = await generateAndPostMosaic(prisma, accountId, cfg.webhookUrl, targetMonth, timeZone, {
+      notice: cfg.lastRecapNoticeMonth !== targetMonth,
+    })
     // Mark done on a real post OR a genuinely empty month - only leave it
     // unmarked (so the next 6h check retries) on an actual failure
-    // (Discord unreachable, every poster fetch failed).
-    if (result.posted || result.reason === 'nothing watched') {
+    // (Discord unreachable, every poster fetch failed). The bell and push
+    // are marked on their own, so a Discord retry doesn't send them again.
+    const keys = {}
+    if (result.noticeSent) keys.lastRecapNoticeMonth = targetMonth
+    if (result.posted || result.reason === 'nothing watched') keys.lastMosaicMonth = targetMonth
+    if (Object.keys(keys).length) {
       // A fresh read: building and posting the mosaic takes a while.
-      await require('./accountSync').setAccountSyncKeys(prisma, accountId, { lastMosaicMonth: targetMonth })
+      await require('./accountSync').setAccountSyncKeys(prisma, accountId, keys)
     }
   } catch (e) {
     console.warn('[PosterMosaic] Monthly check failed:', e?.message)

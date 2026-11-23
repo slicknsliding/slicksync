@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
+import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { api, type BellState } from '@/lib/api';
@@ -18,7 +18,7 @@ import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 
 interface NotificationItem {
   id: string;
-  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch' | 'update' | 'announcement' | 'device';
+  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch' | 'update' | 'announcement' | 'device' | 'recap';
   title: string;
   message: string;
   timestamp: Date;
@@ -629,6 +629,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         return <MegaphoneIcon className="w-4 h-4" />;
       case 'device':
         return <DevicePhoneMobileIcon className="w-4 h-4" />;
+      case 'recap':
+        return <PhotoIcon className="w-4 h-4" />;
     }
   };
 

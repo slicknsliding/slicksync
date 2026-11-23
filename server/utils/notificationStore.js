@@ -28,6 +28,7 @@ const BELL_TYPE_BY_TOGGLE = {
   notifyOnBackup: 'task',
   notifyOnProxyHealth: 'proxy',
   notifyOnUpdateAvailable: 'update',
+  notifyOnMosaic: 'recap',
 }
 
 /**

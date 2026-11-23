@@ -338,7 +338,7 @@ export function NotificationsV2({ arrange, sync, setSync, save, saveMany, webhoo
           <V2ToggleTile
             title="Monthly poster mosaic"
             also="Monthly poster mosaic"
-            line={hasHook ? 'On the 1st, a poster collage of everything watched last month, posted to Discord' : 'On the 1st, a text recap of last month. Add a Discord webhook for the poster collage.'}
+            line={hasHook ? 'On the 1st, last month\'s recap in the bell and as a push, and the poster collage on Discord' : 'On the 1st, last month\'s recap in the bell and as a push. Add a Discord webhook for the poster collage.'}
             on={!!sync.notifyOnMosaic}
             onChange={(v) => save('notifyOnMosaic', v)}
             extra={<V2Button onClick={mosaic.onGenerate} disabled={mosaic.generating}>{mosaic.generating ? 'Working…' : 'Generate now'}</V2Button>}
