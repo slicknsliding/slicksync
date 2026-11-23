@@ -33,7 +33,7 @@ const { sendSessionStartNotification } = require('./sessionTracker')
 const { notifyPushForType } = require('./pushNotifications')
 
 // A connection counts as playing from its second request - see proxyPlaying.js.
-const { isPlayingConnection } = require('./proxyPlaying')
+const { isPlayingConnection, isReleasedStream } = require('./proxyPlaying')
 
 const { proxyDisplayTitle, isOpaqueStreamName } = require('./proxyTitle')
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
@@ -423,7 +423,7 @@ async function fetchLiveStreams(baseUrl, username, password) {
   const streams = json?.data?.streams ?? json?.streams ?? []
   // Normalize the legacy shape's fields onto the new one so pollOnce only
   // ever has to handle one row shape, regardless of which branch produced it.
-  return streams.map((s) => ({
+  const mapped = streams.map((s) => ({
     transport: s.transport || 'proxy',
     username: s.username || '',
     clientIp: s.clientIp || null,
@@ -432,7 +432,27 @@ async function fetchLiveStreams(baseUrl, username, password) {
     requests: s.requests,
     startedAt: s.startedAt,
     lastSeenAt: s.lastSeenAt,
+    // Whether a player still holds it (proxyPlaying.js isReleasedStream).
+    activeReads: s.activeReads,
+    idleMs: s.idleMs,
   }))
+  // A usenet stream whose file name is scrambled gets the name AIOStreams'
+  // library has for that download (usenetStreamNames.js).
+  await require('./usenetStreamNames').nameScrambledUsenetStreams(mapped, (hash) => fetchUsenetLibraryName(baseUrl, hash))
+  return mapped
+}
+
+// The library's name for one usenet download, or null.
+async function fetchUsenetLibraryName(baseUrl, hash) {
+  const res = await fetch(`${baseUrl}/api/v1/dashboard/usenet/library/${encodeURIComponent(hash)}/files`, {
+    headers: { Cookie: cachedCookie, Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) return null
+  const json = await res.json().catch(() => null)
+  const name = json?.data?.name
+  heartbeat('usenetName', { found: !!name })
+  return typeof name === 'string' ? name : null
 }
 
 // Pre-2026-08 AIOStreams shape: { users: [{ username, active: [{ ip, url,
@@ -754,6 +774,7 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
 
     // Mirror to phone push (self-gates on the same notifyOnActivity toggle).
     const whoName = user.username || user.email || 'Someone'
+    heartbeat('pollOnce:start_notified', { rowId, name: shownName, guessed })
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
       title: `${whoName} started watching`,
       body: guessed ? `Probably ${shownName} - resumed from Continue Watching` : readableStreamTitle(shownName),
@@ -955,6 +976,11 @@ async function pollOnce(prisma, accountId, config) {
       }
       // Unattributed (empty username) falls back to the same synthetic
       // identity regardless of transport - see the constant's own comment.
+      // The player let go of it a while ago and AIOStreams has just not
+      // dropped it yet: not playing. Left out, it closes below like a stream
+      // that is no longer listed - so the title they exited doesn't sit
+      // beside the one they started next.
+      if (isReleasedStream(stream)) continue
       const aiostreamsUser = stream.username || UNATTRIBUTED_SYNTHETIC_USER
       const clientIp = stream.clientIp || UNATTRIBUTED_SYNTHETIC_IP
       const url = stream.targetKey
