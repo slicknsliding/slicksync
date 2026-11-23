@@ -706,7 +706,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
       const canPin = canManage && (full.jellyfinServerKind !== 'aiometadata' || await aiom.hasPins(full));
       // Who is kept separate, with their own sign-in address (AIOStreams only).
       const personal = full.jellyfinServerKind === 'aiostreams' && profiles.length
-        ? await require('../utils/aioHousehold').personalSettings(decrypt, { ...full, accountId }, profiles)
+        // Matched by Jellyfin user id, which the card's rows don't carry.
+        ? await require('../utils/aioHousehold').personalSettings(decrypt, { ...full, accountId },
+          await prisma.jellyfinProfile.findMany({ where: { ownerUserId: person.id, id: { in: profiles.map((p) => p.id) } }, select: { id: true, jellyfinUserId: true } }))
         : null;
       // A protected AIOStreams takes these changes only on its own page.
       const managedOn = canManage ? await require('../utils/aioHousehold').protectedPage(full) : null;
