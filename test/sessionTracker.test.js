@@ -220,3 +220,53 @@ test('the next episode starting does not close the session it just opened', asyn
   assert.equal(row.isActive, true, 'still playing')
   assert.equal(row.durationSeconds, 2 * 60, 'its own two minutes, not the previous episode\'s time')
 })
+
+// One real afternoon: a film left at 59:08 the day before. A second device,
+// open and paused at 36:39, saved that spot; fifteen minutes later the film
+// was back at its real place, was watched from there, and the credits were
+// skipped. The card read 56m for about 28 minutes of viewing.
+test('ground already covered and a skip ahead are not viewing', async () => {
+  const S = 1000
+  const RUNTIME = 5583 * S
+  const yesterday = DAY - 24 * 60 * MIN
+  const prisma = fakePrisma([{
+    id: 's1', accountId: 'default', userId: 'u1', itemId: 'tt31192372', videoId: null,
+    itemName: 'Fall 2: Deadpoint', itemType: 'movie', season: null, episode: null, poster: null,
+    startTime: new Date(yesterday), endTime: new Date(yesterday + 40 * MIN), startPosition: 1836 * S, lastPosition: 3548 * S,
+    totalDuration: RUNTIME, isActive: false, durationSeconds: 3548,
+  }])
+  const at = (minutes, seconds) => run(prisma, DAY + minutes * MIN, {
+    ...film(DAY + minutes * MIN, { position: seconds * S, lastWatchedAgo: 0 }),
+    state: { timeOffset: seconds * S, duration: RUNTIME, lastWatched: new Date(DAY + minutes * MIN).toISOString() },
+  })
+  await at(0, 2199)   // the older spot
+  assert.equal(prisma.rows()[0].durationSeconds, 0)
+  await at(15, 3553)  // back where the film stood: 5 seconds of new ground
+  assert.equal(prisma.rows()[0].durationSeconds, 5)
+  await at(21, 3847)
+  await at(33, 4594)
+  await at(42, 4852)
+  assert.equal(prisma.rows()[0].durationSeconds, 5 + 294 + 747 + 258)
+  await at(48, 5583)  // 12 minutes of film in 6 minutes: the credits were skipped
+  const [row] = prisma.rows()
+  assert.equal(row.isActive, false)
+  assert.equal(row.durationSeconds, 5 + 294 + 747 + 258 + 6 * 60 + 60)
+})
+
+test('going back and watching on counts only what is new, and a film played again after its end counts in full', async () => {
+  const prisma = fakePrisma()
+  await run(prisma, DAY, film(DAY, { position: 20 * MIN, lastWatchedAgo: 0 }))
+  await run(prisma, DAY + 10 * MIN, film(DAY + 10 * MIN, { position: 30 * MIN, lastWatchedAgo: 0 }))
+  // Back ten minutes, then on to 35: five minutes are new.
+  await run(prisma, DAY + 11 * MIN, film(DAY + 11 * MIN, { position: 20 * MIN, lastWatchedAgo: 0 }))
+  await run(prisma, DAY + 26 * MIN, film(DAY + 26 * MIN, { position: 35 * MIN, lastWatchedAgo: 0 }))
+  assert.equal(prisma.rows()[0].durationSeconds, 35 * 60)
+  // To the end, closed; two days on it is played again from the start.
+  await run(prisma, DAY + 89 * MIN, film(DAY + 89 * MIN, { position: FILM, lastWatchedAgo: 0 }))
+  await run(prisma, DAY + 90 * MIN, film(DAY + 90 * MIN, { position: FILM, lastWatchedAgo: 1 * MIN }))
+  assert.equal(prisma.rows()[0].isActive, false)
+  const later = DAY + 2 * 24 * 60 * MIN
+  await run(prisma, later, film(later, { position: 1 * MIN, lastWatchedAgo: 0 }))
+  await run(prisma, later + 30 * MIN, film(later + 30 * MIN, { position: 31 * MIN, lastWatchedAgo: 0 }))
+  assert.equal(prisma.rows()[0].durationSeconds, 30 * 60)
+})

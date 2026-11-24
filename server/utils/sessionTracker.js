@@ -16,6 +16,7 @@ const { getUserAvatarUrl } = require('./avatarUtils')
 const { resolveSinglePoster } = require('./libraryHelpers')
 const stremioSaves = require('./stremioSaves')
 const ownWrites = require('./ownWrites')
+const watchCredit = require('./watchCredit')
 
 // Shares the same debug log file as activityMonitor.js's heartbeat() - one
 // combined trace of the whole pipeline from library fetch through gating.
@@ -568,8 +569,15 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
         const currentPosition = Number(state.timeOffset ?? NaN)
         const previousPosition = existingSession.lastPosition ?? existingSession.startPosition
         const hasPositionData = previousPosition != null && !Number.isNaN(currentPosition)
+        // What the move is worth, not the move itself: only ground past the
+        // furthest point reached, and never more than the real time since
+        // the position last moved (see watchCredit.js - a skip ahead and an
+        // older spot saved by a second device were both counted as viewing).
+        const gainedSeconds = hasPositionData
+          ? watchCredit.credit(existingSession, currentPosition, lastActivityByItemId.get(itemId)?.getTime(), nowMs)
+          : 0
         const sessionDurationSeconds = hasPositionData
-          ? (existingSession.durationSeconds || 0) + Math.max(0, Math.floor((currentPosition - previousPosition) / 1000))
+          ? (existingSession.durationSeconds || 0) + gainedSeconds
           : Math.min(MAX_WALLCLOCK_FALLBACK_SECONDS, Math.max(0, Math.floor(((watchDate ? watchDate.getTime() : nowMs) - existingSession.startTime.getTime()) / 1000)))
 
         // NEVER update startTime forward - only backward if we discover an earlier ping
@@ -603,6 +611,13 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           data: updateData
         })
         sessionsUpdated++
+        if (hasPositionData && currentPosition !== previousPosition) {
+          heartbeat('sessionTracker:position_moved', { itemId, sessionId: existingSession.id, fromSeconds: Math.floor(previousPosition / 1000), toSeconds: Math.floor(currentPosition / 1000), countedSeconds: gainedSeconds })
+        }
+        // The close loop below works from this same object: it must see what
+        // was just written, or it would measure the same move a second time.
+        existingSession.durationSeconds = sessionDurationSeconds
+        if (!Number.isNaN(currentPosition)) existingSession.lastPosition = currentPosition
         heartbeat('sessionTracker:session_updated', { itemId, userId, sessionId: existingSession.id })
       } else {
         // No active session in memory for this item. A DB row may already
@@ -663,6 +678,9 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // "resumed near where it was left off" apart from "genuinely
           // watched this much fresh in one sitting".
           let priorLastPosition = null
+          // Whether that earlier viewing ran to the end: playing it again
+          // from an earlier point is then a new viewing, not ground covered.
+          let priorReachedEnd = false
           // What an earlier sitting of this same title TODAY had already
           // accumulated. There is one row per title, and reopening it used to
           // start its duration over - so a film watched in three sittings
@@ -675,8 +693,9 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           try {
             const priorRow = await prisma.watchSession.findUnique({
               where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-              select: { durationSeconds: true, endTime: true, videoId: true, lastPosition: true }
+              select: { durationSeconds: true, endTime: true, videoId: true, lastPosition: true, totalDuration: true }
             })
+            priorReachedEnd = !!priorRow && hasReachedEnd(priorRow.lastPosition, priorRow.totalDuration ?? state.duration)
             if (priorRow && (!priorRow.videoId || priorRow.videoId === videoId)) {
               priorLastPosition = priorRow.lastPosition ?? null
               if (priorRow.endTime && priorRow.durationSeconds > 0
@@ -837,6 +856,12 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           })
           sessionsCreated++
           reopenedSessionIds.add(newSession.id)
+          watchCredit.begin(newSession.id, {
+            position: startPositionValue,
+            savedAtMs: sessionStartTime.getTime(),
+            alreadyReached: priorReachedEnd ? null : priorLastPosition,
+          })
+          heartbeat('sessionTracker:session_opened_at', { itemId, sessionId: newSession.id, positionSeconds: startPositionValue == null ? null : Math.floor(startPositionValue / 1000), lastKnownSeconds: priorLastPosition == null ? null : Math.floor(priorLastPosition / 1000), startsWithSeconds: initialDurationSeconds })
           console.log(`[SessionTracker] Session created/reactivated successfully`)
           heartbeat('sessionTracker:session_created', { itemId, userId, sessionId: newSession.id })
 
@@ -889,8 +914,9 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       const previousPosition = session.lastPosition ?? session.startPosition
       const hasPositionData = previousPosition != null && lastPositionValue != null
       const sessionDurationSeconds = hasPositionData
-        ? (session.durationSeconds || 0) + Math.max(0, Math.floor((lastPositionValue - previousPosition) / 1000))
+        ? (session.durationSeconds || 0) + watchCredit.credit(session, lastPositionValue, endTime.getTime(), nowMs)
         : Math.min(MAX_WALLCLOCK_FALLBACK_SECONDS, Math.max(0, Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000)))
+      watchCredit.end(session.id)
 
       await prisma.watchSession.update({
         where: { id: session.id },

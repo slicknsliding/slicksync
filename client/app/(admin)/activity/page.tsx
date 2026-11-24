@@ -209,7 +209,14 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
       // videoId is part of the key, not just item.id: for a series item.id is
       // the SHOW, so two episodes watched the same day would otherwise collide
       // and the second would be silently dropped.
-      const key = `${entry.user.id}:${entry.item.id}:${entry.videoId || ''}:${dayKeyOf(new Date(entry.watchedAt))}`;
+      // An earlier day of a title carries the date alone: placed on that
+      // date here, wherever the viewer is, never shifted by a timezone.
+      const dayOnly = (entry as { dateOnly?: boolean; day?: string }).dateOnly ? (entry as { day?: string }).day : undefined;
+      const dayParts = dayOnly ? dayOnly.split('-').map(Number) : null;
+      const entryTime = dayParts && dayParts.length === 3 && dayParts.every(Number.isFinite)
+        ? new Date(dayParts[0], dayParts[1] - 1, dayParts[2], 12)
+        : new Date(entry.watchedAt);
+      const key = `${entry.user.id}:${entry.item.id}:${entry.videoId || ''}:${dayKeyOf(entryTime)}`;
       if (seenUserItemKeys.has(key)) {
         // Same viewing, already on the page from its session - but a session
         // only holds its latest sitting, while this entry carries the whole
@@ -243,8 +250,8 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         completed: entry.completed ?? null,
         rewatchCount: entry.rewatchCount ?? 0,
         durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
-        timestamp: new Date(entry.watchedAt),
-        endTime: new Date(entry.watchedAt),
+        timestamp: entryTime,
+        endTime: entryTime,
         dateOnly: (entry as { dateOnly?: boolean }).dateOnly ?? false,
         isActive: false,
         isSynthetic: false,

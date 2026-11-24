@@ -598,6 +598,10 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, profil
               timeWatched: 0,
               overallTimeWatched: p.position || 0,
               lastWatched: new Date(p.last_watched).toISOString(),
+              // A position, saved at a pause, seek, end or exit and stamped
+              // with that moment: a move can add no more viewing than the
+              // real time between two saves (metricsProcessor's cap).
+              savedAtStops: true,
               nuvioProfile: profileName
             },
             _mtime: mtime,

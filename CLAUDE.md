@@ -129,6 +129,13 @@ Rules that keep falling out of this, each fixing a real reported bug:
   (duration, History), then closed on that poll instead of lingering in Now Playing for the whole window - and it
   is not reactivated while the provider keeps reporting that same final position. `metricsBuilder.js` leaves such
   a session out of Now Playing in the meantime. Pinned by `test/sessionTracker.test.js`.
+- **A move of the position is worth only new ground, and never more than the real time since the last move.**
+  Both counters follow it: the per-day record (`metricsProcessor.js`: high-water mark, plus the real-time cap for
+  Jellyfin and for Nuvio via `state.savedAtStops`) and the session figure (`watchCredit.js`). Adding up every forward
+  move booked a skipped credits sequence and a second device's older saved spot as viewing (56m shown for 28 played).
+  A film played again after reaching its end starts a new high-water mark.
+- **A card for an earlier day carries `day` (the date) and a midday-UTC `watchedAt`**, never server-local midnight: on a
+  UTC server that is the evening before for anyone west of it, and the card was filed a day early.
 - **Day bucketing goes through `dateUtils.js`**, never `toISOString()` (which is always UTC). See Timezone below.
 
 ## Timezone

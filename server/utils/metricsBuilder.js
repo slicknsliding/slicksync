@@ -1615,11 +1615,16 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
           extraDayEntries.push({
             ...entry,
-            // Local midnight of that day. WatchActivity stores the day only,
-            // never a time, so dateOnly tells the UI to render a date and NOT
-            // invent a "12:00 AM" that would read as a real viewing time.
-            watchedAt: new Date(day + 'T00:00:00').toISOString(),
-            watchedAtTimestamp: new Date(day + 'T00:00:00').getTime(),
+            // WatchActivity stores the day only, never a time, so dateOnly
+            // tells the UI to render a date and NOT invent a time that would
+            // read as a real viewing time. Midday UTC, not midnight: midnight
+            // on a server running in UTC is the evening BEFORE for anyone
+            // west of it, and the card was filed a day early (a film watched
+            // on the 22nd and the 23rd showed under the 21st). `day` is the
+            // date itself, for the page to place the card by.
+            watchedAt: day + 'T12:00:00.000Z',
+            watchedAtTimestamp: Date.parse(day + 'T12:00:00.000Z'),
+            day,
             dateOnly: true,
             durationSeconds: seconds,
             // Only the surviving History row knows how it ended and how many

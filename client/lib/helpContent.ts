@@ -1138,6 +1138,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['watch history', 'rewatch', 'same movie twice', 'watched again', 'activity days', 'per day'],
     answer: "Activity shows a title once for each day you actually watched it, each with that day's own watch time. Rewatching something adds a card on the new day rather than moving the old one.",
     details: [
+      "Watch time is time spent watching. Skipping ahead, for example past the credits, adds only the time that really passed, and going back over a part already seen that day adds nothing.",
       "This used to work differently: a rewatch moved the single card forward to the newest day, so the earlier viewing vanished from the list even though the time was still counted in Metrics.",
       "For films the earlier days were recovered, so history you already had should now show properly.",
       "For series it only builds up from the point this arrived. Older series records only named the show, not which episode, and inventing an episode for a past day would put a confidently wrong label on a card - so those days are left out rather than guessed at.",

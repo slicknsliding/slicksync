@@ -579,6 +579,8 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
 // How much past the real elapsed time a position-based provider's progress
 // may add in one observation - one activity-monitor pass, with room to spare.
 const WALL_CLOCK_SLACK_SECONDS = 120
+// The same room for a provider whose saves carry their own times (Nuvio).
+const SAVED_AT_STOPS_SLACK_SECONDS = 60
 // The smallest step such a provider's progress is recorded in (see the
 // minimum-delta comment in processLibraryItem).
 const WALL_CLOCK_MIN_DELTA_SECONDS = 10
@@ -983,11 +985,20 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // time between this observation and the last one, plus the length of
         // a pass. Only the Jellyfin provider sets this flag, so Stremio and
         // Nuvio are counted exactly as before.
-        if (item.state?.wallClockCapped && totalDeltaSeconds > 0) {
+        //
+        // Nuvio reports a position too, saved when playback pauses, seeks,
+        // ends or exits, each save stamped with its own time. Skipping the
+        // credits moved it twelve minutes in six and all twelve were booked
+        // (state.savedAtStops, set by the Nuvio provider). Only applied when
+        // the newer save really is later than the one before it.
+        const jumpSlackSeconds = item.state?.wallClockCapped ? WALL_CLOCK_SLACK_SECONDS
+          : item.state?.savedAtStops ? SAVED_AT_STOPS_SLACK_SECONDS
+            : null
+        if (jumpSlackSeconds !== null && totalDeltaSeconds > 0) {
           const prevAt = latestSnapshot?.lastWatched ? new Date(latestSnapshot.lastWatched).getTime() : NaN
           const currAt = current.lastWatched ? current.lastWatched.getTime() : NaN
-          if (Number.isFinite(prevAt) && Number.isFinite(currAt)) {
-            const capSeconds = Math.max(0, Math.floor((currAt - prevAt) / 1000)) + WALL_CLOCK_SLACK_SECONDS
+          if (Number.isFinite(prevAt) && Number.isFinite(currAt) && (item.state?.wallClockCapped || currAt > prevAt)) {
+            const capSeconds = Math.max(0, Math.floor((currAt - prevAt) / 1000)) + jumpSlackSeconds
             totalDeltaSeconds = Math.min(totalDeltaSeconds, capSeconds)
           }
         }
