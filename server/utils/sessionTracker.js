@@ -681,6 +681,8 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // Whether that earlier viewing ran to the end: playing it again
           // from an earlier point is then a new viewing, not ground covered.
           let priorReachedEnd = false
+          // When that last known position was saved (the row's end time).
+          let priorSavedAtMs = null
           // What an earlier sitting of this same title TODAY had already
           // accumulated. There is one row per title, and reopening it used to
           // start its duration over - so a film watched in three sittings
@@ -698,6 +700,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
             priorReachedEnd = !!priorRow && hasReachedEnd(priorRow.lastPosition, priorRow.totalDuration ?? state.duration)
             if (priorRow && (!priorRow.videoId || priorRow.videoId === videoId)) {
               priorLastPosition = priorRow.lastPosition ?? null
+              priorSavedAtMs = priorRow.endTime ? priorRow.endTime.getTime() : null
               if (priorRow.endTime && priorRow.durationSeconds > 0
                 && (nowMs - priorRow.endTime.getTime()) > CHECK_INTERVAL_MS
                 && await sameAccountDay(priorRow.endTime, sessionStartTime)) {
@@ -796,6 +799,13 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               // genuinely new.
               const baselineMs = priorLastPosition != null ? priorLastPosition : 0
               seedDurationSeconds = Math.max(0, Math.floor((cappedMs - baselineMs) / 1000))
+              // And never more than the real time since that position was
+              // saved: stopping at 40:00 and coming back twenty minutes
+              // later at 75:00 is a skip, not 35 minutes of viewing.
+              if (priorLastPosition != null && priorSavedAtMs != null && sessionStartTime.getTime() > priorSavedAtMs) {
+                const sinceSaved = Math.floor((sessionStartTime.getTime() - priorSavedAtMs) / 1000) + watchCredit.SLACK_SECONDS
+                seedDurationSeconds = Math.min(seedDurationSeconds, sinceSaved)
+              }
             }
           }
           // An earlier sitting today adds to this one: what it had, plus

@@ -270,3 +270,15 @@ test('going back and watching on counts only what is new, and a film played agai
   await run(prisma, later + 30 * MIN, film(later + 30 * MIN, { position: 31 * MIN, lastWatchedAgo: 0 }))
   assert.equal(prisma.rows()[0].durationSeconds, 30 * 60)
 })
+
+test('coming back to a title further on than real time allows is a skip', async () => {
+  const prisma = fakePrisma()
+  await run(prisma, DAY, film(DAY, { position: 30 * MIN }))
+  await run(prisma, DAY + 10 * MIN, film(DAY + 10 * MIN, { position: 40 * MIN }))
+  // Quiet past the freshness window: closed at the 40-minute save.
+  await run(prisma, DAY + 40 * MIN, film(DAY + 40 * MIN, { position: 40 * MIN, lastWatchedAgo: 30 * MIN }))
+  assert.equal(prisma.rows()[0].durationSeconds, 40 * 60)
+  // Thirty-five minutes after that save it stands at 90:00.
+  await run(prisma, DAY + 45 * MIN, film(DAY + 45 * MIN, { position: 90 * MIN }))
+  assert.equal(prisma.rows()[0].durationSeconds, 40 * 60 + 35 * 60 + 60)
+})
