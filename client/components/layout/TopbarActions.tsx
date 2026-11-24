@@ -9,6 +9,7 @@ import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
 import { ResumeTourIcon } from '@/components/ui/icons/ResumeTourIcon';
 import { openCommandPalette } from '@/lib/commandPaletteBus';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { ACCOUNT_MENU_EVENT } from './PanelSwitcher';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import {
   isOnboardingUnfinished,
@@ -74,7 +75,16 @@ export function TopbarActions({
   // dismisses it for good.
   const [unfinished, setUnfinished] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const showPrompt = unfinished && !wizardOpen;
+  // TV: the prompt sits where the account menu opens and would cover a row
+  // of it, so it steps aside while that menu is open.
+  const isTV = useIsTV();
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setAccountMenuOpen(!!(e as CustomEvent).detail);
+    window.addEventListener(ACCOUNT_MENU_EVENT, on);
+    return () => window.removeEventListener(ACCOUNT_MENU_EVENT, on);
+  }, []);
+  const showPrompt = unfinished && !wizardOpen && !(isTV && accountMenuOpen);
   // Read inside measure(), which is deliberately dependency-free so the
   // scroll listener is attached once and never torn down/re-attached. A ref
   // lets that stable callback still see the current value.
@@ -206,7 +216,6 @@ export function TopbarActions({
 
   const resume = () => window.dispatchEvent(new Event(ONBOARDING_RESUME_EVENT));
   // TV: each of these is a remote stop; OK does what a click does.
-  const isTV = useIsTV();
   const stop = (node: React.ReactNode, onEnter: () => void) => (isTV ? <TVFocusable className="inline-flex rounded-lg" onEnterPress={onEnter}>{node}</TVFocusable> : node);
 
   // This X is the real dismissal - the wizard's own X is only "not now".
