@@ -150,3 +150,50 @@ test('parseDisplayName: a second year that dates an edition is not the release y
   assert.equal(parseDisplayName('Alien.1979.2024.Remaster.1080p.mkv'), 'Alien (1979)')
   assert.equal(parseDisplayName('Movie.Name.1998.2000.Special.Edition.1080p.mkv'), 'Movie Name (1998)')
 })
+
+// --- fetchStreamHistory (streamStart.js reads it) ---------------------------
+
+test('fetchStreamHistory: one answer is reused for a minute, and nothing is asked without a poller or a sign-in', async (t) => {
+  const monitor = require('../server/utils/proxyStreamMonitor')
+  const realFetch = global.fetch
+  t.after(() => { global.fetch = realFetch; monitor._test.reset() })
+  let asked = 0
+  global.fetch = async (url) => {
+    asked++
+    assert.equal(String(url), 'https://aiostreams.example.com/api/v1/dashboard/streams/history?limit=200')
+    return new Response(JSON.stringify({ success: true, data: { total: 3, entries: [
+      { username: 'sam', targetKey: 'usenet:abc:0:', startedAt: 1000, lastSeenAt: 5000, endedAt: 6000 },
+      { username: '', targetKey: 'proxy:xyz', startedAt: 2000, lastSeenAt: 2500 },
+      { username: 'sam', startedAt: 3000 },
+    ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  monitor._test.reset()
+  assert.equal(await monitor.fetchStreamHistory('acct-1'), null)
+  assert.equal(asked, 0)
+
+  monitor._test.setMonitored('acct-1')
+  monitor._test.setHistorySource('https://aiostreams.example.com', 'session=test')
+  assert.equal(await monitor.fetchStreamHistory('someone-else'), null)
+  const first = await monitor.fetchStreamHistory('acct-1', 10_000_000)
+  assert.equal(first.total, 3)
+  assert.deepEqual(first.entries, [
+    { aiostreamsUser: 'sam', targetKey: 'usenet:abc:0:', startedAt: 1000, lastSeenAt: 5000 },
+    { aiostreamsUser: '__unattributed__', targetKey: 'proxy:xyz', startedAt: 2000, lastSeenAt: 2500 },
+  ])
+  await monitor.fetchStreamHistory('acct-1', 10_030_000)
+  assert.equal(asked, 1)
+  await monitor.fetchStreamHistory('acct-1', 10_061_000)
+  assert.equal(asked, 2)
+})
+
+test('fetchStreamHistory: an AIOStreams without the route answers nothing', async (t) => {
+  const monitor = require('../server/utils/proxyStreamMonitor')
+  const realFetch = global.fetch
+  t.after(() => { global.fetch = realFetch; monitor._test.reset() })
+  global.fetch = async () => new Response('Not found', { status: 404 })
+  monitor._test.reset()
+  monitor._test.setMonitored('acct-1')
+  monitor._test.setHistorySource('https://aiostreams.example.com', 'session=test')
+  assert.equal(await monitor.fetchStreamHistory('acct-1'), null)
+})

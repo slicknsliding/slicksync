@@ -395,3 +395,30 @@ test('processLibraryItem: a copy into a merged person\'s absorbed login is not c
     ownWrites.forget()
   }
 })
+
+// --- the first save of a sitting, against when its stream opened -----------
+
+test('processLibraryItem: a Nuvio skip before the first save of a sitting counts the time its stream was open', async (t) => {
+  const monitor = require('../server/utils/proxyStreamMonitor')
+  const realFetch = global.fetch
+  t.after(() => { global.fetch = realFetch; monitor._test.reset() })
+  monitor._test.setMonitored('acct-1')
+  monitor._test.setHistorySource('https://aiostreams.example.com', 'session=test')
+  global.fetch = async () => new Response(JSON.stringify({ success: true, data: { entries: [], total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  const now = Date.now()
+  // Left yesterday at 59:08; opened a minute ago, skipped 21 minutes on, paused.
+  const priorSnapshot = { overallTimeWatched: '3548000', timeOffset: '3548000', lastWatched: new Date(now - 23 * 60 * 60 * 1000) }
+  const prisma = makeMockPrisma({ latestSnapshotForToday: priorSnapshot, previousSnapshot: null, mostRecentActivity: null })
+  prisma.proxyStreamSession = {
+    findMany: async () => [{
+      aiostreamsUser: 'sam', url: 'usenet:abc:0:', displayName: 'Nuvio Film (2026)', filename: null, metadataName: null,
+      startTime: new Date(now - 60 * 1000), lastSeenAt: new Date(now),
+    }],
+  }
+  const users = [{ id: 'user-1', username: 'sam', email: null }]
+  const item = nuvioFilm({ positionMs: 3548000 + 21 * 60 * 1000, lastWatched: new Date(now).toISOString() })
+  await processLibraryItem(prisma, 'acct-1', 'user-1', item, new Date(now), users)
+  const activity = prisma.calls.transactions[0].find((o) => o.__op === 'watchActivity.create')
+  assert.ok(activity.args.data.watchTimeSeconds >= 120 && activity.args.data.watchTimeSeconds <= 122, String(activity.args.data.watchTimeSeconds))
+})

@@ -11,6 +11,7 @@
 const { resolveSinglePoster } = require('./libraryHelpers')
 const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 const { findDebridServiceForWatch, hasConfirmedProxyPlayback } = require('./debridDetection')
+const { limitToStreamStart } = require('./streamStart')
 const { postDiscord } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { notifyPushForType } = require('./pushNotifications')
@@ -601,6 +602,9 @@ const CARRIED_WINDOW_DAYS = 2
 const CARRIED_END_RATIO = 0.9
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** What streamStart.js matches a stream by. */
+const streamOf = (item) => ({ title: item.name, series: item.type === 'series' })
+
 /**
  * Seconds to credit for a title on its first sighting: its position in the
  * video, bounded by the lifetime figure and by the runtime. Zero unless the
@@ -1001,6 +1005,14 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             const capSeconds = Math.max(0, Math.floor((currAt - prevAt) / 1000)) + jumpSlackSeconds
             totalDeltaSeconds = Math.min(totalDeltaSeconds, capSeconds)
           }
+          // A sitting's first save has no earlier save of its own, so the
+          // time since the last one can be a day: the time since the stream
+          // opened bounds it instead (streamStart.js).
+          if (item.state?.savedAtStops && Number.isFinite(prevAt)) {
+            totalDeltaSeconds = await limitToStreamStart(prisma, totalDeltaSeconds, {
+              ...streamOf(item), accountId: accountIdValue, userIds: [userId, recordUserId], users, afterMs: prevAt,
+            })
+          }
         }
       } else {
         // Either first-time ever seeing this item (no prior snapshot exists),
@@ -1027,6 +1039,11 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // position can jump without anyone watching.
         if (!seenBefore && !item.state?.wallClockCapped) {
           totalDeltaSeconds = firstSightingSeconds(item.state, current.lastWatched)
+          // A new title opened, skipped ahead in and paused has the skip in
+          // its position: no more than its stream has been open.
+          totalDeltaSeconds = await limitToStreamStart(prisma, totalDeltaSeconds, {
+            ...streamOf(item), accountId: accountIdValue, userIds: [userId, recordUserId], users, afterMs: null,
+          })
         }
       }
 

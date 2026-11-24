@@ -367,7 +367,7 @@ async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onl
       // Process watch sessions (track start/end times)
       try {
         heartbeat('processAccountSessions:before')
-        await processAccountSessions(prisma, accountId, targets, getSessionLibrary, new Date())
+        await processAccountSessions(prisma, accountId, targets, getSessionLibrary, new Date(), users)
         heartbeat('processAccountSessions:after')
       } catch (sessionError) {
         heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })

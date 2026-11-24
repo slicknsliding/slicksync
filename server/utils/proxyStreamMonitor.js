@@ -104,6 +104,10 @@ let consecutiveFailures = 0
 let failingSince = null
 let closedRowsThisOutage = false
 let monitoredAccountId = null
+// Where the monitored AIOStreams is, for the one lookup made outside a poll
+// (fetchStreamHistory).
+let monitoredBaseUrl = null
+let historyCache = { at: 0, value: null }
 
 function getProxyMonitorStatus() {
   return {
@@ -151,6 +155,8 @@ function heartbeat(event, data = {}) {
 
 function clearProxyStreamMonitor() {
   monitoredAccountId = null
+  monitoredBaseUrl = null
+  historyCache = { at: 0, value: null }
   lastOkAt = 0
   consecutiveFailures = 0
   failingSince = null
@@ -440,6 +446,49 @@ async function fetchLiveStreams(baseUrl, username, password) {
   // library has for that download (usenetStreamNames.js).
   await require('./usenetStreamNames').nameScrambledUsenetStreams(mapped, (hash) => fetchUsenetLibraryName(baseUrl, hash))
   return mapped
+}
+
+// How long one answer from the history is reused.
+const HISTORY_CACHE_MS = 60 * 1000
+
+/**
+ * Every stream AIOStreams has on record, each with when it opened and when it
+ * was last read: { entries: [{ aiostreamsUser, targetKey, startedAt,
+ * lastSeenAt }], total }. Null when it cannot be had - no poller for this
+ * account, not signed in, backing off, or an AIOStreams without the route.
+ * Uses the poller's sign-in and never makes one of its own. See streamStart.js.
+ */
+async function fetchStreamHistory(accountId, now = Date.now()) {
+  if (!monitoredBaseUrl || !cachedCookie || (accountId && accountId !== monitoredAccountId)) return null
+  if (now < rateLimitedUntil) return null
+  if (now - historyCache.at < HISTORY_CACHE_MS) return historyCache.value
+  let value = null
+  try {
+    const res = await fetch(`${monitoredBaseUrl}/api/v1/dashboard/streams/history?limit=200`, {
+      headers: { Cookie: cachedCookie, Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    })
+    const json = res.ok ? await res.json().catch(() => null) : null
+    const entries = json?.data?.entries
+    if (Array.isArray(entries)) {
+      value = {
+        entries: entries
+          .filter((e) => e?.targetKey && Number.isFinite(Number(e.startedAt)))
+          .map((e) => ({
+            aiostreamsUser: e.username || UNATTRIBUTED_SYNTHETIC_USER,
+            targetKey: e.targetKey,
+            startedAt: Number(e.startedAt),
+            lastSeenAt: Number(e.lastSeenAt ?? e.endedAt ?? e.startedAt),
+          })),
+        total: Number(json.data.total) || entries.length,
+      }
+    }
+    heartbeat('streamHistory', { status: res.status, entries: value ? value.entries.length : null })
+  } catch (e) {
+    heartbeat('streamHistory:failed', { message: e?.message })
+  }
+  historyCache = { at: now, value }
+  return value
 }
 
 // The library's name for one usenet download, or null.
@@ -1166,6 +1215,7 @@ function scheduleProxyStreamMonitor(prisma, accountId, config) {
     return
   }
   monitoredAccountId = accountId
+  monitoredBaseUrl = config.baseUrl
 
   const guardedPoll = async () => {
     // Still working on the previous tick - skip entirely rather than
@@ -1202,6 +1252,7 @@ module.exports = {
   resolveUserForActiveConnection,
   getProxyMonitorStatus,
   isProxyMonitorConfirming,
+  fetchStreamHistory,
   CHECK_INTERVAL_MS,
   // For tests: the fetch against AIOStreams, one poll, and the module state.
   _test: {
@@ -1221,8 +1272,11 @@ module.exports = {
       closedRowsThisOutage = false
       rateLimitedUntil = 0
       monitoredAccountId = null
+      monitoredBaseUrl = null
+      historyCache = { at: 0, value: null }
       lastPollStatus = { ok: null, at: null, error: null }
     },
+    setHistorySource(baseUrl, cookie) { monitoredBaseUrl = baseUrl; cachedCookie = cookie; historyCache = { at: 0, value: null } },
     setMonitored(accountId) { monitoredAccountId = accountId },
     setLastOk(ms) { lastOkAt = ms },
     setRateLimitedUntil(ms) { rateLimitedUntil = ms },

@@ -17,6 +17,7 @@ const { resolveSinglePoster } = require('./libraryHelpers')
 const stremioSaves = require('./stremioSaves')
 const ownWrites = require('./ownWrites')
 const watchCredit = require('./watchCredit')
+const streamStart = require('./streamStart')
 
 // Shares the same debug log file as activityMonitor.js's heartbeat() - one
 // combined trace of the whole pipeline from library fetch through gating.
@@ -325,7 +326,7 @@ function hasReachedEnd(position, duration) {
  * Process watch sessions for a user's library
  * Called during each 5-minute sync
  */
-async function processUserSessions(prisma, accountId, userId, library, now = new Date()) {
+async function processUserSessions(prisma, accountId, userId, library, now = new Date(), users = []) {
   if (!library || !Array.isArray(library) || library.length === 0) {
     console.log(`[SessionTracker] No library items for user ${userId}`)
     return { sessionsCreated: 0, sessionsUpdated: 0, sessionsClosed: 0 }
@@ -806,6 +807,24 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
                 const sinceSaved = Math.floor((sessionStartTime.getTime() - priorSavedAtMs) / 1000) + watchCredit.SLACK_SECONDS
                 seedDurationSeconds = Math.min(seedDurationSeconds, sinceSaved)
               }
+              // Nor more than the time since its stream opened, when it
+              // came through AIOStreams: opening a film, skipping ahead and
+              // pausing is a skip too, and there is no earlier save of this
+              // sitting to measure it from (streamStart.js).
+              const sinceStreamOpened = await streamStart.limitToStreamStart(prisma, seedDurationSeconds, {
+                accountId: accountIdValue,
+                userIds: [userId],
+                title: item.name,
+                series: item.type === 'series',
+                users,
+                // No earlier save: a new title. A position with no save time: not known.
+                afterMs: priorLastPosition == null ? null : (priorSavedAtMs ?? NaN),
+                nowMs,
+              })
+              if (sinceStreamOpened < seedDurationSeconds) {
+                heartbeat('sessionTracker:limited_to_stream_start', { itemId, userId, fromSeconds: seedDurationSeconds, toSeconds: sinceStreamOpened })
+                seedDurationSeconds = sinceStreamOpened
+              }
             }
           }
           // An earlier sitting today adds to this one: what it had, plus
@@ -950,7 +969,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
 /**
  * Process sessions for all users in an account
  */
-async function processAccountSessions(prisma, accountId, users, getLibraryForUser, now = new Date()) {
+async function processAccountSessions(prisma, accountId, users, getLibraryForUser, now = new Date(), allUsers = users) {
   const accountIdValue = accountId || 'default'
   let totalCreated = 0
   let totalUpdated = 0
@@ -960,7 +979,7 @@ async function processAccountSessions(prisma, accountId, users, getLibraryForUse
     try {
       const library = await getLibraryForUser(user)
       if (library && Array.isArray(library) && library.length > 0) {
-        const result = await processUserSessions(prisma, accountIdValue, user.id, library, now)
+        const result = await processUserSessions(prisma, accountIdValue, user.id, library, now, allUsers)
         totalCreated += result.sessionsCreated
         totalUpdated += result.sessionsUpdated
         totalClosed += result.sessionsClosed

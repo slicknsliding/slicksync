@@ -282,3 +282,31 @@ test('coming back to a title further on than real time allows is a skip', async 
   await run(prisma, DAY + 45 * MIN, film(DAY + 45 * MIN, { position: 90 * MIN }))
   assert.equal(prisma.rows()[0].durationSeconds, 40 * 60 + 35 * 60 + 60)
 })
+
+// AIOStreams knows when the stream opened; Nuvio only says where playback
+// stood at the pause (streamStart.js).
+test('opening a film, skipping ahead and pausing counts the time its stream was open, not the skip', async (t) => {
+  const monitor = require('../server/utils/proxyStreamMonitor')
+  const realFetch = global.fetch
+  t.after(() => { global.fetch = realFetch; monitor._test.reset() })
+  monitor._test.setMonitored('default')
+  monitor._test.setHistorySource('https://aiostreams.example.com', 'session=test')
+  global.fetch = async () => new Response(JSON.stringify({ success: true, data: { entries: [], total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  const yesterday = DAY - 24 * 60 * MIN
+  const prisma = fakePrisma([{
+    id: 's1', accountId: 'default', userId: 'u1', itemId: 'tt31192372', videoId: null,
+    itemName: 'Fall 2: Deadpoint', itemType: 'movie', season: null, episode: null, poster: null,
+    startTime: new Date(yesterday), endTime: new Date(yesterday + 40 * MIN), startPosition: 30 * MIN, lastPosition: 59 * MIN,
+    totalDuration: FILM, isActive: false, durationSeconds: 29 * 60,
+  }])
+  prisma.proxyStreamSession = {
+    findMany: async () => [{
+      aiostreamsUser: 'sam', url: 'usenet:abc:0:', displayName: 'Fall 2: Deadpoint (2026)', filename: null, metadataName: null,
+      startTime: new Date(DAY - MIN), lastSeenAt: new Date(DAY),
+    }],
+  }
+  const users = [{ id: 'u1', username: 'sam', email: null }]
+  await processUserSessions(prisma, 'default', 'u1', [film(DAY, { position: 80 * MIN })], new Date(DAY), users)
+  assert.equal(prisma.rows()[0].durationSeconds, 60 + 60)
+})
