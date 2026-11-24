@@ -68,14 +68,14 @@ export function CastMenu({ target, title, follow, titlesOpen, onClose, onSeeEver
     };
   }, [onClose]);
 
-  const item = 'w-full flex items-center gap-3 px-3.5 py-2.5 text-[15px] text-left text-default hover:bg-surface-hover transition-colors';
+  const item = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] text-left text-default hover:bg-surface-hover transition-colors';
   const icon = 'w-[18px] h-[18px] shrink-0 text-muted';
 
   return createPortal(
     <div
       ref={ref}
       role="menu"
-      className="popup-panel fixed z-[10000] w-[min(300px,calc(100vw-1.5rem))] py-1.5 rounded-2xl select-none"
+      className="popup-panel fixed z-[10000] w-[min(300px,calc(100vw-1.5rem))] p-1.5 rounded-2xl select-none"
       style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, WebkitTouchCallout: 'none' }}
       onContextMenu={(e) => e.preventDefault()}
     >

@@ -141,7 +141,7 @@ export function TitleActions({
         <ChevronDownIcon className="w-4 h-4" />
       </button>
       <ContextMenu isOpen={!!pos} position={pos || { x: 0, y: 0 }} onClose={() => setPos(null)}>
-        <div className="w-56 p-1.5">
+        <div className="w-56">
           <a href={hrefs[other]} onClick={() => { onPickApp(other); setPos(null); }} className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-hover text-sm text-default">
             <PlayIcon className="w-4 h-4 shrink-0" />
             {label} in {APP_NAME[other]}

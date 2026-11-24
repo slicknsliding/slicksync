@@ -858,10 +858,23 @@ function GroupCard({
     },
   });
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const syncGroup = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await api.syncGroup(group.id);
+      toast.success(`Synced ${group.name} successfully`);
+    } catch (err: any) {
+      toast.error(err.message || `Failed to sync ${group.name}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
     close();
-    toast.success(`Syncing ${group.name}...`);
+    await syncGroup();
   };
 
   const handleClone = async (e: React.MouseEvent) => {
@@ -942,18 +955,17 @@ function GroupCard({
             </span>
             <SyncBadge
               groupId={group.id}
-              onSync={async (id) => {
-                try {
-                  await api.syncGroup(id);
-                  toast.success(`Synced ${group.name} successfully`);
-                } catch (err: any) {
-                  toast.error(err.message || `Failed to sync ${group.name}`);
-                }
-              }}
+              onSync={syncGroup}
+              isSyncing={isSyncing}
               size="sm"
             />
           </div>
-          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="shrink-0 inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {group.userCount > 0 && group.addonCount > 0 && (
+              <button type="button" className="card-sync-btn fx-press" onClick={handleSync} disabled={isSyncing}>
+                {isSyncing ? 'Syncing' : 'Sync'}
+              </button>
+            )}
             <SelectionCheckbox
               checked={isSelected}
               onChange={onToggleSelect}

@@ -482,6 +482,7 @@ export function CommandPalette() {
                       })}
                       <button
                         onClick={browseAllHelp}
+                        data-mh-item=""
                         className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg text-left transition-colors hover:bg-surface-hover"
                       >
                         <BookOpenIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />

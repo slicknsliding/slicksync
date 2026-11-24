@@ -815,6 +815,7 @@ export default function DiscoverPage() {
                     key={o.key}
                     type="button"
                     onClick={() => pickSort(o.key)}
+                    data-mh-item=""
                     className={`w-full h-10 px-3 rounded-lg text-sm text-left flex items-center justify-between ${sortValue === o.key ? 'text-default' : 'text-muted hover:text-default hover:bg-surface-hover'}`}
                   >
                     {o.label}

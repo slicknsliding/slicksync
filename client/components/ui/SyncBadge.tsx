@@ -11,7 +11,7 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 interface SyncBadgeProps {
   userId?: string;
   groupId?: string;
-  onSync?: (id: string) => void;
+  onSync?: (id: string) => void | Promise<void>;
   onReconnect?: (id: string) => void;
   isSyncing?: boolean;
   size?: 'sm' | 'md';
@@ -63,7 +63,18 @@ export function SyncBadge({
   const initial = readCached();
   const [status, setStatus] = useState<SyncStatus>(initial || 'checking');
   const [isLoading, setIsLoading] = useState(!initial);
-  const prevIsSyncing = useRef(isSyncing);
+  // A sync started from this badge (the caller may not track it), and the
+  // moment after any sync while its real answer is read: the badge keeps
+  // saying Syncing through both, then shows how it landed (Effects → Sync result).
+  const [ownBusy, setOwnBusy] = useState(false);
+  const busy = isSyncing || ownBusy;
+  const [wasBusy, setWasBusy] = useState(busy);
+  const [settling, setSettling] = useState(false);
+  const [landed, setLanded] = useState<'ring' | 'nudge' | null>(null);
+  if (wasBusy !== busy) {
+    setWasBusy(busy);
+    if (busy) setLanded(null); else setSettling(true);
+  }
   // Mirrors `status`/the real per-member error text outside React's state
   // so the click handler below can read the just-refreshed verdict
   // synchronously after awaiting fetchSyncStatus() - `status` itself is
@@ -214,17 +225,29 @@ export function SyncBadge({
 
   // When sync completes, refetch the actual status instead of assuming success
   useEffect(() => {
-    if (prevIsSyncing.current && !isSyncing) {
-      fetchSyncStatusVerified();
-    }
-    prevIsSyncing.current = isSyncing;
-  }, [isSyncing, fetchSyncStatusVerified]);
+    if (!settling) return;
+    let live = true;
+    void fetchSyncStatusVerified().finally(() => {
+      if (!live) return;
+      setSettling(false);
+      const s = statusRef.current;
+      setLanded(s === 'synced' ? 'ring' : s === 'error' || s === 'unsynced' || s === 'connect' ? 'nudge' : null);
+    });
+    return () => { live = false; };
+  }, [settling, fetchSyncStatusVerified]);
+
+  const runSync = async () => {
+    const id = userId || groupId;
+    if (!onSync || !id || busy || settling) return;
+    setOwnBusy(true);
+    try { await onSync(id); } finally { setOwnBusy(false); }
+  };
 
   // While a sync runs, or while the very first check is in flight, the badge
   // says so. Otherwise it shows the last verdict it actually has, including
   // during a background refresh.
   const isTV = useTVStops();
-  const finalStatus = isSyncing ? 'syncing' : ((isLoading && status === 'checking') ? 'checking' : status);
+  const finalStatus = busy || settling ? 'syncing' : ((isLoading && status === 'checking') ? 'checking' : status);
 
   const getStatusConfig = () => {
     const syncedDot = '#22c55e';
@@ -293,9 +316,9 @@ export function SyncBadge({
   const isSpinning = finalStatus === 'syncing' || finalStatus === 'checking';
 
   const content = (
-    <Badge variant={config.variant} size={size} className={`${className} bg-surface-hover`}>
+    <Badge variant={config.variant} size={size} className={`${className} bg-surface-hover${landed === 'nudge' ? ' fx-nudge' : ''}`}>
       <div 
-        className={`w-2 h-2 rounded-full mr-1 ${isSpinning ? 'animate-spin' : ''}`} 
+        className={`w-2 h-2 rounded-full mr-1 ${isSpinning ? 'animate-spin' : ''}${landed === 'ring' && finalStatus === 'synced' ? ' fx-ring' : ''}`} 
         style={{ backgroundColor: config.dot }}
       />
       {config.text}
@@ -357,24 +380,31 @@ export function SyncBadge({
     return isTV ? <TVFocusable className="inline-flex rounded-full" onEnterPress={recheck}>{box}</TVFocusable> : box;
   }
 
-  // Only make unsynced clickable, not error
-  if (onSync && finalStatus === 'unsynced') {
+  // Tapping the badge syncs, whatever it says: Synced and Stale can be
+  // synced again. Error keeps its own behavior above.
+  if (onSync && (finalStatus === 'unsynced' || finalStatus === 'synced' || finalStatus === 'stale')) {
     return tv(
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          onSync(userId || groupId!);
+          void runSync();
         }}
         className="focus:outline-none border-0 shadow-none ring-0 cursor-pointer relative z-10"
+        title={finalStatus === 'unsynced' ? 'Sync' : 'Sync again'}
         tabIndex={isTV ? -1 : undefined}
       >
         {content}
       </button>,
-      () => onSync(userId || groupId!),
+      () => { void runSync(); },
     );
   }
 
+  // While it is syncing or checking, a tap on the badge does nothing - and
+  // must not fall through to the card under it and open the person's page.
+  if (onSync && (finalStatus === 'syncing' || finalStatus === 'checking')) {
+    return <span className="inline-flex" onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}>{content}</span>;
+  }
   return content;
 }

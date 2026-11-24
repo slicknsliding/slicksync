@@ -282,7 +282,7 @@ function V2Menu({ items, at, anchorEl, onClose }: { items: V2CardMenuItem[]; at:
   const main = phoneSub
     ? (
       <Panel innerRef={ref} pos={pos} label={sub!.it.sub!.title}>
-        <button type="button" className="arrange-menu-item" onClick={() => setSub(null)} aria-label={`Back from ${sub!.it.sub!.title}`}>
+        <button type="button" role="menuitem" className="arrange-menu-item" onClick={() => setSub(null)} aria-label={`Back from ${sub!.it.sub!.title}`}>
           <ChevronLeftIcon className="w-4 h-4 shrink-0" />
           <b className="flex-1 min-w-0 truncate">{sub!.it.sub!.title}</b>
         </button>

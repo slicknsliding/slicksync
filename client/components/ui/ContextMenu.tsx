@@ -43,6 +43,10 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
     // From the next tick: a menu opened by a click (a button, not a
     // right-click) is drawn while that click is still on its way up to the
     // window, which would count it as a click outside and close it at once.
+    // Escape closes it (a TV's Back is handled above).
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKey);
+
     const t = setTimeout(() => {
       window.addEventListener('click', handleClick);
       window.addEventListener('contextmenu', handleClick); // Close if right-clicking elsewhere
@@ -51,6 +55,7 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
 
     return () => {
       clearTimeout(t);
+      window.removeEventListener('keydown', handleKey);
       window.removeEventListener('click', handleClick);
       window.removeEventListener('contextmenu', handleClick);
       window.removeEventListener('scroll', handleScroll, true);
@@ -114,7 +119,10 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
         }}
         // Options a step bigger than body text in every menu (15px, more room,
         // 18px icons) - set here so all of them stay alike.
-        className="popup-panel min-w-[180px] py-1.5 rounded-xl [&_button]:text-[15px] [&_button]:py-2.5 [&_button>svg]:w-[18px] [&_button>svg]:h-[18px]"
+        // Every row is set in from the edges with rounded ends, links the same
+        // size as buttons, and every row lights (data-mh-rows, see menuHighlight).
+        data-mh-rows=""
+        className="popup-panel min-w-[180px] p-1.5 rounded-xl [&_button]:text-[15px] [&_button]:py-2.5 [&_button]:min-h-[42px] [&_button]:rounded-lg [&_button>svg]:w-[18px] [&_button>svg]:h-[18px] [&_a]:text-[15px] [&_a]:py-2.5 [&_a]:min-h-[42px] [&_a]:rounded-lg [&_a>svg]:w-[18px] [&_a>svg]:h-[18px]"
         onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
         onContextMenu={(e) => e.preventDefault()} // Prevent native context menu on the menu itself
       >

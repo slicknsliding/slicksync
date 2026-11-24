@@ -459,7 +459,7 @@ export function FilterTabsResponsive({
               transition={{ duration: 0.15 }}
               className={`fixed left-4 right-4 top-1/2 -translate-y-1/2 z-50 ${many ? 'lg:hidden' : 'md:hidden'}`}
             >
-              <div className="popup-panel rounded-xl overflow-hidden max-h-[70dvh] overflow-y-auto">
+              <div className="popup-panel rounded-xl overflow-hidden max-h-[70dvh] overflow-y-auto p-1.5">
                 {options.map((option) => {
                   const isActive = activeKey === option.key;
                   
@@ -473,7 +473,7 @@ export function FilterTabsResponsive({
                       role="option"
                       aria-selected={isActive}
                       className={`
-                        w-full flex items-center justify-between gap-3
+                        w-full flex items-center justify-between gap-3 rounded-lg
                         ${styles.option} font-medium
                         transition-colors duration-150
                         ${isActive 

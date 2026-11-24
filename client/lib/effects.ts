@@ -142,6 +142,8 @@ export function usePopEffect(ref: RefObject<HTMLElement | null>, shown: boolean,
 }
 
 type Spot = { left: number; top: number; width: number; height: number };
+// Longer lists are left alone: measuring every row on each change would cost more than the glide is worth.
+const MAX_LIST = 150;
 
 /**
  * A grid or list of v2 cards: when one or a few leave, they shrink away and
@@ -149,11 +151,14 @@ type Spot = { left: number; top: number; width: number; height: number };
  * Undo, a new one), the rest make room and a ring marks it for a moment.
  * Anything bigger - a filter, a sort, a drag, the first load - is left alone.
  */
-export function useListEffect(ref: RefObject<HTMLElement | null>) {
+export function useListEffect(ref: RefObject<HTMLElement | null>, every = false) {
   useEffect(() => {
     const box = ref.current;
     if (!box || typeof MutationObserver === 'undefined') return;
-    const items = () => Array.from(box.children).filter((c): c is HTMLElement => c instanceof HTMLElement && c.hasAttribute('data-v2-item'));
+    // `every`: a Classic list, where each child is an item and a removed one
+    // has already faded out by itself.
+    const isItem = (c: Node): c is HTMLElement => c instanceof HTMLElement && (every || c.hasAttribute('data-v2-item'));
+    const items = () => (box.children.length > MAX_LIST ? [] : Array.from(box.children).filter(isItem));
     let spots = new Map<Element, Spot>();
     const snap = () => {
       const b = box.getBoundingClientRect();
@@ -167,8 +172,8 @@ export function useListEffect(ref: RefObject<HTMLElement | null>) {
       const removed = new Set<HTMLElement>();
       for (const rec of records) {
         if (rec.target !== box) continue;
-        rec.addedNodes.forEach((n) => { if (n instanceof HTMLElement && n.hasAttribute('data-v2-item')) added.add(n); });
-        rec.removedNodes.forEach((n) => { if (n instanceof HTMLElement && n.hasAttribute('data-v2-item')) removed.add(n); });
+        rec.addedNodes.forEach((n) => { if (isItem(n)) added.add(n); });
+        rec.removedNodes.forEach((n) => { if (isItem(n)) removed.add(n); });
       }
       snap();
       if (!added.size && !removed.size) return;
@@ -180,7 +185,7 @@ export function useListEffect(ref: RefObject<HTMLElement | null>) {
       const b = box.getBoundingClientRect();
       for (const gone of removed) {
         const was = before.get(gone);
-        if (!was) continue;
+        if (!was || every) continue;
         // The card is out of the page already: it shrinks away from a holder
         // that stands where it stood and dresses it as the grid did.
         const holder = document.createElement('div');
@@ -203,7 +208,7 @@ export function useListEffect(ref: RefObject<HTMLElement | null>) {
         const dx = was.left - now.left;
         const dy = was.top - now.top;
         if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-        el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 240, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', delay: removed.size ? 110 : 0, fill: 'backwards' });
+        el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 240, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', delay: removed.size && !every ? 110 : 0, fill: 'backwards' });
       }
       for (const el of added) {
         if (!canAnimate(el)) continue;
@@ -219,7 +224,7 @@ export function useListEffect(ref: RefObject<HTMLElement | null>) {
     const resize = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(snap) : null;
     resize?.observe(box);
     return () => { watch.disconnect(); resize?.disconnect(); };
-  }, [ref]);
+  }, [ref, every]);
 }
 
 /**

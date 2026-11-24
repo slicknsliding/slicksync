@@ -548,9 +548,8 @@ export default function UsersPage() {
     setIsDeleting(true);
     try {
       await api.deleteUser(deleteTarget.id);
-      // v2 says where they went, with Undo; Classic keeps its plain toast.
-      if (v2) void showPersonDeletedWithUndo(deleteTarget.name, () => { api.getUsers().then(setUsers).catch(() => {}); });
-      else toast.success(`${deleteTarget.name} deleted successfully`);
+      // Both designs say where they went, with Undo.
+      void showPersonDeletedWithUndo(deleteTarget.name, () => { api.getUsers().then(setUsers).catch(() => {}); });
       // Refresh users
       try {
         const usersData = await api.getUsers();
@@ -1350,7 +1349,10 @@ function UserCard({
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
     close();
+    if (syncingUserIds.has(user.id)) return;
+    // Through the page's own list of running syncs, so the badge says Syncing too.
     setIsSyncing(true);
+    onSyncStart(user.id);
     try {
       await api.syncUser(user.id);
       toast.success(`Synced ${user.name} successfully`);
@@ -1358,6 +1360,7 @@ function UserCard({
       toast.error(err.message || `Failed to sync ${user.name}`);
     } finally {
       setIsSyncing(false);
+      onSyncEnd(user.id);
     }
   };
 
@@ -1537,10 +1540,17 @@ function UserCard({
           <p className="text-xs text-subtle">
             {user.lastSeen === 'Never' ? 'Never seen' : `Last seen ${user.lastSeen}`}
           </p>
-          <SelectionCheckbox
-            checked={isSelected}
-            onChange={onToggleSelect}
-          />
+          <span className="inline-flex items-center gap-2 shrink-0">
+            {hasAddonList(user) && !user.providerConnectionError && (
+              <button type="button" className="card-sync-btn fx-press" onClick={handleSync} disabled={syncingUserIds.has(user.id)} tabIndex={focusable ? -1 : undefined}>
+                {syncingUserIds.has(user.id) ? 'Syncing' : 'Sync'}
+              </button>
+            )}
+            <SelectionCheckbox
+              checked={isSelected}
+              onChange={onToggleSelect}
+            />
+          </span>
         </div>
       </Card>
   );
