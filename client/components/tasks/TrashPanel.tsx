@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { TrashIcon } from '@heroicons/react/24/outline';
+import { fxBuzz, fxLeaveRow } from '@/lib/effects';
 
 // Recently deleted things, restorable for 30 days - grown from catalogs and
 // addons to the full destructive set: users, groups, group memberships,
@@ -28,6 +29,8 @@ const KIND_LABELS: Record<string, string> = {
 export function TrashPanel() {
   const [items, setItems] = useState<TrashRow[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Each row's element, for the way it leaves: aside when it is restored, red when it is deleted for good.
+  const rows = useRef(new Map<string, HTMLDivElement>());
 
   const load = useCallback(async () => {
     try {
@@ -46,6 +49,7 @@ export function TrashPanel() {
     try {
       await api.restoreFromTrash(item.id);
       toast.success(item.kind === 'import' ? `Import undone - ${item.label} removed again` : `Restored ${item.label}`);
+      await fxLeaveRow(rows.current.get(item.id), 'away');
       setItems((prev) => (prev || []).filter((i) => i.id !== item.id));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Restore failed');
@@ -60,6 +64,8 @@ export function TrashPanel() {
     setBusyId(item.id);
     try {
       await api.purgeTrashItem(item.id);
+      fxBuzz();
+      await fxLeaveRow(rows.current.get(item.id), 'gone');
       setItems((prev) => (prev || []).filter((i) => i.id !== item.id));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not remove that item');
@@ -78,7 +84,12 @@ export function TrashPanel() {
       </p>
       <div className="space-y-2">
         {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+          <div
+            key={item.id}
+            ref={(el) => { if (el) rows.current.set(item.id, el); else rows.current.delete(item.id); }}
+            className="flex items-center gap-3 p-3 rounded-xl"
+            style={{ background: 'var(--color-surface-hover)' }}
+          >
             <TrashIcon className="w-4 h-4 text-subtle shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">

@@ -75,7 +75,7 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
       </div>
 
       {/* Content */}
-      <div className="relative">
+      <div className="relative" data-page-content="">
         {children}
       </div>
     </motion.main>

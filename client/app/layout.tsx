@@ -9,6 +9,7 @@ import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar"
 import { BuildWatcher } from "@/components/pwa/BuildWatcher";
 import { ScrollToTopOnNavigate } from "@/components/layout/ScrollToTopOnNavigate";
 import { MenuHighlightRoot } from "@/lib/menuHighlight";
+import { LoadingLine } from '@/components/ui/LoadingLine';
 
 export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
@@ -134,6 +135,7 @@ export default function RootLayout({
                 <BuildWatcher />
                 <ScrollToTopOnNavigate />
                 <MenuHighlightRoot />
+                <LoadingLine />
                 {children}
               </ToastProvider>
             </UserCacheProvider>

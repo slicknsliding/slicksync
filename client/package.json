@@ -23,7 +23,7 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^4.4.0",
     "framer-motion": "^12.29.2",
-    "next": "16.4.3",
+    "next": "16.4.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-hot-toast": "^2.6.0",
@@ -36,7 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.3",
+    "eslint-config-next": "16.4.6",
     "playwright": "^1.58.0",
     "tailwindcss": "^4",
     "typescript": "^5"

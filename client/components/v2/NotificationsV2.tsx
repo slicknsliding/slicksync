@@ -7,9 +7,14 @@
 // the foot. What is listed, what a tap opens, Mark all read, Clear and
 // dismissing one are the dropdown's own.
 
-import type { MouseEvent, ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { BellIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
+import { fxOn } from '@/lib/effects';
+
+// Clear: how many rows leave one after another (the rest go with the last), and how far apart.
+const SWEEP_ROWS = 8;
+const SWEEP_STEP_MS = 45;
 
 export type BellItem = {
   id: string;
@@ -55,10 +60,29 @@ export function NotificationsPanelV2({
   onAccept: (e: MouseEvent, reqId: string) => void;
   onReject: (e: MouseEvent, reqId: string) => void;
   onMarkAll: () => void;
-  onClear: () => void;
+  /** `stay`: the bell is left open (the panel shows it worked itself). */
+  onClear: (stay?: boolean) => void;
   onSettings: () => void;
   onActivity: () => void;
 }) {
+  // Clear (Effects → Clearing lists): the rows sweep away one after another,
+  // then "All clear" stands in the open bell until something new arrives.
+  const [sweeping, setSweeping] = useState(false);
+  const [cleared, setCleared] = useState(false);
+  const sweepTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (sweepTimer.current) window.clearTimeout(sweepTimer.current); }, []);
+  const clear = () => {
+    if (tv || !fxOn('clear')) { onClear(); return; }
+    if (sweeping) return;
+    setSweeping(true);
+    sweepTimer.current = window.setTimeout(() => {
+      setSweeping(false);
+      setCleared(true);
+      onClear(true);
+    }, Math.min(items.length, SWEEP_ROWS) * SWEEP_STEP_MS + 200);
+  };
+  let rowIndex = 0;
+
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const today = items.filter((n) => n.timestamp.getTime() >= startOfToday.getTime());
@@ -71,8 +95,10 @@ export function NotificationsPanelV2({
   const row = (n: BellItem) => {
     const tint = TINT[n.type] || '#60a5fa';
     const isRequest = n.type === 'request' && n.data;
+    const order = rowIndex++;
     return (
-      <SwipeToDismiss key={n.id} enabled={swipe && n.type !== 'request'} onDismiss={() => onDismiss(n.id)} className="rounded-[14px]">
+      <div key={n.id} className={sweeping ? 'fx-sweep' : undefined} style={sweeping ? { animationDelay: `${Math.min(order, SWEEP_ROWS) * SWEEP_STEP_MS}ms` } : undefined}>
+      <SwipeToDismiss enabled={swipe && n.type !== 'request'} onDismiss={() => onDismiss(n.id)} className="rounded-[14px]">
         {/* Set in from the panel's edge and rounded, like the options in
             other menus; the one you are on lights with the menu highlight. */}
         <div
@@ -127,6 +153,7 @@ export function NotificationsPanelV2({
           )}
         </div>
       </SwipeToDismiss>
+      </div>
     );
   };
 
@@ -137,13 +164,20 @@ export function NotificationsPanelV2({
         {items.length > 0 && (
           <>
             <button type="button" className="text-[13px]" style={{ color: 'var(--color-primary)' }} onClick={onMarkAll}>Mark all read</button>
-            <button type="button" className="text-[13px] text-muted hover:text-default" onClick={onClear}>Clear</button>
+            <button type="button" className="text-[13px] text-muted hover:text-default" onClick={clear}>Clear</button>
           </>
         )}
       </div>
 
       <div className="overflow-y-auto flex-1 min-h-0">
-        {items.length === 0 ? (
+        {items.length === 0 && cleared ? (
+          <div className="fx-allclear p-8 text-center" role="status">
+            <div className="fx-tick mx-auto mb-2.5 grid place-items-center rounded-full" style={{ width: 46, height: 46, background: 'color-mix(in srgb, var(--color-success, #22c55e) 18%, transparent)' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #22c55e)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </div>
+            <p className="text-sm font-semibold text-default">All clear</p>
+          </div>
+        ) : items.length === 0 ? (
           <div className="p-8 text-center">
             <BellIcon className="w-8 h-8 mx-auto mb-2 text-subtle" />
             <p className="text-sm text-muted">No new notifications</p>

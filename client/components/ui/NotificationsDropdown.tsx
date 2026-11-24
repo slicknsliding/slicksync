@@ -577,7 +577,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     if (built.length > 0) saveBellState({ read: built });
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = (stay?: boolean) => {
     const now = new Date();
     setLastChecked(now);
     setClearedBefore(now);
@@ -598,7 +598,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // server's own time, which replaces this device's clock.
     setStoredNotifications([]);
     api.updateBellState({ clearAll: true }).then(applyBellState).catch(() => {});
-    setIsOpen(false);
+    // The v2 bell shows "All clear" and stays open; anything else closes.
+    if (stay !== true) setIsOpen(false);
   };
 
   const getNotificationIcon = (type: NotificationItem['type']) => {
@@ -793,7 +794,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={handleClearAll}
+                        onClick={() => handleClearAll()}
                         className="text-xs"
                       >
                         Clear

@@ -13,6 +13,7 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useS
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { EFFECTS, applyEffects, effectChoice, watchSwitches, withEffect, type EffectChoices, type EffectId } from '@/lib/effects';
 import { VaultDragProvider, useVaultDrag } from '@/components/providers/VaultDragContext';
 import { useSortableSensors } from '@/components/ui/DragSortable';
 import {
@@ -165,6 +166,12 @@ export function ArrangeProvider({ children, store = ACCOUNT_STORE }: { children:
     else delete root.dataset.motion;
     return () => { delete root.dataset.motion; };
   }, [motion]);
+
+  // Effects (Themes → Layout → Effects): the switched-off ones on <html>,
+  // all of them while motion is reduced.
+  const effects = arrangement.effects as EffectChoices | undefined;
+  useEffect(() => applyEffects(effects, motion), [effects, motion]);
+  useEffect(() => watchSwitches(), []);
 
   const canUndo = history.length > 0;
   const value = useMemo(() => ({ arrangement, update, active: true, loaded, session, canUndo, undo, cancel }), [arrangement, update, loaded, session, canUndo, undo, cancel]);
@@ -537,6 +544,25 @@ export function useMotionChoice() {
     });
   }, [update]);
   return { motion, setMotion };
+}
+
+/** Effects (Themes → Layout → Effects): each small motion's own switch, and Reset. */
+export function useEffectChoices() {
+  const { arrangement, update } = useArrangement();
+  const saved = arrangement.effects as EffectChoices | undefined;
+  const setEffect = useCallback((id: EffectId, on: boolean) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev };
+      const next = withEffect(prev.effects as EffectChoices | undefined, id, on);
+      if (next) out.effects = next; else delete out.effects;
+      return out;
+    });
+  }, [update]);
+  const reset = useCallback(() => {
+    update((prev) => { const out: Arrangement = { ...prev }; delete out.effects; return out; });
+  }, [update]);
+  const choices = useMemo(() => EFFECTS.map((e) => ({ ...e, value: effectChoice(saved, e.id) })), [saved]);
+  return { choices, setEffect, reset, changed: !!saved && Object.keys(saved).length > 0 };
 }
 
 /** Now Playing: who is watching under the picture (the default) or on it. */

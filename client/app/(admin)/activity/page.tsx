@@ -620,9 +620,10 @@ const ActivityCard = memo(function ActivityCard({
               {activity.durationSeconds > 0 ? formatDuration(activity.durationSeconds) : '<1m'}
             </span>
           )}
-          {!activity.isSynthetic && activity.durationSeconds !== undefined && <span className="mx-1">•</span>}
-          <span>{formatTime(activity.timestamp)}</span>
-          {activity.endTime && !activity.isSynthetic && (
+          {!activity.isSynthetic && activity.durationSeconds !== undefined && !activity.dateOnly && <span className="mx-1">•</span>}
+          {/* An earlier day's card knows the day only: no time to show. */}
+          {!activity.dateOnly && <span>{formatTime(activity.timestamp)}</span>}
+          {activity.endTime && !activity.isSynthetic && !activity.dateOnly && (
             <>
               <span className="mx-1">→</span>
               <span>{formatTime(activity.endTime)}</span>
@@ -923,7 +924,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
               day: '2-digit',
               month: 'short',
               year: 'numeric'
-            }).replace(/ /g, ' ')} {formatTime(activity.timestamp)}
+            }).replace(/ /g, ' ')}{activity.dateOnly ? '' : ` ${formatTime(activity.timestamp)}`}
           </span>
         </div>
 
