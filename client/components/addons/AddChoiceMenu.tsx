@@ -108,7 +108,7 @@ export function AddChoiceMenu({ anchor, anchorEl, isTV, onClose, onAddon, onServ
       style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, width: place?.width ?? 320 }}
     >
       {rows.map((r) => (isTV ? (
-        <TVFocusable key={r.key} focusKey={r.key} onEnterPress={r.run}>
+        <TVFocusable menuRow key={r.key} focusKey={r.key} onEnterPress={r.run}>
           <button type="button" role="menuitem" className={item} onClick={r.run}>{r.body}</button>
         </TVFocusable>
       ) : (
