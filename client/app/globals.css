@@ -2135,3 +2135,96 @@ select:not(.appearance-none) {
 .arrange-tile-on:has(.arrange-pinned) .v2-tool { border-color: var(--color-primary); }
 .arrange-drop { outline: 2px dashed var(--color-primary); outline-offset: 6px; border-radius: 14px; }
 @media (max-width: 1023px) { .arrange-seg-width { display: none; } }
+
+/* Effects (Themes → Layout → Effects; lib/effects.ts). <html data-fx-off>
+   lists the ones switched off, and holds all of them when motion is Reduced.
+   None of them run on a TV. */
+
+/* Pressing things: only what does something when pressed - a card that opens
+   (it sits in a .v2-link) and buttons. Panels and plain cards never move. */
+html:not([data-tv]):not([data-fx-off~="press"]) .v2-link .v2-card {
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+html:not([data-tv]):not([data-fx-off~="press"]) .v2-link:active:not(:has(button:active, input:active, select:active)) .v2-card {
+  transform: scale(0.985); background: var(--color-surface-hover); transition-duration: 0.06s;
+}
+html:not([data-tv]):not([data-fx-off~="press"]) :is(.v2-btn, .ss-toast-btn) {
+  transition: transform 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.3), background 0.15s ease, filter 0.15s ease;
+}
+html:not([data-tv]):not([data-fx-off~="press"]) :is(.v2-btn, .ss-toast-btn):active:not(:disabled) { transform: scale(0.94); transition-duration: 0.05s; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .v2-link:active .v2-card, html:not([data-motion="full"]) :is(.v2-btn, .ss-toast-btn):active { transform: none; }
+}
+html[data-motion="reduced"] .v2-link:active .v2-card, html[data-motion="reduced"] :is(.v2-btn, .ss-toast-btn):active { transform: none; }
+
+/* Removing and putting back: a ring on the card that just arrived. */
+html:not([data-fx-off~="remove"]) [data-fx-back] .v2-card, html:not([data-fx-off~="remove"]) .v2-row[data-fx-back] { animation: fx-here 1.4s ease-out both; }
+@keyframes fx-here {
+  0%, 55% { box-shadow: 0 0 0 2px var(--color-primary), 0 0 0 6px var(--color-primary-muted, rgba(139, 126, 200, 0.15)); }
+  100% { box-shadow: 0 0 0 2px transparent, 0 0 0 6px transparent; }
+}
+html:not([data-fx-off~="remove"]) .v2-row[data-fx-back] { animation-name: fx-here-row; }
+@keyframes fx-here-row {
+  0%, 55% { box-shadow: inset 0 0 0 2px var(--color-primary); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+
+/* Clearing lists: the bell's rows sweep away, then a drawn tick. */
+html:not([data-fx-off~="clear"]) .fx-sweep { animation: fx-sweep 0.19s ease-in both; }
+@keyframes fx-sweep { to { opacity: 0; transform: translateX(-36px); } }
+html:not([data-fx-off~="clear"]) .fx-allclear { animation: fx-rise 0.24s ease-out both; }
+@keyframes fx-rise { from { opacity: 0; transform: translateY(8px); } }
+html:not([data-fx-off~="clear"]) .fx-allclear .fx-tick path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: fx-draw 0.32s 0.12s ease-out forwards; }
+@keyframes fx-draw { to { stroke-dashoffset: 0; } }
+
+/* Sync result: one ring from the dot when a sync lands, one nudge when it can't. */
+.v2-dot { position: relative; }
+html:not([data-fx-off~="sync"]) .fx-ring::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--color-success, #22c55e);
+  animation: fx-ring 0.7s ease-out both; pointer-events: none;
+}
+@keyframes fx-ring { from { opacity: 0.9; transform: scale(1); } to { opacity: 0; transform: scale(3.2); } }
+html:not([data-fx-off~="sync"]) .fx-word { display: inline-block; animation: fx-word 0.22s ease-out both; }
+@keyframes fx-word { from { opacity: 0; transform: translateY(4px); } }
+html:not([data-fx-off~="sync"]) .fx-nudge { animation: fx-nudge 0.3s ease-in-out both; }
+.fx-ring { position: relative; }
+@keyframes fx-nudge { 25% { transform: translateX(-4px); } 60% { transform: translateX(3px); } }
+
+/* Sliding switches: drawn only while it slides (see watchSwitches). */
+.menu-seg[data-fx-thumb] { position: relative; }
+.menu-seg[data-fx-thumb] > button { position: relative; z-index: 1; }
+.menu-seg[data-fx-thumb] > button.on { background: transparent; box-shadow: none; }
+.menu-seg[data-fx-thumb]::before {
+  content: ''; position: absolute; top: 3px; bottom: 3px; left: var(--seg-x, 0); width: var(--seg-w, 0); border-radius: 8px;
+  background: var(--color-surface); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.menu-seg[data-fx-slide]::before { transition: left 0.17s cubic-bezier(0.3, 0.8, 0.3, 1), width 0.17s cubic-bezier(0.3, 0.8, 0.3, 1); }
+
+/* Loading line: a slow page opening (components/ui/LoadingLine.tsx). */
+.fx-loadline {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 10050; pointer-events: none;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary, var(--color-primary)));
+  animation: fx-line 0.9s ease-out forwards;
+}
+@keyframes fx-line { to { width: 86%; } }
+
+/* Effects on the Classic design. A card that opens (.tap-card on a Card)
+   dips while pressed; `scale` rather than transform, so it adds to the lift
+   the card already has under a mouse. Buttons, links and inputs on the card
+   keep their own press. */
+html:not([data-tv]):not([data-fx-off~="press"]) .ss-card.tap-card { transition: scale 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+html:not([data-tv]):not([data-fx-off~="press"]) .ss-card.tap-card:active:not(:has(button:active, input:active, select:active, label:active, a:active)) { scale: 0.985; transition-duration: 0.06s; }
+html:not([data-tv]):not([data-fx-off~="press"]) .fx-press { transition: scale 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+html:not([data-tv]):not([data-fx-off~="press"]) .fx-press:active:not(:disabled) { scale: 0.94; transition-duration: 0.05s; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .ss-card.tap-card:active, html:not([data-motion="full"]) .fx-press:active { scale: none; }
+}
+html[data-motion="reduced"] .ss-card.tap-card:active, html[data-motion="reduced"] .fx-press:active { scale: none; }
+/* The ring on a Classic card that just came back. */
+html:not([data-fx-off~="remove"]) [data-fx-back] .ss-card { animation: fx-here 1.4s ease-out both; }
+/* The Sync button on a Classic card. */
+.card-sync-btn {
+  display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--color-surface-border); background: var(--color-surface-hover); color: var(--color-text); cursor: pointer;
+}
+.card-sync-btn:disabled { opacity: 0.6; cursor: default; }

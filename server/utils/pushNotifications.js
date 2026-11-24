@@ -247,4 +247,24 @@ async function sendPushToPerson(prisma, accountId, userId, payload) {
   return { sent, pruned }
 }
 
-module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType, sendPushToPerson, isAllowedPushEndpoint }
+/**
+ * Sends one payload to one subscription ({ endpoint, keys: { p256dh, auth } })
+ * that isn't an account's (the Superadmin panel's own). Returns 'sent', 'gone'
+ * (the push service says it no longer exists, or it isn't a push service at
+ * all - drop it) or 'failed'. Never throws.
+ */
+async function sendPushToSubscription(subscription, payload) {
+  if (!isAllowedPushEndpoint(subscription?.endpoint)) return 'gone'
+  if (!configureWebPush()) return 'failed'
+  try {
+    await webpush.sendNotification(subscription, JSON.stringify(payload))
+    return 'sent'
+  } catch (err) {
+    const status = err?.statusCode
+    if (status === 404 || status === 410) return 'gone'
+    console.warn(`[Push] Superadmin send failed (${new URL(subscription.endpoint).host}): status=${status} ${err?.body || err?.message || ''}`)
+    return 'failed'
+  }
+}
+
+module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType, sendPushToPerson, isAllowedPushEndpoint, sendPushToSubscription }

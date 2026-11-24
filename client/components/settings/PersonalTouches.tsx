@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCardBackground, useCwFirst, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCardBackground, useCwFirst, useEffectChoices, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -45,6 +45,42 @@ export function MotionRow({ v2 = false }: { v2?: boolean }) {
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Themes → Layout → Effects: a switch for each small motion, and Reset. Saved to the account. */
+export function EffectsCard({ v2 = false }: { v2?: boolean }) {
+  const { choices, setEffect, reset, changed } = useEffectChoices();
+  const { motion } = useMotionChoice();
+  const still = motion === 'reduced';
+  const head = (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className={v2 ? 'font-semibold text-[14.5px] text-default' : 'font-medium text-sm text-default'}>Effects</p>
+        <p className={v2 ? 'text-muted text-[12.5px] mt-0.5' : 'text-xs text-muted'}>
+          {still ? 'Motion is set to Reduced, so every effect is off.' : 'Small motions when you press, remove, clear or switch something. They stay off on a TV.'}
+        </p>
+      </div>
+      <button type="button" className="v2-btn" onClick={reset} disabled={!changed}>Reset</button>
+    </div>
+  );
+  return (
+    <div data-setting="Effects" className={v2 ? 'py-3' : 'mt-5 rounded-xl p-4'} style={v2 ? undefined : { border: '1px solid var(--color-surface-border)' }}>
+      {head}
+      <div className={`mt-2 ${still ? 'opacity-50 pointer-events-none' : ''}`}>
+        {choices.map((e) => (
+          <div key={e.id} className="flex items-center gap-3.5 py-2.5 border-t" style={{ borderColor: 'var(--color-surface-border)' }}>
+            <div className="flex-1 min-w-0">
+              <p className={v2 ? 'font-semibold text-[14px] text-default' : 'font-medium text-sm text-default'}>{e.title}</p>
+              <p className={v2 ? 'text-muted text-[12.5px] mt-0.5' : 'text-xs text-muted'}>{e.line}</p>
+            </div>
+            {v2
+              ? <V2Switch on={e.value} onChange={(on) => setEffect(e.id, on)} label={e.title} />
+              : <ToggleSwitch checked={e.value} onChange={() => setEffect(e.id, !e.value)} />}
+          </div>
+        ))}
       </div>
     </div>
   );

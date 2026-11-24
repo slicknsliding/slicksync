@@ -183,7 +183,7 @@ export function PaletteV2Panel({
                 </button>
               );
             })}
-            <button type="button" onClick={onBrowse} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-left hover:bg-surface-hover">
+            <button type="button" onClick={onBrowse} data-mh-item="" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-left hover:bg-surface-hover">
               <BookOpenIcon className="w-[18px] h-[18px] shrink-0" style={{ color: 'var(--color-text-muted)' }} />
               <span className="text-xs font-medium" style={{ color: 'var(--color-secondary)' }}>Browse all guides</span>
             </button>

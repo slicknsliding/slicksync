@@ -1,5 +1,33 @@
 [
   {
+    "version": "1.107.0",
+    "date": "2026-11-24",
+    "title": "1.107.0 - Truer watch time, AIOStreams profiles, the monthly recap in the bell, Effects, and one look for every menu",
+    "features": [
+      "Watch time counts time spent watching. Skipping ahead adds only the time that passed, going back over a part adds nothing, and coming back to a title adds no more than the time since you left it. A film played again after its end counts in full. Applies to Nuvio and to the figure on a Stremio viewing's card; Jellyfin, AIOStreams and AIOMetadata sign-ins already counted real start and stop times.",
+      "A skip right after opening a title counts only the time its stream has been open, when SlickSync is connected to your AIOStreams for Now Playing and the stream goes through it.",
+      "Usenet streams with a scrambled file name show their real title on Now Playing and in the started-watching alert, taken from AIOStreams’ own library.",
+      "AIOStreams households work with the newer profiles list: household users, PINs, personal addresses, pauses, pictures, their own collections and rows, and putting back an older version.",
+      "Monthly recap in the bell and as a push, with or without Discord. The poster collage still goes to Discord when a webhook is set, and the count is every title watched.",
+      "Effects: small motions that answer a press, a removal, a cleared bell, a pop-up, a finished sync and a switch, each with its own switch under Settings → Themes → Layout → Effects, on both page designs. Opening a page (a glide and a loading line) and Vibrate on Android phones start off.",
+      "A Sync button on every Classic user and group card, and tapping a Synced or Stale badge syncs again. Deleting a person on Classic shows Undo, and Undo returns them to their place in the group.",
+      "Every pop-up menu has the same inset, rounded rows, and every row lights with the Menu highlight, including Delete in right-click menus.",
+      "Public instances: the Superadmin page shows the day each account was last used and what it has set up, sends alerts for sign-up surges, fast-growing accounts and wrong passwords, and lists sign-ins to the page itself."
+    ],
+    "bugFixes": [
+      "A second device paused at an older spot no longer adds watch time when it saves that spot.",
+      "A title you just left no longer shows as playing beside the one you started next.",
+      "Activity cards for earlier days no longer appear a day early on servers set to another timezone.",
+      "No more “changed outside SlickSync” alert when an AIOStreams moves its household to the profiles list.",
+      "The household card shows who is kept separate, and their personal address, after a reload.",
+      "Public instances: the monthly recap and Sync Guardian now run for every account.",
+      "A failed Discord post no longer repeats the monthly recap’s bell entry.",
+      "Activity cards for an earlier day show the date alone instead of adding 12:00 PM.",
+      "A person or group card keeps saying Syncing until the result is in, instead of showing the old status for a moment.",
+      "Sync in a Classic group card’s right-click menu now runs the sync instead of only showing a message."
+    ]
+  },
+  {
     "version": "1.106.0",
     "date": "2026-11-18",
     "title": "1.106.0 - Menu highlight, episode tiles, AIOMetadata's own rows and devices, truer Now Playing and watch time, and History on every card",

@@ -42,4 +42,24 @@ function isPlayingConnection(conn) {
   return Number.isFinite(start) && Number.isFinite(last) && last - start >= MIN_PLAYING_SECONDS * 1000
 }
 
-module.exports = { MIN_PLAYING_SECONDS, MANY_REQUESTS, isPlayingConnection }
+/*
+ * A STREAM THE PLAYER HAS LET GO OF IS NOT PLAYING.
+ *
+ * AIOStreams keeps listing a stream for a minute or two after the player
+ * closes it. Measured: a film finished at 2:20:21, the next one started at
+ * 2:20:51, and the first stayed listed until 2:21:53 - two titles "playing"
+ * for one person. AIOStreams says how many requests a stream has open
+ * (activeReads) and how long since data moved (idleMs). A paused or
+ * buffered-up player keeps its request open, so none open for
+ * RELEASED_AFTER_MS means it stopped. Older AIOStreams sends neither field:
+ * nothing changes there.
+ */
+const RELEASED_AFTER_MS = 45 * 1000
+
+/** stream: a polled row ({ activeReads, idleMs }). */
+function isReleasedStream(stream) {
+  if (!stream || typeof stream.activeReads !== 'number' || typeof stream.idleMs !== 'number') return false
+  return stream.activeReads === 0 && stream.idleMs >= RELEASED_AFTER_MS
+}
+
+module.exports = { MIN_PLAYING_SECONDS, MANY_REQUESTS, RELEASED_AFTER_MS, isPlayingConnection, isReleasedStream }

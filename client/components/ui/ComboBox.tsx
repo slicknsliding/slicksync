@@ -86,14 +86,14 @@ export function ComboBox({ value, onChange, onBlur, options, placeholder, classN
 
       {isOpen && options.length > 0 && (
         <div
-          className="popup-panel absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg py-1"
+          className="popup-panel absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg p-1"
         >
           {options.map((opt) => (
             <button
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setIsOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-hover transition-colors truncate"
+              className="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-surface-hover transition-colors truncate"
               style={{ color: 'var(--color-text)' }}
             >
               {opt.label}

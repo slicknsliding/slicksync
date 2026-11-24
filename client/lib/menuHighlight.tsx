@@ -274,14 +274,17 @@ function optionAt(target: EventTarget | null): HTMLElement | null {
   const item = target.closest<HTMLElement>(ITEMS);
   if (!item) return null;
   const root = item.closest<HTMLElement>(ROOTS);
-  if (!root || root === item || root.hasAttribute('data-mh-list')) return null;
+  // A list that lights its own active row (the search palette) still lets a
+  // row outside that list - one marked data-mh-item - light under the pointer.
+  if (!root || root === item || (root.hasAttribute('data-mh-list') && !item.hasAttribute('data-mh-item'))) return null;
   const off = item.closest('[data-mh-off]');
   if (off && root.contains(off)) return null;
   if (item.matches(':disabled, [aria-disabled="true"]')) return null;
   // An option: a menu role, or a row the menu already marks as hoverable.
   const role = item.getAttribute('role');
   const chip = item.hasAttribute('data-mh-chip');
-  if (!(role && ROLES.has(role)) && !item.classList.contains('hover:bg-surface-hover') && !item.hasAttribute('data-mh-item') && !chip) return null;
+  // data-mh-rows on the menu: every button and link in it is an option.
+  if (!(role && ROLES.has(role)) && !item.classList.contains('hover:bg-surface-hover') && !item.hasAttribute('data-mh-item') && !chip && !root.hasAttribute('data-mh-rows')) return null;
   // A row across the menu, not a small button in a corner (a close ×).
   // Chips, tiles and swatches to pick from say so (data-mh-chip) and light at
   // any size.

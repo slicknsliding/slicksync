@@ -214,7 +214,7 @@ export function DropdownSelect({ value, onChange, options, ariaLabel, className,
           ref={panelRef}
           role="listbox"
           aria-label={ariaLabel}
-          className="popup-panel rounded-lg py-1 overflow-y-auto overscroll-contain"
+          className="popup-panel rounded-lg p-1 overflow-y-auto overscroll-contain"
           style={{
             position: 'fixed',
             left: rect.left,
@@ -237,7 +237,7 @@ export function DropdownSelect({ value, onChange, options, ariaLabel, className,
                 aria-selected={isSelected}
                 onClick={() => commit(opt.value)}
                 onMouseEnter={() => setActiveIndex(i)}
-                className={`w-full text-left px-3 py-2 text-sm transition-colors truncate ${isActive ? 'row-hl' : ''}`}
+                className={`w-full text-left px-2.5 py-2 rounded-md text-sm transition-colors truncate ${isActive ? 'row-hl' : ''}`}
                 style={{
                   color: isSelected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: isSelected ? 600 : 400,

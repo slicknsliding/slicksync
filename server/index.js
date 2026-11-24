@@ -1033,6 +1033,14 @@ async function bootstrap() {
       console.error('⚠️ Failed to schedule trash purge:', err)
     }
 
+    // Superadmin: fill in last-used days, and (when the panel is on) check for
+    // sign-up surges and fast-growing accounts every 10 minutes.
+    try {
+      require('./utils/superadminAlerts').startSuperadminAlerts(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to schedule Superadmin alerts:', err)
+    }
+
     // Schedule metadata-provider key health checker (TMDb/OMDb/MDBList/RPDB) -
     // same "catch it before a user notices broken posters" idea as the addon
     // health checker below, aimed at the keys instead of the addons.

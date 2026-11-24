@@ -1,7 +1,8 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
+import { useListEffect } from '@/lib/effects';
 
 interface PageContainerProps {
   children: ReactNode;
@@ -75,7 +76,7 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
       </div>
 
       {/* Content */}
-      <div className="relative">
+      <div className="relative" data-page-content="">
         {children}
       </div>
     </motion.main>
@@ -109,8 +110,11 @@ interface StaggerContainerProps {
 }
 
 export function StaggerContainer({ children, className }: StaggerContainerProps) {
+  // Effects → Removing and putting back: the rows left behind glide over, and one that returns gets a ring.
+  const box = useRef<HTMLDivElement>(null);
+  useListEffect(box, true);
   return (
-    <div className={className}>
+    <div ref={box} className={className}>
       {children}
     </div>
   );

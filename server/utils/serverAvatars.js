@@ -294,18 +294,14 @@ async function pushAiostreams(prisma, decrypt, accountId, person, address) {
   const access = { serverUrl: owner.jellyfinServerUrl, account: owner.aioConfigId, password: decrypt(owner.aioConfigPassword, { appAccountId: owner.accountId || accountId }) }
   const config = await readConfig(access)
   const uuid = config.uuid || owner.aioConfigId
-  config.jellyfin = config.jellyfin && typeof config.jellyfin === 'object' ? config.jellyfin : {}
-  let target = null
-  if (plainId(person.jellyfinUserId) === plainId(uuid)) {
-    config.jellyfin.primary = config.jellyfin.primary && typeof config.jellyfin.primary === 'object' ? config.jellyfin.primary : {}
-    target = config.jellyfin.primary
-  } else {
-    target = (Array.isArray(config.jellyfin.personas) ? config.jellyfin.personas : []).find((p) => personaUserId(uuid, p.id) === plainId(person.jellyfinUserId)) || null
-  }
+  const { othersOf, ownerOf, tidyOwner } = require('./aioProfiles')
+  const target = plainId(person.jellyfinUserId) === plainId(uuid)
+    ? ownerOf(config, { create: true })
+    : othersOf(config).find((p) => personaUserId(uuid, p.id) === plainId(person.jellyfinUserId)) || null
   if (!target) throw fail(`${person.username} isn't a user in this AIOStreams configuration any more.`)
   if (address) target.avatar = address
   else delete target.avatar
-  if (config.jellyfin.primary && !Object.keys(config.jellyfin.primary).length) delete config.jellyfin.primary
+  tidyOwner(config)
   try { await noteOutsideChanges(prisma, owner, await readConfig(access)) } catch { /* reported on the next look */ }
   try {
     await writeConfig(access, config)

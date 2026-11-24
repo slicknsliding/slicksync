@@ -10,18 +10,25 @@ const { safeEqual } = require('../utils/safeEqual');
 // with the request (see auth.js's pathIsAllowlisted comment on this prefix).
 //
 // Hard privacy boundary: this panel may show that an account exists, when it
-// registered, when it last logged in, and coarse counts (users/groups/
-// addons) - enough to judge "is this account real/active" for moderation.
-// It must NEVER expose passwordHash, sync (contains webhookUrl/API keys),
-// apiKeyHash, or anything from inside a tenant's own data (their addons'
-// manifest URLs, Vault secrets, watch history, library contents). If a field
+// registered, the last DAY it was used (never a time), and coarse counts of
+// its setup (users/groups/addons/catalogs/Vault entries) - enough to judge
+// "is this account real/active" for moderation. Watch history is neither
+// shown nor counted. It must NEVER expose passwordHash, sync (contains
+// webhookUrl/API keys), apiKeyHash, or anything from inside a tenant's own
+// data (their addons' manifest URLs, Vault secrets, watch history, library
+// contents). Alerts carry counts and a short account id only. If a field
 // isn't explicitly selected below, it was left out on purpose.
-module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) => {
+const signals = require('../utils/superadminAlerts');
+const { dayKey } = require('../utils/lastUsed');
+
+module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies, alertDeps = {} }) => {
   const router = express.Router();
   const COOKIE = cookieName ? cookieName('sfm_superadmin') : 'sfm_superadmin';
 
-  function issueSuperAdminToken() {
-    return jwt.sign({ typ: 'superadmin' }, JWT_SECRET, { expiresIn: '12h' });
+  // sid: this sign-in's row in the panel sign-in log, so the log can mark
+  // "this browser".
+  function issueSuperAdminToken(sid) {
+    return jwt.sign(sid ? { typ: 'superadmin', sid } : { typ: 'superadmin' }, JWT_SECRET, { expiresIn: '12h' });
   }
 
   function requireSuperAdmin(req, res, next) {
@@ -31,6 +38,7 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
       if (!token) return res.status(401).json({ message: 'Not signed in' });
       const decoded = jwt.verify(token, JWT_SECRET);
       if (decoded?.typ !== 'superadmin') return res.status(401).json({ message: 'Invalid session' });
+      req.superadminSid = typeof decoded.sid === 'string' ? decoded.sid : null;
       return next();
     } catch {
       return res.status(401).json({ message: 'Invalid or expired session' });
@@ -57,10 +65,17 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
       }
       const { password } = req.body || {};
       // Constant-time, like the other places a shared secret is checked.
-      if (!password || !safeEqual(String(password), configured)) {
-        return res.status(401).json({ message: 'Incorrect password' });
+      const ok = !!password && safeEqual(String(password), configured);
+      // The panel's own sign-in log (shortened address, browser family only).
+      // Logging must never stop anyone signing in.
+      let row = null;
+      try {
+        row = await signals.recordPanelSignin(prisma, { ok, ip: req.ip, userAgent: req.get('user-agent') }, alertDeps);
+      } catch (e) {
+        console.warn('[Superadmin] Could not log a panel sign-in:', e?.message);
       }
-      res.cookie(COOKIE, issueSuperAdminToken(), cookieOpts);
+      if (!ok) return res.status(401).json({ message: 'Incorrect password' });
+      res.cookie(COOKIE, issueSuperAdminToken(row?.id), cookieOpts);
       return res.json({ message: 'Signed in' });
     } catch (error) {
       console.error('Error signing in to superadmin panel:', error);
@@ -78,39 +93,35 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
   // GET /accounts - every tenant account, coarse counts only. email is
   // deliberately NOT selected - the UI never rendered it, so fetching it at
   // all was unnecessary exposure of PII that isn't needed for moderation.
-  // resourceRowCount is a row-count-across-key-tables proxy for "how much
-  // data does this account hold" - not a byte-accurate disk size (public
-  // mode is one shared Postgres database, not a file per account, so there
-  // is no real per-account file size to report), but enough to tell a
-  // heavily-used account apart from an empty or abandoned one.
+  // lastActiveDay is a day, never a time (see utils/lastUsed.js); `today` is
+  // the server's own day so the page can say "today" / "yesterday".
+  // resourceRowCount adds up the account's setup (users, groups, addons,
+  // catalogs, Vault entries) - what the quota measures. Watch history is not
+  // counted: a household that watches a lot isn't using too much.
   router.get('/accounts', requireSuperAdmin, async (req, res) => {
     try {
       const accounts = await prisma.appAccount.findMany({
         select: {
-          id: true, uuid: true, createdAt: true, lastLoginAt: true, disabled: true, displayName: true,
+          id: true, uuid: true, createdAt: true, lastActiveDay: true, disabled: true, displayName: true,
         },
         orderBy: { createdAt: 'desc' },
       });
-      // One grouped count per table (six queries in all), not six per
+      // One grouped count per table (five queries in all), not five per
       // account - the page stays quick however many accounts there are.
-      const countBy = async (model) => {
-        const rows = await prisma[model].groupBy({ by: ['accountId'], _count: { _all: true } });
-        return new Map(rows.map((r) => [r.accountId, r._count._all]));
-      };
-      const [users, groups, addons, customLists, watchSessions, vaultEntries] = await Promise.all(
-        ['user', 'group', 'addon', 'customList', 'watchSession', 'vaultEntry'].map(countBy),
-      );
+      const counts = await signals.countSetup(prisma);
       const counted = accounts.map((a) => {
-        const n = (m) => m.get(a.id) || 0;
-        const userCount = n(users);
-        const groupCount = n(groups);
-        const addonCount = n(addons);
+        const n = (t) => counts[t].get(a.id) || 0;
         return {
-          ...a, userCount, groupCount, addonCount,
-          resourceRowCount: userCount + groupCount + addonCount + n(customLists) + n(watchSessions) + n(vaultEntries),
+          ...a,
+          userCount: n('user'),
+          groupCount: n('group'),
+          addonCount: n('addon'),
+          catalogCount: n('customList'),
+          vaultCount: n('vaultEntry'),
+          resourceRowCount: signals.setupTotal(counts, a.id),
         };
       });
-      res.json({ total: counted.length, accounts: counted });
+      res.json({ total: counted.length, today: dayKey(), accounts: counted });
     } catch (e) {
       console.error('[Superadmin] Failed to list accounts:', e?.message);
       res.status(500).json({ message: 'Failed to list accounts' });
@@ -132,6 +143,103 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     } catch (e) {
       console.error('[Superadmin] Failed to load audit log:', e?.message);
       res.status(500).json({ message: 'Failed to load audit log' });
+    }
+  });
+
+  // ---- Alerts ---------------------------------------------------------------
+  // Switches, where they go, and the latest 20. A fast-growing-account alert
+  // shows its day only.
+  router.get('/alerts', requireSuperAdmin, async (req, res) => {
+    try {
+      const { isPushEnabled, getPublicKey } = require('../utils/pushNotifications');
+      const [settings, rows] = await Promise.all([
+        signals.getAlertSettings(prisma),
+        prisma.superadminAlert.findMany({ orderBy: { createdAt: 'desc' }, take: 20 }),
+      ]);
+      res.json({
+        settings,
+        discordConfigured: !!(process.env.SUPERADMIN_NOTIFY_WEBHOOK_URL || '').trim(),
+        push: { available: isPushEnabled(), publicKey: getPublicKey() },
+        today: dayKey(),
+        recent: rows.map((r) => ({
+          id: r.id, type: r.type, count: r.count, shortId: r.shortId, address: r.address, day: r.day,
+          at: r.type === 'fastGrowth' ? null : r.createdAt,
+        })),
+      });
+    } catch (e) {
+      console.error('[Superadmin] Failed to load alerts:', e?.message);
+      res.status(500).json({ message: 'Failed to load alerts' });
+    }
+  });
+
+  router.put('/alerts', requireSuperAdmin, async (req, res) => {
+    try {
+      const settings = await signals.saveAlertSettings(prisma, req.body || {});
+      res.json({ settings });
+    } catch (e) {
+      console.error('[Superadmin] Failed to save alert settings:', e?.message);
+      res.status(500).json({ message: 'Failed to save alert settings' });
+    }
+  });
+
+  // Push to this browser. POST, not DELETE, for the ones that carry a body.
+  router.post('/alerts/push', requireSuperAdmin, async (req, res) => {
+    try {
+      const { isAllowedPushEndpoint } = require('../utils/pushNotifications');
+      const sub = req.body?.subscription || {};
+      const endpoint = String(sub.endpoint || '');
+      const p256dh = String(sub.keys?.p256dh || '');
+      const auth = String(sub.keys?.auth || '');
+      if (!isAllowedPushEndpoint(endpoint) || !p256dh || !auth || endpoint.length > 2000 || p256dh.length > 200 || auth.length > 100) {
+        return res.status(400).json({ message: 'Not a browser push subscription' });
+      }
+      await prisma.superadminPushSubscription.upsert({
+        where: { endpoint },
+        create: { endpoint, p256dh, auth },
+        update: { p256dh, auth },
+      });
+      res.json({ subscribed: true });
+    } catch (e) {
+      console.error('[Superadmin] Failed to save push subscription:', e?.message);
+      res.status(500).json({ message: 'Failed to turn on push' });
+    }
+  });
+
+  router.post('/alerts/push/status', requireSuperAdmin, async (req, res) => {
+    try {
+      const endpoint = String(req.body?.endpoint || '');
+      const row = endpoint ? await prisma.superadminPushSubscription.findUnique({ where: { endpoint } }) : null;
+      res.json({ subscribed: !!row });
+    } catch {
+      res.json({ subscribed: false });
+    }
+  });
+
+  router.post('/alerts/push/remove', requireSuperAdmin, async (req, res) => {
+    try {
+      const endpoint = String(req.body?.endpoint || '');
+      if (endpoint) await prisma.superadminPushSubscription.deleteMany({ where: { endpoint } });
+      res.json({ subscribed: false });
+    } catch (e) {
+      console.error('[Superadmin] Failed to remove push subscription:', e?.message);
+      res.status(500).json({ message: 'Failed to turn off push' });
+    }
+  });
+
+  // GET /signins - sign-ins to this page, newest first. Addresses were cut
+  // short before they were saved.
+  router.get('/signins', requireSuperAdmin, async (req, res) => {
+    try {
+      const rows = await prisma.superadminSignin.findMany({ orderBy: { lastAt: 'desc' }, take: 100 });
+      res.json({
+        entries: rows.map((r) => ({
+          id: r.id, ok: r.ok, count: r.count, address: r.address, browser: r.browser,
+          firstAt: r.firstAt, lastAt: r.lastAt, current: !!req.superadminSid && r.id === req.superadminSid,
+        })),
+      });
+    } catch (e) {
+      console.error('[Superadmin] Failed to load panel sign-ins:', e?.message);
+      res.status(500).json({ message: 'Failed to load panel sign-ins' });
     }
   });
 

@@ -250,6 +250,31 @@ function stableJson(value) {
   return JSON.stringify(value === undefined ? null : value)
 }
 
+const hashOf = (value) => crypto.createHash('sha256').update(stableJson(value)).digest('hex').slice(0, 16)
+
+// The household in one shape, so an AIOStreams that moves it to
+// config.profiles isn't reported as a change - nor is the empty household
+// list or empty owner entry that move leaves behind or drops.
+function inOneShape(config) {
+  const out = require('./aioProfiles').inOldShape(config || {})
+  const jellyfin = out.jellyfin
+  if (!jellyfin || typeof jellyfin !== 'object' || Array.isArray(jellyfin)) return out
+  const tidy = { ...jellyfin }
+  if (tidy.primary && typeof tidy.primary === 'object' && stableJson(tidy.primary) === '{}') delete tidy.primary
+  if (Array.isArray(tidy.personas) && !tidy.personas.length) delete tidy.personas
+  const { jellyfin: _jellyfin, ...rest } = out
+  return stableJson(tidy) === '{}' ? rest : { ...rest, jellyfin: tidy }
+}
+
+/**
+ * Whether a stored fingerprint is this configuration. One stored before the
+ * household was compared in one shape is the configuration exactly as read,
+ * so an instance whose AIOStreams had already moved isn't told it changed.
+ */
+function isSameVersion(storedHash, config) {
+  return !!storedHash && (storedHash === hashOf(inOneShape(config)) || storedHash === hashOf(config || {}))
+}
+
 /** What a person would recognise in a configuration, and a hash of all of it. */
 function summarize(config) {
   const addons = (Array.isArray(config?.presets) ? config.presets : []).map((p) => ({
@@ -263,11 +288,12 @@ function summarize(config) {
     // Whether its key changed, never the key itself.
     keyHash: crypto.createHash('sha256').update(stableJson(s.credentials || {})).digest('hex').slice(0, 12),
   }))
-  const users = (Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []).map((p) => String(p.name || p.id || ''))
+  const { othersOf } = require('./aioProfiles')
+  const users = othersOf(config).map((p) => String(p.name || p.id || ''))
   // Which household users are kept separate, and a fingerprint of their
   // personal address (never the address itself).
   const apart = {}
-  for (const p of (Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : [])) {
+  for (const p of othersOf(config)) {
     apart[String(p.name || p.id || '')] = p.hidden === true
       ? (p.address ? crypto.createHash('sha256').update(String(p.address)).digest('hex').slice(0, 8) : 'none')
       : null
@@ -277,7 +303,7 @@ function summarize(config) {
   const catalogOrder = crypto.createHash('sha256')
     .update(stableJson((Array.isArray(config?.catalogModifications) ? config.catalogModifications : []).map((m) => [m?.id, m?.type, m?.enabled !== false])))
     .digest('hex').slice(0, 12)
-  const hash = crypto.createHash('sha256').update(stableJson(config || {})).digest('hex').slice(0, 16)
+  const hash = hashOf(inOneShape(config))
   return { addons, services, users, apart, catalogOrder, hash }
 }
 
@@ -422,7 +448,7 @@ async function noteOutsideChanges(prisma, person, config, before) {
   }
   const accountId = person.accountId || 'default'
   const after = { ...summarize(config), checkedAt: new Date().toISOString() }
-  if (before.hash && before.hash !== after.hash) {
+  if (before.hash && !isSameVersion(before.hash, config)) {
     const changes = describeChanges(before, after)
     const shown = changes.slice(0, 4).join(', ') + (changes.length > 4 ? `, and ${changes.length - 4} more` : '')
     await alert(prisma, accountId, {
@@ -462,6 +488,7 @@ module.exports = { ownInstanceSession,
   rebaseline,
   noteOutsideChanges,
   summarize,
+  isSameVersion,
   describeChanges,
   rememberConfigAccess,
   checkConfigs,

@@ -299,7 +299,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             exit={{ opacity: 0, y: dropdownPosition === 'down' ? -10 : 10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
             className={
-              `popup-panel absolute rounded-xl overflow-hidden z-50 ${dropdownPosition === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} ${
+              `popup-panel absolute rounded-xl overflow-hidden p-1.5 z-50 ${dropdownPosition === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} ${
                 isCompact ? `${align === 'left' ? 'left-0' : 'right-0'} w-72 max-w-[calc(100vw-1.5rem)]` : 'left-0 right-0'
               }`
             }
@@ -308,7 +308,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             {tv(() => handleSwitchPanel(), (
 <button
               onClick={handleSwitchPanel}
-              className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:bg-surface-hover"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
               style={{ color: 'var(--color-text)' }}
             >
               <div
@@ -344,14 +344,14 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 showing them here too on Original was pure duplication. */}
             {isAdmin && (
               <>
-                <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
+                <div className="h-px my-1.5" style={{ background: 'var(--color-surface-border)' }} />
                 {tv(() => window.open(TORBOX_REFERRAL_URL, '_blank', 'noopener,noreferrer'), (
 <a
                   href={TORBOX_REFERRAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsOpen(false)}
-                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
                   style={{ color: 'var(--color-text)' }}
                 >
                   <div
@@ -368,7 +368,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     {tv(() => { setIsOpen(false); router.push('/tasks'); }, (
 <button
                       onClick={() => { setIsOpen(false); router.push('/tasks'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
                       style={{ color: 'var(--color-text)' }}
                     >
                       <div
@@ -383,7 +383,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     {tv(() => { setIsOpen(false); router.push('/settings'); }, (
 <button
                       onClick={() => { setIsOpen(false); router.push('/settings'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
                       style={{ color: 'var(--color-text)' }}
                     >
                       <div
@@ -398,7 +398,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     {tv(() => { setIsOpen(false); router.push('/changelog'); }, (
 <button
                       onClick={() => { setIsOpen(false); router.push('/changelog'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg" data-mh-item=""
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
                       style={{ color: 'var(--color-text)' }}
                     >
                       <div
@@ -418,11 +418,11 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             {/* Account Button (Admin Mode / Public Instance only) */}
             {isAdmin && isPublicInstance && (
               <>
-                <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
+                <div className="h-px my-1.5" style={{ background: 'var(--color-surface-border)' }} />
                 {tv(() => { setIsOpen(false); setAccountModalOpen(true); }, (
 <button
                   onClick={() => { setIsOpen(false); setAccountModalOpen(true); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-surface" data-mh-item=""
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
                   style={{ color: 'var(--color-text)' }}
                 >
                   <div
@@ -441,13 +441,13 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             )}
 
             {/* Divider */}
-            <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
+            <div className="h-px my-1.5" style={{ background: 'var(--color-surface-border)' }} />
 
             {/* Logout Button */}
             {tv(() => handleLogout(), (
 <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200 hov-error" data-mh-item=""
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hov-error" data-mh-item=""
               style={{ color: 'var(--color-error)' }}
             >
               <div

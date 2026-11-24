@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { usePopEffect } from '@/lib/effects';
 import { placeAtPill, placePopup, placeOutside, popupStyle, scrollParent, useFitPopup, useFollowAnchor, type OutsidePlacement, type PopupPlacement } from '@/lib/anchoredPopup';
 
 const SPOT = ['left', 'width', 'top', 'bottom', 'maxHeight', 'side', 'tipX', 'tipY'] as const;
@@ -87,6 +88,8 @@ export function HistoryPopup({ open, anchor, around, pointer, onClose, title, li
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   useFitPopup(panel, open && !!at, replace, onClose);
+  // It grows out of its pointer (Effects → Pop-ups).
+  usePopEffect(panel, open && !!at, at && at.tipX != null && typeof at.left === 'number' ? `${at.tipX - at.left}px ${at.side === 'above' ? '100%' : '0%'}` : undefined);
   useFollowAnchor(open, () => [anchor(), around?.()?.getBoundingClientRect() ?? null], replace);
 
   if (!open || !at || typeof document === 'undefined') return null;

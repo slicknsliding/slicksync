@@ -33,7 +33,7 @@ const { sendSessionStartNotification } = require('./sessionTracker')
 const { notifyPushForType } = require('./pushNotifications')
 
 // A connection counts as playing from its second request - see proxyPlaying.js.
-const { isPlayingConnection } = require('./proxyPlaying')
+const { isPlayingConnection, isReleasedStream } = require('./proxyPlaying')
 
 const { proxyDisplayTitle, isOpaqueStreamName } = require('./proxyTitle')
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
@@ -104,6 +104,10 @@ let consecutiveFailures = 0
 let failingSince = null
 let closedRowsThisOutage = false
 let monitoredAccountId = null
+// Where the monitored AIOStreams is, for the one lookup made outside a poll
+// (fetchStreamHistory).
+let monitoredBaseUrl = null
+let historyCache = { at: 0, value: null }
 
 function getProxyMonitorStatus() {
   return {
@@ -151,6 +155,8 @@ function heartbeat(event, data = {}) {
 
 function clearProxyStreamMonitor() {
   monitoredAccountId = null
+  monitoredBaseUrl = null
+  historyCache = { at: 0, value: null }
   lastOkAt = 0
   consecutiveFailures = 0
   failingSince = null
@@ -423,7 +429,7 @@ async function fetchLiveStreams(baseUrl, username, password) {
   const streams = json?.data?.streams ?? json?.streams ?? []
   // Normalize the legacy shape's fields onto the new one so pollOnce only
   // ever has to handle one row shape, regardless of which branch produced it.
-  return streams.map((s) => ({
+  const mapped = streams.map((s) => ({
     transport: s.transport || 'proxy',
     username: s.username || '',
     clientIp: s.clientIp || null,
@@ -432,7 +438,70 @@ async function fetchLiveStreams(baseUrl, username, password) {
     requests: s.requests,
     startedAt: s.startedAt,
     lastSeenAt: s.lastSeenAt,
+    // Whether a player still holds it (proxyPlaying.js isReleasedStream).
+    activeReads: s.activeReads,
+    idleMs: s.idleMs,
   }))
+  // A usenet stream whose file name is scrambled gets the name AIOStreams'
+  // library has for that download (usenetStreamNames.js).
+  await require('./usenetStreamNames').nameScrambledUsenetStreams(mapped, (hash) => fetchUsenetLibraryName(baseUrl, hash))
+  return mapped
+}
+
+// How long one answer from the history is reused.
+const HISTORY_CACHE_MS = 60 * 1000
+
+/**
+ * Every stream AIOStreams has on record, each with when it opened and when it
+ * was last read: { entries: [{ aiostreamsUser, targetKey, startedAt,
+ * lastSeenAt }], total }. Null when it cannot be had - no poller for this
+ * account, not signed in, backing off, or an AIOStreams without the route.
+ * Uses the poller's sign-in and never makes one of its own. See streamStart.js.
+ */
+async function fetchStreamHistory(accountId, now = Date.now()) {
+  if (!monitoredBaseUrl || !cachedCookie || (accountId && accountId !== monitoredAccountId)) return null
+  if (now < rateLimitedUntil) return null
+  if (now - historyCache.at < HISTORY_CACHE_MS) return historyCache.value
+  let value = null
+  try {
+    const res = await fetch(`${monitoredBaseUrl}/api/v1/dashboard/streams/history?limit=200`, {
+      headers: { Cookie: cachedCookie, Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    })
+    const json = res.ok ? await res.json().catch(() => null) : null
+    const entries = json?.data?.entries
+    if (Array.isArray(entries)) {
+      value = {
+        entries: entries
+          .filter((e) => e?.targetKey && Number.isFinite(Number(e.startedAt)))
+          .map((e) => ({
+            aiostreamsUser: e.username || UNATTRIBUTED_SYNTHETIC_USER,
+            targetKey: e.targetKey,
+            startedAt: Number(e.startedAt),
+            lastSeenAt: Number(e.lastSeenAt ?? e.endedAt ?? e.startedAt),
+          })),
+        total: Number(json.data.total) || entries.length,
+      }
+    }
+    heartbeat('streamHistory', { status: res.status, entries: value ? value.entries.length : null })
+  } catch (e) {
+    heartbeat('streamHistory:failed', { message: e?.message })
+  }
+  historyCache = { at: now, value }
+  return value
+}
+
+// The library's name for one usenet download, or null.
+async function fetchUsenetLibraryName(baseUrl, hash) {
+  const res = await fetch(`${baseUrl}/api/v1/dashboard/usenet/library/${encodeURIComponent(hash)}/files`, {
+    headers: { Cookie: cachedCookie, Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) return null
+  const json = await res.json().catch(() => null)
+  const name = json?.data?.name
+  heartbeat('usenetName', { found: !!name })
+  return typeof name === 'string' ? name : null
 }
 
 // Pre-2026-08 AIOStreams shape: { users: [{ username, active: [{ ip, url,
@@ -754,6 +823,7 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
 
     // Mirror to phone push (self-gates on the same notifyOnActivity toggle).
     const whoName = user.username || user.email || 'Someone'
+    heartbeat('pollOnce:start_notified', { rowId, name: shownName, guessed })
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
       title: `${whoName} started watching`,
       body: guessed ? `Probably ${shownName} - resumed from Continue Watching` : readableStreamTitle(shownName),
@@ -955,6 +1025,11 @@ async function pollOnce(prisma, accountId, config) {
       }
       // Unattributed (empty username) falls back to the same synthetic
       // identity regardless of transport - see the constant's own comment.
+      // The player let go of it a while ago and AIOStreams has just not
+      // dropped it yet: not playing. Left out, it closes below like a stream
+      // that is no longer listed - so the title they exited doesn't sit
+      // beside the one they started next.
+      if (isReleasedStream(stream)) continue
       const aiostreamsUser = stream.username || UNATTRIBUTED_SYNTHETIC_USER
       const clientIp = stream.clientIp || UNATTRIBUTED_SYNTHETIC_IP
       const url = stream.targetKey
@@ -1140,6 +1215,7 @@ function scheduleProxyStreamMonitor(prisma, accountId, config) {
     return
   }
   monitoredAccountId = accountId
+  monitoredBaseUrl = config.baseUrl
 
   const guardedPoll = async () => {
     // Still working on the previous tick - skip entirely rather than
@@ -1176,6 +1252,7 @@ module.exports = {
   resolveUserForActiveConnection,
   getProxyMonitorStatus,
   isProxyMonitorConfirming,
+  fetchStreamHistory,
   CHECK_INTERVAL_MS,
   // For tests: the fetch against AIOStreams, one poll, and the module state.
   _test: {
@@ -1195,8 +1272,11 @@ module.exports = {
       closedRowsThisOutage = false
       rateLimitedUntil = 0
       monitoredAccountId = null
+      monitoredBaseUrl = null
+      historyCache = { at: 0, value: null }
       lastPollStatus = { ok: null, at: null, error: null }
     },
+    setHistorySource(baseUrl, cookie) { monitoredBaseUrl = baseUrl; cachedCookie = cookie; historyCache = { at: 0, value: null } },
     setMonitored(accountId) { monitoredAccountId = accountId },
     setLastOk(ms) { lastOkAt = ms },
     setRateLimitedUntil(ms) { rateLimitedUntil = ms },

@@ -228,6 +228,25 @@ async function purgeExpiredTrash(prisma) {
  * comes back under the same id), so the payload is small: the row, the
  * merged-provider credential rows, and which groups held the user.
  */
+/** Where an id stands in a group's stored member list; -1 when it isn't there. */
+function spotIn(userIdsJson, userId) {
+  try { return JSON.parse(userIdsJson || '[]').indexOf(userId) } catch { return -1 }
+}
+
+/** Moves a member of a group to the place they held before (call inside the membership lock). */
+async function putBackAt(prisma, groupId, userId, spot) {
+  if (!Number.isInteger(spot) || spot < 0) return
+  const group = await prisma.group.findUnique({ where: { id: groupId }, select: { userIds: true } }).catch(() => null)
+  if (!group) return
+  let ids = []
+  try { ids = JSON.parse(group.userIds || '[]') } catch { return }
+  if (!Array.isArray(ids) || !ids.includes(userId)) return
+  const rest = ids.filter((i) => i !== userId)
+  rest.splice(Math.min(spot, rest.length), 0, userId)
+  if (JSON.stringify(rest) === JSON.stringify(ids)) return
+  await prisma.group.update({ where: { id: groupId }, data: { userIds: JSON.stringify(rest) } })
+}
+
 async function archiveUserDelete(prisma, accountId, userId) {
   const accountIdValue = accountId || 'default'
   const user = await prisma.user.findFirst({ where: { id: userId, accountId: accountIdValue } })
@@ -235,14 +254,16 @@ async function archiveUserDelete(prisma, accountId, userId) {
   const credentials = await prisma.userProviderCredential.findMany({ where: { userId } }).catch(() => [])
   const groups = await prisma.group.findMany({
     where: { accountId: accountIdValue, userIds: { contains: userId } },
-    select: { id: true },
+    select: { id: true, userIds: true },
   }).catch(() => [])
   return prisma.trashItem.create({
     data: {
       accountId: accountIdValue,
       kind: 'user',
       label: user.username || user.email || 'Unnamed user',
-      payload: JSON.stringify({ user, credentials, groupIds: groups.map((g) => g.id) }),
+      // groupSpots: where they stood in each group, so a restore puts them
+      // back in the same place rather than at the end.
+      payload: JSON.stringify({ user, credentials, groupIds: groups.map((g) => g.id), groupSpots: Object.fromEntries(groups.map((g) => [g.id, spotIn(g.userIds, userId)])) }),
     },
   })
 }
@@ -343,7 +364,7 @@ async function archiveHistoryImport(prisma, accountId, userId, { createdItemIds,
 /** Restore cases for the extended kinds - called from restoreTrashItem. */
 async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
   if (item.kind === 'user') {
-    const { user, credentials, groupIds } = payload
+    const { user, credentials, groupIds, groupSpots } = payload
     const idTaken = await prisma.user.findUnique({ where: { id: user.id } }).catch(() => null)
     if (idTaken) {
       // The id is what reattaches watch history, sessions and reactions - a
@@ -367,7 +388,10 @@ async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
     await members.withMembershipLock(accountIdValue, async () => {
       for (const gid of (groupIds || [])) {
         try {
-          if (await members.moveIntoGroup(prisma, accountIdValue, user.id, gid)) break
+          if (await members.moveIntoGroup(prisma, accountIdValue, user.id, gid)) {
+            await putBackAt(prisma, gid, user.id, groupSpots?.[gid]).catch(() => {})
+            break
+          }
         } catch { /* a vanished group must not block the user coming back */ }
       }
     })
@@ -499,6 +523,7 @@ async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
 }
 
 module.exports = {
+  _test: { spotIn, putBackAt },
   archive,
   archiveAndDelete,
   archiveUserDelete,

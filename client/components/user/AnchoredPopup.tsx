@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { usePopEffect } from '@/lib/effects';
 
 export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 'start', label, caret = false, closeButton = true, initialFocusRef, children }: {
   /** The thing it opens from. */
@@ -72,6 +73,8 @@ export function AnchoredPopup({ anchorRef, onClose, title, width = 340, align = 
   }, [anchorRef, align]);
 
   useLayoutEffect(() => { fit(); });
+  // It grows out of where it points at the trigger.
+  usePopEffect(panelRef, !!place, place ? `${place.tail + 7}px ${place.above ? '100%' : '0%'}` : undefined);
 
   useEffect(() => {
     let frame = 0;

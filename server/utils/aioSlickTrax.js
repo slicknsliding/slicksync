@@ -148,9 +148,9 @@ async function findProblems(prisma, person, config, { libraries = null, lastPush
   }
 
   // A household user with their own history and their own tracker list.
-  const personas = Array.isArray(config?.jellyfin?.personas) ? config.jellyfin.personas : []
-  const left = personas.filter((p) => p && p.history !== 'shared' && Array.isArray(p.trackers) && !p.trackers.includes(preset.instanceId))
-  const primary = config?.jellyfin?.primary
+  const { othersOf, ownerOf } = require('./aioProfiles')
+  const left = othersOf(config).filter((p) => p.history !== 'shared' && Array.isArray(p.trackers) && !p.trackers.includes(preset.instanceId))
+  const primary = ownerOf(config)
   const primaryLeft = Array.isArray(primary?.trackers) && !primary.trackers.includes(preset.instanceId)
   if (left.length || primaryLeft) {
     const who = [...(primaryLeft ? [primary?.name || name] : []), ...left.map((p) => p.name)].join(', ')

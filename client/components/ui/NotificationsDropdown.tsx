@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
+import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { api, type BellState } from '@/lib/api';
@@ -15,10 +15,11 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 import { useTVModal } from '@/components/tv/useTVModal';
 import { usePageDesign } from '@/lib/arrange';
 import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
+import { fxOn } from '@/lib/effects';
 
 interface NotificationItem {
   id: string;
-  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch' | 'update' | 'announcement' | 'device';
+  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch' | 'update' | 'announcement' | 'device' | 'recap';
   title: string;
   message: string;
   timestamp: Date;
@@ -577,7 +578,24 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     if (built.length > 0) saveBellState({ read: built });
   };
 
-  const handleClearAll = () => {
+  // Classic's Clear (Effects → Clearing lists): the rows sweep away, then
+  // "All clear" stands in the open bell. v2's panel does its own.
+  const [sweeping, setSweeping] = useState(false);
+  const [justCleared, setJustCleared] = useState(false);
+  const sweepTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (sweepTimer.current) window.clearTimeout(sweepTimer.current); }, []);
+  const clearWithSweep = () => {
+    if (isTV || !fxOn('clear')) { handleClearAll(); return; }
+    if (sweeping) return;
+    setSweeping(true);
+    sweepTimer.current = window.setTimeout(() => {
+      setSweeping(false);
+      setJustCleared(true);
+      handleClearAll(true);
+    }, Math.min(notifications.length, 8) * 45 + 200);
+  };
+
+  const handleClearAll = (stay?: boolean) => {
     const now = new Date();
     setLastChecked(now);
     setClearedBefore(now);
@@ -598,7 +616,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // server's own time, which replaces this device's clock.
     setStoredNotifications([]);
     api.updateBellState({ clearAll: true }).then(applyBellState).catch(() => {});
-    setIsOpen(false);
+    // The v2 bell shows "All clear" and stays open; anything else closes.
+    if (stay !== true) setIsOpen(false);
   };
 
   const getNotificationIcon = (type: NotificationItem['type']) => {
@@ -629,6 +648,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         return <MegaphoneIcon className="w-4 h-4" />;
       case 'device':
         return <DevicePhoneMobileIcon className="w-4 h-4" />;
+      case 'recap':
+        return <PhotoIcon className="w-4 h-4" />;
     }
   };
 
@@ -791,7 +812,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={handleClearAll}
+                        onClick={clearWithSweep}
                         className="text-xs"
                       >
                         Clear
@@ -802,7 +823,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
 
                 {/* Notifications list */}
                 <div className="overflow-y-auto max-h-[400px]">
-                  {notifications.length === 0 ? (
+                  {notifications.length === 0 && justCleared ? (
+                    <div className="fx-allclear p-8 text-center" role="status">
+                      <div className="fx-tick mx-auto mb-2.5 grid place-items-center rounded-full" style={{ width: 46, height: 46, background: 'color-mix(in srgb, var(--color-success, #22c55e) 18%, transparent)' }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #22c55e)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                      </div>
+                      <p className="text-sm font-semibold text-default">All clear</p>
+                    </div>
+                  ) : notifications.length === 0 ? (
                     <div className="p-8 text-center">
                       <BellIcon className="w-8 h-8 mx-auto mb-2 text-subtle" />
                       <p className="text-sm text-muted">No new notifications</p>
@@ -812,9 +840,9 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                     // the options in other menus; the one you are on lights
                     // with the menu highlight (data-mh-item).
                     <div className="flex flex-col gap-1.5 p-1.5">
-                      {notifications.map((notification) => (
+                      {notifications.map((notification, rowIndex) => (
+                        <div key={notification.id} className={sweeping ? 'fx-sweep' : undefined} style={sweeping ? { animationDelay: `${Math.min(rowIndex, 8) * 45}ms` } : undefined}>
                         <SwipeToDismiss
-                          key={notification.id}
                           enabled={swipeToDismiss && notification.type !== 'request'}
                           onDismiss={() => dismissOne(notification.id)}
                           className="rounded-[14px]"
@@ -928,6 +956,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                           </div>
                         </motion.div>
                         </SwipeToDismiss>
+                        </div>
                       ))}
                     </div>
                   )}

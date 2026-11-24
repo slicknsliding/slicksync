@@ -1,6 +1,6 @@
 'use client';
 
-import { PersonalTouches, MotionRow } from '@/components/settings/PersonalTouches';
+import { PersonalTouches, MotionRow, EffectsCard } from '@/components/settings/PersonalTouches';
 import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
 import { MenuHighlightSettings, menuHighlightName } from '@/components/settings/MenuHighlightSection';
@@ -847,6 +847,8 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
             )}
 
             <MotionRow v2={v2} />
+
+            <EffectsCard v2={v2} />
 
             <PageDesignChoice v2={v2} />
 

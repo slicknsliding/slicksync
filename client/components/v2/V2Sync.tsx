@@ -42,7 +42,15 @@ export function useV2Sync({ userId, groupId, syncing = false, enabled = true }: 
   const cacheKey = userId ? `ss-syncbadge:u:${userId}` : (groupId ? `ss-syncbadge:g:${groupId}` : '');
   const [state, setState] = useState<V2Sync>({ kind: 'checking' });
   const kindRef = useRef<V2SyncKind>('checking');
-  const prevSyncing = useRef(syncing);
+  // A sync from this page has ended and its answer is being read: the card
+  // keeps saying "Syncing" until it is in, rather than showing the old
+  // verdict for a moment first.
+  const [wasSyncing, setWasSyncing] = useState(syncing);
+  const [settling, setSettling] = useState(false);
+  if (wasSyncing !== syncing) {
+    setWasSyncing(syncing);
+    if (!syncing && enabled) setSettling(true);
+  }
 
   const apply = useCallback((next: V2Sync) => {
     kindRef.current = next.kind;
@@ -111,11 +119,14 @@ export function useV2Sync({ userId, groupId, syncing = false, enabled = true }: 
   }, [enabled, cacheKey, check, checkVerified]);
 
   useEffect(() => {
-    if (prevSyncing.current && !syncing && enabled) void checkVerified();
-    prevSyncing.current = syncing;
-  }, [syncing, enabled, checkVerified]);
+    if (!settling) return;
+    let live = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the answer arrives later, from the server
+    void checkVerified().finally(() => { if (live) setSettling(false); });
+    return () => { live = false; };
+  }, [settling, checkVerified]);
 
-  if (syncing) return { kind: 'syncing' };
+  if (syncing || settling) return { kind: 'syncing' };
   return state;
 }
 

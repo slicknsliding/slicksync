@@ -17,6 +17,7 @@ import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { StretchHandle } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
+import { fxBuzz, useListEffect } from '@/lib/effects';
 
 export type V2Tone = 'live' | 'ok' | 'good' | 'warn' | 'bad' | 'off';
 
@@ -33,10 +34,20 @@ const TONE: Record<V2Tone, { dot: string; text: string }> = {
 /** One status, in words, with a coloured dot. */
 export function V2Status({ tone, children }: { tone: V2Tone; children: ReactNode }) {
   const t = TONE[tone];
+  // The moment a sync lands (Effects → Sync result): the words leave
+  // "Syncing…" for the answer - one ring from the dot when it is good, one
+  // nudge when it is not. Any other change of words is drawn plainly.
+  const words = typeof children === 'string' ? children : null;
+  const [seen, setSeen] = useState(words);
+  const [landed, setLanded] = useState<'ring' | 'nudge' | 'word' | null>(null);
+  if (seen !== words) {
+    setSeen(words);
+    setLanded(seen?.startsWith('Syncing') && words ? (tone === 'good' ? 'ring' : tone === 'bad' || tone === 'warn' ? 'nudge' : 'word') : null);
+  }
   return (
-    <span className="v2-status" style={{ color: t.text }}>
-      <span className={`v2-dot${tone === 'live' ? ' v2-dot-live' : ''}`} style={{ background: t.dot }} />
-      {children}
+    <span className={`v2-status${landed === 'nudge' ? ' fx-nudge' : ''}`} style={{ color: t.text }}>
+      <span className={`v2-dot${tone === 'live' ? ' v2-dot-live' : ''}${landed === 'ring' ? ' fx-ring' : ''}`} style={{ background: t.dot }} />
+      {landed ? <span className="fx-word">{children}</span> : children}
     </span>
   );
 }
@@ -70,8 +81,10 @@ export function V2Grid({ children, max, stretch }: {
   /** The page's arrange and this grid's key: the cards can be stretched to size while arranging. */
   stretch?: { arrange: PageArrange; id: string; label?: string };
 }) {
+  const box = useRef<HTMLDivElement>(null);
+  useListEffect(box);
   return (
-    <div className={max === 3 ? 'v2-grid v2-grid-3' : 'v2-grid'} {...(stretch ? stretch.arrange.cardAttrs(stretch.id) : {})}>
+    <div ref={box} className={max === 3 ? 'v2-grid v2-grid-3' : 'v2-grid'} {...(stretch ? stretch.arrange.cardAttrs(stretch.id) : {})}>
       {children}
       {stretch && <StretchHandle arrange={stretch.arrange} id={stretch.id} label={stretch.label} />}
     </div>
@@ -80,7 +93,9 @@ export function V2Grid({ children, max, stretch }: {
 
 /** The list v2 rows sit in. */
 export function V2List({ children }: { children: ReactNode }) {
-  return <div className="v2-list">{children}</div>;
+  const box = useRef<HTMLDivElement>(null);
+  useListEffect(box);
+  return <div ref={box} className="v2-list">{children}</div>;
 }
 
 /** The small v2 button (Sync, Fix sign-in, Open...). */
@@ -267,7 +282,7 @@ function V2Menu({ items, at, anchorEl, onClose }: { items: V2CardMenuItem[]; at:
   const main = phoneSub
     ? (
       <Panel innerRef={ref} pos={pos} label={sub!.it.sub!.title}>
-        <button type="button" className="arrange-menu-item" onClick={() => setSub(null)} aria-label={`Back from ${sub!.it.sub!.title}`}>
+        <button type="button" role="menuitem" className="arrange-menu-item" onClick={() => setSub(null)} aria-label={`Back from ${sub!.it.sub!.title}`}>
           <ChevronLeftIcon className="w-4 h-4 shrink-0" />
           <b className="flex-1 min-w-0 truncate">{sub!.it.sub!.title}</b>
         </button>
@@ -352,7 +367,7 @@ function ItemInner(p: V2ItemProps & { sort?: ReturnType<typeof useSortable> }) {
     window.setTimeout(() => { suppress.current = false; }, 700);
     setMenu({ at: { x, y }, anchor: null });
   }, [hasMenu]);
-  const longPress = useLongPress({ onLongPress: (_e, x, y) => openAt(x, y), delay: 500 });
+  const longPress = useLongPress({ onLongPress: (_e, x, y) => { fxBuzz(); openAt(x, y); }, delay: 500 });
 
   // The same menu opens on a right click.
   const onContextMenu = (e: React.MouseEvent) => {

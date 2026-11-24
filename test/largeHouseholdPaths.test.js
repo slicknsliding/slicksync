@@ -183,6 +183,8 @@ test('the feed still pairs History rows with their sessions and expands other da
   assert.equal(own.durationSeconds, 3000) // max of the History row and the paired session
   const extra = m.recentActivity.filter((a) => a.dateOnly)
   assert.deepEqual(extra.map((a) => [a.watchedAt.slice(0, 10), a.durationSeconds]), [['2025-06-01', 1500]])
+  // The date itself, and midday UTC: the same calendar day for a viewer on either side of it.
+  assert.deepEqual(extra.map((a) => [a.day, a.watchedAt]), [['2025-06-01', '2025-06-01T12:00:00.000Z']])
   const left = m.watchSessions.map((s) => s.id).sort()
   // s-new was consumed by the History row; s-old starts within three hours
   // of s-new... but s-new is gone by then, so s-old stays, as does everything else.
