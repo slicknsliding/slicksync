@@ -3,7 +3,7 @@
 // Effects (Themes → Layout → Effects): the small motions that answer a press,
 // a removal, a cleared list, a pop-up, a finished sync and a switch. Each has
 // its own switch, saved to the account in the arrangement; everything is on by
-// default except the page opening and the vibration. They are all off on a TV, and whenever motion
+// default. They are all off on a TV, and whenever motion
 // is Reduced (the account's choice, or the device's when the account follows
 // it).
 //
@@ -20,8 +20,8 @@ export const EFFECTS = [
   { id: 'popups', title: 'Pop-ups', line: 'Pop-ups that open from a pill grow out of its pointer', on: true },
   { id: 'sync', title: 'Sync result', line: 'One ring on the dot when a sync lands, one nudge when it can’t', on: true },
   { id: 'switches', title: 'Sliding switches', line: 'The highlight slides to your choice', on: true },
-  { id: 'loading', title: 'Opening a page', line: 'The new page glides up into place, and a thin line shows across the top when it is slow. Nothing fades or dims', on: false },
-  { id: 'vibrate', title: 'Vibrate on Android phones', line: 'A tiny buzz on press-and-hold and on deleting. iPhones don’t allow it', on: false },
+  { id: 'loading', title: 'Opening a page', line: 'The new page glides up into place, and a thin line shows across the top when it is slow. Nothing fades or dims', on: true },
+  { id: 'vibrate', title: 'Vibrate on Android phones', line: 'A tiny buzz on press-and-hold and on deleting. iPhones don’t allow it', on: true },
 ] as const;
 
 export type EffectId = typeof EFFECTS[number]['id'];

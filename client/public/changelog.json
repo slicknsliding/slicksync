@@ -9,7 +9,7 @@
       "Usenet streams with a scrambled file name show their real title on Now Playing and in the started-watching alert, taken from AIOStreams’ own library.",
       "AIOStreams households work with the newer profiles list: household users, PINs, personal addresses, pauses, pictures, their own collections and rows, and putting back an older version.",
       "Monthly recap in the bell and as a push, with or without Discord. The poster collage still goes to Discord when a webhook is set, and the count is every title watched.",
-      "Effects: small motions that answer a press, a removal, a cleared bell, a pop-up, a finished sync and a switch, each with its own switch under Settings → Themes → Layout → Effects, on both page designs. Opening a page (a glide and a loading line) and Vibrate on Android phones start off.",
+      "Effects: small motions that answer a press, a removal, a cleared bell, a pop-up, a finished sync and a switch, each with its own switch under Settings → Themes → Layout → Effects, on both page designs. That includes Opening a page (a glide and a loading line) and Vibrate on Android phones.",
       "A Sync button on every Classic user and group card, and tapping a Synced or Stale badge syncs again. Deleting a person on Classic shows Undo, and Undo returns them to their place in the group.",
       "Every pop-up menu has the same inset, rounded rows, and every row lights with the Menu highlight, including Delete in right-click menus.",
       "Public instances: the Superadmin page shows the day each account was last used and what it has set up, sends alerts for sign-up surges, fast-growing accounts and wrong passwords, and lists sign-ins to the page itself."

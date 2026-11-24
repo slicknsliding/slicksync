@@ -20,6 +20,9 @@ import { useLayoutMode, AccountPlacementContext } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 
+/** Fired on window when the account menu opens (detail true) or closes (false). */
+export const ACCOUNT_MENU_EVENT = 'slicksync:account-menu';
+
 const TORBOX_REFERRAL_URL = 'https://torbox.app/subscription?referral=790ccd5b-646d-43d7-9072-aef7a6eb1de8';
 
 interface PanelSwitcherProps {
@@ -68,6 +71,12 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
   const isTV = useIsTV();
   const [isOpen, setIsOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  // Tells the "Resume tour" chip (TopbarActions): on a TV it sits where this
+  // menu opens, and steps aside while the menu is open.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(ACCOUNT_MENU_EVENT, { detail: isOpen }));
+    return () => { if (isOpen) window.dispatchEvent(new CustomEvent(ACCOUNT_MENU_EVENT, { detail: false })); };
+  }, [isOpen]);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
