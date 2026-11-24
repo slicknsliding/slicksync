@@ -22,6 +22,12 @@ interface TVFocusableProps {
    * its panel and lost its edges and ... button (.tv-ring-inside, globals.css).
    */
   ringInside?: boolean;
+  /**
+   * A row in a pop-up menu: the ring is drawn inside the row's own edge and
+   * the row tints, never grows - grown, its ring ran past the menu's edge and
+   * was cut off (.tv-row, globals.css).
+   */
+  menuRow?: boolean;
   children: ReactNode;
 }
 
@@ -31,7 +37,7 @@ interface TVFocusableProps {
 // picks up the active theme's own accent color instead of a hardcoded one.
 // Enter/OK on the remote fires onEnterPress, same handler the onClick
 // would've called on PC/mobile - no separate TV-only logic to keep in sync.
-export function TVFocusable({ onEnterPress, onFocus, onBlur, onArrowPress, className = '', style, focusKey, inline = false, ringInside = false, children }: TVFocusableProps) {
+export function TVFocusable({ onEnterPress, onFocus, onBlur, onArrowPress, className = '', style, focusKey, inline = false, ringInside = false, menuRow = false, children }: TVFocusableProps) {
   // Norigin moves the focus KEY, not the viewport - nothing scrolls on its
   // own. A poster a few rows down gains focus exactly like one on-screen,
   // just invisibly, which reads as "the remote stopped working" (confirmed:
@@ -58,6 +64,19 @@ export function TVFocusable({ onEnterPress, onFocus, onBlur, onArrowPress, class
   });
 
   const Tag = inline ? 'span' : 'div';
+  if (menuRow) {
+    return (
+      <Tag
+        ref={ref as React.Ref<HTMLDivElement & HTMLSpanElement>}
+        data-tv-stop=""
+        data-tv-focused={focused ? '' : undefined}
+        className={`tv-row outline-none ${className}`}
+        style={style}
+      >
+        {children}
+      </Tag>
+    );
+  }
   if (ringInside) {
     return (
       <Tag

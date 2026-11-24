@@ -167,7 +167,7 @@ export function V2MoreMenu({ items, label = 'More', icon, small, menuLabel, focu
                   {it.label}
                 </button>
               );
-              return isTV && !it.disabled ? <TVFocusable key={it.label} onEnterPress={() => pick(it)}>{b}</TVFocusable> : b;
+              return isTV && !it.disabled ? <TVFocusable menuRow key={it.label} onEnterPress={() => pick(it)}>{b}</TVFocusable> : b;
             });
             return isTV ? <TVMenuScope>{list}</TVMenuScope> : list;
           })()}

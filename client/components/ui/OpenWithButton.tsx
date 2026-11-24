@@ -81,7 +81,7 @@ function TVPlayOnDevice({ devices, onPlayOn }: { devices: Device[]; onPlayOn: (d
       {at && typeof document !== 'undefined' && createPortal(
         <>
           <div className="fixed inset-0 z-[9998]" onClick={close} />
-          <div ref={panel} role="dialog" aria-label="Play on a device" className="popup-panel fixed z-[9999] rounded-2xl p-1.5" style={popupStyle(at)}>
+          <div ref={panel} role="dialog" aria-label="Play on a device" data-tv-rows="" className="popup-panel fixed z-[9999] rounded-2xl p-1.5" style={popupStyle(at)}>
             <PlayOnDeviceList devices={devices} onPlayOn={(d) => { close(); onPlayOn(d); }} />
           </div>
           {(at.side === 'below' || at.side === 'above') && at.tipX != null && at.tipY != null && (

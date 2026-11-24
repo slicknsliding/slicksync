@@ -108,8 +108,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
 
   // A remote reaches the trigger and each row through the D-pad focus tree;
   // everywhere else the wrapper steps aside.
-  const tv = (onEnter: () => void, node: ReactNode) =>
-    isTV ? <TVFocusable onEnterPress={onEnter}>{node}</TVFocusable> : node;
+  const tv = (onEnter: () => void, node: ReactNode, menuRow = true) =>
+    isTV ? <TVFocusable menuRow={menuRow} onEnterPress={onEnter}>{node}</TVFocusable> : node;
 
   const handleSwitchPanel = async () => {
     if (mode === 'admin') {
@@ -287,7 +287,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
           </>
         )}
       </motion.button>
-      ))}
+      ), false)}
 
       {/* Dropdown Menu */}
       <AnimatePresence>
