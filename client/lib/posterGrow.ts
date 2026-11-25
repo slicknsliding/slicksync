@@ -15,37 +15,59 @@ let last: { el: HTMLElement; at: number } | null = null;
 let watching = false;
 
 /**
- * Remembers what was just pressed (ArrangeProvider starts it): a poster card's
- * picture, or failing that the picture inside whatever card, row or banner
- * was pressed, or that thing itself. Presses inside a window that is already
- * open don't count: they change what it shows rather than opening one.
+ * Remembers what was just pressed (ArrangeProvider starts it). Presses inside
+ * a window that is already open don't count: they change what it shows rather
+ * than opening one. A press in a menu counts for the card the menu is for.
  */
 export function watchPosterTaps(): void {
   if (watching || typeof document === 'undefined') return;
   watching = true;
-  document.addEventListener('click', (e) => {
+  // What a press was on: a poster card's picture, else the picture inside the
+  // card, row or banner pressed, else that thing itself.
+  const pressed = (t: Element): HTMLElement | null => {
+    const card = t.closest('[data-fx-poster]');
+    if (card instanceof HTMLElement) return card.querySelector<HTMLElement>('[data-fx-poster-art]') || card;
+    const hit = t.closest<HTMLElement>('[role="button"], button, a, .cursor-pointer, .tap-card, [data-v2-item], .ss-card, .v2-card');
+    if (!hit) return null;
+    const art = Array.from(hit.querySelectorAll('img')).find((i) => { const r = i.getBoundingClientRect(); return r.width >= 32 && r.height >= 32; });
+    return art || hit;
+  };
+  // A floating menu: by its role, or a pop-up panel that floats over the page
+  // (the same panel look is also used for boxes that are part of a page).
+  const inMenu = (t: Element): boolean => {
+    if (t.closest('[role="menu"]')) return true;
+    const panel = t.closest('.popup-panel');
+    if (!panel) return false;
+    const pos = getComputedStyle(panel).position;
+    return pos === 'fixed' || pos === 'absolute';
+  };
+  // The last thing pressed (or right-clicked) that was not inside a menu: a
+  // menu's "View details" opens the window for the card the menu belongs to.
+  let owner: HTMLElement | null = null;
+  const note = (e: Event) => {
     const t = e.target as Element | null;
     if (!t?.closest || t.closest('[role="dialog"]')) return;
-    const card = t.closest('[data-fx-poster]');
-    let el: HTMLElement | null = card instanceof HTMLElement ? (card.querySelector<HTMLElement>('[data-fx-poster-art]') || card) : null;
-    if (!el) {
-      const hit = t.closest<HTMLElement>('[role="button"], button, a, .cursor-pointer, .tap-card, [data-v2-item]');
-      if (hit) {
-        const art = Array.from(hit.querySelectorAll('img')).find((i) => { const r = i.getBoundingClientRect(); return r.width >= 32 && r.height >= 32; });
-        el = art || hit;
-      }
+    if (inMenu(t)) {
+      if (e.type === 'click' && owner?.isConnected) last = { el: owner, at: performance.now() };
+      return;
     }
-    if (el) last = { el, at: performance.now() };
-  }, true);
+    const el = pressed(t);
+    if (!el) return;
+    owner = el;
+    if (e.type === 'click') last = { el, at: performance.now() };
+  };
+  document.addEventListener('click', note, true);
+  document.addEventListener('contextmenu', note, true);
 }
 
 /**
- * What a window opening right now was opened from, when the effect is on.
- * Once only. The caller checks the window is a title's details ([data-fx-detail]).
+ * What a window opening right now was opened from, when the effect is on. The
+ * caller checks the window is a title's details ([data-fx-detail]). Asking
+ * does not use it up: a window can be drawn more than once before it shows,
+ * and the second asking must get the same answer. It lapses by itself.
  */
 export function takePosterOrigin(): HTMLElement | null {
   const l = last;
-  last = null;
   return l && performance.now() - l.at < 800 && l.el.isConnected && fxOn('poster') ? l.el : null;
 }
 

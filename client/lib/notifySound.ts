@@ -40,21 +40,61 @@ export function soundToSave(s: SoundSetting): SoundSaved | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-type Ctx = AudioContext;
-let ctx: Ctx | null = null;
+let ctx: AudioContext | null = null;
+
+function context(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (ctx) return ctx;
+  const Make = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Make) return null;
+  ctx = new Make();
+  return ctx;
+}
+
+// Older Safari's resume() returns nothing rather than a promise.
+function wake(ac: AudioContext): void {
+  if (ac.state !== 'suspended') return;
+  const r = ac.resume() as Promise<void> | undefined;
+  if (r && typeof r.catch === 'function') r.catch(() => {});
+}
+
+/**
+ * Safari (and every iPhone browser) only lets a page start making sound from
+ * inside a tap or a key press - a notification arriving is neither. So the
+ * first tap or key press anywhere wakes the sound up, silently, and it can
+ * play by itself from then on. Returns the undo.
+ */
+export function armSound(): () => void {
+  if (typeof document === 'undefined') return () => {};
+  const events = ['pointerdown', 'touchend', 'keydown'] as const;
+  const off = () => events.forEach((e) => document.removeEventListener(e, on, true));
+  const on = () => {
+    try {
+      const ac = context();
+      if (!ac) { off(); return; }
+      wake(ac);
+      // A sound has to start inside the tap for iPhones to allow later ones: one silent sample.
+      const src = ac.createBufferSource();
+      src.buffer = ac.createBuffer(1, 1, 22050);
+      src.connect(ac.destination);
+      src.start(0);
+      if (ac.state === 'running') off();
+    } catch { off(); }
+  };
+  events.forEach((e) => document.addEventListener(e, on, true));
+  return off;
+}
 
 /**
  * Plays one of the sounds. A browser only lets a page make sound once it has
- * been clicked or tapped since it opened; before that this does nothing.
+ * been clicked or tapped since it opened (see armSound); before that this
+ * does nothing.
  */
 export function playSound(kind: SoundId, volume = SOUND_DEFAULT.volume): void {
-  if (typeof window === 'undefined') return;
   try {
-    const Make = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Make) return;
-    ctx = ctx || new Make();
-    const ac = ctx;
-    if (ac.state === 'suspended') ac.resume().catch(() => {});
+    const ac = context();
+    if (!ac) return;
+    wake(ac);
     const t = ac.currentTime + 0.01;
     const out = ac.createGain();
     out.gain.value = Math.max(0, Math.min(1, volume));

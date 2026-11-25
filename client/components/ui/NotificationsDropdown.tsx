@@ -17,7 +17,7 @@ import { usePageDesign } from '@/lib/arrange';
 import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 import { fxOn } from '@/lib/effects';
 import { useNotifySound } from '@/lib/arrange';
-import { playSound } from '@/lib/notifySound';
+import { armSound, playSound } from '@/lib/notifySound';
 
 interface NotificationItem {
   id: string;
@@ -710,6 +710,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // The same moment plays the notification sound (Settings → Notifications).
   const { sound } = useNotifySound();
   const heard = useRef<number | null>(null);
+  const soundOn = sound.on;
+  useEffect(() => (soundOn ? armSound() : undefined), [soundOn]);
   useEffect(() => {
     const was = heard.current;
     heard.current = unreadCount;
