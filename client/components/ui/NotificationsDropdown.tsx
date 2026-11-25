@@ -16,6 +16,8 @@ import { useTVModal } from '@/components/tv/useTVModal';
 import { usePageDesign } from '@/lib/arrange';
 import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 import { fxOn } from '@/lib/effects';
+import { useNotifySound } from '@/lib/arrange';
+import { playSound } from '@/lib/notifySound';
 
 interface NotificationItem {
   id: string;
@@ -705,6 +707,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const [settled, setSettled] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSettled(true), 5000); return () => clearTimeout(t); }, []);
   const [nudge, setNudge] = useState<'' | 'a' | 'b'>('');
+  // The same moment plays the notification sound (Settings → Notifications).
+  const { sound } = useNotifySound();
+  const heard = useRef<number | null>(null);
+  useEffect(() => {
+    const was = heard.current;
+    heard.current = unreadCount;
+    if (settled && was !== null && unreadCount > was && sound.on) playSound(sound.kind, sound.volume);
+  }, [unreadCount, settled, sound]);
   if (countSeen !== unreadCount) {
     setCountSeen(unreadCount);
     if (settled && countSeen !== null && unreadCount > countSeen && !isOpen && fxOn('bell')) setNudge(nudge === 'a' ? 'b' : 'a');

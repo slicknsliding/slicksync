@@ -299,7 +299,8 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
   });
   useLayoutEffect(() => {
     const panel = panelRef.current;
-    if (!panel || !origin || !isOpen) return;
+    // Only a title's details window does this; other small windows open as before.
+    if (!panel || !origin || !isOpen || !panel.querySelector('[data-fx-detail]')) return;
     const move = growWindow(panel, origin, true, overlayRef.current, shadowRef.current);
     return () => {
       move.cancel();

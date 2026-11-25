@@ -3,6 +3,7 @@
 import { PersonalTouches, MotionRow, EffectsCard } from '@/components/settings/PersonalTouches';
 import { PageDesignChoice } from '@/components/settings/PageDesignChoice';
 import { MenuArranger } from '@/components/settings/MenuArranger';
+import { EffectsGroup, MenuGroup, PagesGroup, SettingsLabel, WatchGroup } from '@/components/settings/SettingsGroup';
 import { MenuHighlightSettings, menuHighlightName } from '@/components/settings/MenuHighlightSection';
 import { useMenuHighlight } from '@/lib/menuHighlight';
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
@@ -544,21 +545,6 @@ function ThemeBlock({ v2, arrange, id, title, meta, icon, tone, blurb, badge, de
 }
 
 // Your menu, in the v2 design: a row that opens the menu arranger when wanted.
-function MenuFold({ v2, children }: { v2: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const { menu } = useMenuArrangement();
-  if (!v2) return <>{children}</>;
-  const { shown, more } = arrangeMenu(menu);
-  return (
-    <V2SetRow
-      title="Your menu"
-      line={`${shown.length} page${shown.length === 1 ? '' : 's'}${more.length ? `, ${more.length} in More` : ''}. Put them in order, choose what sits in More, and set how the bar is laid out.`}
-      control={<V2Button onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Arrange'}</V2Button>}
-      below={open ? children : undefined}
-    />
-  );
-}
-
 // v2: the More menu switch on its own row, so it's found without opening the arranger.
 function MoreMenuRow({ v2 }: { v2: boolean }) {
   const { menu, setMenu } = useMenuArrangement();
@@ -846,41 +832,51 @@ export function ThemesPanel({ embedded = false, arrange }: { embedded?: boolean;
               </>
             )}
 
-            <MotionRow v2={v2} />
-
-            <EffectsCard v2={v2} />
-
             <PageDesignChoice v2={v2} />
 
-            <PageHeaderRow v2={v2} />
+            {/* Everything else sits in named groups, folded when the page opens. */}
+            <EffectsGroup v2={v2}>
+              <MotionRow v2={v2} />
+              <EffectsCard v2={v2} />
+            </EffectsGroup>
 
-            <MenuFold v2={v2}>
-              <MenuArranger topNavi={layoutMode === 'nebula'} />
-            </MenuFold>
-
-            <MoreMenuRow v2={v2} />
-
-            <PersonalTouches v2={v2} />
-
-            {/* Moved here from Settings -> Other Settings - a display
-                arrangement choice belongs alongside Layout, not off on its
-                own page. */}
-            <div className="flex items-center justify-between p-4 rounded-lg bg-subtle mt-3">
-              <div>
-                <p className="font-medium text-sm text-default">Grid or list</p>
-                <p className="text-xs text-muted">How every page shows its things. Pages no longer have their own switch.</p>
+            <MenuGroup v2={v2} count={v2 ? 6 : 5}>
+              <PageHeaderRow v2={v2} />
+              <div className={v2 ? 'py-3' : undefined}>
+                <MenuArranger topNavi={layoutMode === 'nebula'} />
               </div>
-              <div className="hidden md:block">
-                <ViewModeToggle
-                  mode={viewMode}
-                  onChange={setViewMode}
-                  showLabels={false}
-                />
+              <MoreMenuRow v2={v2} />
+            </MenuGroup>
+
+            <WatchGroup v2={v2}>
+              <SettingsLabel>Now Playing</SettingsLabel>
+              <PersonalTouches v2={v2} part="np" />
+              <SettingsLabel>Continue Watching and Coming up</SettingsLabel>
+              <PersonalTouches v2={v2} part="cw" />
+            </WatchGroup>
+
+            <PagesGroup v2={v2} grid={viewMode !== 'list'}>
+              <PersonalTouches v2={v2} part="pages" />
+              {/* Moved here from Settings -> Other Settings - a display
+                  arrangement choice belongs alongside Layout, not off on its
+                  own page. */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-subtle mt-3">
+                <div>
+                  <p className="font-medium text-sm text-default">Grid or list</p>
+                  <p className="text-xs text-muted">How every page shows its things. Pages no longer have their own switch.</p>
+                </div>
+                <div className="hidden md:block">
+                  <ViewModeToggle
+                    mode={viewMode}
+                    onChange={setViewMode}
+                    showLabels={false}
+                  />
+                </div>
+                <span className="md:hidden text-xs text-muted text-right" style={{ maxWidth: '120px' }}>
+                  Grid view only on mobile
+                </span>
               </div>
-              <span className="md:hidden text-xs text-muted text-right" style={{ maxWidth: '120px' }}>
-                Grid view only on mobile
-              </span>
-            </div>
+            </PagesGroup>
         </ThemeBlock>
 
         {/* Theme Selection */}

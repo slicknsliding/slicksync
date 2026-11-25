@@ -49,6 +49,8 @@ export type Arrangement = {
   motion?: 'reduced' | 'full';
   /** Effects (Themes → Layout → Effects): only the switches that differ from their default (lib/effects.ts). */
   effects?: Partial<Record<string, boolean>>;
+  /** The notification sound (Settings → Notifications): only what differs from the default (lib/notifySound.ts). */
+  sound?: { on?: boolean; kind?: string; volume?: number };
   /** Now Playing: who is watching sits on the picture ('on'); under it otherwise. */
   nowPlayingWho?: 'on';
   /** Continue Watching: time left / Up next on the picture ('on'); under the card otherwise (the default; 'under' from before it was). */

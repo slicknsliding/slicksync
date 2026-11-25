@@ -17,6 +17,7 @@ import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettin
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { NotificationSound } from '@/components/settings/NotificationSound';
 import { SETTINGS_INDEX } from '@/lib/settingsIndex';
 import { ThemesPanel } from '@/components/settings/ThemesPanel';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -848,6 +849,13 @@ export default function SettingsPage() {
           if (++tries < 40) setTimeout(attempt, 150); // give up after ~6s
           return;
         }
+        // In a folded group (Themes → Layout): open it, then come back for the row.
+        const folded = el.closest<HTMLElement>('[data-fold-body][hidden]');
+        if (folded) {
+          (folded.previousElementSibling as HTMLElement | null)?.click();
+          if (++tries < 40) setTimeout(attempt, 150);
+          return;
+        }
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const prevShadow = el.style.boxShadow;
         el.style.transition = 'box-shadow 0.3s ease';
@@ -1576,6 +1584,10 @@ export default function SettingsPage() {
                   Install SlickSync to your home screen, then enable native new-episode notifications on this device.
                 </p>
                 <PushNotificationToggle />
+              </div>
+
+              <div className="pt-4 border-t border-default">
+                <NotificationSound />
               </div>
 
               <div className="pt-4 border-t border-default">

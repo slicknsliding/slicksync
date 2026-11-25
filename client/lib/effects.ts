@@ -25,6 +25,7 @@ export const EFFECTS = [
   { id: 'splash', title: 'Opening the app', line: 'The SlickSync mark comes together, then moves into its place on the page. Once each time the app starts', on: true },
   { id: 'numbers', title: 'Counting numbers', line: 'Big figures roll up when a page opens and roll over when they change', on: true },
   { id: 'poster', title: 'Poster to detail', line: 'A details window opened from a poster grows out of that poster and goes back into it', on: true },
+  { id: 'drag', title: 'Drag and drop', line: 'What you pick up lifts a little, and lands with a small settle', on: true },
   { id: 'toggles', title: 'On/off switches', line: 'The knob slides with a slight overshoot and a tiny stretch', on: true },
   { id: 'bell', title: 'Bell nudge', line: 'The bell rocks once and the count pops in when a notification arrives while you are looking', on: true },
   { id: 'marks', title: 'Marks', line: 'Watchlist, Watched, Follow and the thumbs pop as you set them, and a tick draws itself', on: true },
@@ -259,6 +260,53 @@ export function watchTouches(): () => void {
   };
   document.addEventListener('click', onClick, true);
   return () => document.removeEventListener('click', onClick, true);
+}
+
+/**
+ * Drag and drop: whatever is picked up lifts a little, and settles as it
+ * lands. Every draggable thing here is dnd-kit's, which marks the grip (or
+ * the thing itself) aria-pressed while it is held; the thing being moved is
+ * that element or the nearest one above it that is being moved along.
+ */
+export function watchDrags(): () => void {
+  if (typeof MutationObserver === 'undefined') return () => {};
+  let held: HTMLElement | null = null;
+  let frame = 0;
+  const moved = (from: Element): HTMLElement | null => {
+    for (let el: Element | null = from; el && el !== document.body; el = el.parentElement) {
+      if (el instanceof HTMLElement && el.style.transform.includes('translate3d')) return el;
+    }
+    return null;
+  };
+  const drop = () => {
+    cancelAnimationFrame(frame);
+    const el = held;
+    held = null;
+    if (!el) return;
+    el.setAttribute('data-fx-drag', 'settle');
+    window.setTimeout(() => { if (el.getAttribute('data-fx-drag') === 'settle') el.removeAttribute('data-fx-drag'); }, 360);
+  };
+  const watch = new MutationObserver((records) => {
+    for (const rec of records) {
+      const grip = rec.target as Element;
+      if (grip.getAttribute('aria-roledescription') !== 'sortable') continue;
+      if (grip.getAttribute('aria-pressed') === 'true') {
+        if (!fxOn('drag')) continue;
+        // It is only moved along once the pointer has travelled: look for a moment.
+        let tries = 0;
+        const look = () => {
+          if (grip.getAttribute('aria-pressed') !== 'true') return;
+          const el = moved(grip);
+          if (el) { held = el; el.setAttribute('data-fx-drag', 'held'); return; }
+          if (++tries < 40) frame = requestAnimationFrame(look);
+        };
+        cancelAnimationFrame(frame);
+        look();
+      } else if (held) drop();
+    }
+  });
+  watch.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['aria-pressed'] });
+  return () => { watch.disconnect(); cancelAnimationFrame(frame); };
 }
 
 export function watchSwitches(): () => void {

@@ -13,6 +13,7 @@ import {
 import { Avatar } from '@/components/ui';
 import { ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { NotificationSound } from '@/components/settings/NotificationSound';
 import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettings';
 import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -297,6 +298,9 @@ export function NotificationsV2({ arrange, sync, setSync, save, saveMany, webhoo
             line="Native notifications on this device, even when SlickSync is closed. Install SlickSync to your home screen first."
             below={<PushNotificationToggle />}
           />
+          <div className="py-3">
+            <NotificationSound />
+          </div>
           <V2SetRow
             title="Discord"
             also="Webhook URL"

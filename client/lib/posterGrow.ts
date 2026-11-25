@@ -14,19 +14,35 @@ import { fxOn } from './effects';
 let last: { el: HTMLElement; at: number } | null = null;
 let watching = false;
 
-/** Remembers the poster that was just pressed (ArrangeProvider starts it). */
+/**
+ * Remembers what was just pressed (ArrangeProvider starts it): a poster card's
+ * picture, or failing that the picture inside whatever card, row or banner
+ * was pressed, or that thing itself. Presses inside a window that is already
+ * open don't count: they change what it shows rather than opening one.
+ */
 export function watchPosterTaps(): void {
   if (watching || typeof document === 'undefined') return;
   watching = true;
   document.addEventListener('click', (e) => {
-    const card = (e.target as Element | null)?.closest?.('[data-fx-poster]');
-    if (!(card instanceof HTMLElement)) return;
-    const art = card.querySelector<HTMLElement>('[data-fx-poster-art]') || card;
-    last = { el: art, at: performance.now() };
+    const t = e.target as Element | null;
+    if (!t?.closest || t.closest('[role="dialog"]')) return;
+    const card = t.closest('[data-fx-poster]');
+    let el: HTMLElement | null = card instanceof HTMLElement ? (card.querySelector<HTMLElement>('[data-fx-poster-art]') || card) : null;
+    if (!el) {
+      const hit = t.closest<HTMLElement>('[role="button"], button, a, .cursor-pointer, .tap-card, [data-v2-item]');
+      if (hit) {
+        const art = Array.from(hit.querySelectorAll('img')).find((i) => { const r = i.getBoundingClientRect(); return r.width >= 32 && r.height >= 32; });
+        el = art || hit;
+      }
+    }
+    if (el) last = { el, at: performance.now() };
   }, true);
 }
 
-/** The poster a window opening right now came from, when the effect is on. Once only. */
+/**
+ * What a window opening right now was opened from, when the effect is on.
+ * Once only. The caller checks the window is a title's details ([data-fx-detail]).
+ */
 export function takePosterOrigin(): HTMLElement | null {
   const l = last;
   last = null;

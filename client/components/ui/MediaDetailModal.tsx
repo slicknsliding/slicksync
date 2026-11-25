@@ -1075,7 +1075,7 @@ export function MediaDetailModal({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying} sheet>
       <TVScope {...(tvScopeProps as any)}>
-      <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
+      <div className="-mx-6 -mt-6" data-fx-detail="" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (
           // aspect-video (not a fixed height like the static hero below) -
           // YouTube's player always keeps its actual video content at 16:9
@@ -2336,6 +2336,9 @@ export function MediaDetailModal({
           )}
         </div>
       </div>
+      {/* While the details load the window keeps its full height: without this
+          it opened short, sat there until they arrived, then jumped to full size. */}
+      {isLoading && <div aria-hidden="true" style={{ height: '100dvh' }} />}
       </TVScope>
     </Modal>
   );
