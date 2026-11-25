@@ -2268,3 +2268,8 @@ html[data-splash] .ss-splash { display: grid; }
 @keyframes fx-tick-out { to { transform: translateY(-100%); } }
 /* Now Playing: the progress bar moves to its new place instead of jumping. */
 html:not([data-tv]):not([data-fx-off~="nowplaying"]) .fx-bar { transition: width 0.9s cubic-bezier(0.3, 0.7, 0.3, 1); }
+/* Poster to detail (lib/posterGrow): the window's shadow while it grows - its
+   own is cut off by the shape it is shown through - and the trailer button,
+   which waits until the window has arrived. */
+.fx-grow-shadow { display: none; position: fixed; border-radius: 16px; pointer-events: none; box-shadow: 0 20px 50px -14px rgba(0, 0, 0, 0.85), 0 3px 10px rgba(0, 0, 0, 0.45); }
+[data-fx-morphing] [data-fx-wait] { visibility: hidden; }

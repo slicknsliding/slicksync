@@ -1129,7 +1129,7 @@ export function MediaDetailModal({
           <div className="relative w-full h-40 sm:h-56">
             {/* Taller than the space it takes: the picture carries on behind
                 the title and ratings below, fading out under them. */}
-            <div className="absolute inset-x-0 top-0 h-[262px] sm:h-[330px] overflow-hidden rounded-t-2xl pointer-events-none" aria-hidden="true">
+            <div data-fx-hero="" className="absolute inset-x-0 top-0 h-[262px] sm:h-[330px] overflow-hidden rounded-t-2xl pointer-events-none" aria-hidden="true">
               <img
                 src={heroImage}
                 alt=""
@@ -1157,6 +1157,7 @@ export function MediaDetailModal({
                 onClick={() => { setTrailerSrc(buildTrailerSrc(trailerId, false)); setIsTrailerPlaying(true); }}
                 className="absolute inset-0 flex items-center justify-center group"
                 aria-label="Play trailer"
+                data-fx-wait=""
               >
                 <span
                   className="art-btn flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-transform group-hover:scale-105"

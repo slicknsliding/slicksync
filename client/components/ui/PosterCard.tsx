@@ -142,6 +142,7 @@ export const PosterCard = memo(function PosterCard({
 
   const card = (
     <div
+      data-fx-poster=""
       className="group relative cursor-pointer tap-card"
       onClick={() => {
         // Suppress the click that fires immediately after a long-press
@@ -170,7 +171,7 @@ export const PosterCard = memo(function PosterCard({
       }}
       {...longPress}
     >
-      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
+      <div data-fx-poster-art="" className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
         {item.poster && !imageError ? (
           <>
             <img

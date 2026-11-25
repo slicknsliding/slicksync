@@ -24,6 +24,7 @@ export const EFFECTS = [
   { id: 'vibrate', title: 'Vibrate on Android phones', line: 'A tiny buzz on press-and-hold and on deleting. iPhones don’t allow it', on: true },
   { id: 'splash', title: 'Opening the app', line: 'The SlickSync mark comes together, then moves into its place on the page. Once each time the app starts', on: true },
   { id: 'numbers', title: 'Counting numbers', line: 'Big figures roll up when a page opens and roll over when they change', on: true },
+  { id: 'poster', title: 'Poster to detail', line: 'A details window opened from a poster grows out of that poster and goes back into it', on: true },
   { id: 'nowplaying', title: 'Now Playing', line: 'Banners slide in and out as people start and stop, and the progress bar moves smoothly', on: true },
 ] as const;
 

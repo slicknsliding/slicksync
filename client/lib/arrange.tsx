@@ -13,6 +13,7 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useS
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { watchPosterTaps } from '@/lib/posterGrow';
 import { EFFECTS, applyEffects, effectChoice, watchSwitches, withEffect, type EffectChoices, type EffectId } from '@/lib/effects';
 import { VaultDragProvider, useVaultDrag } from '@/components/providers/VaultDragContext';
 import { useSortableSensors } from '@/components/ui/DragSortable';
@@ -172,6 +173,7 @@ export function ArrangeProvider({ children, store = ACCOUNT_STORE }: { children:
   const effects = arrangement.effects as EffectChoices | undefined;
   useEffect(() => applyEffects(effects, motion), [effects, motion]);
   useEffect(() => watchSwitches(), []);
+  useEffect(() => watchPosterTaps(), []);
 
   const canUndo = history.length > 0;
   const value = useMemo(() => ({ arrangement, update, active: true, loaded, session, canUndo, undo, cancel }), [arrangement, update, loaded, session, canUndo, undo, cancel]);
