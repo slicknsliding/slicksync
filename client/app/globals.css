@@ -2273,3 +2273,25 @@ html:not([data-tv]):not([data-fx-off~="nowplaying"]) .fx-bar { transition: width
    which waits until the window has arrived. */
 .fx-grow-shadow { display: none; position: fixed; border-radius: 16px; pointer-events: none; box-shadow: 0 20px 50px -14px rgba(0, 0, 0, 0.85), 0 3px 10px rgba(0, 0, 0, 0.45); }
 [data-fx-morphing] [data-fx-wait] { visibility: hidden; }
+
+/* ---- Effects, third batch: on/off switches, the bell, marks. Each moves only
+   after it has been pressed (data-fx-touched, lib/effects watchTouches) or
+   when something arrives - never just because a page opened. ---- */
+@keyframes fx-knob-a { 30% { scale: 1.22 0.86; } 70% { scale: 0.95 1.04; } }
+@keyframes fx-knob-b { 30% { scale: 1.22 0.86; } 70% { scale: 0.95 1.04; } }
+html:not([data-tv]):not([data-fx-off~="toggles"]) [data-fx-tgl][data-fx-touched]:is([aria-pressed="true"], [aria-checked="true"]) > span { animation: fx-knob-a 0.3s ease-out; }
+html:not([data-tv]):not([data-fx-off~="toggles"]) [data-fx-tgl][data-fx-touched]:is([aria-pressed="false"], [aria-checked="false"]) > span { animation: fx-knob-b 0.3s ease-out; }
+/* the New design's switch moves its knob by position: give that the overshoot */
+html:not([data-tv]):not([data-fx-off~="toggles"]) [role="switch"][data-fx-tgl][data-fx-touched] > span { transition: left 0.3s cubic-bezier(0.3, 1.9, 0.5, 1), top 0.15s; }
+@keyframes fx-bell-rock { 15% { rotate: 16deg; } 35% { rotate: -13deg; } 55% { rotate: 8deg; } 75% { rotate: -4deg; } }
+@keyframes fx-bell-rock-b { 15% { rotate: 16deg; } 35% { rotate: -13deg; } 55% { rotate: 8deg; } 75% { rotate: -4deg; } }
+@keyframes fx-bell-count { from { scale: 0.2; } }
+@keyframes fx-bell-count-b { from { scale: 0.2; } }
+html:not([data-tv]):not([data-fx-off~="bell"]) .fx-bell-a > svg { transform-origin: 50% 10%; animation: fx-bell-rock 0.62s ease-out; }
+html:not([data-tv]):not([data-fx-off~="bell"]) .fx-bell-b > svg { transform-origin: 50% 10%; animation: fx-bell-rock-b 0.62s ease-out; }
+html:not([data-tv]):not([data-fx-off~="bell"]) .fx-bell-a > span { animation: fx-bell-count 0.32s cubic-bezier(0.3, 1.7, 0.5, 1) both; }
+html:not([data-tv]):not([data-fx-off~="bell"]) .fx-bell-b > span { animation: fx-bell-count-b 0.32s cubic-bezier(0.3, 1.7, 0.5, 1) both; }
+@keyframes fx-mark-pop { 35% { scale: 1.35; } }
+@keyframes fx-mark-draw { from { stroke-dashoffset: 120; } to { stroke-dashoffset: 0; } }
+html:not([data-tv]):not([data-fx-off~="marks"]) [data-fx-mark][data-fx-touched][aria-pressed="true"] > svg { animation: fx-mark-pop 0.34s cubic-bezier(0.3, 1.8, 0.5, 1); }
+html:not([data-tv]):not([data-fx-off~="marks"]) [data-fx-mark][data-fx-touched][aria-pressed="true"] > svg[fill="none"] path { stroke-dasharray: 120; animation: fx-mark-draw 0.42s ease-out; }

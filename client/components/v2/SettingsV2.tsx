@@ -23,6 +23,7 @@ export function V2Switch({ on, onChange, label, disabled }: {
       role="switch"
       aria-checked={on}
       aria-label={label}
+      data-fx-tgl=""
       disabled={disabled}
       onClick={() => !disabled && onChange(!on)}
       className="relative shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"

@@ -25,6 +25,9 @@ export const EFFECTS = [
   { id: 'splash', title: 'Opening the app', line: 'The SlickSync mark comes together, then moves into its place on the page. Once each time the app starts', on: true },
   { id: 'numbers', title: 'Counting numbers', line: 'Big figures roll up when a page opens and roll over when they change', on: true },
   { id: 'poster', title: 'Poster to detail', line: 'A details window opened from a poster grows out of that poster and goes back into it', on: true },
+  { id: 'toggles', title: 'On/off switches', line: 'The knob slides with a slight overshoot and a tiny stretch', on: true },
+  { id: 'bell', title: 'Bell nudge', line: 'The bell rocks once and the count pops in when a notification arrives while you are looking', on: true },
+  { id: 'marks', title: 'Marks', line: 'Watchlist, Watched, Follow and the thumbs pop as you set them, and a tick draws itself', on: true },
   { id: 'nowplaying', title: 'Now Playing', line: 'Banners slide in and out as people start and stop, and the progress bar moves smoothly', on: true },
 ] as const;
 
@@ -243,6 +246,21 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false,
  * chosen button carries its own highlight - so nothing can be left out of
  * place by a resize or a value changed from elsewhere.
  */
+/**
+ * On/off switches and marks (data-fx-tgl, data-fx-mark): once one has been
+ * pressed it carries data-fx-touched, and the stylesheet moves it from then
+ * on. Without that, every switch and mark already on would move when its
+ * page opened.
+ */
+export function watchTouches(): () => void {
+  const onClick = (e: MouseEvent) => {
+    const el = (e.target as Element | null)?.closest?.('[data-fx-tgl], [data-fx-mark]');
+    if (el) el.setAttribute('data-fx-touched', '');
+  };
+  document.addEventListener('click', onClick, true);
+  return () => document.removeEventListener('click', onClick, true);
+}
+
 export function watchSwitches(): () => void {
   const timers = new WeakMap<HTMLElement, number>();
   const onClick = (e: MouseEvent) => {

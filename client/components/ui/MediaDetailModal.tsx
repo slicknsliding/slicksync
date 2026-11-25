@@ -1302,6 +1302,8 @@ export function MediaDetailModal({
                       onClick={() => toggleReaction('happy')}
                       disabled={reactionBusy}
                       aria-label="Thumbs up"
+                      aria-pressed={reaction === 'happy'}
+                      data-fx-mark=""
                       title="Thumbs up"
                       className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                         reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
@@ -1314,6 +1316,8 @@ export function MediaDetailModal({
                       onClick={() => toggleReaction('sad')}
                       disabled={reactionBusy}
                       aria-label="Thumbs down"
+                      aria-pressed={reaction === 'sad'}
+                      data-fx-mark=""
                       title="Thumbs down"
                       className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                         reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
@@ -1529,6 +1533,7 @@ export function MediaDetailModal({
                     title={opts.title}
                     aria-label={opts.title}
                     aria-pressed={opts.on}
+                    data-fx-mark=""
                     className={`flex items-center justify-center gap-1.5 ${opts.label ? 'px-3' : 'w-10'} h-10 rounded-lg transition-colors shrink-0 ${opts.on ? 'ibtn-tint-on' : 'ibtn-tint-off'} ${opts.busy ? 'opacity-60 cursor-wait' : ''}`}
                     style={{ '--tint': opts.tint } as React.CSSProperties}
                   >
