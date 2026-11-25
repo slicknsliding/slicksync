@@ -3,6 +3,7 @@
 import { motion, HTMLMotionProps } from 'framer-motion';
 import clsx from 'clsx';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { FxNumber } from './FxNumber';
 
 interface CardProps extends HTMLMotionProps<'div'> {
   variant?: 'default' | 'elevated' | 'bordered' | 'interactive' | 'aurora';
@@ -127,7 +128,7 @@ export function StatCard({ label, value, icon, trend, delay = 0, onClick }: Stat
               animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 200, delay: delay + 0.1 }}
             >
-              {typeof value === 'number' ? value.toLocaleString() : value}
+              <FxNumber value={typeof value === 'number' ? value.toLocaleString() : value} />
             </motion.p>
             {trend ? (
               <div 

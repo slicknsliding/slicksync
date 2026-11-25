@@ -18,6 +18,7 @@ import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 import { NebulaBar, type NebulaNavSection } from './NebulaBar';
+import { FxNumber } from '@/components/ui/FxNumber';
 import { useMenuArrangement } from '@/lib/arrange';
 import { arrangeMenu, menuIsArranged } from '@/lib/adminMenu';
 import { PAGE_HEADER_CSS, useIconifyActions, usePageHeader } from '@/lib/pageHeader';
@@ -427,7 +428,7 @@ export function NebulaCompactStatCard({
               {icon}
             </div>
           )}
-          <p className="text-lg font-bold font-display text-default leading-none">{value}</p>
+          <p className="text-lg font-bold font-display text-default leading-none"><FxNumber value={value} /></p>
         </div>
         <p className="text-[11px] leading-tight text-muted">{label}</p>
       </div>
@@ -443,7 +444,7 @@ export function NebulaCompactStatCard({
         </div>
       )}
       <div className="hidden md:block min-w-0">
-        <p className="text-3xl font-bold font-display text-default leading-none truncate">{value}</p>
+        <p className="text-3xl font-bold font-display text-default leading-none truncate"><FxNumber value={value} /></p>
         <p className="text-sm text-muted mt-1 truncate">{label}</p>
       </div>
     </div>

@@ -22,6 +22,9 @@ export const EFFECTS = [
   { id: 'switches', title: 'Sliding switches', line: 'The highlight slides to your choice', on: true },
   { id: 'loading', title: 'Opening a page', line: 'The new page glides up into place, and a thin line shows across the top when it is slow. Nothing fades or dims', on: true },
   { id: 'vibrate', title: 'Vibrate on Android phones', line: 'A tiny buzz on press-and-hold and on deleting. iPhones don’t allow it', on: true },
+  { id: 'splash', title: 'Opening the app', line: 'The SlickSync mark comes together, then moves into its place on the page. Once each time the app starts', on: true },
+  { id: 'numbers', title: 'Counting numbers', line: 'Big figures roll up when a page opens and roll over when they change', on: true },
+  { id: 'nowplaying', title: 'Now Playing', line: 'Banners slide in and out as people start and stop, and the progress bar moves smoothly', on: true },
 ] as const;
 
 export type EffectId = typeof EFFECTS[number]['id'];
@@ -151,7 +154,7 @@ const MAX_LIST = 150;
  * Undo, a new one), the rest make room and a ring marks it for a moment.
  * Anything bigger - a filter, a sort, a drag, the first load - is left alone.
  */
-export function useListEffect(ref: RefObject<HTMLElement | null>, every = false) {
+export function useListEffect(ref: RefObject<HTMLElement | null>, every = false, kind: 'list' | 'playing' = 'list') {
   useEffect(() => {
     const box = ref.current;
     if (!box || typeof MutationObserver === 'undefined') return;
@@ -179,8 +182,10 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
       if (!added.size && !removed.size) return;
       // A card taken out and put back is a move (a sort, a drop), not a removal.
       const moved = [...removed].some((n) => n.isConnected) || [...added].some((n) => before.has(n));
-      const small = (added.size === 1 && !removed.size && before.size > 0) || (removed.size <= 3 && !added.size);
-      if (moved || !small || !fxOn('remove')) return;
+      // `playing`: the Now Playing banners, where the first one to arrive drops in as well.
+      const playing = kind === 'playing';
+      const small = (added.size === 1 && !removed.size && (before.size > 0 || playing)) || (removed.size <= 3 && !added.size);
+      if (moved || !small || !fxOn(playing ? 'nowplaying' : 'remove')) return;
 
       const b = box.getBoundingClientRect();
       for (const gone of removed) {
@@ -212,6 +217,10 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
       }
       for (const el of added) {
         if (!canAnimate(el)) continue;
+        if (playing) {
+          el.animate([{ opacity: 0, transform: 'translateY(-18px) scale(0.94)' }, { opacity: 1, offset: 0.3 }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.1)' });
+          continue;
+        }
         el.animate([{ opacity: 0, transform: 'scale(0.94)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.2)' });
         el.setAttribute('data-fx-back', '');
         window.setTimeout(() => el.removeAttribute('data-fx-back'), 1500);
@@ -224,7 +233,7 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
     const resize = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(snap) : null;
     resize?.observe(box);
     return () => { watch.disconnect(); resize?.disconnect(); };
-  }, [ref, every]);
+  }, [ref, every, kind]);
 }
 
 /**

@@ -2238,3 +2238,33 @@ html:not([data-fx-off~="remove"]) [data-fx-back] .ss-card { animation: fx-here 1
   border: 1px solid var(--color-surface-border); background: var(--color-surface-hover); color: var(--color-text); cursor: pointer;
 }
 .card-sync-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* ---- Effects, second batch (lib/effects.ts): the opening splash, counting
+   numbers, Now Playing. Off on a TV and with their switch off. ---- */
+/* Opening the app: drawn by the server, shown only when the script in <head>
+   asked for it (lib/splash.ts), ended by components/ui/SplashScreen. Should
+   the page's script never run, it removes itself after five seconds. */
+.ss-splash { display: none; position: fixed; inset: 0; z-index: 9999; place-items: center; animation: ss-splash-end 0s 5s forwards; }
+html[data-splash] .ss-splash { display: grid; }
+@keyframes ss-splash-end { to { visibility: hidden; } }
+.ss-splash.clear { background: transparent !important; pointer-events: none; }
+.ss-splash.clear .ss-splash-word { visibility: hidden; }
+.ss-splash-mid { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.ss-splash-badge { width: 84px; height: 84px; border-radius: 22px; display: grid; place-items: center; transform-origin: 0 0; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); animation: ss-splash-click 0.2s 0.33s ease-out both; }
+.ss-splash-badge svg { width: 70%; height: 70%; overflow: visible; }
+.ss-splash-l1 { animation: ss-splash-l1 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+.ss-splash-l2 { animation: ss-splash-l2 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+@keyframes ss-splash-l1 { from { transform: translate(-70px, -46px); } }
+@keyframes ss-splash-l2 { from { transform: translate(70px, 46px); } }
+@keyframes ss-splash-click { 40% { scale: 1.07; } }
+.ss-splash-word { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; background: linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: ss-splash-word 0.24s 0.3s cubic-bezier(0.16, 0.8, 0.24, 1) both; }
+@keyframes ss-splash-word { from { transform: translateY(12px); clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+/* Counting numbers (components/ui/FxNumber): a changed digit rolls over. */
+.fx-num { display: inline-flex; overflow: clip; white-space: pre; }
+.fx-digit { position: relative; display: inline-block; }
+.fx-digit > span { display: block; animation: fx-tick-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.fx-digit::before { content: attr(data-old); position: absolute; left: 0; top: 0; animation: fx-tick-out 0.26s ease-in both; }
+@keyframes fx-tick-in { from { transform: translateY(100%); } }
+@keyframes fx-tick-out { to { transform: translateY(-100%); } }
+/* Now Playing: the progress bar moves to its new place instead of jumping. */
+html:not([data-tv]):not([data-fx-off~="nowplaying"]) .fx-bar { transition: width 0.9s cubic-bezier(0.3, 0.7, 0.3, 1); }

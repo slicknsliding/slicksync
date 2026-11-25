@@ -95,7 +95,7 @@ export function NowPlayingBanner({ row, provider, profileLabel, through, who, co
             ? `repeating-linear-gradient(90deg, ${onPicture ? 'rgba(255,255,255,.22)' : 'color-mix(in srgb, var(--color-text) 25%, transparent)'} 0 6px, transparent 6px 10px)`
             : (onPicture ? 'rgba(255,255,255,.18)' : 'var(--color-surface-hover)') }}
         >
-          <div className="h-full rounded-full" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))', opacity: estimated && playing ? 0.8 : 1 }} />
+          <div className="fx-bar h-full rounded-full" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))', opacity: estimated && playing ? 0.8 : 1 }} />
         </div>
       )}
       {timeLine && <p className="text-[12.5px] mt-1.5" style={{ color: onPicture ? '#e5e7eb' : 'var(--color-text)' }}>{timeLine}</p>}
