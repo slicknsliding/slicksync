@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.108.0",
+    "date": "2026-11-25",
+    "title": "1.108.0 - More Effects, a notification sound, pull to refresh, peek at a person, and Sync All that counts",
+    "features": [
+      "Nine more Effects, each with its own switch under Settings → Themes → Layout → Effects, on both page designs: an opening splash, a details window that grows out of what you tapped, Now Playing banners that slide in and out with a progress bar that moves, numbers that count up, on/off switches with weight, a bell that rocks when a notification arrives, marks that pop, and a lift and settle when you drag.",
+      "Notification sound: a short sound when a notification arrives while SlickSync is open. Twelve to pick from, Rise by default, with its own volume and switch under Settings → Notifications. When SlickSync is closed, your device plays its own notification sound.",
+      "Pull down to refresh on a phone or in the installed app: pull a page down from its top and let go once the SlickSync mark is all the way down.",
+      "Back to top: a round button at the bottom corner once you have scrolled well down a long page. Hidden until then.",
+      "Peek at a person: on a computer, rest the mouse on someone’s card on Users for what they are watching, when they were last seen, how much they have watched, and Sync and Open. Works for Stremio, Nuvio, Jellyfin and AIOStreams sign-ins. Its switch is under Settings → Themes → Layout → Pages and cards.",
+      "Sync All on Users and Groups counts as it goes (Syncing 3 of 12) and fills as each one finishes. On Users, only the person whose turn it is says Syncing.",
+      "Settings → Themes → Layout is in four named groups, folded when the page opens: Effects and motion, Menu, Now Playing and Continue Watching, Pages and cards. Each shows what it is set to, and jumping to a setting from search opens its group."
+    ],
+    "bugFixes": [
+      "A title’s details window no longer stays on “Loading details…” for good when the answer never comes: it stops waiting after 15 seconds, and opening it again asks afresh.",
+      "On a phone, the details window no longer opens short and then jumps to full size when its details arrive.",
+      "Vibrate on Android phones now answers press-and-hold on the Classic design."
+    ]
+  },
+  {
     "version": "1.107.0",
     "date": "2026-11-24",
     "title": "1.107.0 - Truer watch time, AIOStreams profiles, the monthly recap in the bell, Effects, and one look for every menu",
