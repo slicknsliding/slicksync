@@ -98,16 +98,19 @@ export function PullRefresh() {
       el.classList.add('spin');
       window.setTimeout(() => window.location.reload(), 350);
     };
-    window.addEventListener('touchstart', start, { passive: true });
-    window.addEventListener('touchmove', move, { passive: true });
-    window.addEventListener('touchend', end, { passive: true });
-    window.addEventListener('touchcancel', end, { passive: true });
+    // Heard on the way down (capture): parts of some pages keep their touches
+    // to themselves, and the pull has to work wherever the finger lands.
+    const opts = { passive: true, capture: true } as const;
+    window.addEventListener('touchstart', start, opts);
+    window.addEventListener('touchmove', move, opts);
+    window.addEventListener('touchend', end, opts);
+    window.addEventListener('touchcancel', end, opts);
     return () => {
       root.removeAttribute('data-pull');
-      window.removeEventListener('touchstart', start);
-      window.removeEventListener('touchmove', move);
-      window.removeEventListener('touchend', end);
-      window.removeEventListener('touchcancel', end);
+      window.removeEventListener('touchstart', start, opts);
+      window.removeEventListener('touchmove', move, opts);
+      window.removeEventListener('touchend', end, opts);
+      window.removeEventListener('touchcancel', end, opts);
     };
   }, [isTV]);
   if (isTV) return null;
