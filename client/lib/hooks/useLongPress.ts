@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { fxBuzz } from '@/lib/effects';
 
 interface UseLongPressOptions {
   /** Fires once the hold clears `delay` without moving past `moveThreshold`.
@@ -42,6 +43,8 @@ export function useLongPress({ onLongPress, delay = 500, moveThreshold = 10 }: U
     if (!t) return;
     startPosRef.current = { x: t.clientX, y: t.clientY };
     timerRef.current = setTimeout(() => {
+      // Effects → Vibrate on Android phones: every press-and-hold answers with a tiny buzz.
+      fxBuzz();
       onLongPress(e, t.clientX, t.clientY);
       timerRef.current = null;
     }, delay);
