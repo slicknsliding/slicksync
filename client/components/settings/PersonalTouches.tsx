@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCardBackground, useCwFirst, useEffectChoices, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCardBackground, useCwFirst, useEffectChoices, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, usePeek, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -92,6 +92,7 @@ export function PersonalTouches({ v2 = false, part }: { v2?: boolean; part?: 'np
   const { density, setDensity } = useDensity();
   const { startPage, setStartPage } = useStartPage();
   const { keep, setKeep } = useKeepFilters();
+  const { on: peek, setOn: setPeek } = usePeek();
   const { where, setWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
   const { where: cwWho, setWhere: setCwWho } = useCwWho();
@@ -199,6 +200,13 @@ export function PersonalTouches({ v2 = false, part }: { v2?: boolean; part?: 'np
             title="Keep each page’s filter"
             line="Users, Addons and the Vault open on the filter you last picked"
             control={<V2Switch on={keep} onChange={setKeep} label="Keep each page’s filter" />}
+          />
+        )}
+        {show('pages') && (
+          <V2SetRow
+            title="Peek at a person"
+            line="On a computer, resting the mouse on someone’s card on Users opens a small card with what they’re watching"
+            control={<V2Switch on={peek} onChange={setPeek} label="Peek at a person" />}
           />
         )}
       </>
@@ -395,6 +403,15 @@ export function PersonalTouches({ v2 = false, part }: { v2?: boolean; part?: 'np
             <p className="text-xs text-muted">Users, Addons and the Vault open on the filter you last picked</p>
           </div>
           <ToggleSwitch checked={keep} onChange={() => setKeep(!keep)} />
+        </div>
+      )}
+      {show('pages') && (
+        <div className="flex items-center gap-4" data-setting="Peek at a person">
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm text-default">Peek at a person</p>
+            <p className="text-xs text-muted">On a computer, resting the mouse on someone&apos;s card on Users opens a small card with what they&apos;re watching</p>
+          </div>
+          <ToggleSwitch checked={peek} onChange={() => setPeek(!peek)} />
         </div>
       )}
     </div>

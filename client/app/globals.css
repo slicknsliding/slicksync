@@ -2322,3 +2322,32 @@ html:not([data-tv]):not([data-fx-off~="drag"]) [data-fx-drag="settle"] { animati
 }
 /* ---- The notification sound picker (components/settings/NotificationSound). ---- */
 .sound-pick.on { border-color: var(--color-primary); background: var(--color-primary-muted); }
+
+/* ---- Back to top and pull to refresh (components/ui/PageGestures). ---- */
+.to-top { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40; width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-popup-border); box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.7); visibility: hidden; transform: translateY(calc(100% + 48px)); transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), bottom 0.2s, visibility 0s 0.22s; }
+.to-top.show { visibility: visible; transform: none; transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), bottom 0.2s, visibility 0s; }
+.to-top:hover { background: var(--color-surface-hover); }
+/* clear of a toast while one is showing */
+body:has(.ss-toast) .to-top { bottom: calc(104px + env(safe-area-inset-bottom)); }
+html[data-pull] { overscroll-behavior-y: contain; }
+.pull-mark { position: fixed; left: 50%; top: env(safe-area-inset-top); z-index: 60; pointer-events: none; transform: translate(-50%, -56px); transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pull-badge { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.7); scale: 0.8; transition: scale 0.15s; }
+.pull-badge svg { width: 70%; height: 70%; }
+.pull-mark.armed .pull-badge { scale: 1; }
+.pull-mark.spin .pull-badge { animation: pull-spin 0.7s linear infinite; }
+@keyframes pull-spin { to { rotate: 360deg; } }
+/* ---- Sync All while it runs: fills from the left as people finish. ---- */
+.sync-all-run { background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 30%, transparent) var(--done, 0%), transparent var(--done, 0%)) !important; }
+/* ---- Peek at a person (components/user/PersonPeek). ---- */
+.person-peek { position: fixed; z-index: 45; padding: 14px; border-radius: 16px; animation: person-peek-in 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+@keyframes person-peek-in { from { scale: 0.92; opacity: 0; } 40% { opacity: 1; } }
+.person-peek-art { position: relative; height: 86px; margin: 10px 0 8px; border-radius: 10px; overflow: hidden; background: var(--color-surface-hover); }
+.person-peek-art img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; }
+.person-peek-art i { position: absolute; left: 0; bottom: 0; height: 4px; background: linear-gradient(90deg, var(--color-primary), var(--color-secondary)); }
+.person-peek-line { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 13px; color: var(--color-text-muted); }
+.person-peek-line b { color: var(--color-text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-peek-eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 11px; margin-right: 6px; }
+.person-peek-eq i { width: 3px; border-radius: 1px; background: var(--color-success); animation: person-peek-eq 0.9s ease-in-out infinite; }
+.person-peek-eq i:nth-child(2) { animation-delay: -0.3s; }
+.person-peek-eq i:nth-child(3) { animation-delay: -0.6s; }
+@keyframes person-peek-eq { 0%, 100% { height: 3px; } 50% { height: 11px; } }

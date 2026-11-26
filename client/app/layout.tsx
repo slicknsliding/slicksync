@@ -10,6 +10,7 @@ import { BuildWatcher } from "@/components/pwa/BuildWatcher";
 import { ScrollToTopOnNavigate } from "@/components/layout/ScrollToTopOnNavigate";
 import { MenuHighlightRoot } from "@/lib/menuHighlight";
 import { LoadingLine } from '@/components/ui/LoadingLine';
+import { BackToTop, PullRefresh } from '@/components/ui/PageGestures';
 import { SplashScreen } from '@/components/ui/SplashScreen';
 import { SPLASH_SCRIPT } from '@/lib/splash';
 
@@ -140,6 +141,8 @@ export default function RootLayout({
                 <ScrollToTopOnNavigate />
                 <MenuHighlightRoot />
                 <LoadingLine />
+                <PullRefresh />
+                <BackToTop />
                 <SplashScreen />
                 {children}
               </ToastProvider>

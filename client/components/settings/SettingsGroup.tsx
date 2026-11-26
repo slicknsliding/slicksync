@@ -99,7 +99,7 @@ export function WatchGroup({ v2, children }: GroupProps) {
 export function PagesGroup({ v2, grid, children }: GroupProps & { grid: boolean }) {
   const { density } = useDensity();
   return (
-    <SettingsGroup id="pages" v2={v2} icon={<RectangleStackIcon className="w-5 h-5" />} title="Pages and cards" summary={`${density === 'compact' ? 'Compact' : 'Comfortable'} · ${grid ? 'grid' : 'list'}`} count={6}>
+    <SettingsGroup id="pages" v2={v2} icon={<RectangleStackIcon className="w-5 h-5" />} title="Pages and cards" summary={`${density === 'compact' ? 'Compact' : 'Comfortable'} · ${grid ? 'grid' : 'list'}`} count={7}>
       {children}
     </SettingsGroup>
   );

@@ -279,6 +279,8 @@ function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix }:
   return (
     <V2Item view="card" {...itemProps} className={`h-full ${itemProps.className ?? ''}`}>
       <V2Card action={action}>
+        {/* Peek at a person reads who this card is from here. */}
+        <span data-peek-id={p.id} hidden />
         <div className="flex items-center gap-3.5 min-w-0">
           <UserAvatar userId={p.id} name={p.name} email={p.email} colorIndex={p.colorIndex} src={p.avatarUrl || undefined} useGravatar={p.useGravatar} size="lg" />
           <div className="flex-1 min-w-0">

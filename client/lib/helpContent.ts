@@ -1535,6 +1535,17 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Settings',
   },
   {
+    id: 'quick-moves',
+    title: 'Refresh, peek, back to top and Sync All',
+    category: 'Users & Groups',
+    keywords: ['refresh', 'reload', 'pull to refresh', 'pull down', 'peek', 'hover', 'preview', 'back to top', 'scroll to top', 'top of page', 'sync all', 'sync everyone', 'notification sound', 'sound', 'ding', 'chime'],
+    answer: 'On a phone or in the installed app, pull any page down from its top and let go once the SlickSync mark has come all the way down: the page reloads. After you scroll well down a long page, a round button appears at the bottom corner and takes you back to the top. On a computer, rest the mouse on someone’s card on Users and a small card opens beside it with what they are watching, when they were last seen, and Sync and Open. Sync All on Users and Groups counts as it goes ("Syncing 3 of 12").',
+    tips: ['Peek at a person can be switched off under Settings → Themes → Layout → Pages and cards. It is for a mouse; on a phone, press and hold a card for its menu as before.', 'A short sound can play when a notification arrives while SlickSync is open: Settings → Notifications → Notification sound, with twelve sounds and a volume. When SlickSync is closed, your device plays its own notification sound.', 'Pulling down only refreshes from the very top of a page, and never while a window or a menu is open.'],
+    related: ['effects', 'sync-mode-basics'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'effects',
     title: 'Small motions when you press, remove or switch: Effects',
     category: 'Appearance',

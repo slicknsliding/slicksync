@@ -845,6 +845,20 @@ export function useNeedsDismiss() {
 }
 
 /** Keep each page's filter (Themes → Layout). */
+/** Peek at a person: resting the mouse on someone's card opens a small card beside it. On unless switched off. */
+export function usePeek() {
+  const { arrangement, update } = useArrangement();
+  const on = arrangement.peek !== false;
+  const setOn = useCallback((next: boolean) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev };
+      if (next) delete out.peek; else out.peek = false;
+      return out;
+    });
+  }, [update]);
+  return { on, setOn };
+}
+
 export function useKeepFilters() {
   const { arrangement, update } = useArrangement();
   const keep = !!arrangement.keepFilters;

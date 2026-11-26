@@ -349,18 +349,23 @@ export default function GroupsPage() {
 
   const hasSelection = selectedIds.size > 0;
 
+  // Sync All counts as it goes.
+  const [syncAllAt, setSyncAllAt] = useState<{ done: number; total: number } | null>(null);
   const handleSyncAllGroups = async () => {
     setIsSyncing(true);
     try {
       const groupIds = groups.map(g => g.id);
       let success = 0;
+      let done = 0;
       for (const id of groupIds) {
+        setSyncAllAt({ done, total: groupIds.length });
         try {
           await api.syncGroup(id);
           success++;
         } catch (err) {
           console.error('Failed to sync group:', err);
         }
+        done++;
       }
       if (success > 0) {
         toast.success(`Synced ${success} group${success !== 1 ? 's' : ''} successfully`);
@@ -371,6 +376,7 @@ export default function GroupsPage() {
       toast.error(err.message || 'Failed to sync all groups');
     } finally {
       setIsSyncing(false);
+      setSyncAllAt(null);
     }
   };
 
@@ -380,8 +386,10 @@ export default function GroupsPage() {
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
       onClick={handleSyncAllGroups}
       disabled={isSyncing}
+      className={syncAllAt ? 'sync-all-run' : undefined}
+      style={syncAllAt ? ({ '--done': `${(syncAllAt.done / Math.max(1, syncAllAt.total)) * 100}%` } as React.CSSProperties) : undefined}
     >
-      {isSyncing ? 'Syncing...' : 'Sync All'}
+      {syncAllAt ? `Syncing ${Math.min(syncAllAt.done + 1, syncAllAt.total)} of ${syncAllAt.total}` : isSyncing ? 'Syncing...' : 'Sync All'}
     </Button>
   );
   const syncAllGroupsButton = isTV ? (
