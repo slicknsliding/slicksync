@@ -95,6 +95,8 @@ function getCsrfToken(): string | null {
 // the window only has to cover the distance between hovering a poster and
 // opening it.
 const MEDIA_DETAILS_TTL_MS = 90 * 1000;
+// How long the details window waits for an answer before saying it has none.
+const MEDIA_DETAILS_WAIT_MS = 15 * 1000;
 const MEDIA_DETAILS_MAX = 60;
 const mediaDetailsCache = new Map<string, { at: number; promise: Promise<MediaDetails | null> }>();
 
@@ -3706,8 +3708,18 @@ class ApiClient {
 
     const params = new URLSearchParams({ itemId, type });
     if (videoId) params.set('videoId', videoId);
-    const promise = this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`).catch(() => null);
+    // An answer that never comes (the server restarting mid-request, a
+    // connection that drops without closing) used to leave the details window
+    // on "Loading details..." for good, and - held here - every reopening of
+    // it too. So: stop waiting after a while, and never keep a failure.
+    // Giving up also drops the request itself, so the next try is a new one
+    // rather than a wait on the same dead connection.
+    const stop = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const answer = this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`, stop ? { signal: stop.signal } : {}).catch(() => null);
+    const gaveUp = new Promise<null>((resolve) => { setTimeout(() => { stop?.abort(); resolve(null); }, MEDIA_DETAILS_WAIT_MS); });
+    const promise = Promise.race([answer, gaveUp]);
     mediaDetailsCache.set(key, { at: Date.now(), promise });
+    promise.then((r) => { if (!r && mediaDetailsCache.get(key)?.promise === promise) mediaDetailsCache.delete(key); });
     // Oldest-first eviction; Map keeps insertion order. A grid can be
     // hovered across faster than anyone opens things, so this is bounded
     // rather than left to grow with the session.

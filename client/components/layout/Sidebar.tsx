@@ -287,6 +287,7 @@ export function SidebarFrame({ sections, homeHref, isOpen = false, onClose, isIt
             <motion.div
               whileHover={{ scale: 1.08, rotate: 3 }}
               transition={{ duration: 0.2 }}
+              data-fx-logo=""
               className="w-14 h-14 rounded-xl flex items-center justify-center overflow-hidden"
               style={{
                 background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)',

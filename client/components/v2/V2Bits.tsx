@@ -17,7 +17,7 @@ import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { StretchHandle } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
-import { fxBuzz, useListEffect } from '@/lib/effects';
+import { useListEffect } from '@/lib/effects';
 
 export type V2Tone = 'live' | 'ok' | 'good' | 'warn' | 'bad' | 'off';
 
@@ -367,7 +367,7 @@ function ItemInner(p: V2ItemProps & { sort?: ReturnType<typeof useSortable> }) {
     window.setTimeout(() => { suppress.current = false; }, 700);
     setMenu({ at: { x, y }, anchor: null });
   }, [hasMenu]);
-  const longPress = useLongPress({ onLongPress: (_e, x, y) => { fxBuzz(); openAt(x, y); }, delay: 500 });
+  const longPress = useLongPress({ onLongPress: (_e, x, y) => { openAt(x, y); }, delay: 500 });
 
   // The same menu opens on a right click.
   const onContextMenu = (e: React.MouseEvent) => {

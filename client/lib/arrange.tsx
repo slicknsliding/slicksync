@@ -13,7 +13,9 @@ import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useS
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useIsTV } from '@/lib/hooks/useIsTV';
-import { EFFECTS, applyEffects, effectChoice, watchSwitches, withEffect, type EffectChoices, type EffectId } from '@/lib/effects';
+import { watchPosterTaps } from '@/lib/posterGrow';
+import { soundChoice, soundToSave, type SoundSaved, type SoundSetting } from '@/lib/notifySound';
+import { EFFECTS, applyEffects, effectChoice, watchDrags, watchSwitches, watchTouches, withEffect, type EffectChoices, type EffectId } from '@/lib/effects';
 import { VaultDragProvider, useVaultDrag } from '@/components/providers/VaultDragContext';
 import { useSortableSensors } from '@/components/ui/DragSortable';
 import {
@@ -172,6 +174,9 @@ export function ArrangeProvider({ children, store = ACCOUNT_STORE }: { children:
   const effects = arrangement.effects as EffectChoices | undefined;
   useEffect(() => applyEffects(effects, motion), [effects, motion]);
   useEffect(() => watchSwitches(), []);
+  useEffect(() => watchPosterTaps(), []);
+  useEffect(() => watchTouches(), []);
+  useEffect(() => watchDrags(), []);
 
   const canUndo = history.length > 0;
   const value = useMemo(() => ({ arrangement, update, active: true, loaded, session, canUndo, undo, cancel }), [arrangement, update, loaded, session, canUndo, undo, cancel]);
@@ -565,6 +570,22 @@ export function useEffectChoices() {
   return { choices, setEffect, reset, changed: !!saved && Object.keys(saved).length > 0 };
 }
 
+/** The notification sound (Settings → Notifications): on or off, which one, how loud. */
+export function useNotifySound() {
+  const { arrangement, update } = useArrangement();
+  const saved = arrangement.sound as SoundSaved | undefined;
+  const sound = useMemo(() => soundChoice(saved), [saved]);
+  const setSound = useCallback((patch: Partial<SoundSetting>) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev };
+      const keep = soundToSave({ ...soundChoice(prev.sound as SoundSaved | undefined), ...patch });
+      if (keep) out.sound = keep; else delete out.sound;
+      return out;
+    });
+  }, [update]);
+  return { sound, setSound };
+}
+
 /** Now Playing: who is watching under the picture (the default) or on it. */
 export function useNowPlayingWho() {
   const { arrangement, update } = useArrangement();
@@ -824,6 +845,20 @@ export function useNeedsDismiss() {
 }
 
 /** Keep each page's filter (Themes → Layout). */
+/** Peek at a person: resting the mouse on someone's card opens a small card beside it. On unless switched off. */
+export function usePeek() {
+  const { arrangement, update } = useArrangement();
+  const on = arrangement.peek !== false;
+  const setOn = useCallback((next: boolean) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev };
+      if (next) delete out.peek; else out.peek = false;
+      return out;
+    });
+  }, [update]);
+  return { on, setOn };
+}
+
 export function useKeepFilters() {
   const { arrangement, update } = useArrangement();
   const keep = !!arrangement.keepFilters;

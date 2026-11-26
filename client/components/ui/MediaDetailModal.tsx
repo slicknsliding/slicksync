@@ -1075,7 +1075,7 @@ export function MediaDetailModal({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} size="full" ariaLabel={title || 'Media details'} lightweight hideCloseButton={isTrailerPlaying} sheet>
       <TVScope {...(tvScopeProps as any)}>
-      <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
+      <div className="-mx-6 -mt-6" data-fx-detail="" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (
           // aspect-video (not a fixed height like the static hero below) -
           // YouTube's player always keeps its actual video content at 16:9
@@ -1129,7 +1129,7 @@ export function MediaDetailModal({
           <div className="relative w-full h-40 sm:h-56">
             {/* Taller than the space it takes: the picture carries on behind
                 the title and ratings below, fading out under them. */}
-            <div className="absolute inset-x-0 top-0 h-[262px] sm:h-[330px] overflow-hidden rounded-t-2xl pointer-events-none" aria-hidden="true">
+            <div data-fx-hero="" className="absolute inset-x-0 top-0 h-[262px] sm:h-[330px] overflow-hidden rounded-t-2xl pointer-events-none" aria-hidden="true">
               <img
                 src={heroImage}
                 alt=""
@@ -1157,6 +1157,7 @@ export function MediaDetailModal({
                 onClick={() => { setTrailerSrc(buildTrailerSrc(trailerId, false)); setIsTrailerPlaying(true); }}
                 className="absolute inset-0 flex items-center justify-center group"
                 aria-label="Play trailer"
+                data-fx-wait=""
               >
                 <span
                   className="art-btn flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-transform group-hover:scale-105"
@@ -1301,6 +1302,8 @@ export function MediaDetailModal({
                       onClick={() => toggleReaction('happy')}
                       disabled={reactionBusy}
                       aria-label="Thumbs up"
+                      aria-pressed={reaction === 'happy'}
+                      data-fx-mark=""
                       title="Thumbs up"
                       className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                         reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
@@ -1313,6 +1316,8 @@ export function MediaDetailModal({
                       onClick={() => toggleReaction('sad')}
                       disabled={reactionBusy}
                       aria-label="Thumbs down"
+                      aria-pressed={reaction === 'sad'}
+                      data-fx-mark=""
                       title="Thumbs down"
                       className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                         reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
@@ -1528,6 +1533,7 @@ export function MediaDetailModal({
                     title={opts.title}
                     aria-label={opts.title}
                     aria-pressed={opts.on}
+                    data-fx-mark=""
                     className={`flex items-center justify-center gap-1.5 ${opts.label ? 'px-3' : 'w-10'} h-10 rounded-lg transition-colors shrink-0 ${opts.on ? 'ibtn-tint-on' : 'ibtn-tint-off'} ${opts.busy ? 'opacity-60 cursor-wait' : ''}`}
                     style={{ '--tint': opts.tint } as React.CSSProperties}
                   >
@@ -2330,6 +2336,9 @@ export function MediaDetailModal({
           )}
         </div>
       </div>
+      {/* While the details load the window keeps its full height: without this
+          it opened short, sat there until they arrived, then jumped to full size. */}
+      {isLoading && <div aria-hidden="true" style={{ height: '100dvh' }} />}
       </TVScope>
     </Modal>
   );

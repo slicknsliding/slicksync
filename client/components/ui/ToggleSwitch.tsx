@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { fxOn } from '@/lib/effects';
 
 interface ToggleSwitchProps {
   checked: boolean;
@@ -34,6 +35,7 @@ export function ToggleSwitch({
       disabled={disabled}
       className={`relative inline-flex items-center rounded-full transition-colors ${trackBase} disabled:opacity-50 ${checked ? 'tgl-on' : 'tgl-off'} ${className}`}
       aria-pressed={checked}
+      data-fx-tgl=""
       title={title}
       type="button"
     >
@@ -42,7 +44,8 @@ export function ToggleSwitch({
         animate={{
           x: checked ? (size === 'sm' ? 16 : 20) : (size === 'sm' ? 2 : 4)
         }}
-        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        // Effects → On/off switches: a looser spring, so the knob runs a little past and comes back.
+        transition={fxOn('toggles') ? { type: 'spring', stiffness: 520, damping: 17 } : { type: 'spring', stiffness: 500, damping: 30 }}
       />
     </button>
   );

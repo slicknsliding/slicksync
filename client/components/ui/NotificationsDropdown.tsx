@@ -16,6 +16,8 @@ import { useTVModal } from '@/components/tv/useTVModal';
 import { usePageDesign } from '@/lib/arrange';
 import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 import { fxOn } from '@/lib/effects';
+import { useNotifySound } from '@/lib/arrange';
+import { armSound, playSound } from '@/lib/notifySound';
 
 interface NotificationItem {
   id: string;
@@ -695,6 +697,30 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     };
   }, [isOpen]);
 
+  // Effects → Bell nudge: the bell rocks once and the count pops in when a
+  // notification arrives while this page is open. The count the page opened
+  // with, and counts going down, do nothing. `nudge` alternates between two
+  // names for the same motion, so each arrival plays it again.
+  const [countSeen, setCountSeen] = useState<number | null>(null);
+  // Not in the first seconds: the bell's sources arrive one by one as the page
+  // opens, and each one raises the count.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setSettled(true), 5000); return () => clearTimeout(t); }, []);
+  const [nudge, setNudge] = useState<'' | 'a' | 'b'>('');
+  // The same moment plays the notification sound (Settings → Notifications).
+  const { sound } = useNotifySound();
+  const heard = useRef<number | null>(null);
+  const soundOn = sound.on;
+  useEffect(() => (soundOn ? armSound() : undefined), [soundOn]);
+  useEffect(() => {
+    const was = heard.current;
+    heard.current = unreadCount;
+    if (settled && was !== null && unreadCount > was && sound.on) playSound(sound.kind, sound.volume);
+  }, [unreadCount, settled, sound]);
+  if (countSeen !== unreadCount) {
+    setCountSeen(unreadCount);
+    if (settled && countSeen !== null && unreadCount > countSeen && !isOpen && fxOn('bell')) setNudge(nudge === 'a' ? 'b' : 'a');
+  }
   const bell = (
       <motion.button
         ref={buttonRef}
@@ -702,7 +728,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative p-2 transition-colors ${floating ? 'rounded-full' : 'rounded-lg hov-surface'}`}
+        className={`relative p-2 transition-colors ${floating ? 'rounded-full' : 'rounded-lg hov-surface'}${nudge ? ` fx-bell-${nudge}` : ''}`}
         style={{ color: 'var(--color-text-muted)', ...(floating ? FLOATING_ICON_STYLE : {}) }}
         aria-label="Notifications"
       >

@@ -10,6 +10,9 @@ import { BuildWatcher } from "@/components/pwa/BuildWatcher";
 import { ScrollToTopOnNavigate } from "@/components/layout/ScrollToTopOnNavigate";
 import { MenuHighlightRoot } from "@/lib/menuHighlight";
 import { LoadingLine } from '@/components/ui/LoadingLine';
+import { BackToTop, PullRefresh } from '@/components/ui/PageGestures';
+import { SplashScreen } from '@/components/ui/SplashScreen';
+import { SPLASH_SCRIPT } from '@/lib/splash';
 
 export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
@@ -110,6 +113,8 @@ export default function RootLayout({
             __html: `try{var t=localStorage.getItem('slicksync-theme'),b=['nebula','slick','velvet','midnight','ember','nord','verdant','slate','rose','daylight'];if(t&&b.indexOf(t)<0){var c=JSON.parse(localStorage.getItem('slicksync-custom-themes')||'[]').filter(function(x){return x&&x.id===t})[0];t=c&&c.base}if(t&&b.indexOf(t)>=0)document.documentElement.className=t}catch(e){}`,
           }}
         />
+        {/* The opening splash, decided before first paint (lib/splash.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: SPLASH_SCRIPT }} />
       </head>
       <body
         className="antialiased aurora-scrollbar overflow-x-hidden bg-page"
@@ -136,6 +141,9 @@ export default function RootLayout({
                 <ScrollToTopOnNavigate />
                 <MenuHighlightRoot />
                 <LoadingLine />
+                <PullRefresh />
+                <BackToTop />
+                <SplashScreen />
                 {children}
               </ToastProvider>
             </UserCacheProvider>

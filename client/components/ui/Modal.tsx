@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useId, useRef } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,8 @@ import { usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { ConfirmV2Body } from '@/components/v2/ConfirmV2';
 import { TVModalContext, useTVModal } from '@/components/tv/useTVModal';
+import { fxOn } from '@/lib/effects';
+import { growWindow, shrinkAway, takePosterOrigin } from '@/lib/posterGrow';
 
 interface ModalProps {
   isOpen: boolean;
@@ -276,6 +278,35 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
   const isTV = useIsTV();
   useTVModal(isTV && isOpen, panelRef, onClose);
   const restoreFocusTo = useRef<Element | null>(null);
+  // Effects → Poster to detail: opened from a poster, it grows out of that
+  // poster, and a copy of it goes back into the poster when it closes
+  // (lib/posterGrow). A copy, because most pages take this window off the
+  // page the moment it closes.
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const shadowRef = useRef<HTMLDivElement>(null);
+  const [wasOpen, setWasOpen] = useState(false);
+  const [origin, setOrigin] = useState<HTMLElement | null>(null);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    setOrigin(isOpen ? takePosterOrigin() : null);
+  }
+  // Where the window stands, kept for the trip back: by the time it closes
+  // it may be off the page already.
+  const stood = useRef<DOMRect | null>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (isOpen && panel && !panel.hasAttribute('data-fx-morphing')) stood.current = panel.getBoundingClientRect();
+  });
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    // Only a title's details window does this; other small windows open as before.
+    if (!panel || !origin || !isOpen || !panel.querySelector('[data-fx-detail]')) return;
+    const move = growWindow(panel, origin, true, overlayRef.current, shadowRef.current);
+    return () => {
+      move.cancel();
+      if (fxOn('poster')) shrinkAway(panel, origin, stood.current);
+    };
+  }, [isOpen, origin]);
   // The latest onClose, read from the key handler, so a parent that passes a
   // new function every render does not tear down and re-focus the dialog.
   const closeRef = useRef(onClose);
@@ -368,11 +399,13 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
       {/* Overlay: closes on tap. Wheel and swipes over it are stopped by the
           window-wide listeners above. */}
       <div
+        ref={overlayRef}
         className="fixed inset-0"
         style={{ background: 'rgba(0, 0, 0, 0.7)', touchAction: 'none' }}
         onClick={onClose}
         aria-hidden="true"
       />
+      <div ref={shadowRef} className="fx-grow-shadow" aria-hidden="true" />
       <div className={clsx('fixed inset-0 flex justify-center pointer-events-none', sheet ? 'items-end sm:items-center p-0 sm:p-4' : 'items-center p-4')}>
         <div
           ref={panelRef}

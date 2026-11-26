@@ -22,6 +22,14 @@ export const EFFECTS = [
   { id: 'switches', title: 'Sliding switches', line: 'The highlight slides to your choice', on: true },
   { id: 'loading', title: 'Opening a page', line: 'The new page glides up into place, and a thin line shows across the top when it is slow. Nothing fades or dims', on: true },
   { id: 'vibrate', title: 'Vibrate on Android phones', line: 'A tiny buzz on press-and-hold and on deleting. iPhones don’t allow it', on: true },
+  { id: 'splash', title: 'Opening the app', line: 'The SlickSync mark comes together, then moves into its place on the page. Once each time the app starts', on: true },
+  { id: 'numbers', title: 'Counting numbers', line: 'Big figures roll up when a page opens and roll over when they change', on: true },
+  { id: 'poster', title: 'Poster to detail', line: 'A details window opened from a poster grows out of that poster and goes back into it', on: true },
+  { id: 'drag', title: 'Drag and drop', line: 'What you pick up lifts a little, and lands with a small settle', on: true },
+  { id: 'toggles', title: 'On/off switches', line: 'The knob slides with a slight overshoot and a tiny stretch', on: true },
+  { id: 'bell', title: 'Bell nudge', line: 'The bell rocks once and the count pops in when a notification arrives while you are looking', on: true },
+  { id: 'marks', title: 'Marks', line: 'Watchlist, Watched, Follow and the thumbs pop as you set them, and a tick draws itself', on: true },
+  { id: 'nowplaying', title: 'Now Playing', line: 'Banners slide in and out as people start and stop, and the progress bar moves smoothly', on: true },
 ] as const;
 
 export type EffectId = typeof EFFECTS[number]['id'];
@@ -151,7 +159,7 @@ const MAX_LIST = 150;
  * Undo, a new one), the rest make room and a ring marks it for a moment.
  * Anything bigger - a filter, a sort, a drag, the first load - is left alone.
  */
-export function useListEffect(ref: RefObject<HTMLElement | null>, every = false) {
+export function useListEffect(ref: RefObject<HTMLElement | null>, every = false, kind: 'list' | 'playing' = 'list') {
   useEffect(() => {
     const box = ref.current;
     if (!box || typeof MutationObserver === 'undefined') return;
@@ -179,8 +187,10 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
       if (!added.size && !removed.size) return;
       // A card taken out and put back is a move (a sort, a drop), not a removal.
       const moved = [...removed].some((n) => n.isConnected) || [...added].some((n) => before.has(n));
-      const small = (added.size === 1 && !removed.size && before.size > 0) || (removed.size <= 3 && !added.size);
-      if (moved || !small || !fxOn('remove')) return;
+      // `playing`: the Now Playing banners, where the first one to arrive drops in as well.
+      const playing = kind === 'playing';
+      const small = (added.size === 1 && !removed.size && (before.size > 0 || playing)) || (removed.size <= 3 && !added.size);
+      if (moved || !small || !fxOn(playing ? 'nowplaying' : 'remove')) return;
 
       const b = box.getBoundingClientRect();
       for (const gone of removed) {
@@ -212,6 +222,10 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
       }
       for (const el of added) {
         if (!canAnimate(el)) continue;
+        if (playing) {
+          el.animate([{ opacity: 0, transform: 'translateY(-18px) scale(0.94)' }, { opacity: 1, offset: 0.3 }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.1)' });
+          continue;
+        }
         el.animate([{ opacity: 0, transform: 'scale(0.94)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.2)' });
         el.setAttribute('data-fx-back', '');
         window.setTimeout(() => el.removeAttribute('data-fx-back'), 1500);
@@ -224,7 +238,7 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
     const resize = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(snap) : null;
     resize?.observe(box);
     return () => { watch.disconnect(); resize?.disconnect(); };
-  }, [ref, every]);
+  }, [ref, every, kind]);
 }
 
 /**
@@ -233,6 +247,68 @@ export function useListEffect(ref: RefObject<HTMLElement | null>, every = false)
  * chosen button carries its own highlight - so nothing can be left out of
  * place by a resize or a value changed from elsewhere.
  */
+/**
+ * On/off switches and marks (data-fx-tgl, data-fx-mark): once one has been
+ * pressed it carries data-fx-touched, and the stylesheet moves it from then
+ * on. Without that, every switch and mark already on would move when its
+ * page opened.
+ */
+export function watchTouches(): () => void {
+  const onClick = (e: MouseEvent) => {
+    const el = (e.target as Element | null)?.closest?.('[data-fx-tgl], [data-fx-mark]');
+    if (el) el.setAttribute('data-fx-touched', '');
+  };
+  document.addEventListener('click', onClick, true);
+  return () => document.removeEventListener('click', onClick, true);
+}
+
+/**
+ * Drag and drop: whatever is picked up lifts a little, and settles as it
+ * lands. Every draggable thing here is dnd-kit's, which marks the grip (or
+ * the thing itself) aria-pressed while it is held; the thing being moved is
+ * that element or the nearest one above it that is being moved along.
+ */
+export function watchDrags(): () => void {
+  if (typeof MutationObserver === 'undefined') return () => {};
+  let held: HTMLElement | null = null;
+  let frame = 0;
+  const moved = (from: Element): HTMLElement | null => {
+    for (let el: Element | null = from; el && el !== document.body; el = el.parentElement) {
+      if (el instanceof HTMLElement && el.style.transform.includes('translate3d')) return el;
+    }
+    return null;
+  };
+  const drop = () => {
+    cancelAnimationFrame(frame);
+    const el = held;
+    held = null;
+    if (!el) return;
+    el.setAttribute('data-fx-drag', 'settle');
+    window.setTimeout(() => { if (el.getAttribute('data-fx-drag') === 'settle') el.removeAttribute('data-fx-drag'); }, 360);
+  };
+  const watch = new MutationObserver((records) => {
+    for (const rec of records) {
+      const grip = rec.target as Element;
+      if (grip.getAttribute('aria-roledescription') !== 'sortable') continue;
+      if (grip.getAttribute('aria-pressed') === 'true') {
+        if (!fxOn('drag')) continue;
+        // It is only moved along once the pointer has travelled: look for a moment.
+        let tries = 0;
+        const look = () => {
+          if (grip.getAttribute('aria-pressed') !== 'true') return;
+          const el = moved(grip);
+          if (el) { held = el; el.setAttribute('data-fx-drag', 'held'); return; }
+          if (++tries < 40) frame = requestAnimationFrame(look);
+        };
+        cancelAnimationFrame(frame);
+        look();
+      } else if (held) drop();
+    }
+  });
+  watch.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['aria-pressed'] });
+  return () => { watch.disconnect(); cancelAnimationFrame(frame); };
+}
+
 export function watchSwitches(): () => void {
   const timers = new WeakMap<HTMLElement, number>();
   const onClick = (e: MouseEvent) => {

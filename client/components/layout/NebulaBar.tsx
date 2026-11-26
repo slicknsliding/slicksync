@@ -399,6 +399,7 @@ export function NebulaBar({
           {!noLogo && (
           <Link href={homeHref} aria-label="SlickSync home" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : `flex items-center gap-2 ${smallLogo ? 'md:gap-3' : 'md:gap-4'} justify-center min-w-0 shrink-0`}>
             <div
+              data-fx-logo=""
               className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : smallLogo ? 'w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
               style={{
                 background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',

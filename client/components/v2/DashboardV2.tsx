@@ -4,7 +4,8 @@
 // v2 page design: Now Playing as the same big banner a person sees on their
 // own Home, what needs the admin, and the rows of people.
 
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
+import { useListEffect } from '@/lib/effects';
 import Link from 'next/link';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { V2MoreMenu } from './V2Detail';
@@ -62,6 +63,9 @@ export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref,
 }) {
   // A stream whose title isn't known yet is dropped while the same person
   // has a known one playing - it is usually the same viewing, still resolving.
+  // Effects → Now Playing: banners drop in and shrink away, the rest glide.
+  const others$ = useRef<HTMLDivElement>(null);
+  useListEffect(others$, false, 'playing');
   const known = new Set(allRows.filter((r) => !r.item.titlePending).map((r) => r.user.id));
   const rows = allRows.filter((r) => !r.item.titlePending || !known.has(r.user.id));
   if (rows.length === 0) {
@@ -86,9 +90,9 @@ export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref,
     );
     // Under a stranger's card, "Who is this?" - beside the detail line when there is one.
     if (!detail) {
-      if (!np.unknownDevice) return el;
+      if (!np.unknownDevice) return <div key={key} className="min-w-0" data-v2-item="">{el}</div>;
       return (
-        <div key={key} className="min-w-0">
+        <div key={key} className="min-w-0" data-v2-item="">
           {el}
           <div className="px-2 pt-1.5"><UnknownDevicePill device={np.unknownDevice} /></div>
         </div>
@@ -96,7 +100,7 @@ export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref,
     }
     const line = detail(np);
     return (
-      <div key={key} className="min-w-0">
+      <div key={key} className="min-w-0" data-v2-item="">
         {el}
         {line && <div className="px-2 pt-1.5">{line}</div>}
       </div>
@@ -105,11 +109,10 @@ export function NowPlayingV2({ rows: allRows, providerByUser, max = 6, moreHref,
   return (
     <div className="flex flex-col gap-3">
       {banner(first, false)}
-      {shown.length > 0 && (
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+      {/* Always there (hidden while empty), so the first one to arrive can be seen arriving. */}
+      <div ref={others$} className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 empty:hidden">
           {shown.map((np) => banner(np, true))}
-        </div>
-      )}
+      </div>
       {left > 0 && moreHref && (
         <Link href={moreHref} className="text-sm font-medium self-start" style={{ color: 'var(--color-secondary)' }}>
           {left} more on Activity →

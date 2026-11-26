@@ -38,6 +38,7 @@ import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
 import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
+import { PersonPeek, type PeekPerson, type PeekPlaying } from '@/components/user/PersonPeek';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -593,13 +594,41 @@ export default function UsersPage() {
     });
   }, []);
 
+  // Peek at a person (components/user/PersonPeek): what its small card shows.
+  const peekPeople = useMemo(() => new Map<string, PeekPerson>(filteredUsers.map((u) => [u.id, { id: u.id, name: u.name || '', app: providerLabel(u), lastSeen: u.lastSeen, watched: formatWatchTime(u.watchTime), canSync: hasAddonList(u) && !u.providerConnectionError }])), [filteredUsers]);
+  const peekPlaying = useMemo(() => {
+    const m = new Map<string, PeekPlaying>();
+    for (const np of nowPlaying) {
+      if (m.has(np.user.id)) continue;
+      const total = typeof np.totalDuration === 'number' && np.totalDuration > 0 ? np.totalDuration : null;
+      const at = typeof np.lastPosition === 'number' ? np.lastPosition : null;
+      const ep = np.item?.season && np.item?.episode ? `Season ${np.item.season}, Episode ${np.item.episode}` : null;
+      m.set(np.user.id, { title: np.item?.titlePending ? '' : (np.item?.name || ''), art: np.item?.poster || null, progress: total && at != null ? Math.min(100, (at / total) * 100) : null, line: [ep, total && at != null ? `${Math.round(at / 60000)} min in` : null].filter(Boolean).join(' · ') || null });
+    }
+    return m;
+  }, [nowPlaying]);
+  const peekSync = useCallback(async (id: string) => {
+    const who = users.find((u) => u.id === id);
+    handleSyncStart(id);
+    try {
+      await api.syncUser(id);
+      toast.success(`Synced ${who?.name || 'them'}`);
+    } catch (err) {
+      toast.error(`Couldn’t sync ${who?.name || 'them'}`, { line: err instanceof Error ? err.message : undefined });
+    } finally { handleSyncEnd(id); }
+  }, [users, handleSyncStart, handleSyncEnd]);
+  // Sync All counts as it goes, and only the person whose turn it is says
+  // Syncing - their dot rings as it lands (the Sync result effect).
+  const [syncAllAt, setSyncAllAt] = useState<{ done: number; total: number } | null>(null);
   const handleSyncAll = async () => {
     setIsSyncing(true);
-    setSyncingUserIds(new Set(users.map(u => u.id)));
     try {
       const userIds = users.map(u => u.id);
       let success = 0;
+      let done = 0;
       for (const id of userIds) {
+        setSyncAllAt({ done, total: userIds.length });
+        setSyncingUserIds(new Set([id]));
         try {
           await api.syncUser(id);
           success++;
@@ -612,6 +641,7 @@ export default function UsersPage() {
           nextSet.delete(id);
           return nextSet;
         });
+        done++;
       }
       if (success > 0) {
         toast.success(`Synced ${success} user${success !== 1 ? 's' : ''} successfully`);
@@ -622,6 +652,7 @@ export default function UsersPage() {
       toast.error(err.message || 'Failed to sync all users');
     } finally {
       setIsSyncing(false);
+      setSyncAllAt(null);
       setSyncingUserIds(new Set());
     }
   };
@@ -632,8 +663,10 @@ export default function UsersPage() {
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
       onClick={handleSyncAll}
       disabled={isSyncing}
+      className={syncAllAt ? 'sync-all-run' : undefined}
+      style={syncAllAt ? ({ '--done': `${(syncAllAt.done / Math.max(1, syncAllAt.total)) * 100}%` } as React.CSSProperties) : undefined}
     >
-      {isSyncing ? 'Syncing...' : 'Sync All'}
+      {syncAllAt ? `Syncing ${Math.min(syncAllAt.done + 1, syncAllAt.total)} of ${syncAllAt.total}` : isSyncing ? 'Syncing...' : 'Sync All'}
     </Button>
   );
   const syncAllButton = isTV ? (
@@ -772,6 +805,7 @@ export default function UsersPage() {
         ) : (
           <>
             {/* Users grid/list - v2 groups people by their group instead. */}
+            <PersonPeek people={peekPeople} playing={peekPlaying} onSync={peekSync} />
             {v2 ? (
               <>
                 <PeopleV2
@@ -1398,6 +1432,7 @@ function UserCard({
         // One thing per line: name and switch, the badges, Limits, History
         // and Caught up, then group and addons, then time (see .user-card-head).
         className={`user-card group cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
+        data-peek-id={user.id}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         {...longPress}
