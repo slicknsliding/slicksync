@@ -10,6 +10,7 @@ import { NebulaTopbar } from "@/components/layout/NebulaTopbar";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { useLayoutMode, isNebulaEligiblePath } from "@/lib/layout-mode";
 import { DndContext, DragOverlay, closestCenter } from "@/components/ui/DragSortable";
+import { KeyboardNav } from "@/components/ui/QuickTouches";
 import { useSortableSensors } from "@/components/ui/DragSortable";
 import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
@@ -203,6 +204,7 @@ export default function AdminClientLayout({
         {!isTV && <CommandPalette />}
         {!isTV && <StartPageRedirect />}
         <VaultDragProvider>
+          <KeyboardNav />
           <LayoutDndWrapper>
             <div className="relative min-h-screen">
               {!useNebulaChrome && (

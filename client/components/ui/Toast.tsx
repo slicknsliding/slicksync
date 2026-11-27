@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore, type ReactNode } from 'react';
+import { copyJustTicked } from '@/lib/clipboard';
 import { createPortal } from 'react-dom';
 import { Toaster, toast as hotToast, resolveValue, type Toast as HotToast, type ToastOptions, type Renderable } from 'react-hot-toast';
 import { XMarkIcon } from '@heroicons/react/24/outline';
@@ -36,6 +37,8 @@ type Message = Parameters<typeof hotToast>[0];
 
 function show(kind: Kind, message: Message, opts: SlickToastOptions = {}) {
   const { line, actions, poster, ...rest } = opts;
+  // A copy that just showed its tick on the button itself needs no pop-up.
+  if (kind === 'success' && typeof message === 'string' && /\bcop(y|ied)\b/i.test(message) && !actions && copyJustTicked()) return '';
   // The same error twice is one pop-up, not a stack of them.
   const id = rest.id ?? (kind === 'error' && typeof message === 'string' ? `err:${message}` : `ss-${++counter}`);
   extras.delete(id);

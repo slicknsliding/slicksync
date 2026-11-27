@@ -2504,6 +2504,11 @@ class ApiClient {
     return this.fetch<AioHealth>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-health?range=${range}`);
   }
 
+  // The Live TV sources in their AIOStreams setup and how each stands (server/utils/liveTvWatch.js).
+  async getLiveTv(userId: string) {
+    return this.fetch<{ sources: LiveTvSource[] }>(`/jellyfin/users/${encodeURIComponent(userId)}/live-tv`);
+  }
+
   // One real search through their AIOStreams configuration - one at a time.
   async runAioTestSearch(userId: string, type: 'movie' | 'series', id: string) {
     return this.fetch<AioTestSearch>(`/jellyfin/users/${encodeURIComponent(userId)}/aio-test-search`, { method: 'POST', body: JSON.stringify({ type, id }) });
@@ -5503,6 +5508,17 @@ export interface AddonHealthAlert {
 
 // Persistent in-app bell notification (notifications table). Written from the
 // same dispatch path as push/Discord; read state is server-side.
+/** One Live TV source in a person's AIOStreams setup: its own name, never its address or login. */
+export interface LiveTvSource {
+  name: string;
+  kind: 'm3u' | 'xtream';
+  working: boolean;
+  since: string | null;
+  message: string | null;
+  expiresAt: string | null;
+  checkedAt: string | null;
+}
+
 export interface StoredNotification {
   id: string;
   type: 'activity' | 'sync' | 'invite' | 'vault' | 'task' | 'mismatch' | 'recap';

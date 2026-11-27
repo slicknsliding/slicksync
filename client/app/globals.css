@@ -2351,3 +2351,32 @@ html[data-pull] { overscroll-behavior-y: contain; }
 .person-peek-eq i:nth-child(2) { animation-delay: -0.3s; }
 .person-peek-eq i:nth-child(3) { animation-delay: -0.6s; }
 @keyframes person-peek-eq { 0%, 100% { height: 3px; } 50% { height: 11px; } }
+
+/* ---- Offline strip, shortcut sheet, keyboard jumps, the finished-setup moment (components/ui/QuickTouches). ---- */
+.offline-strip { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); translate: -50% 0; z-index: 70; max-width: calc(100vw - 24px); padding: 8px 14px; border-radius: 10px; font-size: 13px; color: var(--color-text); background: color-mix(in srgb, var(--color-warning) 18%, var(--color-surface)); border: 1px solid color-mix(in srgb, var(--color-warning) 50%, transparent); box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.7); animation: offline-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.offline-strip.back { background: color-mix(in srgb, var(--color-success) 16%, var(--color-surface)); border-color: color-mix(in srgb, var(--color-success) 50%, transparent); }
+@keyframes offline-in { from { transform: translateY(-16px); } }
+.shortcut-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+.shortcut-sheet { width: min(540px, 100%); border-radius: 18px; padding: 18px; animation: person-peek-in 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+.shortcut-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; font-size: 13.5px; color: var(--color-text); }
+.shortcut-keys > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--color-surface-border); }
+.shortcut-keys kbd, .jump-chip kbd { font: 600 12px inherit; font-family: inherit; padding: 2px 7px; border-radius: 6px; margin-left: 3px; border: 1px solid var(--color-surface-border); background: var(--color-surface-hover); }
+.jump-chip { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 60; padding: 8px 12px; border-radius: 10px; font-size: 13px; color: var(--color-text); }
+@media (max-width: 640px) { .shortcut-keys { grid-template-columns: 1fr; } }
+.all-set { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; pointer-events: none; }
+.all-set-card { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 34px; border-radius: 20px; text-align: center; animation: person-peek-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+.all-set-badge { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); animation: ss-splash-click 0.2s 0.36s ease-out both; }
+.all-set-badge svg { width: 70%; height: 70%; overflow: visible; }
+.all-set-l1 { animation: ss-splash-l1 0.34s 0.05s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+.all-set-l2 { animation: ss-splash-l2 0.34s 0.05s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+.all-set-line { animation: fx-rise 0.26s 0.4s ease-out both; }
+/* ---- Copy with a tick (lib/clipboard.ts): a green tick over the pressed button's own icon. ---- */
+[data-copied] { position: relative; }
+[data-copied] > svg, [data-copied] > span > svg { visibility: hidden; }
+[data-copied]::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; translate: -50% -50%; background: var(--color-success); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 10.5l3.6 3.6L15.5 6.5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 10.5l3.6 3.6L15.5 6.5'/%3E%3C/svg%3E") center / contain no-repeat; animation: copy-tick 0.26s ease-out both; }
+[data-copied]:has(> svg ~ *)::after, [data-copied]:has(> span > svg)::after { left: 0; translate: 0 -50%; margin-left: 0.6em; }
+@keyframes copy-tick { from { clip-path: inset(0 100% 0 0); scale: 0.7; } 60% { scale: 1.2; } to { clip-path: inset(0 0 0 0); scale: 1; } }
+/* ---- Posters that sharpen in (components/ui/PosterCard). ---- */
+.poster-wash { position: absolute; inset: -8%; background-size: cover; background-position: center; filter: blur(14px) saturate(1.2); }
+.poster-in { opacity: 0; filter: blur(12px); scale: 1.08; }
+.poster-in.on { opacity: 1; filter: none; scale: 1; transition: filter 0.42s ease-out, scale 0.42s ease-out, transform 0.7s; }

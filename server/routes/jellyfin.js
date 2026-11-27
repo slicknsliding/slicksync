@@ -421,6 +421,36 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup })
     }
   });
 
+  // The Live TV sources in this person's AIOStreams setup and how each
+  // stands (utils/liveTvWatch.js). Names only. One setup can be behind
+  // several people, and it is watched under one of them: anyone on the same
+  // setup sees the same lines.
+  router.get('/users/:id/live-tv', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const { liveTvStatus } = require('../utils/liveTvWatch');
+      const person = await prisma.user.findFirst({
+        where: { id: String(req.params.id), accountId, providerType: 'jellyfin', jellyfinServerKind: 'aiostreams' },
+        select: { id: true, jellyfinServerUrl: true, aioConfigId: true },
+      });
+      if (!person) return res.json({ sources: [] });
+      let sources = await liveTvStatus(prisma, accountId, person.id);
+      if (!sources.length && person.aioConfigId) {
+        const same = await prisma.user.findMany({
+          where: { accountId, providerType: 'jellyfin', jellyfinServerKind: 'aiostreams', aioConfigId: person.aioConfigId, jellyfinServerUrl: person.jellyfinServerUrl, id: { not: person.id } },
+          select: { id: true },
+        });
+        for (const other of same) {
+          sources = await liveTvStatus(prisma, accountId, other.id);
+          if (sources.length) break;
+        }
+      }
+      res.json({ sources });
+    } catch (error) {
+      sendError(res, error, 'Could not read Live TV');
+    }
+  });
+
   router.post('/users/:id/aio-test-search', async (req, res) => {
     try {
       res.json(await require('../utils/aioHealth').testSearch(prisma, decrypt, getAccountId(req), String(req.params.id), { type: req.body?.type, id: req.body?.id }));
