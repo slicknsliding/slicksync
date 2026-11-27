@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   MagnifyingGlassIcon, HomeIcon, ClockIcon, ChartBarIcon, UsersIcon, UserGroupIcon,
@@ -84,8 +84,10 @@ interface Result {
   recent?: boolean;
 }
 
-// v2: the last few places picked, kept on this device only.
+// Recently opened: the last few places picked here or opened by going to
+// them (a page, a person), kept on this device only. Shown before you type.
 const RECENT_KEY = 'slicksync-palette-recent';
+const RECENT_MAX = 5;
 
 function iconForId(id: string, href: string): Result['icon'] {
   if (id.startsWith('user-')) return UsersIcon;
@@ -102,7 +104,7 @@ function readRecent(): Result[] {
     if (!Array.isArray(raw)) return [];
     return raw
       .filter((r) => r && typeof r.id === 'string' && typeof r.label === 'string' && typeof r.href === 'string')
-      .slice(0, 3)
+      .slice(0, RECENT_MAX)
       .map((r) => ({ id: r.id, label: r.label, sublabel: typeof r.sublabel === 'string' ? r.sublabel : undefined, href: r.href, icon: iconForId(r.id, r.href), recent: true }));
   } catch {
     return [];
@@ -112,7 +114,7 @@ function readRecent(): Result[] {
 function writeRecent(r: Result) {
   try {
     const kept = readRecent().filter((x) => x.id !== r.id);
-    const next = [r, ...kept].slice(0, 3).map(({ id, label, sublabel, href }) => ({ id, label, sublabel, href }));
+    const next = [r, ...kept].slice(0, RECENT_MAX).map(({ id, label, sublabel, href }) => ({ id, label, sublabel, href }));
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
   } catch { /* storage blocked: Recent just stays as it was */ }
 }
@@ -125,6 +127,24 @@ export function CommandPalette() {
   const isTV = useIsTV();
   const v2 = design === 'v2' && !isTV;
   const [recent, setRecent] = useState<Result[]>([]);
+  // Going to a page or a person counts as opening it, whichever way you got there.
+  const pathname = usePathname();
+  useEffect(() => {
+    if (!pathname) return;
+    const page = NAV_ITEMS.find((n) => n.href === pathname);
+    if (page) { writeRecent({ id: `nav-${page.href}`, label: page.label, href: page.href, icon: page.icon, sublabel: undefined }); return; }
+    const person = /^\/users\/([^/]+)$/.exec(pathname);
+    if (!person) return;
+    // Their name comes from the same answer their page asks for (asked once, shared).
+    let cancelled = false;
+    api.getUser(person[1])
+      .then((u) => {
+        const name = (u as { username?: string; name?: string })?.username || (u as { name?: string })?.name;
+        if (!cancelled && name) writeRecent({ id: `user-${person[1]}`, label: name, href: pathname, icon: UsersIcon, sublabel: 'Person' });
+      })
+      .catch(() => { /* not a person this account can open */ });
+    return () => { cancelled = true; };
+  }, [pathname]);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -236,7 +256,8 @@ export function CommandPalette() {
     if (!q) {
       // Before you type: the first eight pages, then Guides.
       const guides = navResults.find((n) => n.href === '/guides');
-      const shown = v2 ? recent : [];
+      // Classic lists them first too, marked as recently opened.
+      const shown = v2 ? recent : recent.map((r) => ({ ...r, sublabel: r.sublabel ? `Recently opened · ${r.sublabel}` : 'Recently opened' }));
       const pages = navResults.filter((n) => n !== guides && !shown.some((r) => r.id === n.id)).slice(0, 8);
       if (guides && !shown.some((r) => r.id === guides.id)) pages.push(guides);
       return [...shown, ...pages];
