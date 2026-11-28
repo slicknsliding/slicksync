@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FilterTabs, FilterTabOption } from './FilterTabs';
 import { SearchInput } from './Input';
@@ -9,6 +9,48 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { Card } from './Card';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+
+/**
+ * Sticky filters: the toolbar stays under the top bar as the page scrolls,
+ * so the search box and filters are always in reach. Scrolling down quickly
+ * tucks it out of the way; scrolling up a little brings it back. While it is
+ * stuck it gets a solid backing (it normally sits on its panel's own glass).
+ * Where the top bar ends is read as you scroll, because that bar changes
+ * height when it collapses.
+ */
+function useStickyToolbar(ref: React.RefObject<HTMLDivElement | null>, off: boolean) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || off) return;
+    let frame = 0;
+    let last = window.scrollY;
+    let lastAt = performance.now();
+    const update = () => {
+      frame = 0;
+      const bar = document.querySelector<HTMLElement>('[data-nebula-topbar]');
+      // Snug under the bar's own panel: its outer padding is empty space.
+      const top = bar ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom) - 10) : 8;
+      el.style.top = `${top}px`;
+      const y = window.scrollY;
+      const stuck = y > 0 && el.getBoundingClientRect().top <= top + 1;
+      el.classList.toggle('stuck', stuck);
+      const now = performance.now();
+      const d = y - last;
+      // Pixels a millisecond: an ordinary wheel turn or a slow drag is well
+      // under one, a flick of the finger or a held Page Down is over it.
+      const speed = d / Math.max(8, now - lastAt);
+      last = y;
+      lastAt = now;
+      if (!stuck || d < -3) el.classList.remove('tucked');
+      else if (speed > 1.3) el.classList.add('tucked');
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); el.classList.remove('stuck', 'tucked'); el.style.top = ''; };
+  }, [ref, off]);
+}
 
 export interface PageToolbarSelectionConfig {
   totalCount: number;
@@ -99,6 +141,8 @@ export interface PageToolbarProps {
   
   /** Animation delay (in seconds) */
   animationDelay?: number;
+  /** Stay under the top bar as the page scrolls (the default). Off where the toolbar sits inside something that scrolls or sticks by itself. */
+  stick?: boolean;
 }
 
 /**
@@ -158,6 +202,7 @@ export function PageToolbar({
   className = '',
   animate = true,
   animationDelay = 0,
+  stick = true,
 }: PageToolbarProps) {
   const hasLeftSection = leftContent || selectionConfig || searchConfig;
   const hasCenterSection = centerContent || primaryTabs || filterTabs;
@@ -175,6 +220,8 @@ export function PageToolbar({
   // opens the TV's keyboard).
   const isTV = useIsTV();
   const searchBoxRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef<HTMLDivElement>(null);
+  useStickyToolbar(stickRef, isTV || variant === 'card' || !stick);
   const rowOnPhone = !!filterTabs;
   const phoneRow = rowOnPhone && isMobile;
 
@@ -339,12 +386,13 @@ export function PageToolbar({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: animationDelay }}
-      className={`mb-8 ${className}`}
+      ref={stickRef}
+      className={`${stick ? 'page-toolbar-stick ' : ''}mb-8 ${className}`}
     >
       {toolbarContent}
     </motion.div>
   ) : (
-    <div className={`mb-8 ${className}`}>{toolbarContent}</div>
+    <div ref={stickRef} className={`${stick ? 'page-toolbar-stick ' : ''}mb-8 ${className}`}>{toolbarContent}</div>
   );
 
   // Wrap in Card if variant is 'card'

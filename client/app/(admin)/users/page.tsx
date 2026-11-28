@@ -39,6 +39,7 @@ import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
 import { PersonPeek, type PeekPerson, type PeekPlaying } from '@/components/user/PersonPeek';
+import { SwipeActions } from '@/components/ui/SwipeActions';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -1596,7 +1597,17 @@ function UserCard({
         <TVFocusable onEnterPress={() => { window.location.href = `/users/${user.id}`; }}>
           {cardElement}
         </TVFocusable>
-      ) : cardElement}
+      ) : (
+        // Phones: swipe the card to the left for Sync and Open.
+        <SwipeActions
+          actions={[
+            ...(hasAddonList(user) && !user.providerConnectionError ? [{ label: 'Sync', tone: 'main' as const, onClick: () => { void handleSync({ stopPropagation: () => {} } as React.MouseEvent); } }] : []),
+            { label: 'Open', onClick: () => { window.location.assign(`/users/${user.id}`); } },
+          ]}
+        >
+          {cardElement}
+        </SwipeActions>
+      )}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         <Link

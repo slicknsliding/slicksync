@@ -2380,3 +2380,19 @@ html[data-pull] { overscroll-behavior-y: contain; }
 .poster-wash { position: absolute; inset: -8%; background-size: cover; background-position: center; filter: blur(14px) saturate(1.2); }
 .poster-in { opacity: 0; filter: blur(12px); scale: 1.08; }
 .poster-in.on { opacity: 1; filter: none; scale: 1; transition: filter 0.42s ease-out, scale 0.42s ease-out, transform 0.7s; }
+/* ---- Sticky filters (components/ui/PageToolbar): the toolbar stays under the top bar; tucks away on a fast scroll down. ---- */
+html:not([data-tv]) .page-toolbar-stick { position: sticky; z-index: 20; transition: translate 0.2s ease, box-shadow 0.2s; }
+/* Its backing is drawn without changing how much room it takes, so nothing below jumps as it sticks. */
+html:not([data-tv]) .page-toolbar-stick.stuck { margin: -8px -10px calc(2rem - 8px); padding: 8px 10px; border-radius: 14px; background: var(--color-surface); box-shadow: 0 0 0 1px var(--color-surface-border), 0 12px 24px -14px rgba(0, 0, 0, 0.85); }
+html:not([data-tv]) .page-toolbar-stick.tucked { translate: 0 calc(-100% - 140px); }
+/* ---- Swipe a card for actions (components/ui/SwipeActions), touch screens. ---- */
+.swipe-wrap { position: relative; height: 100%; }
+.swipe-wrap > :last-child { position: relative; z-index: 1; touch-action: pan-y; }
+.swipe-acts { position: absolute; top: 0; right: 0; bottom: 0; display: flex; visibility: hidden; border-radius: 0 14px 14px 0; overflow: hidden; }
+.swipe-wrap.live .swipe-acts { visibility: visible; }
+.swipe-acts button { flex: 1; font-size: 13px; font-weight: 600; color: #fff; background: color-mix(in srgb, var(--color-text-muted) 45%, var(--color-surface)); }
+.swipe-acts button.main { background: var(--color-primary-solid, var(--color-primary)); }
+/* ---- Number scrubbing (Metrics' watch-time chart): the figure that follows the pointer. ---- */
+.chart-readout { position: absolute; left: 64px; top: 0; z-index: 2; pointer-events: none; display: flex; align-items: baseline; gap: 8px; }
+.chart-readout b { font-size: 20px; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.chart-readout span { font-size: 12.5px; color: var(--color-text-muted); }

@@ -1053,6 +1053,8 @@ export default function DiscoverPage() {
               <div className="w-full">
                 <PageToolbar
                   animate={false}
+                  // This one sits in Discover's own header block, which has its own place on the page.
+                  stick={false}
                   filterTabs={{
                     options: lenses.map((l) => ({ key: l.key, label: l.label, count: l.count })),
                     activeKey: lens,

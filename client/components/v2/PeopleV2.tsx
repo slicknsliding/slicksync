@@ -8,6 +8,7 @@
 // group's section to move them there), through the page's Arrange mode.
 
 import { useState } from 'react';
+import { SwipeActions } from '@/components/ui/SwipeActions';
 import { useRouter } from 'next/navigation';
 import {
   ArrowDownTrayIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ArrowTopRightOnSquareIcon, ClockIcon, EyeIcon, MapPinIcon, PowerIcon, TrashIcon,
@@ -218,7 +219,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
                   <SortableContext items={members.map((p) => p.id)} strategy={rectSortingStrategy}>
                     <V2Grid stretch={{ arrange: arrange, id: key }}>
                       {members.map((p) => (
-                        <PersonTile key={p.id} p={p} watching={watching.get(p.id)} syncing={syncing.has(p.id)} itemProps={itemProps(p)} action={action(p)} pinMark={pinMark(p)} onFix={onFix} />
+                        <PersonTile key={p.id} p={p} watching={watching.get(p.id)} syncing={syncing.has(p.id)} itemProps={itemProps(p)} action={action(p)} pinMark={pinMark(p)} onFix={onFix} onSync={onSync} />
                       ))}
                     </V2Grid>
                   </SortableContext>
@@ -267,6 +268,8 @@ type CardParts = {
   action: React.ReactNode;
   pinMark: React.ReactNode;
   onFix: (p: V2Person) => void;
+  /** Swipe actions on a phone (tiles only). */
+  onSync?: (p: V2Person) => void;
 };
 
 function usePersonStatus(p: V2Person, watching: string | undefined, syncing: boolean) {
@@ -274,10 +277,17 @@ function usePersonStatus(p: V2Person, watching: string | undefined, syncing: boo
   return statusOf(p, watching, sync);
 }
 
-function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix }: CardParts) {
+function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix, onSync }: CardParts) {
   const st = usePersonStatus(p, watching, syncing);
   return (
     <V2Item view="card" {...itemProps} className={`h-full ${itemProps.className ?? ''}`}>
+      {/* Phones: swipe the card to the left for Sync and Open. */}
+      <SwipeActions
+        actions={[
+          ...(p.hasAddons !== false && !p.connectionError && onSync ? [{ label: 'Sync', tone: 'main' as const, onClick: () => onSync(p) }] : []),
+          { label: 'Open', onClick: () => { window.location.assign(`/users/${p.id}`); } },
+        ]}
+      >
       <V2Card action={action}>
         {/* Peek at a person reads who this card is from here. */}
         <span data-peek-id={p.id} hidden />
@@ -300,6 +310,7 @@ function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix }:
           <span><b className="text-[15px] text-default">{p.addonCount}</b><span className="text-muted"> addons</span></span>
         </div>
       </V2Card>
+      </SwipeActions>
     </V2Item>
   );
 }

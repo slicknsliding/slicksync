@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, memo, useMemo, useEffect, useCallback, Fragment } from 'react';
+import { useState, memo, useMemo, useEffect, useCallback, useRef, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -94,15 +94,56 @@ const TOOLTIP_STYLE = CHART_TOOLTIP_STYLE;
 const TOOLTIP_LABEL_STYLE = CHART_TOOLTIP_LABEL_STYLE;
 
 // Memoized chart component
+// A number that rolls to its new value instead of jumping (the chart's figure while scrubbing).
+function useRolling(target: number, ms = 180): number {
+  const [shown, setShown] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    const start = from.current;
+    if (start === target) return;
+    let frame = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const p = Math.max(0, Math.min(1, (t - t0) / ms));
+      const v = start + (target - start) * p;
+      from.current = v;
+      setShown(v);
+      if (p < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target, ms]);
+  return shown;
+}
+
 const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ date: string; hours: number }> }) {
   // Calculate max hours to determine ticks dynamically or use a fixed set if small
   const maxHours = Math.max(...data.map(d => d.hours), 1);
   const tickCount = Math.ceil(maxHours / 0.5);
   const ticks = Array.from({ length: tickCount + 1 }, (_, i) => i * 0.5);
 
+  // Number scrubbing: press or rest on the chart and drag, and the figure
+  // above it follows - that day's time, rolling as you move; let go and it
+  // rolls back to the whole period. It stands in for the hover tooltip.
+  const total = useMemo(() => data.reduce((sum, d) => sum + d.hours, 0), [data]);
+  const [at, setAt] = useState<number | null>(null);
+  const day = at != null ? data[at] : undefined;
+  const shown = useRolling(day ? day.hours : total);
+  const scrub = (state: unknown) => {
+    const s = state as { isTooltipActive?: boolean; activeTooltipIndex?: number | string | null; activeIndex?: number | string | null } | null;
+    const i = Number(s?.activeTooltipIndex ?? s?.activeIndex);
+    setAt(s && s.isTooltipActive !== false && Number.isInteger(i) && i >= 0 && i < data.length ? i : null);
+  };
+  const letGo = () => setAt(null);
+
   return (
+    <div className="relative w-full h-full">
+    <p className="chart-readout" aria-live="off">
+      <b>{formatMinutes(Math.round(shown * 60))}</b>
+      <span>{day ? `on ${new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}` : 'in this period'}</span>
+    </p>
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data}>
+      <AreaChart data={data} onMouseMove={scrub} onMouseLeave={letGo} onTouchMove={scrub} onTouchEnd={letGo}>
         <defs>
           <linearGradient id="colorWatchTime" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="var(--color-chart-1)" stopOpacity={0.4} />
@@ -139,6 +180,8 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ da
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
           }}
           formatter={(value: any) => [formatMinutes(Math.round(value * 60)), 'Time']}
+          // The figure above the chart says it; only the marker line is drawn here.
+          content={() => null}
         />
         <Area
           type="monotone"
@@ -151,6 +194,7 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ da
         />
       </AreaChart>
     </ResponsiveContainer>
+    </div>
   );
 });
 
