@@ -309,17 +309,21 @@ export function TopbarActions({
           element still intercepting clicks on the bell underneath it
           (confirmed live 2026-08-21 - isConnected:true at opacity:0). An
           entry-only animation that reliably unmounts beats a 160ms fade
-          that strands a click-blocker on the page. */}
+          that strands a click-blocker on the page.
+          It goes into the page's own layer (app/layout.tsx), not onto body:
+          on body it stayed bright in front of every open window and of
+          search-everything. In the layer it is above the bar (30) and the
+          pinned buttons (35), and under anything that covers the page. */}
       {mounted && anchor && showPrompt && createPortal(
         <motion.div
           initial={{ opacity: 0, scale: 0.94, y: -4 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.16 }}
-          style={{ position: 'fixed', top: anchor.top, right: anchor.right, zIndex: 60 }}
+          style={{ position: 'fixed', top: anchor.top, right: anchor.right, zIndex: 36 }}
         >
           {promptCard}
         </motion.div>,
-        document.body
+        document.querySelector('[data-app-layer]') ?? document.body
       )}
     </div>
   );

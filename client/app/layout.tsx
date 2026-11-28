@@ -136,7 +136,9 @@ export default function RootLayout({
               'radial-gradient(ellipse 700px 500px at 100% 10%, var(--color-secondary-muted) 0%, transparent 55%)',
           }}
         />
-        <div className="relative z-10">
+        {/* The page's own layer. Windows and pop-ups are drawn above it (on body), so anything
+            floating that belongs to the page is drawn inside it and dims with it. */}
+        <div className="relative z-10" data-app-layer="">
         <ThemeProvider>
           <LayoutModeProvider>
             <UserCacheProvider>
