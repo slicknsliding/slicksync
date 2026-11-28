@@ -1,5 +1,41 @@
 [
   {
+    "version": "1.110.0",
+    "date": "2026-11-28",
+    "title": "1.110.0 - Stremio profiles, a rebuilt Vault, Delete with Undo, and a preview before Sync All",
+    "features": [
+      "Stremio profiles: every profile on a connected Stremio account is read now, where only the main one was before. Each extra profile counts for the account’s person until you separate it. Users → Stremio profiles separates a profile into its own person with its own addons, merges it back, stops tracking it, or unlocks one that has a PIN. It works like the Nuvio profiles card.",
+      "Adding to the Vault starts by asking what it is, then shows only the boxes that kind needs. IPTV is a login or a playlist address, AIOStreams a configuration or an app sign-in, a VPN a login or an account number. A line under the boxes says how the entry will be checked, and Billing and More stay folded until you open them.",
+      "Lifetime plans and free services: Billing in the Vault has One-time and Free beside Monthly and Yearly. A one-time entry’s card says Lifetime, never warns about an end date, and is shown as paid once instead of counting toward the monthly and yearly totals.",
+      "Renewals in the Vault: “It renews by itself” moves an end date you typed on a month or a year each time, with no warning. “I renewed it” on a card that is ending moves it one period, with Undo. Real-Debrid, TorBox, AllDebrid, Premiumize, Debrid-Link and IPTV logins report their own end date and need neither.",
+      "Find things in the Vault: a search box that looks across every kind, a Needs a look filter for what is not working or about to end, and Test all, which checks every entry and counts as it goes.",
+      "Notes in the Vault: keep a recovery code, a PIN or anything else as its own kind of entry, on its own tab, hidden until you reveal it.",
+      "Vault cards say “Used by N addons” and list the addons and AIOStreams configurations that carry the key. Duplicate opens the add form filled in like an entry, without its secret. Pasting an indexer or IPTV address that has the key or login inside it splits it into its boxes.",
+      "More in the Vault gets checked: a usenet provider is signed in to on its news server, so a wrong password shows as Not working. Jellyfin sign-ins, AIOStreams configurations, M3U playlists, and TMDb, OMDb, MDBList and RPDB keys are checked too.",
+      "Delete with Undo: deleting a group, taking someone out of a group, deleting a Vault key, deleting an invitation and clearing the bell ask once on the button itself. The first press turns it red and it reads Delete?; press again and a message offers Undo.",
+      "Preview before Sync All: Sync All on Users and Groups first lists who would change and how, then Sync runs it. It covers Stremio and Nuvio sign-ins, which have an addon list to sync. Jellyfin and AIOStreams sign-ins have none, so they are synced as usual and shown on one line. Its switch is under Settings → Themes → Layout → Pages and cards.",
+      "Back where you were: going Back from a person, an addon or a title puts the list where you left it. Users, Addons, Activity and the Vault open on the filter or tab you last picked, with a Reset beside it. “Keep each page’s filter” under Settings → Themes → Layout → Pages and cards turns this off.",
+      "Labels on icon buttons: rest the mouse on one to see what it does. On a phone, press and hold; that press only shows the label.",
+      "Several people at once: on Users, select people, then Add to group or Remove from group, beside Sync and Delete.",
+      "The Welcome tour’s Resume button is a small button beside search and the bell. Its pop-up names the step you stopped on, and it goes away for good once the tour is finished.",
+      "Tasks → Maintenance lists the jobs SlickSync runs by itself, when each last ran and whether it went well.",
+      "Keyboard shortcuts have their own guide with the full list of keys. Press ? for the list, as before.",
+      "Small touches: Saved appears beside a setting you change, invite links and share codes get a Share button on phones and tablets, the browser tab counts waiting notifications, Dashboard, Users and Activity say when they last refreshed, pages show the outline of their cards while loading, a Vault secret you reveal hides itself after 30 seconds, and Vault notifications have their own push, bell and Discord switches.",
+      "Shared (public mode) instances clear read notifications older than 90 days by themselves, once a day. Unread ones are never cleared. NOTIFICATION_KEEP_DAYS changes the number, and 0 keeps everything.",
+      "The sample compose files open port 3000 to the machine SlickSync runs on only, which is what a reverse proxy needs. To reach it straight from other devices, add SLICKSYNC_BIND=0.0.0.0 to .env."
+    ],
+    "bugFixes": [
+      "A setting saved while a Live TV check was running could be put back to what it was before. It is kept now.",
+      "Adding or removing Cinemeta, clearing, deleting and reordering addons, restoring a snapshot, a screen-time pause and an access expiry now wait their turn for a person, so two at once cannot overwrite each other’s list.",
+      "A Stremio or Nuvio account that reads back empty during a hiccup is read a second time before anything is pushed to it.",
+      "Coming back online no longer reloads the page while you are typing or have a window open.",
+      "On a phone, the cards on Users no longer redraw once just after the page appears.",
+      "Live TV checks run a few at a time, so a playlist that does not answer no longer holds up the ones behind it, and a slow round of checks no longer starts again on top of itself.",
+      "A restart no longer cuts off a sync, a backup or a check that began in its last seconds: once SlickSync is asked to stop, nothing new starts and what is running gets to finish.",
+      "With the Original layout, the search and bell buttons could sit on top of Sync All when the page header wrapped onto two lines."
+    ]
+  },
+  {
     "version": "1.109.0",
     "date": "2026-11-27",
     "title": "1.109.0 - Live TV watch for AIOStreams, keyboard shortcuts, swipe a card, and filters that stay in reach",
