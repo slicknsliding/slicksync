@@ -13,6 +13,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { usePageArrangement, usePageDesign } from '@/lib/arrange';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { KeyTable } from '@/components/ui/KeyTable';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
@@ -74,6 +75,7 @@ export default function GuideTopicPage() {
   // summary-only topic the two sit within a few hundred pixels of each
   // other and just read as two back buttons.
   const hasLongContent = Boolean(
+    (entry?.keys && entry.keys.length > 0) ||
     (entry?.steps && entry.steps.length > 0) ||
     (entry?.details && entry.details.length > 0) ||
     (entry?.tips && entry.tips.length > 0) ||
@@ -208,6 +210,16 @@ export default function GuideTopicPage() {
                   ) : null}
                 </Card>
               </PageSection>
+
+              {/* A table of keys (the Keyboard shortcuts guide) */}
+              {entry.keys && entry.keys.length > 0 && (
+                <PageSection delay={0.12} className="mb-5">
+                  <Card padding="lg">
+                    <h2 className="text-base font-semibold font-display text-default mb-2">The keys</h2>
+                    <KeyTable rows={entry.keys} />
+                  </Card>
+                </PageSection>
+              )}
 
               {/* Steps */}
               {entry.steps && entry.steps.length > 0 && (

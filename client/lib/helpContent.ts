@@ -8,6 +8,8 @@
 // the same kind of living reference as changelog.json, just phrased as
 // answers instead of release notes.
 
+import { SHORTCUTS } from './shortcuts';
+
 export type HelpCategory =
   | 'Getting started'
   | 'Users & Groups'
@@ -57,6 +59,9 @@ export interface HelpEntry {
   details?: string[];
   // Gotchas worth calling out separately so they don't get lost in prose.
   tips?: string[];
+  // A list of keys and what each does, drawn as a table under the summary
+  // (the Keyboard shortcuts guide).
+  keys?: { what: string; keys: string[] }[];
   // ids of other entries worth reading next.
   related?: string[];
   // Renders the actual feature in a modal ON the guide page, instead of
@@ -1576,13 +1581,27 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Users',
   },
   {
+    id: 'keyboard-shortcuts',
+    title: 'Keyboard shortcuts',
+    category: 'Getting started',
+    keywords: ['keyboard shortcuts', 'keyboard shortcut', 'shortcuts', 'shortcut', 'keyboard', 'keys', 'hotkeys', 'hot keys', 'key bindings', 'keybinds', 'go to', 'jump to a page', 'question mark', 'ctrl k'],
+    answer: 'Every key SlickSync answers to on a computer: jump to a page, search, close a window. They work on any page while you are not typing in a box.',
+    keys: SHORTCUTS.map((s) => ({ what: s.list ? 'This list, as a pop-up' : s.what, keys: s.keys })),
+    tips: [
+      'For a page jump, press g, let go, then the letter.',
+      'While you are typing in a box, the keys type as usual. Press Esc first to leave the box.',
+      'A phone has no keyboard, so none of this applies there. On a TV the remote moves around instead.',
+    ],
+    related: ['command-palette', 'everyday-touches'],
+  },
+  {
     id: 'everyday-touches',
     title: 'Keyboard shortcuts, swiping a card, and filters that stay in reach',
     category: 'Users & Groups',
-    keywords: ['keyboard shortcuts', 'shortcut', 'shortcuts', 'hotkeys', 'keys', 'go to', 'jump', 'question mark', 'swipe', 'swipe a card', 'swipe left', 'recently opened', 'recent', 'filters stay', 'sticky filters', 'search bar stays', 'offline', 'no connection', 'back online', 'copied', 'copy', 'chart', 'watch time chart', 'long name', 'finished setup'],
+    keywords: ['swipe', 'swipe a card', 'swipe left', 'recently opened', 'recent', 'filters stay', 'sticky filters', 'search bar stays', 'offline', 'no connection', 'back online', 'copied', 'copy', 'chart', 'watch time chart', 'long name', 'finished setup'],
     answer: 'On a computer, press ? for the list of keyboard shortcuts: g then a letter jumps to a page (d Dashboard, c Activity, u Users, a Addons, s Settings), / puts you in the page’s search box, and Ctrl+K opens search-everything. On a phone, swipe a person’s card to the left on Users for Sync and Open. On Users, Groups, Activity and Invitations the search and filter bar stays under the top bar while you scroll.',
     steps: [
-      'Keyboard: press ? anywhere outside a text box, or pick Keyboard shortcuts in the account menu. Press g, let go, then the letter.',
+      'Keyboard: press ? anywhere outside a text box for the list of keys, or open the Keyboard shortcuts guide. Press g, let go, then the letter.',
       'Swipe: on a phone, drag a person’s card to the left on Users. Tap Sync or Open, or drag the card back. A tap or a press-and-hold on the card does what it always did.',
       'Filters: scroll down a long list and the bar stays put. It steps out of the way on a fast scroll down and comes back as soon as you scroll up a little.',
     ],
@@ -1596,7 +1615,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Posters sharpen in as they load, and the welcome tour ends with a short All set.',
       'On the Classic design, Discover has the bell and the wizard button under the Sort and Filters row on a computer, and beside the search box on a phone.',
     ],
-    related: ['quick-moves', 'undo-and-comforts', 'effects'],
+    related: ['keyboard-shortcuts', 'quick-moves', 'undo-and-comforts', 'effects'],
     href: '/users',
     linkLabel: 'Open Users',
   },

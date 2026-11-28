@@ -14,6 +14,7 @@ import type { PageArrange } from '@/lib/arrange';
 import type { HelpEntry } from '@/lib/helpContent';
 import { GuideTile } from './GuidesV2';
 import { V2Box } from './V2Detail';
+import { KeyTable } from '@/components/ui/KeyTable';
 
 export const GUIDE_TOPIC_SECTIONS = [
   { key: 'steps', label: 'Step by step' },
@@ -101,6 +102,12 @@ export function GuideTopicV2({ entry, related, arrange, backLabel, onBack }: {
         </button>
       </div>
       <p className="text-[15px] leading-relaxed max-w-[760px] mb-2 text-default">{entry.answer}</p>
+      {/* A table of keys (the Keyboard shortcuts guide). */}
+      {entry.keys && entry.keys.length > 0 && (
+        <div className="max-w-[860px] mt-3 mb-4">
+          <V2Box><KeyTable rows={entry.keys} /></V2Box>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-x-7 items-stretch lg:items-start">
         <div className="flex-1 min-w-0 max-w-[860px]">
