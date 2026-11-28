@@ -5,6 +5,7 @@ import Head from 'next/head';
 import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { SharedConfigPill } from '@/components/addons/SharedConfigPill';
 import { sharedConfigPeers, configKindOf, configKeyOf, type SharedPeer } from '@/lib/sharedConfig';
@@ -38,6 +39,10 @@ import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { AddonsV2, type V2Addon, type V2AddonActions } from '@/components/v2/AddonsV2';
 import { V2SelectButton } from '@/components/v2/V2Bits';
+import { Highlight, HighlightQuery } from '@/components/ui/Highlight';
+import { CardsSkeleton } from '@/components/ui/Skeleton';
+import { ResetSaved } from '@/components/ui/ResetSaved';
+import { useArriveOnce, useWarmOnRest } from '@/lib/hooks/useListTouches';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -283,6 +288,13 @@ export default function AddonsPage() {
     setAddonTags(cached.tags || []);
     setAddonTagColors(cached.tagColors || {});
   });
+
+  // Cards arrive in order the first time the list shows; a resting mouse (or a
+  // touch) on an addon's card warms its page.
+  const listBoxRef = useRef<HTMLDivElement>(null);
+  useArriveOnce(listBoxRef, !isLoading && !error);
+  const warmAddon = useCallback((id: string) => api.prefetchAddon(id), []);
+  useWarmOnRest(listBoxRef, '/addons/', warmAddon);
 
   // Fetch addons and groups
   useEffect(() => {
@@ -886,6 +898,7 @@ export default function AddonsPage() {
             );
             return isTV ? <TVFocusable onEnterPress={() => openAddMenu(addButtonRef.current)}>{btn}</TVFocusable> : btn;
           })()}
+          rightActions={<ResetSaved ids={['addons']} atDefault={activeFilter === 'all'} onReset={() => setActiveFilter('all')} />}
         />
 
         <BeginnerHint guideId="sync-mode-basics">Addons are the sources your users stream from. Add one here, then assign it to a user or a group - assigning is what actually pushes it to their Stremio or Nuvio account.</BeginnerHint>
@@ -948,14 +961,11 @@ export default function AddonsPage() {
           )}
         </div>
 
-        {/* Loading state */}
+        <div ref={listBoxRef}>
+        <HighlightQuery q={searchQuery}>
+        {/* Loading state: grey outlines shaped like the cards that are coming. */}
         {isLoading ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-            </div>
-            <p className="text-muted">Loading addons...</p>
-          </div>
+          <CardsSkeleton kind="addons" v2={v2} view={viewMode === 'list' ? 'list' : 'grid'} label="Loading addons" />
         ) : error ? (
           <LoadError what="your addons" error={error} />
         ) : (
@@ -1009,7 +1019,7 @@ export default function AddonsPage() {
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
-                  <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <StaggerContainer key="grid" className="fx-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       <SortableContext items={shownAddons.map(a => a.id)} strategy={rectSortingStrategy}>
                         {shownAddons.map((addon) => (
@@ -1136,6 +1146,8 @@ export default function AddonsPage() {
             )}
           </>
         )}
+        </HighlightQuery>
+        </div>
       </div>
       </div>
       </div>
@@ -1475,6 +1487,7 @@ function AddonCard({
   /** Its configuration is also signed in to as a Jellyfin server. */
   serverLink?: ConfigServerLink;
 }) {
+  const router = useRouter();
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const [showActions, setShowActions] = useState(false);
@@ -1535,7 +1548,8 @@ function AddonCard({
     if ((e.target as HTMLElement).closest('button')) {
       return;
     }
-    window.location.href = `/addons/${addon.id}`;
+    // Without reloading the app: quicker, and it uses what resting on the card already fetched.
+    router.push(`/addons/${addon.id}`);
   };
 
   const handleClone = (e: React.MouseEvent) => {
@@ -1567,7 +1581,7 @@ function AddonCard({
   const nameHead = nameWords.length ? `${nameWords.join(' ')} ` : '';
   const nameTail = (
     <span className="whitespace-nowrap">
-      {nameLast}
+      <Highlight text={nameLast} whole={addon.name} from={nameHead.length} />
       <span className="inline-flex items-center gap-2 align-middle ml-2">
         {addon.lastHealthCheck && (
           <span
@@ -1683,11 +1697,11 @@ function AddonCard({
                   className="addon-card-name font-semibold transition-all group-hover:text-primary text-default text-left"
                   title="Open configure page"
                 >
-                  {nameHead}{nameTail}
+                  <Highlight text={nameHead} whole={addon.name} from={0} />{nameTail}
                 </button>
               ) : (
                 <h3 className="addon-card-name font-semibold transition-all group-hover:text-primary text-default">
-                  {nameHead}{nameTail}
+                  <Highlight text={nameHead} whole={addon.name} from={0} />{nameTail}
                 </h3>
               )}
               <div className="addon-card-wide flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-muted whitespace-nowrap">
@@ -1778,10 +1792,10 @@ function AddonCard({
                 className="font-semibold transition-colors hover:text-primary text-default text-left"
                 title="Open configure page"
               >
-                {addon.name}
+                <Highlight text={addon.name} />
               </button>
             ) : (
-              <h3 className="font-semibold text-default">{addon.name}</h3>
+              <h3 className="font-semibold text-default"><Highlight text={addon.name} /></h3>
             )}
             {addon.lastHealthCheck && (
               <div

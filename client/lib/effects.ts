@@ -30,6 +30,10 @@ export const EFFECTS = [
   { id: 'bell', title: 'Bell nudge', line: 'The bell rocks once and the count pops in when a notification arrives while you are looking', on: true },
   { id: 'marks', title: 'Marks', line: 'Watchlist, Watched, Follow and the thumbs pop as you set them, and a tick draws itself', on: true },
   { id: 'nowplaying', title: 'Now Playing', line: 'Banners slide in and out as people start and stop, and the progress bar moves smoothly', on: true },
+  { id: 'arrive', title: 'Cards arrive in order', line: 'When a list first appears, its first cards rise into place one after another. Nothing fades', on: true },
+  { id: 'charts', title: 'Charts draw themselves', line: 'A chart line draws from left to right the first time you see it, never on a background refresh', on: true },
+  { id: 'cardpage', title: 'Card to page', line: 'A person’s card grows into the top of their page and goes back into it when you leave', on: true },
+  { id: 'sheetdrag', title: 'Drag a window down', line: 'On a phone, a window follows your finger when you pull it down and closes when you let go', on: true },
 ] as const;
 
 export type EffectId = typeof EFFECTS[number]['id'];

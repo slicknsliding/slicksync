@@ -41,7 +41,7 @@ export function judgeEntry(e: VaultEntry, now: number): Judged {
   return { tone: 'live', words: 'Working', line: ends || e.lastCheckMessage || 'Last check passed', need: null };
 }
 
-export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete, onHistory }: {
+export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, revealStamp, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete, onHistory }: {
   entries: VaultEntry[];
   labels: Record<string, string>;
   arrange: PageArrange;
@@ -54,13 +54,15 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   onTest: (e: VaultEntry) => void;
   /** Secrets shown on screen right now, by entry id. */
   revealed: Record<string, string>;
+  /** When each revealed secret was shown; restarts its 30-second line. */
+  revealStamp?: Record<string, number>;
   onReveal: (e: VaultEntry) => void;
   onSnooze: (e: VaultEntry) => void;
   /** Opens the provider's dashboard and the edit form together. */
   onRotate: (e: VaultEntry) => void;
   /** Asks first (the page's own confirm). */
   onMoveToAddons: (e: VaultEntry) => void;
-  /** Asks first (the page's own confirm). */
+  /** Two presses in the menu, then Undo. */
   onDelete: (e: VaultEntry) => void;
   /** The key's History, beside this card's menu button. */
   onHistory: (e: VaultEntry) => void;
@@ -108,11 +110,18 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
       { label: 'Snooze 7 days', icon: <BellSnoozeIcon className="w-4 h-4" />, disabled: !alertWorthy || snoozed, onClick: () => onSnooze(e) },
       { label: 'Rotate now', icon: <ArrowPathRoundedSquareIcon className="w-4 h-4" />, disabled: !e.dashboardUrl, onClick: () => onRotate(e) },
       { label: 'Move to Addons', icon: <PuzzlePieceIcon className="w-4 h-4" />, onClick: () => onMoveToAddons(e) },
-      { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(e) },
+      // The menu closes on any pick, so the second press lives in a second
+      // list: "Delete?" acts at once and the Undo toast follows.
+      { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, sub: { title: 'Delete this key?', items: [{ label: 'Delete?', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(e) }] } },
     ];
   };
   const secretLine = (e: VaultEntry) => revealed[e.id]
-    ? <div className="font-mono text-[13px] text-default mt-1 break-all select-all">{revealed[e.id]}</div>
+    ? (
+      <>
+        <div className="font-mono text-[13px] text-default mt-1 break-all select-all">{revealed[e.id]}</div>
+        <div key={revealStamp?.[e.id] ?? 0} className="vault-reveal-line" aria-hidden="true" />
+      </>
+    )
     : null;
   const icon = (size: number) => (
     <span className="rounded-[14px] flex items-center justify-center shrink-0 text-muted" style={{ width: size, height: size, background: 'var(--color-surface-elevated, var(--color-surface-hover))' }}>

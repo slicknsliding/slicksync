@@ -516,16 +516,19 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
         await checkActivityForAccount(prisma, accounts[i].id, decrypt, getAccountId)
       }
       heartbeat('checkAllAccounts:done', { INSTANCE_TYPE, accountCount: accounts.length, durationMs: Date.now() - startedAt })
+      require('./jobStatus').noteRun('activityMonitor', { ok: true })
     } else {
       // Private mode: check default account
       const DEFAULT_ACCOUNT_ID = process.env.DEFAULT_ACCOUNT_ID || 'default'
       await checkActivityForAccount(prisma, DEFAULT_ACCOUNT_ID, decrypt, getAccountId)
+      require('./jobStatus').noteRun('activityMonitor', { ok: true })
     }
   } catch (error) {
     // Same reasoning as above — checkActivityForAccount already logs its own
     // errors, but this outer catch existing at all meant something could
     // theoretically still fail invisibly above/around that call.
     heartbeat('checkAllAccounts:error', { message: error.message, stack: error.stack })
+    require('./jobStatus').noteRun('activityMonitor', { ok: false, message: error.message })
     console.warn(`[ActivityMonitor] checkAllAccounts failed:`, error.message)
   } finally {
     isAccountsPassRunning = false

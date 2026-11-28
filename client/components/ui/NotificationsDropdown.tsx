@@ -17,6 +17,8 @@ import { useTVModal } from '@/components/tv/useTVModal';
 import { usePageDesign } from '@/lib/arrange';
 import { NotificationsPanelV2 } from '@/components/v2/NotificationsV2';
 import { fxOn } from '@/lib/effects';
+import { TwoStepButton } from '@/components/ui/TwoStepButton';
+import { useUnreadTitle } from '@/lib/hooks/useUnreadTitle';
 import { useNotifySound } from '@/lib/arrange';
 import { armSound, playSound } from '@/lib/notifySound';
 
@@ -551,6 +553,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // The same count in the browser tab: "(3) SlickSync". This is the one place
+  // that does it; the v2 panel only draws the list.
+  useUnreadTitle(unreadCount);
+
   // Mirror the unread count onto the installed app's icon (OS Badging API,
   // Chromium + iOS 16.4+ installed PWAs). Browsers without it just skip -
   // the accessor itself can throw on some, hence the try/catch rather than
@@ -598,7 +604,46 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     }, Math.min(notifications.length, 8) * 45 + 200);
   };
 
+  // "Cleared - Undo": the server puts back the stored rows and the bell's
+  // state; this puts back what this device kept (the window, dismissed and
+  // read lists) and reads the stored rows again.
+  const offerUndoClear = (trashId: string, before: { lastChecked: Date; clearedBefore: Date | null; dismissed: Set<string>; read: Set<string>; seen: string | null }) => {
+    toast.success('Notifications cleared', {
+      line: 'Back for 30 days from Tasks → Trash',
+      actions: [{
+        label: 'Undo',
+        onClick: async () => {
+          try {
+            await api.restoreFromTrash(trashId);
+            const save = (key: string, value: string | null) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* storage blocked */ } };
+            save('notifications-last-checked', before.lastChecked.toISOString());
+            save('notifications-cleared-before', before.clearedBefore ? before.clearedBefore.toISOString() : null);
+            save(SERVER_CLEAR_KEY, before.seen);
+            setLastChecked(before.lastChecked);
+            setClearedBefore(before.clearedBefore);
+            persistDismissedIds(before.dismissed);
+            persistReadIds(before.read);
+            setJustCleared(false);
+            try { setStoredNotifications(await api.getNotifications()); } catch { /* the next poll brings them back */ }
+            toast.success('Notifications are back');
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Could not bring the notifications back');
+          }
+        },
+      }],
+      duration: 8000,
+    });
+  };
+
   const handleClearAll = (stay?: boolean) => {
+    // What Undo puts back on this device (the server holds the rows).
+    const before = {
+      lastChecked,
+      clearedBefore,
+      dismissed: new Set(dismissedIds),
+      read: new Set(readIds),
+      seen: (() => { try { return localStorage.getItem(SERVER_CLEAR_KEY); } catch { return null; } })(),
+    };
     const now = new Date();
     setLastChecked(now);
     setClearedBefore(now);
@@ -618,7 +663,15 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // Clear, so every other device clears with it; the answer carries the
     // server's own time, which replaces this device's clock.
     setStoredNotifications([]);
-    api.updateBellState({ clearAll: true }).then(applyBellState).catch(() => {});
+    api.clearBell()
+      .then((res) => {
+        applyBellState(res.state);
+        if (res.trashId) offerUndoClear(res.trashId, before);
+      })
+      .catch(() => {
+        // Could not be held for Undo: Clear still goes through, without one.
+        api.updateBellState({ clearAll: true }).then(applyBellState).catch(() => {});
+      });
     // The v2 bell shows "All clear" and stays open; anything else closes.
     if (stay !== true) setIsOpen(false);
   };
@@ -836,14 +889,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                       >
                         Mark all read
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearWithSweep}
-                        className="text-xs"
-                      >
-                        Clear
-                      </Button>
+                      <TwoStepButton
+                        onConfirm={clearWithSweep}
+                        label="Clear"
+                        armedLabel="Clear?"
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted hover:text-default hover:bg-surface-hover transition-colors"
+                      />
                     </div>
                   )}
                 </div>

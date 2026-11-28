@@ -8,6 +8,7 @@
 // dismissing one are the dropdown's own.
 
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { TwoStepButton } from '@/components/ui/TwoStepButton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
@@ -165,7 +166,7 @@ export function NotificationsPanelV2({
         {items.length > 0 && (
           <>
             <button type="button" className="text-[13px]" style={{ color: 'var(--color-primary)' }} onClick={onMarkAll}>Mark all read</button>
-            <button type="button" className="text-[13px] text-muted hover:text-default" onClick={clear}>Clear</button>
+            <TwoStepButton onConfirm={clear} label="Clear" armedLabel="Clear?" className="text-[13px] text-muted hover:text-default" />
           </>
         )}
       </div>

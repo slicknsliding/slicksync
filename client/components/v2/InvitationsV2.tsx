@@ -13,6 +13,7 @@ import {
 import { UserAvatar } from '@/components/ui';
 import { GroupPicture } from './GroupPicture';
 import { ArrangeSection } from '@/components/ui/Arrange';
+import { ShareButton } from '@/components/ui/ShareButton';
 import type { PageArrange } from '@/lib/arrange';
 import { formatRelativeTime } from '@/lib/relativeTime';
 import { V2Button, V2Card, V2Grid, V2Item, V2List, V2Status, type V2CardMenuItem } from './V2Bits';
@@ -87,7 +88,8 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
     { label: 'Duplicate', icon: <DocumentDuplicateIcon className="w-4 h-4" />, onClick: () => onDuplicate(i) },
     { label: 'Copy code', icon: <ClipboardDocumentIcon className="w-4 h-4" />, onClick: () => onCopyCode(i) },
     { label: 'Show QR', icon: <QrCodeIcon className="w-4 h-4" />, onClick: () => onShowQr(i) },
-    { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(i) },
+    // The menu closes on any pick, so the second press is a second list: "Delete?" acts at once, then Undo.
+    { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, sub: { title: 'Delete this invitation?', items: [{ label: 'Delete?', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(i) }] } },
   ];
   const hidden = new Set(inviteArrange.hidden);
   const hideBtn = (i: V2Invite) => (
@@ -134,7 +136,10 @@ export function InvitationsV2({ requests, invites, arrange, inviteArrange, view,
   );
 
   const inviteAction = (i: V2Invite) => arrange.arranging ? hideBtn(i) : (
-    <V2Button onClick={() => onCopy(i)} icon={<LinkIcon className="w-4 h-4" />}>Copy link</V2Button>
+    <>
+      <V2Button onClick={() => onCopy(i)} icon={<LinkIcon className="w-4 h-4" />}>Copy link</V2Button>
+      <ShareButton look="v2" payload={{ title: 'Join my SlickSync', text: i.name ? `Join ${i.name} on SlickSync` : 'Join me on SlickSync', url: `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${i.code}` }} />
+    </>
   );
   const bar = (i: V2Invite, h: string) => i.groupName && !i.groupMissing
     ? <GroupPicture name={i.groupName} avatarUrl={i.groupAvatarUrl} colorIndex={i.groupColorIndex} size={h === 'h-8' ? 'md' : 'lg'} ring={false} />

@@ -478,12 +478,14 @@ let timer = null
 function scheduleConfigGuard(prisma, decrypt) {
   if (timer) clearInterval(timer)
   const run = async () => {
+    let failed = null
     // Profile variants first: a write here re-baselines, so the look that
     // follows doesn't report SlickSync's own fix as an outside change.
-    await require('./aioProfileVariants').healProfileVariants(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] profile variants check failed:', e?.message))
-    await checkConfigs(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] check failed:', e?.message))
+    await require('./aioProfileVariants').healProfileVariants(prisma, decrypt).catch((e) => { failed = e?.message || 'profile check failed'; console.warn('[AIOStreamsConfig] profile variants check failed:', e?.message) })
+    await checkConfigs(prisma, decrypt).catch((e) => { failed = e?.message || 'configuration check failed'; console.warn('[AIOStreamsConfig] check failed:', e?.message) })
     // Is their AIOStreams watch history still reaching SlickSync?
-    await require('./aioSlickTrax').checkSlickTrax(prisma, decrypt).catch((e) => console.warn('[AIOStreamsConfig] SlickTrax check failed:', e?.message))
+    await require('./aioSlickTrax').checkSlickTrax(prisma, decrypt).catch((e) => { failed = e?.message || 'watch history check failed'; console.warn('[AIOStreamsConfig] SlickTrax check failed:', e?.message) })
+    require('./jobStatus').noteRun('aiostreams', { ok: !failed, message: failed })
   }
   setTimeout(run, 2 * 60 * 1000)
   timer = setInterval(run, CHECK_INTERVAL_MS)

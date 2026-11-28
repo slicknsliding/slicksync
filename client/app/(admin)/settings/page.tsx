@@ -11,6 +11,8 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
+import { beginSave, SavedTick } from '@/lib/savedTick';
+import { VaultAlertSwitches } from '@/components/settings/VaultAlertSwitches';
 import { joinNames } from '@/lib/sharedConfig';
 import { ShortcutRecipes } from '@/components/settings/ShortcutRecipes';
 import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettings';
@@ -185,6 +187,7 @@ function SettingRow({
         <p className="font-medium text-sm text-default">{label}</p>
         <p className="text-xs text-muted">{description}</p>
       </div>
+      <SavedTick id={label} className="ml-auto mr-3" />
       {children}
     </div>
   );
@@ -900,10 +903,10 @@ export default function SettingsPage() {
   const handleSaveSetting = async (key: keyof SyncSettings, value: any) => {
     const newSettings = { ...syncSettings, [key]: value };
     setSyncSettings(newSettings);
-    
+    const saved = beginSave();
     try {
       await api.updateSyncSettings({ [key]: value });
-      toast.success('Setting saved');
+      saved();
     } catch (e: any) {
       toast.error(e.message || 'Failed to save setting');
     }
@@ -912,9 +915,10 @@ export default function SettingsPage() {
   // Several settings in one save (the digest switch and its frequency).
   const handleSaveSettings = async (patch: Partial<SyncSettings>) => {
     setSyncSettings((prev) => ({ ...prev, ...patch }));
+    const saved = beginSave();
     try {
       await api.updateSyncSettings(patch);
-      toast.success('Setting saved');
+      saved();
     } catch (e) {
       toast.error((e instanceof Error && e.message) || 'Failed to save setting');
     }
@@ -1660,6 +1664,7 @@ export default function SettingsPage() {
                     label="Toggle vault notifications"
                   />
                 </SettingRow>
+                <VaultAlertSwitches look="classic" hasWebhook={!!syncSettings.webhookUrl?.trim()} masterOn={!!syncSettings.notifyOnVault} />
 
                 <SettingRow
                   label="Addon health notifications"

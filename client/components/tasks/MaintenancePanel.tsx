@@ -5,6 +5,7 @@ import { Button, Card, ToggleSwitch, PasswordToggleButton } from '@/components/u
 import { toast } from '@/components/ui/Toast';
 import { api, BackupTargets, DataBackupSettings, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
 import { TrashPanel } from './TrashPanel';
+import { BackgroundJobs } from '@/components/settings/BackgroundJobs';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 // Everything that keeps an instance healthy without anyone watching it:
@@ -246,6 +247,9 @@ export function MaintenancePanel() {
 
       {/* --- Recently deleted --- */}
       <TrashPanel />
+
+      {/* --- Background jobs (folded) --- */}
+      <BackgroundJobs />
 
       {/* --- Database upkeep --- */}
       <Card padding="lg">

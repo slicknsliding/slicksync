@@ -11,6 +11,7 @@ import type { ComponentType, CSSProperties, KeyboardEvent, RefObject } from 'rea
 import { ArrowUpRightIcon, BookOpenIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import type { HelpEntry } from '@/lib/helpContent';
 import { V2Status, type V2Tone } from './V2Bits';
+import { Highlight } from '@/components/ui/Highlight';
 
 export type PaletteResult = {
   id: string;
@@ -55,7 +56,7 @@ const LABEL = 'text-[11.5px] font-semibold uppercase tracking-wider text-muted p
 
 // The active row is lit with the menu highlight (CommandPalette lights the
 // element carrying its data-mh-index).
-function Row({ r, i, active, onPick, onHover }: { r: PaletteResult; i: number; active: boolean; onPick: () => void; onHover: () => void }) {
+function Row({ r, i, active, onPick, onHover, q }: { r: PaletteResult; i: number; active: boolean; onPick: () => void; onHover: () => void; q: string }) {
   const Icon = r.icon;
   return (
     <button
@@ -73,7 +74,7 @@ function Row({ r, i, active, onPick, onHover }: { r: PaletteResult; i: number; a
         <Icon className="w-[18px] h-[18px] shrink-0" style={{ color: 'var(--color-text-muted)' }} />
       )}
       <span className="text-sm flex-1 min-w-0 flex items-center gap-2.5">
-        <span className="truncate">{r.label}</span>
+        <span className="truncate"><Highlight text={r.label} q={q} /></span>
         {r.person && <V2Status tone={r.person.tone}>{r.person.words}</V2Status>}
       </span>
       {r.sublabel && <span className="text-xs text-muted shrink-0">{r.sublabel}</span>}
@@ -150,7 +151,7 @@ export function PaletteV2Panel({
           <div key={s.title}>
             <p className={LABEL}>{s.title}</p>
             {s.items.map(({ r, i }) => (
-              <Row key={r.id} r={r} i={i} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} />
+              <Row key={r.id} r={r} i={i} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} q={query} />
             ))}
           </div>
         ))}
@@ -196,7 +197,7 @@ export function PaletteV2Panel({
               <div>
                 <p className={LABEL}>Recent</p>
                 {recent.map(({ r, i }) => (
-                  <Row key={r.id} r={r} i={i} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} />
+                  <Row key={r.id} r={r} i={i} active={i === activeIndex} onPick={() => onPick(r)} onHover={() => onActive(i)} q={query} />
                 ))}
               </div>
             )}

@@ -352,6 +352,7 @@ function scheduleBackups(days, prisma, opts = {}) {
       const worked = await performBackupOnce(prisma, opts) // opts carries INSTANCE_TYPE + the per-account payload builder in public mode
       // One that failed stays due, so the coming midnight tries again.
       if (worked) writeLastScheduledRun(Date.now())
+      require('./jobStatus').noteRun('backups', { ok: !!worked, message: worked ? null : 'The last backup did not finish' })
       if (generation === scheduleGeneration) scheduleNext()
     }
     wait()

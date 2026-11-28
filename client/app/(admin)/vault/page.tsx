@@ -6,7 +6,7 @@ import { VaultV2, VAULT_SECTIONS } from '@/components/v2/VaultV2';
 import { VaultHistoryButton, VaultHistoryPopup } from '@/components/vault/VaultHistory';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import Head from 'next/head';
-import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -23,11 +23,13 @@ import { useVaultDrag, SIDEBAR_ADDONS_DROPZONE_ID } from '@/components/providers
 import type { DragEndEvent } from '@dnd-kit/core';
 import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch, ContextMenu, useContextMenu } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { TwoStepButton } from '@/components/ui/TwoStepButton';
+import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { api, VaultEntry, VaultCategory, VaultTestType } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import {
   PlusIcon,
-  ShieldCheckIcon,
   EyeIcon,
   EyeSlashIcon,
   ArrowPathIcon,
@@ -455,13 +457,12 @@ function SortableEntryCard({
           Move to Addons
         </button>
         <div className="my-1 border-t border-default" />
-        <button
-          onClick={() => { close(); onDelete(entry); }}
+        <TwoStepButton
+          onConfirm={() => { close(); onDelete(entry); }}
+          label="Delete"
+          icon={<TrashIcon className="w-4 h-4" />}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error-muted transition-colors"
-        >
-          <TrashIcon className="w-4 h-4" />
-          Delete
-        </button>
+        />
       </ContextMenu>
     </div>
   );
@@ -492,6 +493,14 @@ function VaultPageContent() {
     setIsLoading(false);
   });
   const [revealed, setRevealed] = useState<Record<string, string>>({});
+  // A secret shown on a card hides itself again after 30 seconds. The stamp
+  // restarts the line that runs out under it.
+  const [revealStamp, setRevealStamp] = useState<Record<string, number>>({});
+  const hideTimers = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const timers = hideTimers.current;
+    return () => { Object.values(timers).forEach((t) => window.clearTimeout(t)); };
+  }, []);
   // v2: the entry whose History is open from its card's menu.
   const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -810,11 +819,12 @@ function VaultPageContent() {
     }
   };
 
+  // The buttons ask twice (TwoStepButton, or the menu's "Delete?"), so by
+  // here it is decided; Undo brings the entry back from the Trash.
   const handleDelete = async (entry: VaultEntry) => {
-    if (!confirm(`Delete "${entry.name}"? It goes to the Trash on the Tasks page and can be restored for 30 days.`)) return;
     try {
-      await api.deleteVaultEntry(entry.id);
-      toast.success('Deleted');
+      const res = await api.deleteVaultEntry(entry.id);
+      showDeletedWithUndo(`"${entry.name}"`, res?.trashId, load);
       load();
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete');
@@ -913,14 +923,23 @@ function VaultPageContent() {
     }
   };
 
+  const hideSecret = (id: string) => {
+    window.clearTimeout(hideTimers.current[id]);
+    delete hideTimers.current[id];
+    setRevealed(prev => { const next = { ...prev }; delete next[id]; return next; });
+  };
+
   const handleReveal = async (entry: VaultEntry) => {
     if (revealed[entry.id]) {
-      setRevealed(prev => { const next = { ...prev }; delete next[entry.id]; return next; });
+      hideSecret(entry.id);
       return;
     }
     try {
       const result = await api.revealVaultSecret(entry.id);
       setRevealed(prev => ({ ...prev, [entry.id]: result.secret }));
+      setRevealStamp(prev => ({ ...prev, [entry.id]: Date.now() }));
+      window.clearTimeout(hideTimers.current[entry.id]);
+      hideTimers.current[entry.id] = window.setTimeout(() => hideSecret(entry.id), 30000);
     } catch (err: any) {
       toast.error(err.message || 'Failed to reveal secret');
     }
@@ -1028,9 +1047,12 @@ function VaultPageContent() {
       </div>
 
       <div className="mb-3 p-3 rounded-lg flex items-center justify-between gap-2" style={{ background: 'var(--color-subtle)' }}>
-        <code className="text-xs truncate" style={{ color: 'var(--color-text)' }}>
-          {revealed[entry.id] || '••••••••••••••••'}
-        </code>
+        <div className="min-w-0 flex-1">
+          <code className="text-xs truncate block" style={{ color: 'var(--color-text)' }}>
+            {revealed[entry.id] || '••••••••••••••••'}
+          </code>
+          {revealed[entry.id] && <div key={revealStamp[entry.id] ?? 0} className="vault-reveal-line" aria-hidden="true" />}
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           {(() => {
             const btn = (
@@ -1112,12 +1134,25 @@ function VaultPageContent() {
         })()}
         <VaultHistoryButton entryId={entry.id} name={entry.name} />
         {(() => {
-          const btn = (
-            <button onClick={() => handleDelete(entry)} title="Delete" aria-label="Delete" className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surface-hover)' }}>
-              <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
-            </button>
+          // A remote cannot do a quick second press, so the TV keeps asking first.
+          if (isTV) {
+            return (
+              <TVFocusable onEnterPress={() => { if (window.confirm(`Delete "${entry.name}"? It goes to the Trash and can be restored for 30 days.`)) handleDelete(entry); }}>
+                <button title="Delete" aria-label="Delete" className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surface-hover)' }}>
+                  <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+                </button>
+              </TVFocusable>
+            );
+          }
+          return (
+            <TwoStepButton
+              onConfirm={() => handleDelete(entry)}
+              ariaLabel="Delete"
+              title="Delete"
+              icon={<TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />}
+              className="p-2 rounded-lg transition-colors ml-auto inline-flex items-center gap-1.5 text-sm bg-surface-hover"
+            />
           );
-          return isTV ? <TVFocusable onEnterPress={() => handleDelete(entry)}>{btn}</TVFocusable> : btn;
         })()}
       </div>
     </Card>
@@ -1214,18 +1249,12 @@ function VaultPageContent() {
     ) : entries.length === 0 ? (
       // Straight on the panel, like the empty states on Invitations,
       // Addons and Groups - not a second bordered box inside it.
-      <div className="text-center py-16">
-        <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-          <ShieldCheckIcon className="w-8 h-8 text-subtle" />
-        </div>
-        <h3 className="text-lg font-medium mb-2 text-default">No entries yet</h3>
-        <p className="mb-6 text-muted">
-          Track API keys, accounts, and credentials with expiry alerts and active-checks.
-        </p>
-        <Button variant="primary" onClick={openAddModal}>
-          Add your first entry
-        </Button>
-      </div>
+      <EmptyState
+        art="vault"
+        title="Nothing in the Vault yet"
+        line="Keep debrid, metadata and indexer keys here. SlickSync checks them and warns you before one runs out."
+        action={<Button variant="primary" onClick={openAddModal}>Add a key</Button>}
+      />
     ) : v2 ? (
       <>
         <VaultV2
@@ -1240,6 +1269,7 @@ function VaultPageContent() {
           onCopy={handleCopy}
           onTest={handleTest}
           revealed={revealed}
+          revealStamp={revealStamp}
           onReveal={handleReveal}
           onSnooze={handleSnooze}
           onRotate={(entry) => {

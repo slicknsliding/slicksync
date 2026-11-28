@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { fxBuzz } from '@/lib/effects';
 
 export type SwipeAction = { label: string; tone?: 'main' | 'plain'; onClick: () => void };
 
@@ -66,7 +67,10 @@ export function SwipeActions({ actions, children }: { actions: SwipeAction[]; ch
     };
     const end = () => {
       if (mode !== 'swipe') return;
+      const opened = base === 0 && x < -max / 2;
       base = x < -max / 2 ? -max : 0;
+      // Effects → Vibrate: a tiny buzz as the card clicks open.
+      if (opened) fxBuzz();
       place(base, false);
       mode = '';
     };

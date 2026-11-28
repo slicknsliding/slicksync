@@ -9,6 +9,9 @@ import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { copyToClipboard } from '@/lib/clipboard';
+import { TwoStepButton } from '@/components/ui/TwoStepButton';
+import { showDeletedWithUndo } from '@/components/ui/undoToast';
+import { ShareButton, shareNatively, useCanNativeShare } from '@/components/ui/ShareButton';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -31,6 +34,7 @@ import {
   EnvelopeIcon,
   ClipboardIcon,
   QrCodeIcon,
+  ShareIcon,
   CheckIcon,
   XMarkIcon,
   ClockIcon,
@@ -109,7 +113,6 @@ export default function InvitationsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Single item delete state (for quick action menu)
-  const [deleteTarget, setDeleteTarget] = useState<InvitationDisplay | null>(null);
 
   // Edit state
   const [editTarget, setEditTarget] = useState<InvitationDisplay | null>(null);
@@ -359,28 +362,26 @@ export default function InvitationsPage() {
     setSelectedIds(new Set());
   }, [selectedIds]);
 
-  // Delete single invitation (from quick action menu)
-  const handleDeleteSingle = useCallback(async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await api.deleteInvitation(deleteTarget.id);
-      toast.success(`Invitation ${deleteTarget.code} deleted successfully`);
-      // Refresh invitations
+  // Delete single invitation (from quick action menu). The menu asked twice
+  // already ("Delete?"), so this goes at once and Undo brings it back from the Trash.
+  const handleDeleteSingle = useCallback(async (target: InvitationDisplay) => {
+    const refresh = async () => {
       try {
         const invitationsData = await api.getInvitations();
         setInvitations(invitationsData);
       } catch (err) {
         console.error('Failed to refresh invitations:', err);
       }
+    };
+    try {
+      const res = await api.deleteInvitation(target.id);
+      showDeletedWithUndo(`invitation ${target.code}`, res?.trashId, refresh);
+      await refresh();
     } catch (err) {
-      toast.error(`Failed to delete invitation ${deleteTarget.code}`);
+      toast.error(`Failed to delete invitation ${target.code}`);
       console.error('Failed to delete invitation:', err);
-    } finally {
-      setIsDeleting(false);
-      setDeleteTarget(null);
     }
-  }, [deleteTarget]);
+  }, []);
 
   // Reset selection when switching tabs
   const handleTabChange = (tab: 'invitations' | 'requests') => {
@@ -413,7 +414,7 @@ export default function InvitationsPage() {
                                 invitation={invite}
                                 isSelected={selectedIds.has(invite.id)}
                                 onToggleSelect={() => toggleSelect(invite.id)}
-                                onDelete={() => setDeleteTarget(invite)}
+                                onDelete={() => handleDeleteSingle(invite)}
                                 onEdit={() => setEditTarget(invite)}
                                 onDuplicate={() => setDuplicateTarget(invite)}
                                 focusable={isTV}
@@ -508,6 +509,7 @@ export default function InvitationsPage() {
                                     >
                                       <ClipboardIcon className="w-4 h-4" />
                                     </Button>
+                                    <ShareButton payload={{ title: 'Join my SlickSync', text: invite.name ? `Join ${invite.name} on SlickSync` : 'Join me on SlickSync', url: `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${invite.code}` }} />
                                   </td>
                                 </motion.tr>
                               ))}
@@ -683,7 +685,7 @@ export default function InvitationsPage() {
                   toast.success('Invitation code copied to clipboard');
                 }}
                 onShowQr={(i) => setQrTarget(i)}
-                onDelete={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) setDeleteTarget(d); }}
+                onDelete={(i) => { const d = invitationsDisplay.find((x) => x.id === i.id); if (d) handleDeleteSingle(d); }}
                 now={renderedAt}
               />
               <HiddenTray
@@ -816,18 +818,6 @@ export default function InvitationsPage() {
         isLoading={isDeleting}
       />
 
-      {/* Delete Confirmation Modal (single) */}
-      <ConfirmModal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDeleteSingle}
-        title="Delete Invitation"
-        description={`Are you sure you want to delete invitation "${deleteTarget?.code}"? This will invalidate the invite code.`}
-        confirmText={isDeleting ? 'Deleting...' : 'Delete Invitation'}
-        variant="danger"
-        isLoading={isDeleting}
-      />
-
       {/* Edit Invitation Modal */}
       <Modal
         isOpen={!!editTarget}
@@ -907,6 +897,7 @@ function InvitationCard({
   const router = useRouter();
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const canShare = useCanNativeShare();
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
 
   // Add touch handling for mobile context menu
@@ -985,12 +976,6 @@ function InvitationCard({
     e.stopPropagation();
     close();
     onDuplicate();
-  };
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    close();
-    onDelete();
   };
 
   const handleViewDetail = (e: React.MouseEvent) => {
@@ -1203,6 +1188,19 @@ function InvitationCard({
           <ClipboardIcon className="w-4 h-4" />
           Copy Link
         </button>
+        {canShare && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              close();
+              shareNatively({ title: 'Join my SlickSync', text: invitation.name ? `Join ${invitation.name} on SlickSync` : 'Join me on SlickSync', url: inviteUrl }).catch(() => toast.error('Couldn’t open the share sheet'));
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+          >
+            <ShareIcon className="w-4 h-4" />
+            Share
+          </button>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); close(); setQrOpen(true); }}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
@@ -1211,13 +1209,12 @@ function InvitationCard({
           Show QR
         </button>
         <div className="my-1 border-t border-default" />
-        <button
-          onClick={handleDelete}
+        <TwoStepButton
+          onConfirm={() => { close(); onDelete(); }}
+          label="Delete"
+          icon={<TrashIcon className="w-4 h-4" />}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error-muted transition-colors"
-        >
-          <TrashIcon className="w-4 h-4" />
-          Delete
-        </button>
+        />
       </ContextMenu>
 
       <Modal isOpen={qrOpen} onClose={() => setQrOpen(false)} title="Scan to join" size="sm">

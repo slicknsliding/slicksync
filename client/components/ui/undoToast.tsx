@@ -81,3 +81,36 @@ export async function showPersonDeletedWithUndo(name: string, onRestored?: () =>
     duration: 8000,
   });
 }
+
+// "Family deleted - Undo" and "Sam taken out of Kids - Undo": a delete the page
+// already made, with the Undo that restores it from the Trash. The toast keeps
+// its line running out while Undo is on offer. The server hands back the Trash
+// item's id (groups: DELETE /groups/:id and DELETE /groups/:id/users/:userId);
+// without one there is nothing to restore, and the toast just says what
+// happened.
+export function showUndoable(
+  text: string,
+  trashId: string | null | undefined,
+  restoredText: string,
+  onRestored?: () => void,
+) {
+  if (!trashId) {
+    toast.success(text);
+    return;
+  }
+  toast.success(text, {
+    actions: [{
+      label: 'Undo',
+      onClick: async () => {
+        try {
+          await api.restoreFromTrash(trashId);
+          toast.success(restoredText);
+          onRestored?.();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Could not put it back');
+        }
+      },
+    }],
+    duration: 8000,
+  });
+}

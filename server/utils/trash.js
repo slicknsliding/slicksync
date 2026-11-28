@@ -361,6 +361,47 @@ async function archiveHistoryImport(prisma, accountId, userId, { createdItemIds,
   })
 }
 
+/**
+ * Invitation delete - the row and the requests hanging off it (the delete
+ * cascades to them). Held exactly as stored, tokens included, which are
+ * already encrypted at rest.
+ */
+async function archiveInvitationDelete(prisma, accountId, invitationId) {
+  const accountIdValue = accountId || 'default'
+  const invitation = await prisma.invitation.findFirst({ where: { id: invitationId, accountId: accountIdValue }, include: { requests: true } })
+  if (!invitation) throw new Error('Invitation not found')
+  const { requests, ...row } = invitation
+  return prisma.trashItem.create({
+    data: {
+      accountId: accountIdValue,
+      kind: 'invitation',
+      label: row.name || row.inviteCode || 'Invitation',
+      payload: JSON.stringify({ invitation: row, requests: requests || [] }),
+    },
+  })
+}
+
+/**
+ * The bell's Clear. Rows a person could still miss are held: the one-off
+ * stored rows Clear deletes (whole), the ones it only hides (id + read state),
+ * and the bell's state as it stood. Restore puts all of it back.
+ */
+async function archiveBellClear(prisma, accountId) {
+  const accountIdValue = accountId || 'default'
+  const rows = await prisma.notification.findMany({ where: { accountId: accountIdValue } }).catch(() => [])
+  const deleted = rows.filter((r) => !r.dedupeKey)
+  const hidden = rows.filter((r) => r.dedupeKey && !r.dismissedAt).map((r) => ({ id: r.id, read: r.read, readAt: r.readAt }))
+  const before = await prisma.bellState.findUnique({ where: { accountId: accountIdValue } }).catch(() => null)
+  return prisma.trashItem.create({
+    data: {
+      accountId: accountIdValue,
+      kind: 'bell',
+      label: 'Cleared notifications',
+      payload: JSON.stringify({ deleted, hidden, before: before ? { clearedBefore: before.clearedBefore, dismissed: before.dismissed, readIds: before.readIds } : null }),
+    },
+  })
+}
+
 /** Restore cases for the extended kinds - called from restoreTrashItem. */
 async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
   if (item.kind === 'user') {
@@ -466,6 +507,41 @@ async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
     return { kind: 'vault', label: item.label }
   }
 
+  if (item.kind === 'invitation') {
+    const { invitation, requests } = payload
+    const idTaken = await prisma.invitation.findUnique({ where: { id: invitation.id } }).catch(() => null)
+    // The id is what a shared link and the invitation's server choice hang
+    // on - refuse rather than hand back a look-alike.
+    if (idTaken) throw new Error('An invitation with this id already exists - cannot restore it')
+    const codeTaken = await prisma.invitation.findUnique({ where: { inviteCode: invitation.inviteCode } }).catch(() => null)
+    if (codeTaken) throw new Error('Another invitation now uses this invite code - cannot restore it')
+    await prisma.invitation.create({ data: { ...invitation, accountId: invitation.accountId || item.accountId } })
+    let back = 0
+    for (const r of (requests || [])) {
+      try { await prisma.inviteRequest.create({ data: r }); back++ } catch { /* one that cannot come back must not block the rest */ }
+    }
+    return { kind: 'invitation', label: item.label, restoredRequests: back }
+  }
+
+  if (item.kind === 'bell') {
+    const { deleted, hidden, before } = payload
+    let back = 0
+    for (const r of (deleted || [])) {
+      const taken = await prisma.notification.findUnique({ where: { id: r.id } }).catch(() => null)
+      if (taken) continue
+      try { await prisma.notification.create({ data: { ...r, accountId: item.accountId } }); back++ } catch { /* skip a row that cannot return */ }
+    }
+    for (const h of (hidden || [])) {
+      await prisma.notification.updateMany({ where: { id: h.id, accountId: item.accountId }, data: { dismissedAt: null, read: !!h.read, readAt: h.readAt ? new Date(h.readAt) : null } }).catch(() => {})
+    }
+    const data = before
+      ? { clearedBefore: before.clearedBefore ? new Date(before.clearedBefore) : null, dismissed: before.dismissed || '[]', readIds: before.readIds || '[]' }
+      : { clearedBefore: null, dismissed: '[]', readIds: '[]' }
+    await prisma.bellState.upsert({ where: { accountId: item.accountId }, create: { accountId: item.accountId, ...data }, update: data }).catch(() => {})
+    try { require('./liveEvents').emitLive(item.accountId, 'notification') } catch { /* live nudge is optional */ }
+    return { kind: 'bell', label: item.label, restored: back }
+  }
+
   if (item.kind === 'wipe') {
     const { episodes, movies, dismissals } = payload
     let restored = 0
@@ -530,6 +606,8 @@ module.exports = {
   archiveGroupDelete,
   archiveMembershipRemoval,
   archiveVaultDelete,
+  archiveInvitationDelete,
+  archiveBellClear,
   archiveGraveyardWipe,
   archiveHistoryImport,
   listTrash,

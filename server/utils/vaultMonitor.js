@@ -18,10 +18,41 @@ const isDebugMode = process.env.DEBUG === 'true' || process.env.DEBUG === '1'
 // This replaced a separate Vault-only notification config (vaultNtfyUrl /
 // vaultDiscordWebhookUrl / vaultCheckIntervalHours / vaultNotifyEnabled) so
 // there's one place to set up notifications, not two.
+//
+// On top of that master toggle, `vaultAlerts` ({ push?: false, bell?: false,
+// discord?: false } - only what differs from the default is stored) lets each
+// channel be switched off for Vault alerts alone. Unset means on: that is what
+// happened before the switches existed, so nobody's alerts change silently.
+function vaultChannels(cfg) {
+  const v = cfg && typeof cfg.vaultAlerts === 'object' && cfg.vaultAlerts ? cfg.vaultAlerts : {}
+  return { push: v.push !== false, bell: v.bell !== false, discord: v.discord !== false }
+}
+
 function getNotifyConfig(cfg) {
+  const channels = vaultChannels(cfg)
   return {
     enabled: cfg?.notifyOnVault === true,
-    discordWebhookUrl: cfg?.webhookUrl || null,
+    // A webhook that Vault alerts are switched off for is the same as none.
+    discordWebhookUrl: channels.discord ? (cfg?.webhookUrl || null) : null,
+    channels,
+  }
+}
+
+// Bell and phone push, each only if Vault alerts are switched on for it.
+// Both on is exactly the old path (notifyPushForType does the bell row and the
+// push in one go and checks the master toggle itself).
+async function deliverVaultAlert(prisma, accountId, channels, payload) {
+  if (channels.push && channels.bell) return notifyPushForType(prisma, accountId, 'notifyOnVault', payload)
+  const push = require('./pushNotifications')
+  const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } }).catch(() => null)
+  let cfg = account?.sync
+  if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+  if (!cfg || typeof cfg !== 'object' || cfg.notifyOnVault !== true) return
+  if (channels.bell) {
+    try { await require('./notificationStore').persistBellNotification(prisma, accountId, 'notifyOnVault', payload) } catch (e) { console.warn('[VaultMonitor] bell write failed:', e?.message) }
+  }
+  if (channels.push && push.isPushEnabled()) {
+    try { await push.sendPushToAccount(prisma, accountId, payload) } catch { /* push is best-effort */ }
   }
 }
 
@@ -35,7 +66,7 @@ function getFixNowUrl(entryId) {
   return `${base}/vault?edit=${entryId}`
 }
 
-async function notify({ discordWebhookUrl }, { title, message, entryId, actionLabel = 'Fix now' }, ctx) {
+async function notify({ discordWebhookUrl, channels = { push: true, bell: true } }, { title, message, entryId, actionLabel = 'Fix now' }, ctx) {
   const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
   const digestOn = ctx?.prisma && ctx?.accountId && await isDigestEnabled(ctx.prisma, ctx.accountId)
 
@@ -54,8 +85,8 @@ async function notify({ discordWebhookUrl }, { title, message, entryId, actionLa
   }
   // Mirror to phone push (self-gates on notifyOnVault). Independent of Discord,
   // so vault alerts reach an installed PWA even with no webhook configured.
-  if (ctx?.prisma && ctx?.accountId) {
-    await notifyPushForType(ctx.prisma, ctx.accountId, 'notifyOnVault', {
+  if (ctx?.prisma && ctx?.accountId && (channels.push || channels.bell)) {
+    await deliverVaultAlert(ctx.prisma, ctx.accountId, channels, {
       title,
       body: message,
       icon: '/android-chrome-192x192.png',
@@ -321,8 +352,10 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
         }
       }
     }
+    require('./jobStatus').noteRun('vaultChecks', { ok: true })
   } catch (err) {
     console.error('[VaultMonitor] Run failed:', err.message)
+    require('./jobStatus').noteRun('vaultChecks', { ok: false, message: err.message })
   }
 }
 
@@ -341,4 +374,4 @@ function scheduleVaultMonitor({ prisma, decrypt, getAccountId }) {
   console.log(`[VaultMonitor] Scheduled every ${intervalHours}h`)
 }
 
-module.exports = { scheduleVaultMonitor, runVaultChecks, raiseCheckFailed }
+module.exports = { scheduleVaultMonitor, runVaultChecks, raiseCheckFailed, _test: { vaultChannels, getNotifyConfig, notify } }

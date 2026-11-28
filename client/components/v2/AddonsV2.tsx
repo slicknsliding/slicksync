@@ -14,6 +14,7 @@ import {
 import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { avatarColorFill } from '@/components/ui/Avatar';
+import { Highlight } from '@/components/ui/Highlight';
 import type { PageArrange } from '@/lib/arrange';
 import { pinFirst } from '@/lib/arrange-core';
 import { GroupPicture } from './GroupPicture';
@@ -210,7 +211,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
         />
       );
     }
-    if (!a.configUrl) return <span className={cls}>{a.name}</span>;
+    if (!a.configUrl) return <span className={cls}><Highlight text={a.name} /></span>;
     return (
       <button
         type="button"
@@ -219,7 +220,7 @@ export function AddonsV2({ addons, arrange, addonArrange, view, reloading, onRel
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(a.configUrl!, '_blank', 'noopener,noreferrer'); }}
       >
-        {a.name}
+        <Highlight text={a.name} />
       </button>
     );
   };

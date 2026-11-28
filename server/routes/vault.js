@@ -421,9 +421,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const existing = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
       if (!existing) return res.status(404).json({ error: 'Vault entry not found' });
       // Into the Trash first (30-day undo, ciphertext archived as-is).
-      await require('../utils/trash').archiveVaultDelete(prisma, accountId, existing.id);
+      const held = await require('../utils/trash').archiveVaultDelete(prisma, accountId, existing.id);
       await prisma.vaultEntry.delete({ where: { id: existing.id } });
-      res.json({ success: true });
+      res.json({ success: true, trashId: held?.id || null });
     } catch (error) {
       console.error('Error deleting vault entry:', error);
       res.status(500).json({ error: 'Failed to delete vault entry' });

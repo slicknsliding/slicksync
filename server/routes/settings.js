@@ -2273,6 +2273,79 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // Where Vault alerts go (push, the bell, Discord). One key in the account
+  // settings, written alone (utils/accountSync.js) and holding only what
+  // differs from the default (everything on): { push?: false, bell?: false,
+  // discord?: false }. Read by utils/vaultMonitor.js.
+  router.get('/vault-alerts', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acc?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+      const { _test } = require('../utils/vaultMonitor')
+      return res.json(_test.vaultChannels(cfg || {}))
+    } catch (e) {
+      return res.status(500).json({ error: publicMessage(e, 'Failed to read Vault alert settings') })
+    }
+  })
+
+  router.post('/vault-alerts', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const body = req.body || {}
+      const { _test } = require('../utils/vaultMonitor')
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acc?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+      const next = { ..._test.vaultChannels(cfg || {}) }
+      for (const k of ['push', 'bell', 'discord']) if (typeof body[k] === 'boolean') next[k] = body[k]
+      // Only what differs from the default is stored.
+      const stored = {}
+      for (const k of ['push', 'bell', 'discord']) if (next[k] === false) stored[k] = false
+      const ok = await require('../utils/accountSync').setAccountSyncKeys(prisma, accountId, { vaultAlerts: stored })
+      if (!ok) return res.status(500).json({ error: 'Could not save Vault alert settings' })
+      return res.json(next)
+    } catch (e) {
+      return res.status(500).json({ error: publicMessage(e, 'Failed to save Vault alert settings') })
+    }
+  })
+
+  // Clear on the bell, undoable: holds what Clear is about to remove in the
+  // Trash first (utils/trash.js), then does what POST /users/notifications/state
+  // { clearAll } does. Answers with the new bell state and the Trash id.
+  router.post('/bell/clear', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const trash = require('../utils/trash')
+      let trashId = null
+      try { trashId = (await trash.archiveBellClear(prisma, accountId)).id } catch (e) { console.warn('[Bell] could not hold the cleared rows:', e?.message) }
+      const bell = require('../utils/bellState')
+      await bell.dismissStored(prisma, accountId)
+      const state = await bell.updateBellState(prisma, accountId, { clearAll: true })
+      try { require('../utils/liveEvents').emitLive(accountId, 'notification') } catch { /* live nudge is optional */ }
+      return res.json({ state, trashId })
+    } catch (e) {
+      return res.status(500).json({ error: publicMessage(e, 'Failed to clear notifications') })
+    }
+  })
+
+  // The background jobs and when each last ran (utils/jobStatus.js). These
+  // are instance-wide, so on the public multi-tenant instance they are not
+  // shown to accounts at all.
+  router.get('/jobs', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE === 'public') return res.json({ available: false, jobs: [] })
+      if (!req.appAccountId && !getAccountId(req)) return res.status(401).json({ error: 'Unauthorized' })
+      return res.json({ available: true, jobs: require('../utils/jobStatus').listJobs() })
+    } catch (e) {
+      return res.status(500).json({ error: publicMessage(e, 'Failed to read background jobs') })
+    }
+  })
+
   // GET /settings/history-scan - read-only check for watch-history records
   // that are provably wrong (see utils/historyDoctor.js). Never writes.
   router.get('/history-scan', async (req, res) => {

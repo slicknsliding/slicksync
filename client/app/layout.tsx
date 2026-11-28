@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./ideas-lists.css";
+import "./ideas-touches.css";
 import "./menu-highlight.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
@@ -12,6 +14,7 @@ import { MenuHighlightRoot } from "@/lib/menuHighlight";
 import { LoadingLine } from '@/components/ui/LoadingLine';
 import { BackToTop, PullRefresh } from '@/components/ui/PageGestures';
 import { AllSetMoment, LongNames, OfflineStrip } from '@/components/ui/QuickTouches';
+import { Tooltips } from '@/components/ui/Tooltips';
 import { SplashScreen } from '@/components/ui/SplashScreen';
 import { SPLASH_SCRIPT } from '@/lib/splash';
 
@@ -146,6 +149,7 @@ export default function RootLayout({
                 <BackToTop />
                 <OfflineStrip />
                 <LongNames />
+                <Tooltips />
                 <AllSetMoment />
                 <SplashScreen />
                 {children}
