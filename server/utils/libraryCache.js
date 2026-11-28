@@ -101,7 +101,19 @@ function rememberParsed(cachePath, st, parsed) {
  */
 function getCachedLibrary(accountId, user, { allowLegacyEmailFile = false } = {}) {
   try {
-    let cachePath = getCacheFilePath(accountId, user)
+    const idPath = getCacheFilePath(accountId, user)
+
+    // A library still on its way to disk is the newest there is. Parsed from
+    // the JSON that is being written, so it is exactly what the file will
+    // hold, whatever the caller did to its own array since.
+    const want = unsaved.get(idPath)
+    if (want) {
+      if (!want.parsed) want.parsed = JSON.parse(want.json)
+      return copyLibrary(want.parsed)
+    }
+    // Cleared while a write was under way: whatever that write leaves behind
+    // is about to be removed, so to a reader the file is already gone.
+    let cachePath = unsaved.has(idPath) || !fs.existsSync(idPath) ? null : idPath
 
     // Fall back to the pre-fix email-keyed file only when the caller has
     // confirmed no other user on this account shares this email. Defaults to
@@ -109,14 +121,14 @@ function getCachedLibrary(accountId, user, { allowLegacyEmailFile = false } = {}
     // behavior: a cache miss (one live re-fetch) rather than a possible
     // cross-provider library. See getCacheFilePath's comment for what that
     // collision actually did to real data.
-    if (!fs.existsSync(cachePath) && allowLegacyEmailFile) {
+    if (!cachePath && allowLegacyEmailFile) {
       const legacyPath = getLegacyEmailCachePath(accountId, user)
       if (legacyPath && fs.existsSync(legacyPath)) {
         cachePath = legacyPath
       }
     }
 
-    if (!fs.existsSync(cachePath)) {
+    if (!cachePath) {
       return null
     }
 
@@ -167,6 +179,58 @@ function getCachedLibrary(accountId, user, { allowLegacyEmailFile = false } = {}
 const lastWritten = new Map() // path -> sha1 of the JSON
 let writeSeq = 0
 
+// Files are written in the background, so for a moment the disk holds the
+// library from before (or nothing, the first time). What each file should
+// hold is kept here until the disk agrees: path -> { json, hash, parsed, who }
+// for a library on its way there, or null for a file cleared while a write
+// was under way. Reads and clears go by this first - without it a read
+// straight after a write got the older library, and a clear was undone by
+// the write that landed after it.
+const unsaved = new Map()
+const writers = new Set() // one promise per file being written
+
+async function saveLibrary(cachePath, want) {
+  // A temporary file renamed into place means a reader never sees half a file.
+  const tmp = `${cachePath}.${process.pid}.${++writeSeq}.tmp`
+  try {
+    await fs.promises.writeFile(tmp, want.json, 'utf8')
+    // Replaced or cleared while it was being written: this one is already old.
+    if (unsaved.get(cachePath) !== want) {
+      await fs.promises.unlink(tmp).catch(() => {})
+      return
+    }
+    await fs.promises.rename(tmp, cachePath)
+  } catch (error) {
+    if (lastWritten.get(cachePath) === want.hash) lastWritten.delete(cachePath)
+    fs.promises.unlink(tmp).catch(() => {})
+    console.warn(`Failed to write cache for ${want.who}:`, error.message)
+  }
+}
+
+// One write at a time per file, and always the newest library asked for, so
+// an older one can never land on top of a newer one (two writes side by side
+// finished in either order, and a big library followed by a small one left
+// the big, older one on disk).
+async function writeOut(cachePath) {
+  for (;;) {
+    const want = unsaved.get(cachePath)
+    if (want) await saveLibrary(cachePath, want)
+    else await fs.promises.unlink(cachePath).catch(() => {})
+    // Nothing newer was asked for meanwhile: the disk has caught up. No
+    // await between this check and the delete, or a write could slip in
+    // between and never be picked up.
+    if (unsaved.get(cachePath) === want) {
+      unsaved.delete(cachePath)
+      return
+    }
+  }
+}
+
+// Resolves once every library handed over so far has reached the disk.
+async function whenSaved() {
+  while (writers.size) await Promise.all(writers)
+}
+
 function setCachedLibrary(accountId, user, library) {
   try {
     const cachePath = getCacheFilePath(accountId, user)
@@ -177,21 +241,23 @@ function setCachedLibrary(accountId, user, library) {
     const data = Array.isArray(library) ? library : []
     const json = JSON.stringify(data)
     const hash = crypto.createHash('sha1').update(json).digest('hex')
-    if (lastWritten.get(cachePath) === hash && fs.existsSync(cachePath)) return
+    const writing = unsaved.has(cachePath)
+    const queued = unsaved.get(cachePath)
+    const unchanged = queued
+      ? queued.hash === hash
+      : !writing && lastWritten.get(cachePath) === hash && fs.existsSync(cachePath)
+    if (unchanged) return
     lastWritten.set(cachePath, hash)
     // Written in the background - the activity monitor calls this for every
     // person every minute, and a synchronous write of a large library held
-    // up every request meanwhile. A temporary file renamed into place means
-    // a reader never sees half a file.
-    const tmp = `${cachePath}.${process.pid}.${++writeSeq}.tmp`
-    fs.promises.writeFile(tmp, json, 'utf8')
-      .then(() => fs.promises.rename(tmp, cachePath))
-      .catch((error) => {
-        lastWritten.delete(cachePath)
-        fs.promises.unlink(tmp).catch(() => {})
-        console.warn(`Failed to write cache for user ${user.id || user} in account ${accountId}:`, error.message)
-      })
-    
+    // up every request meanwhile.
+    unsaved.set(cachePath, { json, hash, parsed: null, who: `user ${user.id || user} in account ${accountId}` })
+    if (!writing) {
+      const writer = writeOut(cachePath)
+      writers.add(writer)
+      writer.then(() => writers.delete(writer))
+    }
+
     // The old email-keyed file is deliberately NOT deleted here. When two
     // users share an email they also shared that one file, so removing it as
     // soon as the first of them writes its own id-keyed cache would strip the
@@ -213,6 +279,9 @@ function clearCache(accountId, user) {
   try {
     const cachePath = getCacheFilePath(accountId, user)
     parsedCache.delete(cachePath)
+    // A write under way would put the library straight back: it is told to
+    // leave nothing behind instead.
+    if (unsaved.has(cachePath)) unsaved.set(cachePath, null)
     if (fs.existsSync(cachePath)) {
       fs.unlinkSync(cachePath)
     }
@@ -235,6 +304,11 @@ function clearCache(accountId, user) {
  */
 function clearAllCaches(accountId) {
   parsedCache.clear()
+  // Writes under way for these files leave nothing behind (see clearCache).
+  const under = accountId ? path.join(CACHE_DIR, `account-${accountId}`) + path.sep : ''
+  for (const cachePath of unsaved.keys()) {
+    if (cachePath.startsWith(under)) unsaved.set(cachePath, null)
+  }
   try {
     ensureCacheDir()
     if (accountId) {
@@ -372,6 +446,7 @@ module.exports = {
   clearCache,
   clearAllCaches,
   getCacheStats,
-  CACHE_TTL_MS
+  CACHE_TTL_MS,
+  _test: { whenSaved }
 }
 
