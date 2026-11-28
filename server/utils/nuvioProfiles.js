@@ -28,11 +28,26 @@ function profileOf(user) {
   return Number.isInteger(n) && n > 0 ? n : 1
 }
 
-/** Everyone here on one Nuvio account, main profile first. */
+/**
+ * What ties the people on one account together: the Nuvio user id, or for a
+ * Stremio account - whose profiles follow the same rules, see
+ * utils/stremioProfiles.js - 'stremio:<Stremio's account id>'. Routes and
+ * merge records are kept under it in their nuvioUserId column.
+ */
+function groupKeyOf(user) {
+  if (user?.providerType === 'nuvio') return user.nuvioUserId || null
+  if ((user?.providerType || 'stremio') === 'stremio' && user?.stremioAccountId) return `stremio:${user.stremioAccountId}`
+  return null
+}
+
+/** Everyone here on one Nuvio account (or Stremio account), main profile first. */
 async function loadSiblings(prisma, accountId, nuvioUserId) {
   if (!nuvioUserId) return []
+  const stremioAccountId = String(nuvioUserId).startsWith('stremio:') ? String(nuvioUserId).slice('stremio:'.length) : null
   const rows = await prisma.user.findMany({
-    where: { accountId, providerType: 'nuvio', nuvioUserId },
+    where: stremioAccountId
+      ? { accountId, providerType: 'stremio', stremioAccountId }
+      : { accountId, providerType: 'nuvio', nuvioUserId },
     select: { ...PERSON_SELECT, createdAt: true },
   })
   return rows.sort((a, b) => profileOf(a) - profileOf(b) || new Date(a.createdAt) - new Date(b.createdAt))
@@ -198,8 +213,9 @@ async function mergeProfilePerson(prisma, { accountId, survivorId, donorId, prof
     prisma.user.findFirst({ where: { id: donorId, accountId } }),
   ])
   if (!survivor || !donorFull) throw new Error('Person not found')
-  if (survivor.providerType !== 'nuvio' || donorFull.providerType !== 'nuvio' || !donorFull.nuvioUserId || survivor.nuvioUserId !== donorFull.nuvioUserId) {
-    throw new Error('Both people must be on the same Nuvio account')
+  const group = groupKeyOf(donorFull)
+  if (!group || groupKeyOf(survivor) !== group) {
+    throw new Error(`Both people must be on the same ${donorFull.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'} account`)
   }
   const profileIndex = profileOf(donorFull)
 
@@ -208,11 +224,11 @@ async function mergeProfilePerson(prisma, { accountId, survivorId, donorId, prof
   const archive = { donorRows: {}, overwrittenSurvivorRows: {}, donorGroupIds: [], viewerLinks: {}, routeBefore: null }
 
   await runMembershipTransaction(prisma, accountId, async (tx) => {
-    const key = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: donorFull.nuvioUserId, profileIndex } }
+    const key = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: group, profileIndex } }
     archive.routeBefore = await tx.nuvioProfileRoute.findUnique({ where: key })
     await tx.nuvioProfileRoute.upsert({
       where: key,
-      create: { accountId, nuvioUserId: donorFull.nuvioUserId, profileIndex, targetUserId: survivorId, skip: false },
+      create: { accountId, nuvioUserId: group, profileIndex, targetUserId: survivorId, skip: false },
       update: { targetUserId: survivorId, skip: false },
     })
 
@@ -243,7 +259,7 @@ async function mergeProfilePerson(prisma, { accountId, survivorId, donorId, prof
     await tx.user.delete({ where: { id: donorId } })
     await tx.profileMerge.create({
       data: {
-        accountId, nuvioUserId: donorFull.nuvioUserId, profileIndex, profileName,
+        accountId, nuvioUserId: group, profileIndex, profileName,
         survivorId, donorId, donorUsername: donorFull.username, archivePath: archiveFilename,
       },
     })
@@ -394,6 +410,7 @@ async function tidyMisplaced(prisma, accountId, misplaced) {
 
 module.exports = {
   profileOf,
+  groupKeyOf,
   loadSiblings,
   loadRoutes,
   ownerOf,

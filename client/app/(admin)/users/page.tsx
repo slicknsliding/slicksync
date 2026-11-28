@@ -71,6 +71,8 @@ interface UserDisplay {
   jellyfinServer?: string | null;
   /** Which Nuvio profile's addons this user manages; 1 is the primary. */
   nuvioProfileId?: number;
+  /** Set on a person made for a Stremio profile other than the main one. */
+  stremioProfileId?: string | null;
   secondaryProviderType?: 'stremio' | 'nuvio' | 'jellyfin' | null;
   providerConnectionError?: string | null;
   avatarUrl?: string | null;
@@ -247,6 +249,7 @@ export default function UsersPage() {
         jellyfinServerLabel: user.jellyfinServerLabel,
         jellyfinServer: user.jellyfinServer,
         nuvioProfileId: user.nuvioProfileId ?? 1,
+        stremioProfileId: user.stremioProfileId || null,
         secondaryProviderType: (user as any).secondaryProviderType || null,
         providerConnectionError: (user as any).providerConnectionError || null,
         avatarUrl: (user as any).avatarUrl,
@@ -450,20 +453,29 @@ export default function UsersPage() {
     });
   }, [users]);
 
+  // One entry per Stremio account with more than one profile: its main
+  // profile's person stands for it. The count comes with the list, so an
+  // account with only its main profile is never asked about.
+  const stremioLogins = useMemo(() => users
+    .filter((u) => (u.providerType || 'stremio') === 'stremio' && !u.stremioProfileId && (u.stremioProfiles ?? 0) > 1)
+    .map((u) => ({ anchorId: u.id, label: `${u.username}'s account` })), [users]);
+
   useEffect(() => {
     if (isLoading) return;
     const endpoints = [
       ...nuvioLogins.map((l) => `/users/${encodeURIComponent(l.anchorId)}/profiles`),
+      ...stremioLogins.map((l) => `/users/${encodeURIComponent(l.anchorId)}/profiles`),
       ...householdOwners.map((o) => `/jellyfin/users/${encodeURIComponent(o.id)}/household`),
     ];
     if (endpoints.every((e) => api.peekGet(e) !== undefined)) { setExtrasReady(true); return; }
     let cancelled = false;
     Promise.allSettled([
       ...nuvioLogins.map((l) => api.getProfiles(l.anchorId)),
+      ...stremioLogins.map((l) => api.getProfiles(l.anchorId)),
       ...householdOwners.map((o) => api.getHousehold(o.id)),
     ]).then(() => { if (!cancelled) setExtrasReady(true); });
     return () => { cancelled = true; };
-  }, [isLoading, nuvioLogins, householdOwners]);
+  }, [isLoading, nuvioLogins, stremioLogins, householdOwners]);
 
   const handleGuardReassert = useCallback(async (id: string, name: string) => {
     setGuardBusyId(id);
@@ -990,6 +1002,9 @@ export default function UsersPage() {
                                           Profile {user.nuvioProfileId}
                                         </Badge>
                                       )}
+                                      {user.stremioProfileId && (
+                                        <Badge variant="secondary" size="sm">Profile</Badge>
+                                      )}
                                       {user.secondaryProviderType && (
                                         <Badge
                                           variant={providerBadgeVariant({ providerType: user.secondaryProviderType })}
@@ -1121,6 +1136,22 @@ export default function UsersPage() {
               key={login.anchorId}
               userId={login.anchorId}
               loginLabel={nuvioLogins.length > 1 ? login.label : null}
+              onPeopleChanged={refreshUsersQuietly}
+              limits={limits}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Stremio profiles: the same card for a Stremio account that has more
+          than its main profile. */}
+      {!isLoading && extrasReady && stremioLogins.length > 0 && (
+        <div className="mt-6 flex flex-col gap-4">
+          {stremioLogins.map((login) => (
+            <ProfilesCard
+              key={login.anchorId}
+              userId={login.anchorId}
+              loginLabel={stremioLogins.length > 1 ? login.label : null}
               onPeopleChanged={refreshUsersQuietly}
               limits={limits}
             />
@@ -1472,6 +1503,9 @@ function UserCard({
               <Badge variant="secondary" size="sm">
                 Profile {user.nuvioProfileId}
               </Badge>
+            )}
+            {user.stremioProfileId && (
+              <Badge variant="secondary" size="sm">Profile</Badge>
             )}
             {user.secondaryProviderType && (
               <Badge

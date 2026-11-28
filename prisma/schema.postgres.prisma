@@ -26,6 +26,14 @@ model User {
   // syncs. Defaults to 1, which is what every existing user is, and is
   // ignored entirely for Stremio users.
   nuvioProfileId     Int       @default(1)
+  // Stremio profiles (utils/stremioProfiles.js). Every profile on a Stremio
+  // account is a sign-in of its own; stremioAccountId is Stremio's id for
+  // the account they all belong to, and ties the people here on it together.
+  // stremioProfileId is set on a person made for a profile other than the
+  // main one; that person's nuvioProfileId holds the profile's slot here
+  // (StremioProfile.slot), so the same email can be on several rows.
+  stremioAccountId   String?
+  stremioProfileId   String?
   // Their Jellyfin / AIOStreams / AIOMetadata sign-in is kept in their Nuvio
   // profile's server list (utils/nuvioMediaServers.js). Off by default.
   nuvioMediaServers  Boolean   @default(false)
@@ -1567,4 +1575,26 @@ model VaultAccessLog {
   @@index([entryId, at])
   @@index([accountId, at])
   @@map("vault_access_logs")
+}
+
+/// One profile of a Stremio account, as last read from Stremio. Each profile
+/// signs in with a key of its own, kept here so its viewing can be read
+/// while it has no person of its own. slot 1 is the main profile.
+model StremioProfile {
+  id               String   @id @default(cuid())
+  accountId        String   @default("default")
+  stremioAccountId String
+  profileId        String
+  slot             Int
+  name             String?
+  hasPin           Boolean  @default(false)
+  canManageAddons  Boolean  @default(true)
+  authKey          String? // Encrypted; null until the profile is unlocked
+  pin              String? // Encrypted; kept so a lost key can be asked for again
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([accountId, stremioAccountId, profileId])
+  @@index([accountId, stremioAccountId])
+  @@map("stremio_profiles")
 }

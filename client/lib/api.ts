@@ -19,12 +19,16 @@ export interface WatchTrackingSettings {
 
 /** Whose viewing each profile on one Nuvio account is - see server/utils/nuvioProfiles.js. */
 export interface ProfilesView {
+  /** Whose profiles these are. Missing from an older server: Nuvio. */
+  provider?: 'nuvio' | 'stremio';
   persons: Array<{
     id: string; username: string; profileIndex: number; isActive: boolean; colorIndex: number;
     avatarUrl: string | null; useGravatar: boolean; email: string | null; movies: number; episodes: number;
   }>;
   profiles: Array<{
     index: number; name: string | null; color: string | null; usesPrimaryAddons: boolean;
+    /** A Stremio profile with a PIN nobody has entered here yet, so it cannot be read. */
+    locked?: boolean;
     /** Who it counts for; null when it is not counted. */
     ownerId: string | null;
     ownPersonId: string | null;
@@ -32,7 +36,7 @@ export interface ProfilesView {
     titles: { movies: number; episodes: number };
     merged: { id: string; donorUsername: string; createdAt: string } | null;
     /** Whose limits its Limits pill opens: its own person's id, or its own as a merged profile. */
-    limitId?: string;
+    limitId?: string | null;
   }>;
   misplaced: { titles: number } | null;
   removedUserId?: string | null;
@@ -681,6 +685,11 @@ class ApiClient {
 
   async giveProfileOwnPerson(id: string, profileIndex: number) {
     return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}/own-person`, { method: 'POST' });
+  }
+
+  // Open a Stremio profile that has a PIN.
+  async unlockProfile(id: string, profileIndex: number, pin: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}/unlock`, { method: 'POST', body: JSON.stringify({ pin }) });
   }
 
   async tidyProfiles(id: string) {
@@ -4314,6 +4323,10 @@ export interface User {
   providerType?: 'stremio' | 'nuvio' | 'jellyfin';
   /** Which Nuvio profile's addon list this user manages (1 is the primary). */
   nuvioProfileId?: number;
+  /** Set on a person made for a Stremio profile other than the account's main one. */
+  stremioProfileId?: string | null;
+  /** On a Stremio account's main person: how many profiles the account has. */
+  stremioProfiles?: number;
   /** For a Jellyfin login: which kind of server, where, and the name they sign in with there. */
   jellyfinServerKind?: 'jellyfin' | 'aiostreams' | 'aiometadata';
   jellyfinServerLabel?: string;

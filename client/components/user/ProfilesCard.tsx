@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   ChevronDownIcon, UserPlusIcon, ArrowUturnLeftIcon, SparklesIcon, EyeSlashIcon, EyeIcon,
-  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon,
+  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, ArrowsPointingInIcon, LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import { api, type ProfilesView, type LimitsSummary } from '@/lib/api';
 import { LimitsButton } from '@/components/user/LimitsButton';
@@ -81,15 +81,17 @@ export function placeUnder(circle: DOMRect, menuHeight: number): Placement {
 }
 
 /**
- * The profiles on one Nuvio login, shown the way the app's own profile picker
- * shows them. Each tile says who that profile's viewing belongs to; picking
- * one opens what can be done with it right underneath. Only shown for a login
- * with more than one profile. The rules live in server/utils/nuvioProfiles.js.
+ * The profiles on one Nuvio login or one Stremio account, shown the way the
+ * app's own profile picker shows them. Each tile says who that profile's
+ * viewing belongs to; picking one opens what can be done with it right
+ * underneath. Only shown for a login with more than one profile. The rules
+ * live in server/utils/nuvioProfiles.js; a Stremio profile with a PIN is
+ * opened here first (server/utils/stremioProfiles.js).
  */
 export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
-  /** Any person on the Nuvio login - normally its main profile's person. */
+  /** Any person on the login - normally its main profile's person. */
   userId: string;
-  /** Shown when the account has more than one Nuvio login, to tell them apart. */
+  /** Shown when the account has more than one login of this kind, to tell them apart. */
   loginLabel?: string | null;
   /** People were added, merged away or brought back. */
   onPeopleChanged?: () => void;
@@ -104,7 +106,9 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
   const [selected, setSelected] = useState<number | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const closeMenu = useCallback(() => { setSelected(null); setPlacement(null); }, []);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const closeMenu = useCallback(() => { setSelected(null); setPlacement(null); setPin(''); setPinError(''); }, []);
 
   // The menu closes on a click elsewhere, Escape, a scroll or a resize - the
   // same as every other menu in the app.
@@ -149,7 +153,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
     try {
       setView(await api.getProfiles(userId));
     } catch {
-      // A profile list Nuvio cannot give right now just leaves this out.
+      // A profile list that cannot be read right now just leaves this out.
       setView(null);
     }
   }, [userId]);
@@ -234,6 +238,23 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
     });
   };
 
+  // A wrong PIN is said right under the box, and the menu stays open for another try.
+  const unlock = async (profile: Profile) => {
+    if (!/^\d{4,8}$/.test(pin.trim())) { setPinError("Enter the profile's PIN first"); return; }
+    setBusy(true);
+    try {
+      const next = await api.unlockProfile(userId, profile.index, pin.trim());
+      closeMenu();
+      setView(next);
+      toast.success(`${profileName(profile)} is unlocked`);
+    } catch (e: any) {
+      setPin('');
+      setPinError(e?.message || "That PIN didn't open the profile");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const tidy = () => {
     setPending({
       title: 'Put this history right?',
@@ -246,16 +267,19 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
   // Nothing to choose between on a login with a single profile.
   if (!view || (view.profiles?.length ?? 0) < 2) return null;
 
+  const appName = view.provider === 'stremio' ? 'Stremio' : 'Nuvio';
   const mainPersonId = persons[0]?.id;
   const sel = view.profiles.find((p) => p.index === selected) || null;
   const selOwn = sel?.ownPersonId ? personById(sel.ownPersonId) : undefined;
   const selIsMain = !!selOwn && selOwn.id === mainPersonId;
-  const selTargets = sel ? persons.filter((p) => p.id !== sel.ownerId && p.id !== sel.ownPersonId) : [];
+  const selLocked = !!sel?.locked && !selOwn;
+  const selTargets = sel && !selLocked ? persons.filter((p) => p.id !== sel.ownerId && p.id !== sel.ownPersonId) : [];
 
   let selStatus = '';
   if (sel) {
     const n = sel.titles.movies + sel.titles.episodes;
-    if (!sel.ownerId) selStatus = 'Not tracked';
+    if (selLocked) selStatus = 'Locked with a PIN';
+    else if (!sel.ownerId) selStatus = 'Not tracked';
     else if (selIsMain) selStatus = `${selOwn?.username}'s main profile · ${count(n)}`;
     else if (selOwn) selStatus = `Separated - its own person · ${count(n)}`;
     else selStatus = `Merged into ${nameOf(sel.ownerId)} · ${count(n)}`;
@@ -267,7 +291,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
         <button type="button" onClick={toggle} aria-expanded={open} className="flex-1 min-w-0 flex items-center justify-between gap-4 text-left">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-default">
-              Nuvio profiles{loginLabel ? <span className="text-muted font-normal"> · {loginLabel}</span> : null}
+              {appName} profiles{loginLabel ? <span className="text-muted font-normal"> · {loginLabel}</span> : null}
             </h3>
             <p className="text-xs text-muted mt-0.5">
               {open ? 'Every profile is merged into its person. Pick one to separate it, or merge it back' : `${view.profiles.length} profiles · ${persons.length} ${persons.length === 1 ? 'person' : 'people'}`}
@@ -283,7 +307,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
           </div>
         </button>
         {open && (
-          <Link href="/guides/nuvio-profile-addons" className="text-muted hover:text-default transition-colors shrink-0" title="How profiles work" aria-label="How profiles work">
+          <Link href={view.provider === 'stremio' ? '/guides/stremio-profiles' : '/guides/nuvio-profile-addons'} className="text-muted hover:text-default transition-colors shrink-0" title="How profiles work" aria-label="How profiles work">
             <QuestionMarkCircleIcon className="w-5 h-5" />
           </Link>
         )}
@@ -345,7 +369,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
                     )}
                     {!tracked && (
                       <span className="absolute inset-0 flex items-center justify-center">
-                        <EyeSlashIcon className="w-6 h-6 text-muted" />
+                        {profile.locked ? <LockClosedIcon className="w-6 h-6 text-muted" /> : <EyeSlashIcon className="w-6 h-6 text-muted" />}
                       </span>
                     )}
                   </span>
@@ -399,12 +423,34 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
               {selIsMain && (
                 <p className="px-3 py-2 text-xs text-subtle">The main profile always stays its own person.</p>
               )}
-              {!selOwn && sel.merged && (
+              {selLocked && (
+                <form className="px-3 pt-1 pb-2" onSubmit={(e) => { e.preventDefault(); unlock(sel); }}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={8}
+                      value={pin}
+                      onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setPinError(''); }}
+                      placeholder="PIN"
+                      aria-label={`PIN for ${profileName(sel)}`}
+                      className="input-base w-24 px-3 py-1.5 text-sm"
+                    />
+                    <Button type="submit" variant="primary" size="sm" disabled={busy}>Unlock</Button>
+                  </div>
+                  {pinError
+                    ? <p className="text-xs text-error mt-1.5">{pinError}</p>
+                    : <p className="text-xs text-subtle mt-1.5">Kept here so this profile can be read.</p>}
+                </form>
+              )}
+              {!selLocked && !selOwn && sel.merged && (
                 <button autoFocus className={MENU_ITEM} onClick={() => { closeMenu(); makeOwnPerson(sel); }}>
                   <ArrowUturnLeftIcon className="w-4 h-4 text-muted" /> Separate
                 </button>
               )}
-              {!selOwn && !sel.merged && (
+              {!selLocked && !selOwn && !sel.merged && (
                 <button autoFocus className={MENU_ITEM} onClick={() => { closeMenu(); makeOwnPerson(sel); }}>
                   <UserPlusIcon className="w-4 h-4 text-muted" /> Separate
                 </button>
@@ -419,7 +465,7 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged, limits }: {
                   <EyeSlashIcon className="w-4 h-4 text-muted" /> Stop tracking
                 </button>
               )}
-              {!selOwn && !sel.ownerId && (
+              {!selLocked && !selOwn && !sel.ownerId && (
                 <button className={MENU_ITEM} onClick={() => perform(() => api.setProfileOwner(userId, sel.index, 'default'), `${profileName(sel)} is tracked again`)}>
                   <EyeIcon className="w-4 h-4 text-muted" /> Track it again
                 </button>

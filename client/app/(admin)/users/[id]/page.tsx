@@ -1761,6 +1761,7 @@ export default function UserDetailPage() {
       <span className="inline-flex items-center gap-1.5">
         <Badge variant={providerBadgeVariant(user)} size="sm">{providerLabel(user)}</Badge>
         {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && <Badge variant="secondary" size="sm">Profile {user.nuvioProfileId}</Badge>}
+        {user.stremioProfileId && <Badge variant="secondary" size="sm">Profile</Badge>}
       </span>
     );
 
@@ -2073,6 +2074,9 @@ export default function UserDetailPage() {
                             <Badge variant="secondary" size="sm">
                               Profile {user.nuvioProfileId}
                             </Badge>
+                          )}
+                          {user.stremioProfileId && (
+                            <Badge variant="secondary" size="sm">Profile</Badge>
                           )}
                           <SyncBadge
                             userId={user.id}
