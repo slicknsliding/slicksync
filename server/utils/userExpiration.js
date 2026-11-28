@@ -224,6 +224,9 @@ function scheduleUserExpiration(prisma, decrypt, StremioAPIClient, createProvide
   }
 
   const runCleanup = async () => {
+    // No access is ended while the server is stopping: started now it would be
+    // cut off halfway. Anything due is picked up by the next midnight run.
+    if (require('./shutdownState').isShuttingDown()) return
     await deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvider)
     
     if (isDebugMode) {

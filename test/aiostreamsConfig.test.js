@@ -83,3 +83,18 @@ test('changes: keeping a household user separate, stopping, and a new address ar
   delete old.apart
   assert.deepEqual(describeChanges(old, apart), ['changed other settings'])
 })
+
+test('a pass that is still running is not started a second time on top of itself', async () => {
+  const { onePassAtATime } = require('../server/utils/aiostreamsConfig')
+  let runs = 0
+  let release
+  const slow = () => { runs++; return new Promise((resolve) => { release = resolve }) }
+  const first = onePassAtATime(slow)
+  assert.equal(await onePassAtATime(slow), false)
+  assert.equal(runs, 1)
+  release()
+  assert.equal(await first, true)
+  // The turn is given back, also when a pass throws.
+  await assert.rejects(onePassAtATime(async () => { throw new Error('boom') }), /boom/)
+  assert.equal(await onePassAtATime(async () => {}), true)
+})

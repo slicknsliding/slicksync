@@ -41,7 +41,7 @@ echo "SLICKSYNC_PRIVATE_PASSWORD=$(openssl rand -base64 18)" >> .env
 docker compose -f docker-compose.private.yml up -d
 ```
 
-Open `:3000` and sign in with the username and password from `.env`. More in [Installation](#-installation).
+Open it through your reverse proxy, or at `http://localhost:3000` on that machine, and sign in with the username and password from `.env`. More in [Installation](#-installation).
 
 > [!IMPORTANT]
 > Without `SLICKSYNC_PRIVATE_USERNAME` / `SLICKSYNC_PRIVATE_PASSWORD` there's no login — anyone who can reach it can manage it. Only leave them out behind a login proxy (Authelia, Authentik, Cloudflare Access…).
@@ -374,6 +374,7 @@ docker compose -f docker-compose.private.yml up -d
 
 - Uses `ghcr.io/slicknsliding/slicksync:private` (also on Docker Hub). `:beta` is for testing only.
 - Everything is on port `3000`. `ENCRYPTION_KEY` makes itself on first start.
+- The port is open to that machine only, for your reverse proxy. To reach it straight from other devices, add `SLICKSYNC_BIND=0.0.0.0` to `.env`.
 - Open it once from the address your devices use, so SlickSync learns it (or set `PUBLIC_APP_URL`).
 
 **Updating:** `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — `/app/data` is kept.

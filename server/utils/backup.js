@@ -344,6 +344,8 @@ function scheduleBackups(days, prisma, opts = {}) {
     const nextRun = nextBackupAt(days, readLastScheduledRun())
 
     const wait = async () => {
+      // No backup starts while the server is stopping; it stays due.
+      if (require('./shutdownState').isShuttingDown()) return
       const remaining = nextRun - Date.now()
       if (remaining > 0) {
         backupTimer = setTimeout(wait, Math.min(MAX_SLEEP_MS, remaining))

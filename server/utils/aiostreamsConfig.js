@@ -405,6 +405,12 @@ async function checkConfigs(prisma, decrypt) {
     // AIOStreams only: an AIOMetadata password kept for its household users isn't one of these.
     where: { providerType: 'jellyfin', jellyfinServerKind: 'aiostreams', aioConfigPassword: { not: null } },
     select: { id: true, username: true, accountId: true, jellyfinServerUrl: true, aioConfigId: true, aioConfigPassword: true, aioConfigStateJson: true },
+    // Always the same order. When several people share one configuration the
+    // first of them stands for it, and what is remembered about it (its Live
+    // TV sources and their outages included) is kept under that person. With
+    // no order the database could hand back a different first person on the
+    // next pass, and the memory started over under them.
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   })
   // One configuration can be behind several people; look once per account.
   const seen = new Set()
@@ -475,9 +481,21 @@ async function noteOutsideChanges(prisma, person, config, before) {
 }
 
 let timer = null
+let passRunning = false
+
+// One pass at a time. Servers that do not answer can stretch a pass past the
+// gap between two of them; the next one then waits for its own turn, where it
+// used to start on top of the one still running and check everything twice.
+async function onePassAtATime(pass) {
+  if (passRunning) return false
+  passRunning = true
+  try { await pass() } finally { passRunning = false }
+  return true
+}
+
 function scheduleConfigGuard(prisma, decrypt) {
   if (timer) clearInterval(timer)
-  const run = async () => {
+  const run = () => onePassAtATime(async () => {
     let failed = null
     // Profile variants first: a write here re-baselines, so the look that
     // follows doesn't report SlickSync's own fix as an outside change.
@@ -486,12 +504,13 @@ function scheduleConfigGuard(prisma, decrypt) {
     // Is their AIOStreams watch history still reaching SlickSync?
     await require('./aioSlickTrax').checkSlickTrax(prisma, decrypt).catch((e) => { failed = e?.message || 'watch history check failed'; console.warn('[AIOStreamsConfig] SlickTrax check failed:', e?.message) })
     require('./jobStatus').noteRun('aiostreams', { ok: !failed, message: failed })
-  }
+  }).catch((e) => { console.warn('[AIOStreamsConfig] pass failed:', e?.message) })
   setTimeout(run, 2 * 60 * 1000)
   timer = setInterval(run, CHECK_INTERVAL_MS)
 }
 
 module.exports = { ownInstanceSession,
+  onePassAtATime,
   alert,
   instanceBase,
   configAccountFrom,
