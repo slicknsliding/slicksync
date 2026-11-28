@@ -32,7 +32,8 @@
       "On a phone, the cards on Users no longer redraw once just after the page appears.",
       "Live TV checks run a few at a time, so a playlist that does not answer no longer holds up the ones behind it, and a slow round of checks no longer starts again on top of itself.",
       "A restart no longer cuts off a sync, a backup or a check that began in its last seconds: once SlickSync is asked to stop, nothing new starts and what is running gets to finish.",
-      "With the Original layout, the search and bell buttons could sit on top of Sync All when the page header wrapped onto two lines."
+      "With the Original layout, the search and bell buttons could sit on top of Sync All when the page header wrapped onto two lines.",
+      "A person’s library read straight after it was refreshed could be the one from before, and a library that was cleared could come back a moment later. Both are fixed."
     ]
   },
   {
