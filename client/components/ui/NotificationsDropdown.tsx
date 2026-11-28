@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon, PhotoIcon } from '@heroicons/react/24/outline';
@@ -857,10 +858,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                       <p className="text-sm font-semibold text-default">All clear</p>
                     </div>
                   ) : notifications.length === 0 ? (
-                    <div className="p-8 text-center">
-                      <BellIcon className="w-8 h-8 mx-auto mb-2 text-subtle" />
-                      <p className="text-sm text-muted">No new notifications</p>
-                    </div>
+                    <EmptyState tight art="bell" title="No new notifications" line="New episodes, sync results and alerts land here." />
                   ) : (
                     // Rows set in from the panel's edge and rounded, like
                     // the options in other menus; the one you are on lights

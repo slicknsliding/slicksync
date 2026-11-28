@@ -2396,3 +2396,11 @@ html:not([data-tv]) .page-toolbar-stick.tucked { translate: 0 calc(-100% - 140px
 .chart-readout { position: absolute; left: 64px; top: 0; z-index: 2; pointer-events: none; display: flex; align-items: baseline; gap: 8px; }
 .chart-readout b { font-size: 20px; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums; }
 .chart-readout span { font-size: 12.5px; color: var(--color-text-muted); }
+/* ---- Empty lists (components/ui/EmptyState): a small drawing, a line, and the one thing to do. ---- */
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 16px; text-align: center; }
+.empty-state.tight { padding: 22px 16px; }
+.empty-state svg { width: 92px; height: 70px; }
+.empty-state-title { font-size: 15px; font-weight: 600; color: var(--color-text); }
+.empty-state-line { font-size: 13px; color: var(--color-text-muted); max-width: 300px; line-height: 1.45; }
+.empty-state-float { animation: empty-state-float 2.6s ease-in-out infinite; }
+@keyframes empty-state-float { 50% { transform: translateY(-4px); } }
