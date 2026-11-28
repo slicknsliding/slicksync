@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.109.0",
+    "date": "2026-11-27",
+    "title": "1.109.0 - Live TV watch for AIOStreams, keyboard shortcuts, swipe a card, and filters that stay in reach",
+    "features": [
+      "Live TV watch: when someone’s AIOStreams configuration carries a Live TV playlist (M3U) or an IPTV login, SlickSync checks it by itself a few times a day. You get a notification on the bell and by push when one stops working, when it works again, and when a login is about to run out. Nothing to set up; the person’s AIOStreams Health window lists each source and how it stands. Addresses and logins are never shown.",
+      "Keyboard shortcuts on a computer: press ? for the list. g then a letter jumps to Dashboard, Activity, Users, Addons or Settings, and / puts you in the page’s search box.",
+      "Recently opened: search-everything (Ctrl+K) lists the pages and people you opened last, on both page designs.",
+      "Swipe a card: on a phone, swipe a person’s card to the left on Users for Sync and Open. Sync shows for Stremio and Nuvio sign-ins; Jellyfin and AIOStreams sign-ins show Open.",
+      "Filters that stay in reach: on Users, Groups, Activity and Invitations the search and filter bar stays under the top bar as you scroll, steps aside on a fast scroll down and returns when you scroll up.",
+      "Metrics: move along the watch-time chart and the figure above it follows, with the day you are on.",
+      "A strip at the top says when you are offline and when you are back, and the page refreshes itself on return.",
+      "Small touches: a copy button turns into a tick when the copy worked, long names slide to show the rest, posters sharpen in as they load, the welcome tour ends with All set, and the empty bell says what lands there."
+    ],
+    "bugFixes": [
+      "On the Classic design, Discover was missing the bell and the search-everything button. They sit under the Sort and Filters row on a computer and beside the search box on a phone."
+    ]
+  },
+  {
     "version": "1.108.0",
     "date": "2026-11-25",
     "title": "1.108.0 - More Effects, a notification sound, pull to refresh, peek at a person, and Sync All that counts",
