@@ -144,8 +144,9 @@ let timer = null
 
 function scheduleFollowWatch(prisma, deps) {
   if (timer) { clearInterval(timer); timer = null }
-  setTimeout(() => runFollowSweep(prisma, deps).catch(() => {}), BOOT_DELAY_MS)
-  timer = setInterval(() => runFollowSweep(prisma, deps).catch(() => {}), SWEEP_INTERVAL_MS)
+  const run = () => runFollowSweep(prisma, deps).then(() => require('./jobStatus').noteRun('followWatch', { ok: true })).catch((e) => require('./jobStatus').noteRun('followWatch', { ok: false, message: e?.message }))
+  setTimeout(run, BOOT_DELAY_MS)
+  timer = setInterval(run, SWEEP_INTERVAL_MS)
 }
 
 function clearFollowWatch() {

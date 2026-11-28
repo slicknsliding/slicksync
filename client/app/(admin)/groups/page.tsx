@@ -24,7 +24,13 @@ import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
-import { usePageArrangement, usePageDesign } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign, useSyncAllPreview } from '@/lib/arrange';
+import { CardsSkeleton } from '@/components/ui/Skeleton';
+import { SyncAllPreview, type SyncAllPerson } from '@/components/ui/SyncAllPreview';
+import { ArmedFloat, findLinkTo, findMenuButton } from '@/components/ui/ArmedButton';
+import { showUndoable } from '@/components/ui/undoToast';
+import { useArriveOnce } from '@/lib/hooks/useListTouches';
+import { hasAddonList } from '@/lib/providers';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { GroupsV2, type V2GroupCard } from '@/components/v2/GroupsV2';
 import {
@@ -84,6 +90,10 @@ export default function GroupsPage() {
   useLastKnown<Group[]>('/groups', (cached) => { setGroups(cached); setIsLoading(false); });
   useLastKnown<User[]>('/users', (cached) => setUsers(cached));
   const [error, setError] = useState<Error | null>(null);
+
+  // Cards arrive in order the first time the list shows.
+  const listBoxRef = useRef<HTMLDivElement>(null);
+  useArriveOnce(listBoxRef, !isLoading && !error);
 
   // Multi-select state - NO isSelectMode, just selectedIds
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -324,13 +334,14 @@ export default function GroupsPage() {
     setSelectedIds(new Set());
   }, [selectedIds]);
 
-  // Delete single group (from quick action menu)
-  const handleDeleteSingle = useCallback(async () => {
-    if (!deleteTarget) return;
+  // Delete one group, with an Undo that restores it (and its people and
+  // addons) from the Trash.
+  const deleteGroupNow = useCallback(async (id: string, name: string) => {
     setIsDeleting(true);
     try {
-      await api.deleteGroup(deleteTarget.id);
-      toast.success(`${deleteTarget.name} deleted successfully`);
+      const res = await api.deleteGroup(id) as { trashId?: string | null } | undefined;
+      const refresh = () => { api.getGroups().then(setGroups).catch(() => {}); };
+      showUndoable(`${name} deleted`, res?.trashId, `${name} is back`, refresh);
       // Refresh groups
       try {
         const groupsData = await api.getGroups();
@@ -339,22 +350,43 @@ export default function GroupsPage() {
         console.error('Failed to refresh groups:', err);
       }
     } catch (err) {
-      toast.error(`Failed to delete ${deleteTarget.name}`);
+      toast.error(`Failed to delete ${name}`);
       console.error('Failed to delete group:', err);
     } finally {
       setIsDeleting(false);
-      setDeleteTarget(null);
     }
-  }, [deleteTarget]);
+  }, []);
+
+  // The window (TV, or when there is nothing to point at).
+  const handleDeleteSingle = useCallback(async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    await deleteGroupNow(target.id, target.name);
+    setDeleteTarget(null);
+  }, [deleteTarget, deleteGroupNow]);
+
+  // Two steps: the first press turns a red "Delete?" on at the group's ⋯ (or
+  // its name), the second deletes. The TV keeps the window.
+  const [armed, setArmed] = useState<{ id: string; name: string; anchor: HTMLElement } | null>(null);
+  const askDelete = useCallback((g: { id: string; name: string }, anchor: HTMLElement | null) => {
+    if (isTV || !anchor) {
+      const d = groupsDisplay.find((x) => x.id === g.id);
+      if (d) setDeleteTarget(d);
+      return;
+    }
+    setArmed({ id: g.id, name: g.name, anchor });
+  }, [isTV, groupsDisplay]);
 
   const hasSelection = selectedIds.size > 0;
 
   // Sync All counts as it goes.
   const [syncAllAt, setSyncAllAt] = useState<{ done: number; total: number } | null>(null);
-  const handleSyncAllGroups = async () => {
+  const syncAllPreview = useSyncAllPreview();
+  const syncAllRef = useRef<HTMLButtonElement>(null);
+  const [syncAllPreviewOpen, setSyncAllPreviewOpen] = useState(false);
+  const runSyncAllGroups = async (groupIds: string[]) => {
     setIsSyncing(true);
     try {
-      const groupIds = groups.map(g => g.id);
       let success = 0;
       let done = 0;
       for (const id of groupIds) {
@@ -380,8 +412,30 @@ export default function GroupsPage() {
     }
   };
 
+  // The people a Sync All of groups would touch: everyone in a group that is switched on.
+  const syncAllPeople = (): SyncAllPerson[] => {
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const seen = new Set<string>();
+    const out: SyncAllPerson[] = [];
+    for (const g of groupsDisplay) {
+      if (g.isActive === false) continue;
+      for (const p of g.users) {
+        const u = byId.get(p.id);
+        if (!u || seen.has(u.id)) continue;
+        seen.add(u.id);
+        out.push({ id: u.id, name: u.username || u.name || p.name, hasAddons: hasAddonList(u) });
+      }
+    }
+    return out;
+  };
+  const handleSyncAllGroups = () => {
+    if (!isTV && syncAllPreview.on && groups.length > 0 && syncAllPeople().length > 0) { setSyncAllPreviewOpen((open) => !open); return; }
+    void runSyncAllGroups(groups.map((g) => g.id));
+  };
+
   const syncAllGroupsButtonInner = (
     <Button
+      ref={syncAllRef}
       variant="secondary"
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
       onClick={handleSyncAllGroups}
@@ -458,14 +512,10 @@ export default function GroupsPage() {
           })()}
         />
 
-        {/* Loading state */}
+        <div ref={listBoxRef}>
+        {/* Loading state: grey outlines shaped like the cards that are coming. */}
         {isLoading ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-            </div>
-            <p className="text-muted">Loading groups...</p>
-          </div>
+          <CardsSkeleton kind="groups" v2={v2} view={viewMode === 'list' ? 'list' : 'grid'} label="Loading groups" />
         ) : error ? (
           <LoadError what="your groups" error={error} />
         ) : (
@@ -501,7 +551,7 @@ export default function GroupsPage() {
                       toast.error(err instanceof Error && err.message ? err.message : `Couldn’t switch ${g.name} ${on ? 'on' : 'off'}`);
                     }
                   }}
-                  onDelete={(g) => { const d = groupsDisplay.find((x) => x.id === g.id); if (d) setDeleteTarget(d); }}
+                  onDelete={(g) => askDelete(g, findMenuButton(`${g.name} options`))}
                 />
                 <HiddenTray arrange={groupArrange} labelOf={(id) => groupsDisplay.find((g) => g.id === id)?.name ?? 'A group'}
                   note="Hidden only here: the group keeps syncing as normal. Tap one to bring it back." />
@@ -510,7 +560,7 @@ export default function GroupsPage() {
             <LayoutGroup>
               <AnimatePresence mode="popLayout">
                 {viewMode === 'grid' ? (
-                  <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <StaggerContainer key="grid" className="fx-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       <SortableContext items={filteredGroups.map(g => g.id)} strategy={rectSortingStrategy}>
                       {filteredGroups.map((group) => (
@@ -521,7 +571,7 @@ export default function GroupsPage() {
                             group={group}
                             isSelected={selectedIds.has(group.id)}
                             onToggleSelect={() => toggleSelect(group.id)}
-                            onDelete={() => setDeleteTarget(group)}
+                            onDelete={() => askDelete(group, findLinkTo(`/groups/${group.id}`))}
                             onClone={() => setCloneTarget(group)}
                             onToggleStatus={(groupId, newStatus) => {
                               setGroups(prev => prev.map(g =>
@@ -679,6 +729,7 @@ export default function GroupsPage() {
             )}
           </>
         )}
+        </div>
       </div>
       </div>
       </div>
@@ -731,6 +782,28 @@ export default function GroupsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {armed && (
+        <ArmedFloat
+          anchor={armed.anchor}
+          armedLabel="Delete?"
+          onCancel={() => setArmed(null)}
+          onConfirm={() => { const a = armed; setArmed(null); void deleteGroupNow(a.id, a.name); }}
+        />
+      )}
+      {syncAllPreviewOpen && (
+        <SyncAllPreview
+          anchorRef={syncAllRef}
+          people={syncAllPeople()}
+          onClose={() => setSyncAllPreviewOpen(false)}
+          onSync={(ids) => {
+            setSyncAllPreviewOpen(false);
+            const run = new Set(ids);
+            // A group is synced when any of its people would change; one with nobody in it has nothing to send.
+            void runSyncAllGroups(groupsDisplay.filter((g) => g.isActive !== false && g.users.some((p) => run.has(p.id))).map((g) => g.id));
+          }}
+        />
+      )}
 
       {/* Floating Add Button - Mobile Only */}
       <button

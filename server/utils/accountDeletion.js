@@ -28,7 +28,7 @@ const ACCOUNT_TABLES = [
   'movieWatchHistory', 'mutedShow', 'notInterestedItem', 'notification', 'notificationDigestEntry',
   'nuvioCollectionsSnapshot', 'nuvioHomeLayoutSnapshot', 'nuvioProfileRoute', 'passkey', 'personPushSubscription',
   'profileMerge', 'proxyDeviceClaim', 'proxyStreamSession', 'proxyUserIpAffinity', 'pushSubscription',
-  'showEpisodeAlertState', 'streamGateWrap', 'syncLog', 'titleRating', 'titleReaction', 'trashItem', 'userSyncGuardState',
+  'showEpisodeAlertState', 'streamGateWrap', 'stremioProfile', 'syncLog', 'titleRating', 'titleReaction', 'trashItem', 'userSyncGuardState',
   'vaultAccessLog', 'vaultEntry', 'watchActivity', 'watchCopyRun', 'watchSession', 'watchSnapshot', 'watchStateCursor',
   'watchStateEvent', 'watchSyncMove', 'watchSyncSetting', 'watchTogetherShow', 'watchlistItem',
   // Invitation already cascades from AppAccount, but clearing it explicitly

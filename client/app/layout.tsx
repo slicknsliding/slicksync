@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./ideas-lists.css";
+import "./ideas-touches.css";
+import "./vault.css";
 import "./menu-highlight.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
@@ -12,6 +15,7 @@ import { MenuHighlightRoot } from "@/lib/menuHighlight";
 import { LoadingLine } from '@/components/ui/LoadingLine';
 import { BackToTop, PullRefresh } from '@/components/ui/PageGestures';
 import { AllSetMoment, LongNames, OfflineStrip } from '@/components/ui/QuickTouches';
+import { Tooltips } from '@/components/ui/Tooltips';
 import { SplashScreen } from '@/components/ui/SplashScreen';
 import { SPLASH_SCRIPT } from '@/lib/splash';
 
@@ -132,7 +136,9 @@ export default function RootLayout({
               'radial-gradient(ellipse 700px 500px at 100% 10%, var(--color-secondary-muted) 0%, transparent 55%)',
           }}
         />
-        <div className="relative z-10">
+        {/* The page's own layer. Windows and pop-ups are drawn above it (on body), so anything
+            floating that belongs to the page is drawn inside it and dims with it. */}
+        <div className="relative z-10" data-app-layer="">
         <ThemeProvider>
           <LayoutModeProvider>
             <UserCacheProvider>
@@ -146,6 +152,7 @@ export default function RootLayout({
                 <BackToTop />
                 <OfflineStrip />
                 <LongNames />
+                <Tooltips />
                 <AllSetMoment />
                 <SplashScreen />
                 {children}

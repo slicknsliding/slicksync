@@ -1761,6 +1761,7 @@ export default function UserDetailPage() {
       <span className="inline-flex items-center gap-1.5">
         <Badge variant={providerBadgeVariant(user)} size="sm">{providerLabel(user)}</Badge>
         {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && <Badge variant="secondary" size="sm">Profile {user.nuvioProfileId}</Badge>}
+        {user.stremioProfileId && <Badge variant="secondary" size="sm">Profile</Badge>}
       </span>
     );
 
@@ -1903,7 +1904,7 @@ export default function UserDetailPage() {
     return (
       <>
         <ArrangeBar arrange={arrange} />
-        <div ref={headRef}>
+        <div ref={headRef} data-fx-person-head="">
           <V2DetailHead
             lead={lead}
             title={(
@@ -2002,8 +2003,9 @@ export default function UserDetailPage() {
         case 'hero':
           return panel('hero', 'Profile', (
             <>
-            {/* User Hero Section */}
+            {/* User Hero Section. data-fx-person-head: their card on Users grows into this (lib/cardGrow). */}
             <PageSection className="mb-6 md:mb-8">
+              <div data-fx-person-head="">
               <Card padding="md" className="md:lg:p-6">
                 <div className="relative">
                   <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6">
@@ -2073,6 +2075,9 @@ export default function UserDetailPage() {
                             <Badge variant="secondary" size="sm">
                               Profile {user.nuvioProfileId}
                             </Badge>
+                          )}
+                          {user.stremioProfileId && (
+                            <Badge variant="secondary" size="sm">Profile</Badge>
                           )}
                           <SyncBadge
                             userId={user.id}
@@ -2224,6 +2229,7 @@ export default function UserDetailPage() {
                   </div>
                 </div>
               </Card>
+              </div>
             </PageSection>
             </>
           ));
@@ -2468,32 +2474,32 @@ export default function UserDetailPage() {
                 {tvFocus(
                   <button
                     onClick={() => setActiveTab('overview')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'overview'
-                        ? 'bg-primary-solid text-white'
-                        : 'text-muted hover:text-default hover:bg-surface-hover'
-                    }`}
+                    className={activeTab === 'overview'
+                      ? 'relative px-4 py-2 rounded-lg text-sm font-medium transition-colors text-white'
+                      : 'relative px-4 py-2 rounded-lg text-sm font-medium transition-colors text-muted hover:text-default hover:bg-surface-hover'}
                   >
-                    Overview
+                    {activeTab === 'overview' && <motion.span layoutId="person-tabs-pill" className="absolute inset-0 rounded-lg bg-primary-solid" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
+                    <span className="relative">Overview</span>
                   </button>,
                   () => setActiveTab('overview'),
                 )}
                 {hasAddonList(user) && tvFocus(
                   <button
                     onClick={() => setActiveTab('addons')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      activeTab === 'addons'
-                        ? 'bg-primary-solid text-white'
-                        : 'text-muted hover:text-default hover:bg-surface-hover'
-                    }`}
+                    className={activeTab === 'addons'
+                      ? 'relative px-4 py-2 rounded-lg text-sm font-medium transition-colors text-white'
+                      : 'relative px-4 py-2 rounded-lg text-sm font-medium transition-colors text-muted hover:text-default hover:bg-surface-hover'}
                   >
-                    <PuzzlePieceIcon className="w-4 h-4" />
-                    Addons
-                    {stremioAddons.length > 0 && (
-                      <span className="px-1.5 py-0.5 text-xs rounded-full bg-surface">
-                        {stremioAddons.length}
-                      </span>
-                    )}
+                    {activeTab === 'addons' && <motion.span layoutId="person-tabs-pill" className="absolute inset-0 rounded-lg bg-primary-solid" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
+                    <span className="relative flex items-center gap-2">
+                      <PuzzlePieceIcon className="w-4 h-4" />
+                      Addons
+                      {stremioAddons.length > 0 && (
+                        <span className="px-1.5 py-0.5 text-xs rounded-full bg-surface">
+                          {stremioAddons.length}
+                        </span>
+                      )}
+                    </span>
                   </button>,
                   () => setActiveTab('addons'),
                 )}

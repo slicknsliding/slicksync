@@ -315,11 +315,16 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
       const invitation = await prisma.invitation.findFirst({ where: { id, accountId } })
       if (!invitation) return res.status(404).json({ error: 'Invitation not found' })
 
+      // Into the Trash first so the delete can be undone (utils/trash.js).
+      // If it cannot be held, the delete still goes ahead, with no Undo.
+      let trashId = null
+      try { trashId = (await require('../utils/trash').archiveInvitationDelete(prisma, accountId, id)).id } catch (e) { console.warn('[Invitations] could not hold a deleted invitation:', e?.message) }
+
       await prisma.invitation.delete({
         where: { id }
       })
 
-      res.json({ message: 'Invitation deleted successfully' })
+      res.json({ message: 'Invitation deleted successfully', trashId })
     } catch (error) {
       console.error('Error deleting invitation:', error)
       res.status(500).json({ error: 'Failed to delete invitation' })

@@ -328,6 +328,8 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
       }
     } catch (e) {
       if (!QUIET) console.warn('Account sync failed:', e?.message)
+      require('./jobStatus').noteRun('scheduledSync', { ok: false, message: e?.message })
+      return 'failed'
     }
   }
 
@@ -356,6 +358,7 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
         runningAccounts.add(accountKey)
         lastRunAtByAccount.set(accountKey, Date.now())
         runOnceAccount(due.accountId)
+          .then((r) => { if (r !== 'failed') require('./jobStatus').noteRun('scheduledSync', { ok: true }) })
           .catch(() => {})
           .finally(() => { runningAccounts.delete(accountKey); lastRunAtByAccount.set(accountKey, Date.now()) })
       }

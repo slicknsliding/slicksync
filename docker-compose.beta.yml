@@ -11,13 +11,14 @@ services:
       # Left unset on purpose: one generates itself on first boot and is kept
       # in the data volume below.
     user: "1001:1001"
-    # Opens SlickSync on port 3000 of every network this machine is on, so
-    # http://<server-address>:3000 works straight away. Docker opens this
-    # past the host firewall (ufw does not block it). If a reverse proxy on
-    # this same machine (Traefik, Caddy, nginx) is your way in, use
-    # "127.0.0.1:3000:3000" instead so only the proxy can reach it.
+    # Port 3000 is opened to this machine only, which is what a reverse proxy
+    # on it (Traefik, Caddy, nginx) needs. To reach SlickSync straight from
+    # other devices at http://<server-address>:3000, put SLICKSYNC_BIND=0.0.0.0
+    # in .env. Docker opens a published port past the host firewall (ufw does
+    # not block it), so on a server the internet can reach, that puts the
+    # sign-in page on the internet over plain HTTP.
     ports:
-      - "3000:3000"
+      - "${SLICKSYNC_BIND:-127.0.0.1}:3000:3000"
     volumes:
       # Same reasoning as the private compose - the database and the generated
       # encryption key live here and must outlive the container.

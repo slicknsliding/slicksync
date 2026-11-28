@@ -14,6 +14,7 @@ import { Avatar } from '@/components/ui';
 import { ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
 import { NotificationSound } from '@/components/settings/NotificationSound';
+import { VaultAlertSwitches } from '@/components/settings/VaultAlertSwitches';
 import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettings';
 import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -251,13 +252,14 @@ export function NotificationsV2({ arrange, sync, setSync, save, saveMany, webhoo
         show: () => needsAway.restore(key),
       })),
   ];
-  const group = (id: string, title: string, tiles: Tile[], extraFor?: (t: Tile) => ReactNode) => (
+  const group = (id: string, title: string, tiles: Tile[], extraFor?: (t: Tile) => ReactNode, after?: ReactNode) => (
     <ArrangeSection key={id} arrange={arrange} id={id} title={title} meta={`${tiles.filter(isOn).length} of ${tiles.length} on`} noun="section">
       <V2Tiles wide={2}>
         {tiles.map((t) => (
           <V2ToggleTile key={t.key} title={t.title} also={t.also} line={t.line} hint={t.hint} on={isOn(t)} onChange={(v) => save(t.key, v)} extra={extraFor?.(t)} />
         ))}
       </V2Tiles>
+      {after}
     </ArrangeSection>
   );
 
@@ -335,7 +337,7 @@ export function NotificationsV2({ arrange, sync, setSync, save, saveMany, webhoo
     ),
     people: group('people', 'People', PEOPLE_TILES),
     syncing: group('syncing', 'Syncing and addons', SYNCING_TILES),
-    safe: group('safe', 'Keeping safe', SAFE_TILES),
+    safe: group('safe', 'Keeping safe', SAFE_TILES, undefined, <VaultAlertSwitches look="v2" hasWebhook={hasHook} masterOn={!!sync.notifyOnVault} />),
     recaps: (
       <ArrangeSection key="recaps" arrange={arrange} id="recaps" title="Recaps" meta={`${sync.notifyOnMosaic ? 1 : 0} of 1 on`} noun="section">
         <V2Tiles wide={2}>

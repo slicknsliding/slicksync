@@ -233,6 +233,10 @@ const STEPS: Step[] = [
   },
 ];
 
+// The step names, for the "Resume tour" button beside the bell: its pop-up
+// says which step the tour was left on.
+export const ONBOARDING_STEP_TITLES: string[] = STEPS.map((s) => s.title);
+
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>

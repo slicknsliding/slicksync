@@ -1,0 +1,62 @@
+/* Styles for the quality-of-life touches on the Vault, Invitations, Catalogs, the bell, Settings, Metrics and Dashboard. Loaded after globals.css. */
+
+/* Two-step delete: the first press turns the button red and reads "Delete?". */
+.two-step-armed {
+  color: var(--color-error, #ef4444) !important;
+  background: color-mix(in srgb, var(--color-error, #ef4444) 16%, transparent) !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A revealed Vault secret's line running out (30 seconds). scaleX only: no layout work. */
+.vault-reveal-line {
+  height: 2px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  transform-origin: left;
+  animation: vault-reveal-run var(--vault-reveal-ms, 30000ms) linear forwards;
+}
+@keyframes vault-reveal-run { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .vault-reveal-line { animation: none; }
+}
+
+/* "Saved" beside a setting that just auto-saved. */
+.saved-tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-success);
+  white-space: nowrap;
+  animation: saved-tick-pop 220ms cubic-bezier(.2, .9, .3, 1.4) both;
+}
+@keyframes saved-tick-pop { from { scale: .6; } }
+
+/* "Updated just now" beside a page heading. */
+.freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.freshness i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+  flex: none;
+}
+
+/* Settings -> Maintenance -> Background jobs. */
+.job-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+}

@@ -14,10 +14,13 @@
 
 const crypto = require('crypto')
 const { liveTvSources } = require('./aioServiceKeys')
+const { mapLimit } = require('./mapLimit')
 
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000
 const RECHECK_FAILING_MS = 25 * 60 * 1000
 const FAILS_BEFORE_ALERT = 2
+// How many of one setup's sources are checked at the same moment.
+const CHECKS_AT_ONCE = 3
 const EXPIRY_WARNING_MS = 7 * 24 * 60 * 60 * 1000
 
 function sourceKey(source) {
@@ -120,18 +123,27 @@ async function readSync(prisma, accountId) {
 async function watchLiveTv(prisma, person, config, { now = Date.now(), check } = {}) {
   const accountId = person.accountId || 'default'
   const sources = liveTvSources(config)
-  const { cfg, asString } = await readSync(prisma, accountId)
+  const { cfg } = await readSync(prisma, accountId)
   const all = cfg.liveTv && typeof cfg.liveTv === 'object' ? { ...cfg.liveTv } : {}
   const mine = all[person.id] && typeof all[person.id] === 'object' ? { ...all[person.id] } : {}
   const alerts = []
   let changed = false
   const present = new Set()
+  const due = []
   for (const source of sources) {
     const key = sourceKey(source)
     present.add(key)
-    if (!isDue(mine[key], now)) continue
-    let result
-    try { result = await check(source) } catch (e) { result = { ok: false, message: e?.message || 'It did not answer' } }
+    if (isDue(mine[key], now)) due.push({ source, key })
+  }
+  // A few at a time. One after another, every source that did not answer
+  // made the ones behind it (and the people behind this one) wait out its
+  // whole time limit.
+  const results = await mapLimit(due, CHECKS_AT_ONCE, async ({ source }) => {
+    try { return await check(source) } catch (e) { return { ok: false, message: e?.message || 'It did not answer' } }
+  })
+  for (let i = 0; i < due.length; i++) {
+    const { source, key } = due[i]
+    let result = results[i]
     if (result && !result.ok) result = { ...result, message: scrub(result.message, source) }
     const { state, events } = nextState(mine[key], result || { ok: false }, now)
     mine[key] = { ...state, name: source.name, kind: source.kind }
@@ -144,11 +156,16 @@ async function watchLiveTv(prisma, person, config, { now = Date.now(), check } =
   // A source taken out of the setup is forgotten, outage and all.
   for (const key of Object.keys(mine)) if (!present.has(key)) { delete mine[key]; changed = true }
   if (changed) {
-    if (Object.keys(mine).length) all[person.id] = mine
-    else delete all[person.id]
-    const next = { ...cfg, liveTv: all }
-    if (!Object.keys(all).length) delete next.liveTv
-    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(next) : next } })
+    // The checks above can take a minute. The settings are read again here and
+    // only this person's Live TV entry is set in them, so nothing saved in the
+    // meantime (a limit, a pause, a theme) is put back to what it was.
+    const fresh = await readSync(prisma, accountId)
+    const latest = fresh.cfg.liveTv && typeof fresh.cfg.liveTv === 'object' ? { ...fresh.cfg.liveTv } : {}
+    if (Object.keys(mine).length) latest[person.id] = mine
+    else delete latest[person.id]
+    const next = { ...fresh.cfg, liveTv: latest }
+    if (!Object.keys(latest).length) delete next.liveTv
+    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: fresh.asString ? JSON.stringify(next) : next } })
   }
   return { alerts, sources: sources.length }
 }

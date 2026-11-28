@@ -147,6 +147,8 @@ async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onl
         username: true,
         email: true,
         stremioAuthKey: true,
+        stremioAccountId: true,
+        stremioProfileId: true,
         providerType: true,
         nuvioRefreshToken: true,
         nuvioUserId: true,
@@ -254,7 +256,10 @@ async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onl
           }
 
           const libraryItems = await provider.getLibrary()
-          const library = Array.isArray(libraryItems) ? libraryItems : (libraryItems?.result || libraryItems?.library || [])
+          const readLibrary = Array.isArray(libraryItems) ? libraryItems : (libraryItems?.result || libraryItems?.library || [])
+          // A Stremio profile read for the person it counts for: every title
+          // carries the profile's name (utils/stremioProfiles.js).
+          const library = user.__profileLabel ? require('./stremioProfiles').labelLibrary(readLibrary, user.__profileLabel) : readLibrary
 
           // Update cache with fresh data
           if (Array.isArray(library) && library.length > 0) {
@@ -283,6 +288,16 @@ async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onl
         } catch (error) {
           heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
+          // A Stremio profile signs in with a key of its own, which the
+          // account's key can ask for again - nobody needs to reconnect.
+          if (user.__stremioProfileRowId) {
+            if (isAuthFailure(error.message)) await require('./stremioProfiles').dropKey(prisma, user.__stremioProfileRowId)
+            return getCachedLibrary(accountId, user, { allowLegacyEmailFile: false }) || []
+          }
+          if (user.stremioProfileId && isAuthFailure(error.message)
+            && await require('./stremioProfiles').refreshPersonKey(prisma, accountId, user)) {
+            return getCachedLibrary(accountId, user, { allowLegacyEmailFile: false }) || []
+          }
           // A daily limit's pause blocks a Jellyfin person through their
           // access schedule, which refuses SlickSync's own requests too.
           // That's expected while it lasts - not a sign-in to reconnect.
@@ -335,7 +350,17 @@ async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onl
       } catch (e) {
         console.warn('[ActivityMonitor] Could not read merged logins:', e.message)
       }
-      const absorbedByPerson = new Map(absorbedLogins.map((a) => [a.__recordAs, a]))
+      // The other profiles of a Stremio account, each a sign-in of its own,
+      // are read the same way for the person each one counts for.
+      try {
+        const stremioProfiles = require('./stremioProfiles')
+        await stremioProfiles.discover(prisma, accountId, users)
+        absorbedLogins.push(...await stremioProfiles.trackedLogins(prisma, accountId, users))
+      } catch (e) {
+        console.warn('[ActivityMonitor] Could not read Stremio profiles:', e.message)
+      }
+      const absorbedByPerson = new Map()
+      for (const a of absorbedLogins) absorbedByPerson.set(a.__recordAs, [...(absorbedByPerson.get(a.__recordAs) || []), a])
 
       // Sessions are the person's live state, so they are tracked over both
       // of a merged person's libraries together: the session step closes any
@@ -344,11 +369,11 @@ async function readAccountActivity(prisma, accountId, decrypt, getAccountId, onl
       const getSessionLibrary = async (user) => {
         const own = await getLibraryForUser(user)
         const absorbed = absorbedByPerson.get(user.id)
-        if (!absorbed) return own
-        const theirs = await getLibraryForUser(absorbed)
+        if (!absorbed?.length) return own
+        const theirs = (await Promise.all(absorbed.map((a) => getLibraryForUser(a)))).flatMap((l) => l || [])
         const byId = new Map()
         const lastWatched = (item) => new Date(item?.state?.lastWatched || item?._mtime || 0).getTime() || 0
-        for (const item of [...(own || []), ...(theirs || [])]) {
+        for (const item of [...(own || []), ...theirs]) {
           const id = item?._id || item?.id
           if (!id) continue
           const kept = byId.get(id)
@@ -491,16 +516,19 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
         await checkActivityForAccount(prisma, accounts[i].id, decrypt, getAccountId)
       }
       heartbeat('checkAllAccounts:done', { INSTANCE_TYPE, accountCount: accounts.length, durationMs: Date.now() - startedAt })
+      require('./jobStatus').noteRun('activityMonitor', { ok: true })
     } else {
       // Private mode: check default account
       const DEFAULT_ACCOUNT_ID = process.env.DEFAULT_ACCOUNT_ID || 'default'
       await checkActivityForAccount(prisma, DEFAULT_ACCOUNT_ID, decrypt, getAccountId)
+      require('./jobStatus').noteRun('activityMonitor', { ok: true })
     }
   } catch (error) {
     // Same reasoning as above — checkActivityForAccount already logs its own
     // errors, but this outer catch existing at all meant something could
     // theoretically still fail invisibly above/around that call.
     heartbeat('checkAllAccounts:error', { message: error.message, stack: error.stack })
+    require('./jobStatus').noteRun('activityMonitor', { ok: false, message: error.message })
     console.warn(`[ActivityMonitor] checkAllAccounts failed:`, error.message)
   } finally {
     isAccountsPassRunning = false

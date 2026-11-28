@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { fxOn } from '@/lib/effects';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { Card, StatCard, Badge, Button, UserAvatar, PageToolbar, YearInReviewCard } from '@/components/ui';
@@ -116,7 +117,15 @@ function useRolling(target: number, ms = 180): number {
   return shown;
 }
 
+// The watch-time line draws itself the first time it is on screen in a visit
+// (Effects -> Charts draw themselves), and never again: not on a refresh of the
+// numbers, not when the period changes (which swaps the chart for a skeleton
+// and back). The flag is module-wide so a remount does not replay it, and the
+// page clears it when you leave.
+const chartVisit = { drawn: false };
+
 const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ date: string; hours: number }> }) {
+  const [draws, setDraws] = useState(() => fxOn('charts') && !chartVisit.drawn);
   // Calculate max hours to determine ticks dynamically or use a fixed set if small
   const maxHours = Math.max(...data.map(d => d.hours), 1);
   const tickCount = Math.ceil(maxHours / 0.5);
@@ -190,7 +199,13 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ da
           strokeWidth={2}
           fillOpacity={1}
           fill="url(#colorWatchTime)"
-          isAnimationActive={false} // Disable animation to prevent blinking during updates
+          // Animated for the first draw only; after it ends (or if it is off) the
+          // chart is static, so a refresh of the numbers never blinks it.
+          isAnimationActive={draws}
+          animationDuration={700}
+          animationEasing="ease-out"
+          onAnimationStart={() => { chartVisit.drawn = true; }}
+          onAnimationEnd={() => setDraws(false)}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -374,6 +389,8 @@ export default function MetricsPage() {
   const v2 = design === 'v2' && !isTV;
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [period, setPeriod] = useState('30d');
+  // Leaving the page ends the visit: the chart draws itself again next time.
+  useEffect(() => () => { chartVisit.drawn = false; }, []);
   // The yearly recap opens on request. It is a once-a-year read, and it
   // used to occupy the top of a page opened weekly.
   const [yearInReviewOpen, setYearInReviewOpen] = useState(false);

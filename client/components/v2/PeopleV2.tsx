@@ -16,6 +16,7 @@ import {
 import { MapPinIcon as MapPinSolid } from '@heroicons/react/24/solid';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { UserAvatar } from '@/components/ui';
+import { Highlight } from '@/components/ui/Highlight';
 import { GroupPicture } from './GroupPicture';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
@@ -84,6 +85,10 @@ type Props = {
   onImportAddons: (p: V2Person) => void;
   onToggleActive: (p: V2Person) => void;
   onDelete: (p: V2Person) => void;
+  /** Select mode: a tap picks a card instead of opening it. */
+  selecting?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
   /** Pinned people sit first in their group. */
   pins: { isPinned: (id: string) => boolean; toggle: (id: string) => void; pinned: string[] };
 };
@@ -112,7 +117,7 @@ function SignInPill({ p, onFix }: { p: V2Person; onFix: (p: V2Person) => void })
   );
 }
 
-export function PeopleV2({ people, groups, arrange, peopleArrange, view, watching, syncing, onSync, onFix, onReloadAddons, onImportAddons, onToggleActive, onDelete, pins }: Props) {
+export function PeopleV2({ people, groups, arrange, peopleArrange, view, watching, syncing, onSync, onFix, onReloadAddons, onImportAddons, onToggleActive, onDelete, selecting = false, selectedIds, onToggleSelect, pins }: Props) {
   const router = useRouter();
   // Sync history, opened from a card's ⋯ menu: it points at that ⋯.
   const [historyFor, setHistoryFor] = useState<V2Person | null>(null);
@@ -167,6 +172,7 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
 
   const action = (p: V2Person) => {
     if (arrange.arranging) return hideBtn(p);
+    if (selecting) return undefined;
     if (p.connectionError) return <V2Button primary onClick={() => onFix(p)}>Fix sign-in</V2Button>;
     const busy = syncing.has(p.id);
     return (
@@ -182,6 +188,9 @@ export function PeopleV2({ people, groups, arrange, peopleArrange, view, watchin
     items: menuFor(p),
     sortId: p.id,
     sortData: { label: p.name },
+    selecting,
+    selected: !!selectedIds?.has(p.id),
+    onToggle: () => onToggleSelect?.(p.id),
     arranging: arrange.arranging,
     className: arrange.arranging ? 'v2-arranging' : '',
   });
@@ -294,7 +303,7 @@ function PersonTile({ p, watching, syncing, itemProps, action, pinMark, onFix, o
         <div className="flex items-center gap-3.5 min-w-0">
           <UserAvatar userId={p.id} name={p.name} email={p.email} colorIndex={p.colorIndex} src={p.avatarUrl || undefined} useGravatar={p.useGravatar} size="lg" />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default break-words min-w-0">{p.name}</span>{pinMark}</div>
+            <div className="flex items-center gap-1.5 min-w-0"><span className="text-[17px] font-semibold text-default break-words min-w-0"><Highlight text={p.name} /></span>{pinMark}</div>
             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
               <V2AppPill label={p.appLabel} color={p.appColor} />
               {p.connectionError && <SignInPill p={p} onFix={onFix} />}
@@ -322,7 +331,7 @@ function PersonRow({ p, watching, syncing, itemProps, action, pinMark, onFix }: 
       <UserAvatar userId={p.id} name={p.name} email={p.email} colorIndex={p.colorIndex} src={p.avatarUrl || undefined} useGravatar={p.useGravatar} size="md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <b className="text-default truncate">{p.name}</b>
+          <b className="text-default truncate"><Highlight text={p.name} /></b>
           {pinMark}
           <V2AppPill label={p.appLabel} color={p.appColor} />
           {p.connectionError && <SignInPill p={p} onFix={onFix} />}

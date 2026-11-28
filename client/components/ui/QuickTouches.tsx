@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { fxOn } from '@/lib/effects';
+import { JUMPS, SHORTCUTS } from '@/lib/shortcuts';
+import { KeyTable } from './KeyTable';
 
 /**
  * Offline strip: when the connection drops, a thin strip says so and that
@@ -13,13 +15,31 @@ import { fxOn } from '@/lib/effects';
  * and buttons fail, which looks like SlickSync is broken.
  */
 export function OfflineStrip() {
-  const [state, setState] = useState<'' | 'off' | 'back'>('');
+  const [state, setState] = useState<'' | 'off' | 'back' | 'kept'>('');
   useEffect(() => {
     let timer = 0;
-    const off = () => { window.clearTimeout(timer); setState('off'); };
+    let wasOff = false;
+    // Someone in the middle of something: typing, or with a window or menu
+    // open. A reload would throw that away, so the page is left as it is and
+    // picks up fresh data on its own next refresh.
+    const busy = () => {
+      const a = document.activeElement;
+      if (a instanceof HTMLElement && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return true;
+      return !!document.querySelector('[role="dialog"], [aria-modal="true"], [role="menu"]');
+    };
+    const off = () => { window.clearTimeout(timer); wasOff = true; setState('off'); };
     const on = () => {
-      setState((s) => (s === 'off' ? 'back' : s));
-      timer = window.setTimeout(() => { if (navigator.onLine) window.location.reload(); }, 1300);
+      // Only after a drop this page saw; a stray "online" does nothing.
+      if (!wasOff) return;
+      wasOff = false;
+      window.clearTimeout(timer);
+      if (busy()) {
+        setState('kept');
+        timer = window.setTimeout(() => setState(''), 4000);
+        return;
+      }
+      setState('back');
+      timer = window.setTimeout(() => { if (navigator.onLine && !busy()) window.location.reload(); else setState(''); }, 1300);
     };
     window.addEventListener('offline', off);
     window.addEventListener('online', on);
@@ -27,33 +47,15 @@ export function OfflineStrip() {
   }, []);
   if (!state) return null;
   return (
-    <div className={`offline-strip${state === 'back' ? ' back' : ''}`} role="status" aria-live="polite">
+    <div className={`offline-strip${state === 'off' ? '' : ' back'}`} role="status" aria-live="polite">
       {state === 'off'
         ? <span><b>You’re offline.</b> Showing what was here before.</span>
-        : <span><b>Back online.</b> Refreshing…</span>}
+        : state === 'kept'
+          ? <span><b>Back online.</b></span>
+          : <span><b>Back online.</b> Refreshing…</span>}
     </div>
   );
 }
-
-/** Where `g` then a letter goes. */
-export const JUMPS: { key: string; label: string; href: string }[] = [
-  { key: 'd', label: 'Dashboard', href: '/' },
-  { key: 'c', label: 'Activity', href: '/activity' },
-  { key: 'u', label: 'Users', href: '/users' },
-  { key: 'a', label: 'Addons', href: '/addons' },
-  { key: 's', label: 'Settings', href: '/settings' },
-];
-
-const SHORTCUTS: [string, string[]][] = [
-  ['Search and jump', ['Ctrl', 'K']],
-  ['This list', ['?']],
-  ['Search this page', ['/']],
-  ['Close a window or menu', ['Esc']],
-  ...JUMPS.map((j): [string, string[]] => [`Go to ${j.label}`, ['g', j.key]]),
-];
-
-/** Fired to open the shortcut sheet from elsewhere (the account menu). */
-export const SHORTCUTS_EVENT = 'slicksync:shortcuts';
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
@@ -104,10 +106,8 @@ export function KeyboardNav() {
         if (to) { e.preventDefault(); router.push(to.href); }
       }
     };
-    const open = () => setSheet(true);
     window.addEventListener('keydown', onKey);
-    window.addEventListener(SHORTCUTS_EVENT, open);
-    return () => { window.clearTimeout(timer); window.removeEventListener('keydown', onKey); window.removeEventListener(SHORTCUTS_EVENT, open); };
+    return () => { window.clearTimeout(timer); window.removeEventListener('keydown', onKey); };
   }, [isTV, router]);
 
   if (isTV || typeof document === 'undefined' || (!sheet && !armed)) return null;
@@ -122,11 +122,7 @@ export function KeyboardNav() {
         <div className="shortcut-wrap" onClick={() => setSheet(false)}>
           <div className="popup-panel shortcut-sheet" role="dialog" aria-label="Keyboard shortcuts" data-shortcuts="" data-mh-off="" onClick={(e) => e.stopPropagation()}>
             <p className="font-display text-[17px] font-bold text-default mb-2.5">Keyboard shortcuts</p>
-            <div className="shortcut-keys">
-              {SHORTCUTS.map(([what, keys]) => (
-                <div key={what}><span>{what}</span><span>{keys.map((k) => <kbd key={k}>{k}</kbd>)}</span></div>
-              ))}
-            </div>
+            <KeyTable rows={SHORTCUTS} />
           </div>
         </div>
       )}

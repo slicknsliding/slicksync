@@ -125,3 +125,45 @@ test('nextState and describe on their own', () => {
   assert.equal(text.title, 'Sam’s Live TV playlist “Home TV” runs out in 5 days')
   assert.match(text.body, /It ends Dec 2\./)
 })
+
+test('sources are checked a few at a time, and each answer stays with its own source', async () => {
+  const prisma = fakePrisma()
+  const presets = Array.from({ length: 7 }, (_, i) => ({ type: 'm3u', options: { name: `TV ${i + 1}`, playlist: `http://tv${i + 1}.example.com/list.m3u` } }))
+  let inFlight = 0
+  let most = 0
+  const order = []
+  const check = async (source) => {
+    inFlight++
+    most = Math.max(most, inFlight)
+    order.push(source.name)
+    // The third one is the slow, dead one; the rest answer at once.
+    await new Promise((r) => setTimeout(r, source.name === 'TV 3' ? 40 : 5))
+    inFlight--
+    return source.name === 'TV 3' ? { ok: false, message: 'The playlist server returned 502' } : { ok: true }
+  }
+  const first = await watchLiveTv(prisma, person, { presets }, { now: T0, check })
+  assert.equal(first.sources, 7)
+  assert.equal(most, 3)
+  assert.equal(order.length, 7)
+  // The four behind the slow one were not held up by it.
+  assert.ok(order.indexOf('TV 7') > -1)
+  const kept = prisma.store.sync.liveTv.u1
+  const byName = Object.fromEntries(Object.values(kept).map((s) => [s.name, s]))
+  assert.equal(Object.keys(byName).length, 7)
+  assert.equal(byName['TV 3'].fails, 1)
+  for (const name of ['TV 1', 'TV 2', 'TV 4', 'TV 5', 'TV 6', 'TV 7']) assert.equal(byName[name].fails, 0, name)
+  // Second failed look in a row: the alarm names the one that failed, no other.
+  const second = await watchLiveTv(prisma, person, { presets }, { now: T0 + RECHECK_FAILING_MS, check })
+  assert.equal(second.alerts.length, 1)
+  assert.match(second.alerts[0].title, /“TV 3” stopped working$/)
+})
+
+test('a check that throws counts as a failed look for that source only', async () => {
+  const prisma = fakePrisma()
+  const presets = [m3u, xtream]
+  const check = async (source) => { if (source.kind === 'm3u') throw new Error('socket hang up'); return { ok: true } }
+  await watchLiveTv(prisma, person, { presets }, { now: T0, check })
+  const kept = Object.values(prisma.store.sync.liveTv.u1)
+  assert.equal(kept.find((s) => s.kind === 'm3u').fails, 1)
+  assert.equal(kept.find((s) => s.kind !== 'm3u').fails, 0)
+})

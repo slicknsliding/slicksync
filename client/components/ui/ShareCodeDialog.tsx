@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { ExclamationTriangleIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import { copyToClipboard } from '@/lib/clipboard';
+import { ShareButton } from '@/components/ui/ShareButton';
 
 // Two-phase share flow, used by every share-code producer (catalogs, Nuvio
 // collections, addon templates). Phase one states exactly WHAT the code
@@ -130,6 +131,7 @@ export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, extr
                   {showQr ? 'Hide QR' : 'Show QR'}
                 </Button>
               )}
+              <ShareButton payload={{ title, text: code }} onError={() => toast.error('Couldn’t open the share sheet')} />
               <Button variant="primary" size="sm" leftIcon={<ClipboardDocumentIcon className="w-4 h-4" />} onClick={handleCopy}>
                 Copy code
               </Button>

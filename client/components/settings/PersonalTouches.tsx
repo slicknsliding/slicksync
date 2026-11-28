@@ -6,7 +6,7 @@
 // saved to the account; each has a plain default.
 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { useCardBackground, useCwFirst, useEffectChoices, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, usePeek, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
+import { useCardBackground, useCwFirst, useEffectChoices, useOutNow, useCwProgress, useCwTime, useCwWho, useDensity, useMotionChoice, useFoldArrows, useKeepFilters, usePeek, useSyncAllPreview, useNameFolds, useNowPlayingProgress, useNowPlayingWho, useStartPage } from '@/lib/arrange';
 import { ADMIN_MENU } from '@/lib/adminMenu';
 import { V2SetRow, V2Seg, V2Switch, V2_SELECT_CLASS } from '@/components/v2/SettingsV2';
 
@@ -93,6 +93,7 @@ export function PersonalTouches({ v2 = false, part }: { v2?: boolean; part?: 'np
   const { startPage, setStartPage } = useStartPage();
   const { keep, setKeep } = useKeepFilters();
   const { on: peek, setOn: setPeek } = usePeek();
+  const { on: syncPreview, setOn: setSyncPreview } = useSyncAllPreview();
   const { where, setWhere } = useNowPlayingWho();
   const { where: cwWhere, setWhere: setCwWhere } = useCwTime();
   const { where: cwWho, setWhere: setCwWho } = useCwWho();
@@ -198,8 +199,15 @@ export function PersonalTouches({ v2 = false, part }: { v2?: boolean; part?: 'np
         {show('pages') && (
           <V2SetRow
             title="Keep each page’s filter"
-            line="Users, Addons and the Vault open on the filter you last picked"
+            line="Users, Groups, Addons, Activity and the Vault open on the filter and order you last picked. Reset beside the filters puts a page back"
             control={<V2Switch on={keep} onChange={setKeep} label="Keep each page’s filter" />}
+          />
+        )}
+        {show('pages') && (
+          <V2SetRow
+            title="Preview before Sync All"
+            line="Sync All on Users and Groups first shows what it will change for each person. Off, it starts at once"
+            control={<V2Switch on={syncPreview} onChange={setSyncPreview} label="Preview before Sync All" />}
           />
         )}
         {show('pages') && (
@@ -400,9 +408,18 @@ export function PersonalTouches({ v2 = false, part }: { v2?: boolean; part?: 'np
         <div className="flex items-center gap-4">
           <div className="flex-1 min-w-0">
             <p className="font-medium text-sm text-default">Keep each page&apos;s filter</p>
-            <p className="text-xs text-muted">Users, Addons and the Vault open on the filter you last picked</p>
+            <p className="text-xs text-muted">Users, Groups, Addons, Activity and the Vault open on the filter and order you last picked. Reset beside the filters puts a page back</p>
           </div>
           <ToggleSwitch checked={keep} onChange={() => setKeep(!keep)} />
+        </div>
+      )}
+      {show('pages') && (
+        <div className="flex items-center gap-4" data-setting="Preview before Sync All">
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm text-default">Preview before Sync All</p>
+            <p className="text-xs text-muted">Sync All on Users and Groups first shows what it will change for each person. Off, it starts at once</p>
+          </div>
+          <ToggleSwitch checked={syncPreview} onChange={() => setSyncPreview(!syncPreview)} />
         </div>
       )}
       {show('pages') && (

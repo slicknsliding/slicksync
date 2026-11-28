@@ -369,9 +369,11 @@ async function performHealthChecks(prisma, accountId = null) {
 
     const duration = Date.now() - startTime;
     console.log(`[AddonHealthCheck] Completed in ${duration}ms: ${onlineCount} online, ${offlineCount} offline`);
+    require('./jobStatus').noteRun('addonHealth', { ok: true });
 
   } catch (error) {
     console.error('[AddonHealthCheck] Health check batch failed:', error);
+    require('./jobStatus').noteRun('addonHealth', { ok: false, message: error?.message });
   } finally {
     isRunning = false;
   }

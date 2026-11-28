@@ -1,4 +1,8 @@
 // Restart trigger: 2026-01-29 - Refreshing backend state for library cache fixes
+// Before anything schedules a job: once the stop signal arrives, repeating
+// jobs start nothing new (utils/shutdownState.js).
+const shutdownState = require('./utils/shutdownState');
+shutdownState.guardRepeatingJobs();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -666,6 +670,9 @@ let shuttingDown = false;
 const shutdown = async (signal) => {
   if (shuttingDown) return;
   shuttingDown = true;
+  // From here no timer starts a job and no new sync begins; what is already
+  // running is given the time below to finish.
+  shutdownState.markShuttingDown();
   console.log(`🛑 ${signal} received - finishing in-flight requests...`);
   try {
     if (httpServer) {
@@ -922,9 +929,9 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize auto-themed catalogs:', err)
     }
 
-    // Schedule DB maintenance (scheduled VACUUM + opt-in watch-history
-    // pruning, both off by default - operator-controlled via the
-    // Superadmin panel, private/SQLite mode only)
+    // Schedule DB maintenance. On SQLite: integrity check, and the vacuum
+    // and trims the operator switched on. On Postgres: only the trim of old
+    // read notifications (see utils/dbMaintenance.js).
     try {
       const { scheduleDbMaintenance } = require('./utils/dbMaintenance')
       scheduleDbMaintenance(prisma)

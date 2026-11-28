@@ -243,7 +243,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, createProvider }) =>
       if (!provider) {
         return res.status(400).json({ error: 'Target user is not connected to a provider (no auth key/token on file)' });
       }
-      await provider.setAddons(collection);
+      // In the person's own queue, so it cannot land in the middle of a sync of theirs.
+      const { withPersonSync, personKey } = require('../utils/syncLock');
+      await withPersonSync(personKey(accountId, targetUserId), () => provider.setAddons(collection));
       await require('../utils/accountGuard').recordAssertedState(prisma, targetUserId, targetUser.providerType, collection);
 
       const answer = { deployed: collection.length, failed: failed.length, targetUserId };

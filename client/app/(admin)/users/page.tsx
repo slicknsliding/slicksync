@@ -5,6 +5,7 @@ import Head from 'next/head';
 import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, SyncBadge, ToggleSwitch, Modal, Input, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
@@ -24,6 +25,7 @@ import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { providerLabel, providerBadgeVariant, providerTypeLabel, hasAddonList, displayEmail } from '@/lib/providers';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { Freshness } from '@/components/ui/PlaybackFreshness';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -35,7 +37,14 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import { formatLastSync, formatRelativeTime } from '@/lib/relativeTime';
 import { showPersonDeletedWithUndo } from '@/components/ui/undoToast';
-import { usePageArrangement, usePageDesign, usePinned, useSavedFilter } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign, usePinned, useSavedFilter, useSyncAllPreview } from '@/lib/arrange';
+import { Highlight, HighlightQuery } from '@/components/ui/Highlight';
+import { CardsSkeleton } from '@/components/ui/Skeleton';
+import { ResetSaved } from '@/components/ui/ResetSaved';
+import { SyncAllPreview, type SyncAllPerson } from '@/components/ui/SyncAllPreview';
+import { GroupPickPopup } from '@/components/ui/GroupPickPopup';
+import { useArriveOnce, useWarmOnRest } from '@/lib/hooks/useListTouches';
+import { V2SelectButton } from '@/components/v2/V2Bits';
 import { ArrangeBar, ArrangeButton, HiddenTray } from '@/components/ui/Arrange';
 import { PeopleV2, NO_GROUP_KEY, type V2Group, type V2Person } from '@/components/v2/PeopleV2';
 import { PersonPeek, type PeekPerson, type PeekPlaying } from '@/components/user/PersonPeek';
@@ -71,6 +80,8 @@ interface UserDisplay {
   jellyfinServer?: string | null;
   /** Which Nuvio profile's addons this user manages; 1 is the primary. */
   nuvioProfileId?: number;
+  /** Set on a person made for a Stremio profile other than the main one. */
+  stremioProfileId?: string | null;
   secondaryProviderType?: 'stremio' | 'nuvio' | 'jellyfin' | null;
   providerConnectionError?: string | null;
   avatarUrl?: string | null;
@@ -140,6 +151,8 @@ export default function UsersPage() {
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // v2: tapping a card picks it instead of opening it.
+  const [selectMode, setSelectMode] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
   const [reconnectUserId, setReconnectUserId] = useState<string | null>(null);
@@ -159,6 +172,8 @@ export default function UsersPage() {
   // Fetch users and groups
   // Instant navigation: show the last-known users/groups immediately while
   // the fetch below refreshes them - see useLastKnown's own comment.
+  // When the list last came fresh from the server, for the quiet "Updated ..." line by the heading.
+  const [usersAt, setUsersAt] = useState<number | null>(null);
   useLastKnown<User[]>('/users', (cached) => { setUsers(cached); setIsLoading(false); });
   useLastKnown<Group[]>('/groups', (cached) => setGroups(cached));
 
@@ -172,6 +187,7 @@ export default function UsersPage() {
           api.getGroups(),
         ]);
         setUsers(usersData);
+        setUsersAt(Date.now());
         setGroups(groupsData);
       } catch (err) {
         setError(err as Error);
@@ -247,6 +263,7 @@ export default function UsersPage() {
         jellyfinServerLabel: user.jellyfinServerLabel,
         jellyfinServer: user.jellyfinServer,
         nuvioProfileId: user.nuvioProfileId ?? 1,
+        stremioProfileId: user.stremioProfileId || null,
         secondaryProviderType: (user as any).secondaryProviderType || null,
         providerConnectionError: (user as any).providerConnectionError || null,
         avatarUrl: (user as any).avatarUrl,
@@ -411,6 +428,7 @@ export default function UsersPage() {
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(filteredUsers.map(u => u.id)));
+    setSelectMode(true);
   }, [filteredUsers]);
 
   const deselectAll = useCallback(() => {
@@ -418,7 +436,7 @@ export default function UsersPage() {
   }, []);
 
   const refreshUsersQuietly = useCallback(async () => {
-    try { setUsers(await api.getUsers()); } catch { /* keep last known list */ }
+    try { setUsers(await api.getUsers()); setUsersAt(Date.now()); } catch { /* keep last known list */ }
   }, []);
 
   // People signed in to an AIOStreams or AIOMetadata configuration, whose
@@ -450,20 +468,36 @@ export default function UsersPage() {
     });
   }, [users]);
 
+  // One entry per Stremio account with more than one profile: its main
+  // profile's person stands for it. The count comes with the list, so an
+  // account with only its main profile is never asked about.
+  const stremioLogins = useMemo(() => users
+    .filter((u) => (u.providerType || 'stremio') === 'stremio' && !u.stremioProfileId && (u.stremioProfiles ?? 0) > 1)
+    .map((u) => ({ anchorId: u.id, label: `${u.username}'s account` })), [users]);
+
   useEffect(() => {
     if (isLoading) return;
     const endpoints = [
       ...nuvioLogins.map((l) => `/users/${encodeURIComponent(l.anchorId)}/profiles`),
+      ...stremioLogins.map((l) => `/users/${encodeURIComponent(l.anchorId)}/profiles`),
       ...householdOwners.map((o) => `/jellyfin/users/${encodeURIComponent(o.id)}/household`),
     ];
     if (endpoints.every((e) => api.peekGet(e) !== undefined)) { setExtrasReady(true); return; }
     let cancelled = false;
     Promise.allSettled([
       ...nuvioLogins.map((l) => api.getProfiles(l.anchorId)),
+      ...stremioLogins.map((l) => api.getProfiles(l.anchorId)),
       ...householdOwners.map((o) => api.getHousehold(o.id)),
     ]).then(() => { if (!cancelled) setExtrasReady(true); });
     return () => { cancelled = true; };
-  }, [isLoading, nuvioLogins, householdOwners]);
+  }, [isLoading, nuvioLogins, stremioLogins, householdOwners]);
+
+  // Cards arrive in order the first time the list shows; a resting mouse (or a
+  // touch) on a card warms that person's page.
+  const listBoxRef = useRef<HTMLDivElement>(null);
+  useArriveOnce(listBoxRef, !isLoading && extrasReady && !error);
+  const warmUser = useCallback((id: string) => api.prefetchUser(id), []);
+  useWarmOnRest(listBoxRef, '/users/', warmUser);
 
   const handleGuardReassert = useCallback(async (id: string, name: string) => {
     setGuardBusyId(id);
@@ -544,6 +578,77 @@ export default function UsersPage() {
     setSelectedIds(new Set());
   }, [selectedIds]);
 
+  // Add to group / Remove from group, for the people picked. One group each:
+  // a person added to a group leaves the one they were in, and Undo puts them back.
+  const groupBox = useRef<HTMLButtonElement>(null);
+  const [groupPickOpen, setGroupPickOpen] = useState(false);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const groupIdsOf = useCallback((u: UserDisplay) => groups.filter((g) => u.groups.includes(g.name)).map((g) => g.id), [groups]);
+  const reloadPeople = useCallback(async () => {
+    try {
+      const [u, g] = await Promise.all([api.getUsers(), api.getGroups()]);
+      setUsers(u);
+      setGroups(g);
+    } catch { /* keep what is shown */ }
+  }, []);
+  const putBack = useCallback(async (moves: Array<{ id: string; was: string[]; now: string[] }>) => {
+    try {
+      for (const m of moves) {
+        for (const g of m.was) if (!m.now.includes(g)) await api.addUserToGroup(g, m.id);
+        for (const g of m.now) if (!m.was.includes(g)) await api.removeUserFromGroup(g, m.id);
+      }
+      toast.success('Put back');
+    } catch (err) {
+      toast.error('Couldn’t put them back', { line: err instanceof Error ? err.message : undefined });
+    }
+    await reloadPeople();
+  }, [reloadPeople]);
+  const groupMoveToast = useCallback((text: string, moves: Array<{ id: string; was: string[]; now: string[] }>) => {
+    toast.success(text, { actions: [{ label: 'Undo', onClick: () => { void putBack(moves); } }], duration: 8000 });
+  }, [putBack]);
+  const handleAddToGroup = useCallback(async (groupId: string) => {
+    setGroupPickOpen(false);
+    const target = groups.find((g) => g.id === groupId);
+    if (!target) return;
+    setGroupBusy(true);
+    const moves: Array<{ id: string; was: string[]; now: string[] }> = [];
+    try {
+      for (const u of usersDisplay.filter((x) => selectedIds.has(x.id))) {
+        const was = groupIdsOf(u);
+        if (was.length === 1 && was[0] === groupId) continue;
+        await api.addUserToGroup(groupId, u.id);
+        for (const g of was) if (g !== groupId) await api.removeUserFromGroup(g, u.id);
+        moves.push({ id: u.id, was, now: [groupId] });
+      }
+      if (moves.length === 0) toast.success(`They are already in ${target.name}`);
+      else groupMoveToast(moves.length === 1 ? `${usersDisplay.find((x) => x.id === moves[0].id)?.name ?? '1 person'} moved to ${target.name}` : `${moves.length} moved to ${target.name}`, moves);
+    } catch (err) {
+      toast.error('Couldn’t move everyone', { line: err instanceof Error ? err.message : undefined });
+    } finally {
+      await reloadPeople();
+      setGroupBusy(false);
+    }
+  }, [groups, usersDisplay, selectedIds, groupIdsOf, groupMoveToast, reloadPeople]);
+  const handleRemoveFromGroup = useCallback(async () => {
+    setGroupBusy(true);
+    const moves: Array<{ id: string; was: string[]; now: string[] }> = [];
+    try {
+      for (const u of usersDisplay.filter((x) => selectedIds.has(x.id))) {
+        const was = groupIdsOf(u);
+        if (was.length === 0) continue;
+        for (const g of was) await api.removeUserFromGroup(g, u.id);
+        moves.push({ id: u.id, was, now: [] });
+      }
+      if (moves.length === 0) toast.success('None of them are in a group');
+      else groupMoveToast(moves.length === 1 ? `${usersDisplay.find((x) => x.id === moves[0].id)?.name ?? '1 person'} taken out of their group` : `${moves.length} taken out of their group`, moves);
+    } catch (err) {
+      toast.error('Couldn’t take everyone out', { line: err instanceof Error ? err.message : undefined });
+    } finally {
+      await reloadPeople();
+      setGroupBusy(false);
+    }
+  }, [usersDisplay, selectedIds, groupIdsOf, groupMoveToast, reloadPeople]);
+
   // Delete single user (from quick action menu)
   const handleDeleteSingle = useCallback(async () => {
     if (!deleteTarget) return;
@@ -621,10 +726,12 @@ export default function UsersPage() {
   // Sync All counts as it goes, and only the person whose turn it is says
   // Syncing - their dot rings as it lands (the Sync result effect).
   const [syncAllAt, setSyncAllAt] = useState<{ done: number; total: number } | null>(null);
-  const handleSyncAll = async () => {
+  const syncAllPreview = useSyncAllPreview();
+  const syncAllRef = useRef<HTMLButtonElement>(null);
+  const [syncAllPreviewOpen, setSyncAllPreviewOpen] = useState(false);
+  const runSyncAll = async (userIds: string[]) => {
     setIsSyncing(true);
     try {
-      const userIds = users.map(u => u.id);
       let success = 0;
       let done = 0;
       for (const id of userIds) {
@@ -658,8 +765,15 @@ export default function UsersPage() {
     }
   };
 
+  // With "Preview before Sync All" on, the button first asks what would change.
+  const handleSyncAll = () => {
+    if (!isTV && syncAllPreview.on && users.length > 0) { setSyncAllPreviewOpen((open) => !open); return; }
+    void runSyncAll(users.map((u) => u.id));
+  };
+
   const syncAllButtonInner = (
     <Button
+      ref={syncAllRef}
       variant="secondary"
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
       onClick={handleSyncAll}
@@ -673,7 +787,7 @@ export default function UsersPage() {
   const syncAllButton = isTV ? (
     <TVFocusable onEnterPress={handleSyncAll}>{syncAllButtonInner}</TVFocusable>
   ) : v2 ? (
-    <div className="flex items-center gap-2"><ArrangeButton arrange={groupArrange} />{syncAllButtonInner}</div>
+    <div className="flex items-center gap-2"><V2SelectButton on={selectMode} onToggle={() => { if (selectMode) setSelectedIds(new Set()); setSelectMode(!selectMode); }} /><ArrangeButton arrange={groupArrange} />{syncAllButtonInner}</div>
   ) : syncAllButtonInner;
   const subtitle = isLoading ? 'Loading...' : v2 ? v2Summary : `${users.length} total user${users.length !== 1 ? 's' : ''}`;
 
@@ -686,7 +800,7 @@ export default function UsersPage() {
         <Header
           title="Users"
           subtitle={subtitle}
-          actions={syncAllButton}
+          actions={<div className="flex items-center gap-2 flex-wrap"><Freshness at={usersAt} />{syncAllButton}</div>}
         />
       )}
 
@@ -702,7 +816,7 @@ export default function UsersPage() {
         <NebulaPageHeading
           title="Users"
           subtitle={subtitle}
-          actions={syncAllButton}
+          actions={<div className="flex items-center gap-2 flex-wrap"><Freshness at={usersAt} />{syncAllButton}</div>}
         />
       )}
       {layoutMode === 'nebula' && !v2 && (
@@ -791,16 +905,14 @@ export default function UsersPage() {
             );
             return isTV ? <TVFocusable onEnterPress={() => setIsCreateModalOpen(true)}>{btn}</TVFocusable> : btn;
           })()}
+          rightActions={<ResetSaved ids={['users']} atDefault={peopleFilter === 'all'} onReset={() => setPeopleFilter('all')} />}
         />
 
-        {/* Loading state */}
+        <div ref={listBoxRef}>
+        <HighlightQuery q={searchQuery}>
+        {/* Loading state: grey outlines shaped like the cards that are coming. */}
         {isLoading || !extrasReady ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 bg-surface-hover">
-              <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-            </div>
-            <p className="text-muted">Loading users...</p>
-          </div>
+          <CardsSkeleton kind="people" v2={v2} view={viewMode === 'list' ? 'list' : 'grid'} label="Loading users" />
         ) : error ? (
           <LoadError what="your users" error={error} />
         ) : (
@@ -816,6 +928,9 @@ export default function UsersPage() {
                   peopleArrange={peopleArrange}
                   pins={peoplePins}
                   view={viewMode === 'list' ? 'list' : 'grid'}
+                  selecting={selectMode}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
                   watching={watchingTitles}
                   syncing={syncingUserIds}
                   onSync={async (p) => {
@@ -977,7 +1092,7 @@ export default function UsersPage() {
                                   <div>
                                     <div className="flex items-center gap-2">
                                       <p className="font-medium transition-colors group-hover:text-primary text-default truncate">
-                                        {user.name}
+                                        <Highlight text={user.name} />
                                       </p>
                                       <Badge
                                         variant={providerBadgeVariant(user)}
@@ -989,6 +1104,9 @@ export default function UsersPage() {
                                         <Badge variant="secondary" size="sm">
                                           Profile {user.nuvioProfileId}
                                         </Badge>
+                                      )}
+                                      {user.stremioProfileId && (
+                                        <Badge variant="secondary" size="sm">Profile</Badge>
                                       )}
                                       {user.secondaryProviderType && (
                                         <Badge
@@ -1109,6 +1227,8 @@ export default function UsersPage() {
             )}
           </>
         )}
+        </HighlightQuery>
+        </div>
       </div>
 
       {/* Nuvio profiles: which profiles of each Nuvio login belong to whom.
@@ -1121,6 +1241,22 @@ export default function UsersPage() {
               key={login.anchorId}
               userId={login.anchorId}
               loginLabel={nuvioLogins.length > 1 ? login.label : null}
+              onPeopleChanged={refreshUsersQuietly}
+              limits={limits}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Stremio profiles: the same card for a Stremio account that has more
+          than its main profile. */}
+      {!isLoading && extrasReady && stremioLogins.length > 0 && (
+        <div className="mt-6 flex flex-col gap-4">
+          {stremioLogins.map((login) => (
+            <ProfilesCard
+              key={login.anchorId}
+              userId={login.anchorId}
+              loginLabel={stremioLogins.length > 1 ? login.label : null}
               onPeopleChanged={refreshUsersQuietly}
               limits={limits}
             />
@@ -1154,9 +1290,9 @@ export default function UsersPage() {
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-24px)]"
           >
-            <div className="flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl bg-surface border border-default backdrop-blur-xl">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl bg-surface border border-default backdrop-blur-xl">
               <div className="flex items-center gap-2 pr-4 border-r border-default">
                 <div className="w-8 h-8 rounded-lg bg-primary-muted flex items-center justify-center">
                   <span className="text-sm font-bold text-primary">{selectedIds.size}</span>
@@ -1164,7 +1300,7 @@ export default function UsersPage() {
                 <span className="text-sm text-muted">selected</span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1173,6 +1309,27 @@ export default function UsersPage() {
                   isLoading={isSyncing}
                 >
                   Sync
+                </Button>
+                <Button
+                  ref={groupBox}
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<UserGroupIcon className="w-4 h-4" />}
+                  onClick={() => setGroupPickOpen((open) => !open)}
+                  disabled={groupBusy}
+                  aria-haspopup="menu"
+                  aria-expanded={groupPickOpen}
+                >
+                  Add to group
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<MinusIcon className="w-4 h-4" />}
+                  onClick={handleRemoveFromGroup}
+                  disabled={groupBusy}
+                >
+                  Remove from group
                 </Button>
                 <Button
                   variant="danger"
@@ -1195,6 +1352,23 @@ export default function UsersPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {groupPickOpen && (
+        <GroupPickPopup
+          anchorRef={groupBox}
+          groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+          onPick={handleAddToGroup}
+          onClose={() => setGroupPickOpen(false)}
+        />
+      )}
+      {syncAllPreviewOpen && (
+        <SyncAllPreview
+          anchorRef={syncAllRef}
+          people={usersDisplay.map((u): SyncAllPerson => ({ id: u.id, name: u.name, hasAddons: hasAddonList(u) }))}
+          onClose={() => setSyncAllPreviewOpen(false)}
+          onSync={(ids) => { setSyncAllPreviewOpen(false); void runSyncAll(ids); }}
+        />
+      )}
 
       {/* Floating Add Button - Mobile Only */}
       <button
@@ -1349,6 +1523,7 @@ function UserCard({
   limits?: LimitsSummary | null;
 }) {
   const { hideSensitive } = useTheme();
+  const router = useRouter();
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const [showActions, setShowActions] = useState(false);
 
@@ -1359,8 +1534,9 @@ function UserCard({
       setShowActions(false);
       return;
     }
-    // Navigate to detail page
-    window.location.href = `/users/${user.id}`;
+    // Open their page without reloading the app: it is quicker, it uses what
+    // resting on the card already fetched, and the card can grow into the page.
+    router.push(`/users/${user.id}`);
   };
 
   // Long-press → context menu on mobile - a plain JS timer, not the DOM
@@ -1458,7 +1634,7 @@ function UserCard({
               className="user-card-name block font-semibold break-words transition-colors hover:text-primary text-default"
               onClick={(e) => e.stopPropagation()}
             >
-              {user.name}
+              <Highlight text={user.name} />
             </Link>
           </div>
           <div className="user-card-badges">
@@ -1472,6 +1648,9 @@ function UserCard({
               <Badge variant="secondary" size="sm">
                 Profile {user.nuvioProfileId}
               </Badge>
+            )}
+            {user.stremioProfileId && (
+              <Badge variant="secondary" size="sm">Profile</Badge>
             )}
             {user.secondaryProviderType && (
               <Badge

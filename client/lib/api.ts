@@ -19,12 +19,16 @@ export interface WatchTrackingSettings {
 
 /** Whose viewing each profile on one Nuvio account is - see server/utils/nuvioProfiles.js. */
 export interface ProfilesView {
+  /** Whose profiles these are. Missing from an older server: Nuvio. */
+  provider?: 'nuvio' | 'stremio';
   persons: Array<{
     id: string; username: string; profileIndex: number; isActive: boolean; colorIndex: number;
     avatarUrl: string | null; useGravatar: boolean; email: string | null; movies: number; episodes: number;
   }>;
   profiles: Array<{
     index: number; name: string | null; color: string | null; usesPrimaryAddons: boolean;
+    /** A Stremio profile with a PIN nobody has entered here yet, so it cannot be read. */
+    locked?: boolean;
     /** Who it counts for; null when it is not counted. */
     ownerId: string | null;
     ownPersonId: string | null;
@@ -32,7 +36,7 @@ export interface ProfilesView {
     titles: { movies: number; episodes: number };
     merged: { id: string; donorUsername: string; createdAt: string } | null;
     /** Whose limits its Limits pill opens: its own person's id, or its own as a merged profile. */
-    limitId?: string;
+    limitId?: string | null;
   }>;
   misplaced: { titles: number } | null;
   removedUserId?: string | null;
@@ -148,6 +152,14 @@ class ApiClient {
   // resource next would otherwise open on the pre-change copy - a group
   // recoloured from the Groups list opened its own page in the old colour.
   private lastKnown = new Map<string, unknown>();
+  // Pages warmed ahead of a click (prefetchUser / prefetchAddon): the GETs a
+  // person's or addon's page makes when it opens, started while the pointer
+  // rests on its card. The page's first read of the same endpoint takes the
+  // warm answer instead of starting over; one request per endpoint at a time,
+  // gone after a minute or on any change, and a failure is never kept.
+  private warm = new Map<string, { at: number; promise: Promise<unknown> }>();
+  private warming = false;
+  private static readonly WARM_TTL_MS = 60 * 1000;
   private lastKnownRestored = false;
   // Set when a response lands, so going to the background only writes the
   // snapshot again when something in it changed.
@@ -290,6 +302,7 @@ class ApiClient {
     if (method !== 'GET') {
       return this.fetchImpl<T>(endpoint, options).finally(() => {
         this.recentGets.clear();
+        this.warm.clear();
         const path = endpoint.split('?')[0];
         for (const k of Array.from(this.lastKnown.keys())) {
           if (k.startsWith(`${path}::`) || k.startsWith(`${path}?`)) { this.lastKnown.delete(k); this.lastKnownDirty = true; }
@@ -297,6 +310,14 @@ class ApiClient {
       });
     }
     const key = `${endpoint}::${options.token || this.getToken() || ''}`;
+
+    // A page asking for something already warmed takes that answer (once).
+    const warmed = this.warm.get(key);
+    if (warmed) {
+      if (!this.warming) this.warm.delete(key);
+      if (Date.now() - warmed.at < ApiClient.WARM_TTL_MS) return warmed.promise as Promise<T>;
+      this.warm.delete(key);
+    }
 
     const inFlight = this.inFlightGets.get(key);
     if (inFlight) return inFlight;
@@ -317,7 +338,22 @@ class ApiClient {
         this.inFlightGets.delete(key);
       });
     this.inFlightGets.set(key, promise);
+    if (this.warming) {
+      this.warm.set(key, { at: Date.now(), promise });
+      promise.catch(() => { if (this.warm.get(key)?.promise === promise) this.warm.delete(key); });
+    }
     return promise;
+  }
+
+  /** Runs the given GET calls in "warm" mode (see `warm` above). */
+  private warmUp(calls: Array<() => Promise<unknown>>) {
+    if (typeof window === 'undefined') return;
+    this.warming = true;
+    try {
+      for (const call of calls) call().catch(() => {});
+    } finally {
+      this.warming = false;
+    }
   }
 
   private async fetchImpl<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
@@ -681,6 +717,11 @@ class ApiClient {
 
   async giveProfileOwnPerson(id: string, profileIndex: number) {
     return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}/own-person`, { method: 'POST' });
+  }
+
+  // Open a Stremio profile that has a PIN.
+  async unlockProfile(id: string, profileIndex: number, pin: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}/unlock`, { method: 'POST', body: JSON.stringify({ pin }) });
   }
 
   async tidyProfiles(id: string) {
@@ -1442,7 +1483,7 @@ class ApiClient {
   }
 
   async deleteInvitation(id: string) {
-    return this.fetch(`/invitations/${id}`, { method: 'DELETE' });
+    return this.fetch<{ message?: string; trashId?: string | null }>(`/invitations/${id}`, { method: 'DELETE' });
   }
 
   async getInvitationRequests(id: string) {
@@ -1845,6 +1886,26 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(change),
     });
+  }
+
+  // Clear on the bell, undoable: the server holds what Clear removes in the
+  // Trash and hands back its id (server/routes/settings.js, utils/trash.js).
+  async clearBell() {
+    return this.fetch<{ state: BellState; trashId: string | null }>('/settings/bell/clear', { method: 'POST' });
+  }
+
+  // Where Vault alerts go; only what differs from "everything on" is stored.
+  async getVaultAlerts() {
+    return this.fetch<{ push: boolean; bell: boolean; discord: boolean }>('/settings/vault-alerts');
+  }
+  async setVaultAlerts(change: { push?: boolean; bell?: boolean; discord?: boolean }) {
+    return this.fetch<{ push: boolean; bell: boolean; discord: boolean }>('/settings/vault-alerts', { method: 'POST', body: JSON.stringify(change) });
+  }
+
+  // The background jobs and when each last ran (Maintenance). `available` is
+  // false on the public multi-tenant instance, where they are not shown.
+  async getBackgroundJobs() {
+    return this.fetch<{ available: boolean; jobs: Array<{ name: string; label: string; ok: boolean; lastRunAt: string; message: string | null }> }>('/settings/jobs');
   }
 
   // PWA web-push
@@ -3002,8 +3063,21 @@ class ApiClient {
     });
   }
 
+  /** "I renewed it": moves the end date on one billing period. previousExpiresAt is for Undo. */
+  async markVaultRenewed(id: string) {
+    return this.fetch<{ expiresAt: string; previousExpiresAt: string }>(`/vault/${encodeURIComponent(id)}/renewed`, { method: 'POST' });
+  }
+  /** How many addons carry each entry's key, by entry id (entries nothing carries are left out). */
+  async getVaultUsageCounts() {
+    return this.fetch<{ counts: Record<string, number> }>('/vault/usage-counts');
+  }
+  /** Which addons (and whose AIOStreams setups) carry this key. */
+  async getVaultUsedBy(id: string) {
+    return this.fetch<{ addons: { id: string; name: string; groups: string[] }[]; aioConfigs: { userId: string; username: string }[] }>(`/vault/${encodeURIComponent(id)}/used-by`);
+  }
+
   async deleteVaultEntry(id: string) {
-    return this.fetch(`/vault/${id}`, { method: 'DELETE' });
+    return this.fetch<{ success?: boolean; trashId?: string | null }>(`/vault/${id}`, { method: 'DELETE' });
   }
 
   async reorderVaultEntries(category: string, orderedIds: string[]) {
@@ -3749,6 +3823,28 @@ class ApiClient {
    * Callers must only fire this for a real mouse - prefetching on touch
    * would spend someone's data on titles they merely scrolled past.
    */
+  /**
+   * Warms a person's page: called when the pointer rests on their card (or a
+   * finger touches it) so the details are already there when it opens. Quiet
+   * on failure; never used on a TV.
+   */
+  prefetchUser(id: string) {
+    if (!id) return;
+    this.warmUp([
+      () => this.getUser(id),
+      () => this.getUserGroupAddons(id),
+    ]);
+  }
+
+  /** The same for an addon's page. */
+  prefetchAddon(id: string) {
+    if (!id) return;
+    this.warmUp([
+      () => this.getAddon(id),
+      () => this.getGroups(),
+    ]);
+  }
+
   prefetchMediaDetails(itemId: string, type: string, videoId?: string | null) {
     if (!itemId || !type) return;
     const key = `${itemId}|${type}|${videoId || ''}`;
@@ -4314,6 +4410,10 @@ export interface User {
   providerType?: 'stremio' | 'nuvio' | 'jellyfin';
   /** Which Nuvio profile's addon list this user manages (1 is the primary). */
   nuvioProfileId?: number;
+  /** Set on a person made for a Stremio profile other than the account's main one. */
+  stremioProfileId?: string | null;
+  /** On a Stremio account's main person: how many profiles the account has. */
+  stremioProfiles?: number;
   /** For a Jellyfin login: which kind of server, where, and the name they sign in with there. */
   jellyfinServerKind?: 'jellyfin' | 'aiostreams' | 'aiometadata';
   jellyfinServerLabel?: string;
@@ -4438,9 +4538,13 @@ export interface CreateGroupData {
 
 export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
-  | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom';
+  | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom'
+  // A Jellyfin sign-in, and a note: something kept safe that is not a key.
+  | 'jellyfin' | 'note';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth' | 'alldebrid' | 'premiumize' | 'debrid_link';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth' | 'alldebrid' | 'premiumize' | 'debrid_link'
+  // A playlist address, a real usenet sign-in, a Jellyfin (or AIOStreams app) sign-in, an AIOStreams configuration, and the four metadata keys SlickSync can ask about.
+  | 'm3u_playlist' | 'nntp_auth' | 'jellyfin_auth' | 'aiostreams_config' | 'tmdb_key' | 'omdb_key' | 'mdblist_key' | 'rpdb_key';
 
 export interface VaultEntry {
   id: string;
@@ -4450,7 +4554,10 @@ export interface VaultEntry {
   secretLabel: string;
   dashboardUrl?: string | null;
   cost?: number | null;
-  costCycle?: 'monthly' | 'yearly';
+  /** 'once' is a lifetime plan (paid one time, never ends); 'free' costs nothing and never ends. */
+  costCycle?: 'monthly' | 'yearly' | 'once' | 'free';
+  /** The end date steps forward a month or a year by itself, with no warning. */
+  autoRenew?: boolean;
   expiresAt?: string | null;
   notifyDaysBefore: number;
   lastCheckedAt?: string | null;
@@ -4488,15 +4595,16 @@ export interface VaultListResponse {
 export interface VaultEntryInput {
   name: string;
   category: VaultCategory;
-  provider?: string;
+  provider?: string | null;
   secretLabel?: string;
   secret: string;
   testType?: VaultTestType;
-  testConfig?: Record<string, any>;
-  dashboardUrl?: string;
-  cost?: number;
-  costCycle?: 'monthly' | 'yearly';
-  expiresAt?: string;
+  testConfig?: Record<string, any> | null;
+  dashboardUrl?: string | null;
+  cost?: number | null;
+  costCycle?: 'monthly' | 'yearly' | 'once' | 'free';
+  autoRenew?: boolean;
+  expiresAt?: string | null;
   notifyDaysBefore?: number;
   autoRemoveEnabled?: boolean;
   autoRemoveAfterDays?: number;

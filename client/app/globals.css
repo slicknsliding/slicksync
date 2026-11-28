@@ -2404,3 +2404,11 @@ html:not([data-tv]) .page-toolbar-stick.tucked { translate: 0 calc(-100% - 140px
 .empty-state-line { font-size: 13px; color: var(--color-text-muted); max-width: 300px; line-height: 1.45; }
 .empty-state-float { animation: empty-state-float 2.6s ease-in-out infinite; }
 @keyframes empty-state-float { 50% { transform: translateY(-4px); } }
+/* ---- The app's own tooltip (components/ui/Tooltips): one box for the whole app, under what it names, pointer touching it. ---- */
+.ss-tip { position: fixed; z-index: 9999; max-width: min(280px, calc(100vw - 12px)); padding: 5px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: #fff; background: #0b0c10; border: 1px solid var(--color-popup-border, rgba(255, 255, 255, 0.18)); box-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.7); pointer-events: none; overflow-wrap: anywhere; }
+.ss-tip::before { content: ''; position: absolute; left: var(--tip-x, 50%); top: -5px; width: 8px; height: 8px; margin-left: -4px; background: #0b0c10; border-left: 1px solid var(--color-popup-border, rgba(255, 255, 255, 0.18)); border-top: 1px solid var(--color-popup-border, rgba(255, 255, 255, 0.18)); transform: rotate(45deg); }
+.ss-tip[data-above]::before { top: auto; bottom: -5px; transform: rotate(225deg); }
+/* ---- Drag a window down (components/ui/Modal): the finger moves it, so the browser must not also scroll the page with it. ---- */
+[role="dialog"][data-sheet-gone] { pointer-events: none; }
+/* ---- Back where you were (components/layout/ScrollToTopOnNavigate): the card you had opened, marked for a moment. ---- */
+.back-mark { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 14px; }

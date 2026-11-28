@@ -4,6 +4,11 @@
 // private-mode/SQLite only (public mode is Postgres, managed by whoever
 // hosts it, not this app).
 //
+// One thing here does run on Postgres: the trim of old read notifications.
+// Nobody but this app clears that table, and a public instance has no
+// maintenance settings of its own, so it trims by itself there (see
+// publicNotificationKeepDays below).
+//
 // Deliberately VACUUM-only, no data pruning: an earlier version of this
 // file also offered opt-in pruning of old EpisodeWatchHistory/
 // MovieWatchHistory rows, but that conflicts with real features that read
@@ -58,6 +63,19 @@ const DEFAULT_SETTINGS = {
   pruneNotificationsEnabled: false,
   pruneNotificationsDays: 30,
   lastNotificationsPruneAt: null,
+}
+
+// On Postgres the trim has no switch in Settings, so it is always on: read
+// notifications older than this many days go, once a day.
+// NOTIFICATION_KEEP_DAYS changes the number; 0 turns the trim off.
+const PUBLIC_NOTIFICATION_KEEP_DAYS = 90
+
+function publicNotificationKeepDays() {
+  const raw = process.env.NOTIFICATION_KEEP_DAYS
+  if (raw === undefined || String(raw).trim() === '') return PUBLIC_NOTIFICATION_KEEP_DAYS
+  const days = Number(raw)
+  if (!Number.isFinite(days) || days < 0) return PUBLIC_NOTIFICATION_KEEP_DAYS
+  return Math.min(3650, Math.floor(days))
 }
 
 // Doubles as the "are we on SQLite/private mode" gate (null = Postgres).
@@ -203,16 +221,44 @@ async function pruneLogs(prisma) {
 // are never touched regardless of age, and the deletion is by createdAt so
 // "30 days" reads as "notifications from more than a month ago", not "read
 // more than a month ago".
+//
+// On SQLite the age comes from Settings. On Postgres it is the instance's
+// own number (publicNotificationKeepDays), and nothing is written to the
+// settings file, which a public instance never reads. A notification that
+// was cleared from the bell but kept so its check stays quiet (dismissedAt,
+// utils/bellState.js) counts as read, so those go at the same age; if the
+// problem is still there by then, the check says so once more.
 async function pruneNotifications(prisma) {
-  if (!getDbFilePath()) return null
-  const settings = getSettings()
-  const days = Math.min(365, Math.max(1, Number(settings.pruneNotificationsDays) || 30))
+  const onSqlite = !!getDbFilePath()
+  const days = onSqlite
+    ? Math.min(365, Math.max(1, Number(getSettings().pruneNotificationsDays) || 30))
+    : publicNotificationKeepDays()
+  if (!days) return null
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   const { count } = await prisma.notification.deleteMany({
     where: { read: true, createdAt: { lt: cutoff } },
   })
-  saveSettings({ lastNotificationsPruneAt: new Date().toISOString() })
+  if (onSqlite) saveSettings({ lastNotificationsPruneAt: new Date().toISOString() })
   return { notificationsDeleted: count, days }
+}
+
+// Postgres: the one job this file does there. The last run is only kept in
+// memory, so a restart trims again; a trim with nothing to clear costs one
+// query.
+let lastPublicTrimAt = 0
+async function trimPublicNotifications(prisma) {
+  if (Date.now() - lastPublicTrimAt < PRUNE_MIN_GAP_MS) return null
+  lastPublicTrimAt = Date.now()
+  try {
+    const pruned = await pruneNotifications(prisma)
+    if (pruned?.notificationsDeleted) {
+      console.log(`[DbMaintenance] Cleared ${pruned.notificationsDeleted} read notifications older than ${pruned.days} days`)
+    }
+    return pruned
+  } catch (e) {
+    console.warn('[DbMaintenance] Notification trim failed:', e?.message)
+    return null
+  }
 }
 
 let timer = null
@@ -220,7 +266,7 @@ let timer = null
 // Each step is independently guarded: one failing (or being disabled) must
 // never stop the others from running.
 async function checkAndRun(prisma) {
-  if (!getDbFilePath()) return
+  if (!getDbFilePath()) return trimPublicNotifications(prisma)
   const settings = getSettings()
   const isDue = (last, gap) => !last || (Date.now() - new Date(last).getTime()) >= gap
 
@@ -281,7 +327,8 @@ async function checkAndRun(prisma) {
 
 function scheduleDbMaintenance(prisma) {
   if (timer) { clearInterval(timer); timer = null }
-  if (!getDbFilePath()) return // public mode - never schedule
+  // Postgres: only the notification trim runs, and not when it is turned off.
+  if (!getDbFilePath() && !publicNotificationKeepDays()) return
   // Staggered well past the other boot-time schedulers, same pattern as
   // catalogAutoRefresh's own 90s stagger.
   setTimeout(() => checkAndRun(prisma), 120 * 1000)
@@ -295,4 +342,5 @@ function clearDbMaintenanceSchedule() {
 module.exports = {
   getSettings, saveSettings, runVacuum, runIntegrityCheck, pruneLogs, pruneNotifications,
   scheduleDbMaintenance, clearDbMaintenanceSchedule, getDbFilePath,
+  publicNotificationKeepDays, checkAndRun,
 }

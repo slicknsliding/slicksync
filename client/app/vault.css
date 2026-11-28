@@ -1,0 +1,33 @@
+/* The Vault: the add form's tiles, switches and folded strips, and the simpler card a note gets. Loaded after globals.css. */
+.vault-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 520px) { .vault-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.vault-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 12px; border-radius: 14px; background: var(--color-subtle, var(--color-surface-hover)); border: 1px solid var(--color-surface-border); color: var(--color-text); text-align: left; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease; min-width: 0; }
+.vault-tile:hover, .vault-tile:focus-visible { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface-border)); outline: none; }
+.vault-tile small { font-size: 12px; font-weight: 400; line-height: 1.3; color: var(--color-text-muted); }
+.vault-tile.wide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; }
+.vault-tile.wide small { margin-left: auto; text-align: right; }
+.vault-kind-mark { display: grid; place-items: center; flex: none; border-radius: 8px; object-fit: contain; line-height: 1; }
+.vault-seg { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 11px; background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
+.vault-seg button { flex: 1; padding: 7px 8px; border-radius: 8px; font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--color-text-muted); }
+.vault-seg button.on { background: var(--color-surface); color: var(--color-text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.vault-fold { border: 1px solid var(--color-surface-border); border-radius: 14px; overflow: hidden; }
+.vault-fold > button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 12px 14px; background: var(--color-subtle, var(--color-surface-hover)); color: var(--color-text); font-size: 14px; font-weight: 600; text-align: left; }
+.vault-fold > button small { margin-left: auto; font-size: 12.5px; font-weight: 400; color: var(--color-text-muted); }
+.vault-fold-body { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 14px; }
+.vault-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; color: var(--color-text); background: color-mix(in srgb, var(--color-success) 10%, transparent); }
+.vault-check.none { background: var(--color-subtle, var(--color-surface-hover)); color: var(--color-text-muted); }
+/* A Classic card's one badge: Working, Not working, Ends in 2 days, Lifetime. */
+.vault-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--color-surface-hover); color: var(--color-text-muted); }
+.vault-badge.live { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
+.vault-badge.bad { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 14%, transparent); }
+.vault-badge.warn { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 14%, transparent); }
+.vault-badge.life { color: var(--color-secondary); background: none; border: 1px solid color-mix(in srgb, var(--color-secondary) 45%, transparent); }
+/* "Used by 3 addons": a chip that opens the list right under itself. */
+.vault-used-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--color-text); background: var(--color-surface-hover); border: 1px solid var(--color-surface-border); }
+.vault-used-chip:hover { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface-border)); }
+/* Search across the whole Vault, and the "Needs a look" chip beside it. */
+.vault-search { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 180px; height: 42px; padding: 0 14px; border-radius: 999px; background: var(--color-surface); border: 1px solid var(--color-surface-border); color: var(--color-text-muted); }
+.vault-search:focus-within { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface-border)); }
+.vault-search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; font-size: 15px; color: var(--color-text); }
+.vault-need { height: 42px; padding: 0 14px; border-radius: 999px; font-size: 13.5px; font-weight: 600; white-space: nowrap; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-surface-border); }
+.vault-need.on { color: #fff; background: var(--color-primary); border-color: transparent; }

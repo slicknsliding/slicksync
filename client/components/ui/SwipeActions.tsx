@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { fxBuzz } from '@/lib/effects';
 
 export type SwipeAction = { label: string; tone?: 'main' | 'plain'; onClick: () => void };
 
@@ -20,12 +21,15 @@ const WIDTH_EACH = 76;
 export function SwipeActions({ actions, children }: { actions: SwipeAction[]; children: ReactNode }) {
   const isTV = useIsTV();
   const wrap = useRef<HTMLDivElement>(null);
-  const [touch, setTouch] = useState(false);
+  // Known from the first draw. Finding it out a moment later swapped the card
+  // into a wrapper, which rebuilt every card (pictures and all) once per page.
+  // Cards are drawn in the browser after their data arrives, so there is no
+  // server copy for this to disagree with.
+  const [touch, setTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
   useEffect(() => {
     const mq = window.matchMedia?.('(pointer: coarse)');
     if (!mq) return;
     const set = () => setTouch(mq.matches);
-    set();
     mq.addEventListener?.('change', set);
     return () => mq.removeEventListener?.('change', set);
   }, []);
@@ -63,7 +67,10 @@ export function SwipeActions({ actions, children }: { actions: SwipeAction[]; ch
     };
     const end = () => {
       if (mode !== 'swipe') return;
+      const opened = base === 0 && x < -max / 2;
       base = x < -max / 2 ? -max : 0;
+      // Effects → Vibrate: a tiny buzz as the card clicks open.
+      if (opened) fxBuzz();
       place(base, false);
       mode = '';
     };

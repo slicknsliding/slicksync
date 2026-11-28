@@ -304,7 +304,8 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
     const move = growWindow(panel, origin, true, overlayRef.current, shadowRef.current);
     return () => {
       move.cancel();
-      if (fxOn('poster')) shrinkAway(panel, origin, stood.current);
+      // Dragged away by a finger: it has already left, so nothing goes back into the poster.
+      if (fxOn('poster') && !panel.hasAttribute('data-sheet-gone')) shrinkAway(panel, origin, stood.current);
     };
   }, [isOpen, origin]);
   // The latest onClose, read from the key handler, so a parent that passes a
@@ -344,6 +345,68 @@ function LightShell({ isOpen, onClose, size, titleId, ariaLabel, sheet, children
       window.removeEventListener('touchmove', onTouchMove);
     };
   }, [isOpen]);
+
+  // Effects → Drag a window down (phones): pull the window down and it follows
+  // the finger; let go past a third of the way, or with a flick, and it
+  // closes. Sooner, and it settles back. Only when what is under the finger
+  // cannot scroll up any further, so reading down a long window still scrolls.
+  // It is moved with `translate`, which leaves the opening animation's own
+  // transform alone.
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!isOpen || !panel || isTV || !fxOn('sheetdrag')) return;
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    let x0 = 0, y0 = 0, t0 = 0, dy = 0, mode: '' | 'drag' | 'no' = '';
+    const settle = (to: string, ms: number) => {
+      panel.style.transition = `translate ${ms}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
+      panel.style.translate = to;
+    };
+    const start = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || panel.hasAttribute('data-fx-morphing')) { mode = 'no'; return; }
+      const t = e.target as Element | null;
+      // Typing, sliders and sideways rows keep their touches.
+      if (t?.closest('input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-sheet-drag]')) { mode = 'no'; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = e.timeStamp; dy = 0; mode = '';
+    };
+    const move = (e: TouchEvent) => {
+      if (mode === 'no' || e.touches.length !== 1) return;
+      const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+      if (!mode) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        // Downward, clearly so, and nothing under the finger left to scroll up.
+        if (my <= 0 || Math.abs(my) < Math.abs(mx) * 1.4 || scrollsFurther(e.target, 0, -1)) { mode = 'no'; return; }
+        mode = 'drag';
+        panel.style.transition = 'none';
+      }
+      if (e.cancelable) e.preventDefault();
+      dy = Math.max(0, my);
+      panel.style.translate = `0 ${dy}px`;
+    };
+    const end = (e: TouchEvent) => {
+      if (mode !== 'drag') { mode = ''; return; }
+      mode = '';
+      const fast = dy > 40 && dy / Math.max(1, e.timeStamp - t0) > 0.7;
+      if (e.type === 'touchend' && (dy > Math.min(160, panel.offsetHeight / 3) || fast)) {
+        panel.setAttribute('data-sheet-gone', '');
+        settle('0 110vh', 200);
+        window.setTimeout(() => closeRef.current(), 190);
+      } else {
+        settle('0 0', 220);
+      }
+    };
+    panel.addEventListener('touchstart', start, { passive: true });
+    panel.addEventListener('touchmove', move, { passive: false });
+    panel.addEventListener('touchend', end, { passive: true });
+    panel.addEventListener('touchcancel', end, { passive: true });
+    return () => {
+      panel.removeEventListener('touchstart', start);
+      panel.removeEventListener('touchmove', move);
+      panel.removeEventListener('touchend', end);
+      panel.removeEventListener('touchcancel', end);
+      panel.style.translate = ''; panel.style.transition = '';
+      panel.removeAttribute('data-sheet-gone');
+    };
+  }, [isOpen, isTV]);
 
   useEffect(() => {
     if (!isOpen) return;

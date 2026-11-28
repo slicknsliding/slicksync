@@ -50,4 +50,31 @@ function vaultFieldProblem(body = {}) {
   return null
 }
 
-module.exports = { cleanDashboardUrl, sanitizeRestoredEntry, vaultFieldProblem }
+// Billing: how often `cost` is paid. "once" and "free" have no renewal date.
+const COST_CYCLES = ['monthly', 'yearly', 'once', 'free']
+const normalizeCostCycle = (value) => (COST_CYCLES.includes(value) ? value : 'monthly')
+
+// What a saved entry must look like, judged on the values it will have AFTER
+// the save ({ category, costCycle, expiresAt, autoRenew, cost, ... }). Returns
+// only the fields that have to be forced; the caller applies them on top of
+// what it was about to write. Pure, so create, update and tests share it.
+function billingRulePatch(after = {}) {
+  const patch = {}
+  if (after.category === 'note') {
+    // A note is text to keep, not a service: nothing to check, pay or renew.
+    return {
+      testType: 'manual', testConfig: null, cost: null, costCycle: 'monthly',
+      expiresAt: null, autoRenew: false, backupEntryId: null, dashboardUrl: null,
+    }
+  }
+  const cycle = normalizeCostCycle(after.costCycle)
+  if (cycle === 'once' || cycle === 'free') {
+    patch.expiresAt = null
+    patch.autoRenew = false
+    if (cycle === 'free') patch.cost = null
+  }
+  // Only a monthly or yearly entry can renew itself (once/free cleared it above).
+  return patch
+}
+
+module.exports = { cleanDashboardUrl, sanitizeRestoredEntry, vaultFieldProblem, COST_CYCLES, normalizeCostCycle, billingRulePatch }

@@ -326,7 +326,36 @@ async function runGuardSweep(prisma, deps, { onlyAccountId = null } = {}) {
 // No scheduler of its own: detection runs inside the Sync Guardian's
 // 5-minute loop (see syncGuardian.js), reusing its per-user provider fetch -
 // a second poller here would double both the API calls and the alerts.
+/** How many addons SlickSync last left on (or confirmed on) this person's account; 0 when it never has. */
+async function lastAssertedCount(prisma, userId, providerType) {
+  try {
+    const user = await prisma.user.findFirst({ where: { id: userId }, select: { guardStateJson: true } })
+    const entry = parseGuardState(user?.guardStateJson).byProvider?.[providerType || 'stremio']
+    return Array.isArray(entry?.keys) ? entry.keys.length : 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * An account that had addons and now reads back with none at all is far more
+ * often a provider hiccup than a person removing everything. A push built on
+ * that read would drop their own addons and the protected ones, which were
+ * never seen. So: read once more after a moment. `readAgain()` returns the
+ * list. Returns 'ok' (go ahead: it is really empty, or was never known to hold
+ * anything) or 'changed' (the second read differs: do nothing this time).
+ */
+async function confirmEmptyRead(prisma, userId, providerType, readAgain, { waitMs = 2000 } = {}) {
+  if ((await lastAssertedCount(prisma, userId, providerType)) === 0) return 'ok'
+  await new Promise((resolve) => setTimeout(resolve, waitMs))
+  let again = null
+  try { again = await readAgain() } catch { return 'changed' }
+  return Array.isArray(again) && again.length === 0 ? 'ok' : 'changed'
+}
+
 module.exports = {
+  lastAssertedCount,
+  confirmEmptyRead,
   FINGERPRINT_VERSION,
   upgradeState,
   recordAssertedState,

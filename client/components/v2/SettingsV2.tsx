@@ -7,6 +7,7 @@
 // setting" search and the command palette scroll to.
 
 import type { ReactNode } from 'react';
+import { SavedTick } from '@/lib/savedTick';
 
 const BORDER = 'var(--color-surface-border)';
 
@@ -78,7 +79,7 @@ export function V2SetRow({ title, line, control, below, also, disabled }: {
           <p className="font-semibold text-[14.5px] text-default">{title}</p>
           <p className="text-muted text-[12.5px] mt-0.5">{line}</p>
         </div>
-        {control && <div className="flex items-center gap-2 shrink-0 max-w-full">{control}</div>}
+        {control && <div className="flex items-center gap-2 shrink-0 max-w-full"><SavedTick id={title} />{control}</div>}
       </div>
       {below && <div className="mt-2.5">{below}</div>}
     </div>
@@ -110,6 +111,7 @@ export function V2ToggleTile({ title, line, hint, on, onChange, also, disabled, 
         <p className="text-muted text-[12.5px] mt-0.5">{line}</p>
       </span>
       {extra}
+      <SavedTick id={title} />
       <V2Switch on={on} onChange={onChange} label={`Turn ${title.toLowerCase()} ${on ? 'off' : 'on'}`} disabled={disabled} />
     </div>
   );

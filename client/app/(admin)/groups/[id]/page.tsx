@@ -21,6 +21,8 @@ import { Button, Card, Avatar, AvatarColorSwatches, AvatarGroup, Badge, Modal, C
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
+import { showUndoable } from '@/components/ui/undoToast';
+import { ArmedButton, ArmedFloat, findMenuButton } from '@/components/ui/ArmedButton';
 import {
   ArrowPathIcon,
   PencilIcon,
@@ -381,6 +383,8 @@ export default function GroupDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  // v2: the red "Delete?" / "Remove?" that comes up at the ⋯ after its menu item is pressed.
+  const [armed, setArmed] = useState<{ kind: 'group' | 'member'; id: string; name: string; anchor: HTMLElement } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isAddAddonModalOpen, setIsAddAddonModalOpen] = useState(false);
@@ -649,11 +653,15 @@ export default function GroupDetailPage() {
     }
   }, [params.id, refetchData, addons.length]);
 
+  const groupName = group?.name || 'Group';
   const handleDelete = useCallback(async () => {
     setIsDeleting(true);
     try {
-      await api.deleteGroup(params.id as string);
-      toast.success('Group deleted successfully');
+      const id = params.id as string;
+      const name = groupName;
+      const res = await api.deleteGroup(id) as { trashId?: string | null } | undefined;
+      // Undo brings the group back (with its people and addons) and returns to it.
+      showUndoable(`${name} deleted`, res?.trashId, `${name} is back`, () => router.push(`/groups/${id}`));
       router.push('/groups');
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete group');
@@ -661,20 +669,20 @@ export default function GroupDetailPage() {
       setIsDeleting(false);
       setIsDeleteModalOpen(false);
     }
-  }, [params.id, router]);
+  }, [params.id, router, groupName]);
 
   const handleRemoveUser = useCallback(async (userId: string, userName: string) => {
     setUsersSyncing(true);
     try {
-      await api.removeUserFromGroup(params.id as string, userId);
-      toast.success(`${userName} removed from group`);
+      const res = await api.removeUserFromGroup(params.id as string, userId) as { trashId?: string | null } | undefined;
+      showUndoable(`${userName} removed from ${groupName}`, res?.trashId, `${userName} is back`, () => { void refetchData(); });
       await refetchData();
     } catch (err: any) {
       toast.error(err.message || `Failed to remove ${userName}`);
     } finally {
       setUsersSyncing(false);
     }
-  }, [params.id, refetchData]);
+  }, [params.id, refetchData, groupName]);
 
   // Sync individual user
   const handleSyncUser = useCallback(async (userId: string, userName: string) => {
@@ -1014,13 +1022,14 @@ export default function GroupDetailPage() {
         () => setIsEditModalOpen(true),
       )}
       {tv(
-        <Button
+        <ArmedButton
           variant="danger"
           leftIcon={<TrashIcon className="w-5 h-5" />}
-          onClick={() => setIsDeleteModalOpen(true)}
+          armedLabel="Delete?"
+          onConfirm={handleDelete}
         >
           Delete
-        </Button>,
+        </ArmedButton>,
         () => setIsDeleteModalOpen(true),
       )}
     </div>
@@ -1072,11 +1081,19 @@ export default function GroupDetailPage() {
             onToggleActive={handleToggleActive}
             onClearMembers={() => setIsClearMembersModalOpen(true)}
             onClearAddons={() => setIsClearAddonsModalOpen(true)}
-            onDelete={() => setIsDeleteModalOpen(true)}
+            onDelete={() => {
+              const anchor = findMenuButton('More');
+              if (anchor) setArmed({ kind: 'group', id: params.id as string, name: groupName, anchor });
+              else void handleDelete();
+            }}
             onAddPerson={() => setIsAddMemberModalOpen(true)}
             onAddAddon={() => setIsAddAddonModalOpen(true)}
             onSyncUser={handleSyncUser}
-            onRemoveUser={handleRemoveUser}
+            onRemoveUser={(id, name) => {
+              const anchor = findMenuButton(`${name} options`);
+              if (anchor) setArmed({ kind: 'member', id, name, anchor });
+              else void handleRemoveUser(id, name);
+            }}
             onRemoveAddon={handleRemoveAddon}
             onReorder={handleDragEnd}
           />
@@ -1300,15 +1317,16 @@ export default function GroupDetailPage() {
                             () => { if (!isUserSyncing) handleSyncUser(user.id, displayName); },
                           )}
                           {tv(
-                            <Button
+                            <ArmedButton
                               variant="ghost"
                               size="sm"
                               leftIcon={<UserMinusIcon className="w-4 h-4" />}
-                              onClick={() => handleRemoveUser(user.id, displayName)}
+                              armedLabel="Remove?"
+                              onConfirm={() => handleRemoveUser(user.id, displayName)}
                               className="text-error hover:bg-error-muted"
                             >
                               Remove
-                            </Button>,
+                            </ArmedButton>,
                             () => handleRemoveUser(user.id, displayName),
                           )}
                         </div>
@@ -1515,7 +1533,20 @@ export default function GroupDetailPage() {
       </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {armed && (
+        <ArmedFloat
+          anchor={armed.anchor}
+          armedLabel={armed.kind === 'group' ? 'Delete?' : 'Remove?'}
+          onCancel={() => setArmed(null)}
+          onConfirm={() => {
+            const a = armed;
+            setArmed(null);
+            if (a.kind === 'group') void handleDelete(); else void handleRemoveUser(a.id, a.name);
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Modal (TV; the other designs ask with a red Delete? button) */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}

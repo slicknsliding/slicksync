@@ -13,6 +13,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
@@ -627,11 +628,12 @@ export default function ListsPage() {
           {!isTV && <ArrangeBar arrange={catalogArrange} />}
 
           {loaded && lists.length === 0 && (
-            <Card padding="lg" className="text-center">
-              <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
-              <p className="text-sm text-muted">No catalogs yet.</p>
-              <p className="text-xs text-subtle mt-1">Create one, then add titles from any movie or show&apos;s details.</p>
-            </Card>
+            <EmptyState
+              art="catalog"
+              title="No catalogs yet"
+              line="Group movies and shows into rows you can send to your people's home screens. Make one, then add titles from any title's details."
+              action={<Button variant="primary" onClick={() => setShowCreate(true)}>New catalog</Button>}
+            />
           )}
 
           {v2 && lists.length > 0 && (

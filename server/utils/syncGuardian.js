@@ -169,8 +169,10 @@ async function checkAllAccounts(prisma, deps, accountId) {
     for (const id of await scheduledAccountIds(prisma, accountId)) {
       await checkAccount(prisma, id, deps).catch((e) => console.warn('[SyncGuardian] check failed:', e?.message))
     }
+    require('./jobStatus').noteRun('accountGuard', { ok: true })
   } catch (e) {
     console.warn('[SyncGuardian] check failed:', e?.message)
+    require('./jobStatus').noteRun('accountGuard', { ok: false, message: e?.message })
   }
 }
 

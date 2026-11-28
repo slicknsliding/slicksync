@@ -41,7 +41,7 @@ echo "SLICKSYNC_PRIVATE_PASSWORD=$(openssl rand -base64 18)" >> .env
 docker compose -f docker-compose.private.yml up -d
 ```
 
-Open `:3000` and sign in with the username and password from `.env`. More in [Installation](#-installation).
+Open it through your reverse proxy, or at `http://localhost:3000` on that machine, and sign in with the username and password from `.env`. More in [Installation](#-installation).
 
 > [!IMPORTANT]
 > Without `SLICKSYNC_PRIVATE_USERNAME` / `SLICKSYNC_PRIVATE_PASSWORD` there's no login — anyone who can reach it can manage it. Only leave them out behind a login proxy (Authelia, Authentik, Cloudflare Access…).
@@ -103,6 +103,7 @@ Open `:3000` and sign in with the username and password from `.env`. More in [In
 | **Patch Cinemeta** | Remove its search, catalogs or metadata per person; restore exactly |
 | **Keys that follow the addons** | Rotate a key in the Vault and every account updates |
 | **Account Guard** | Addon changes made outside SlickSync, with Re-assert or Accept |
+| **Every profile tracked** | Separate one into its own person, Merge back, or Stop tracking; a PIN is asked for once |
 | **QR sign-in and merge** | Sign in without a password; merge with a Nuvio account |
 
 Everything under *Everything else* works for Stremio too.
@@ -256,7 +257,13 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 | Feature | What it does |
 |:--|:--|
 | **Every key and login** | Encrypted, with expiry alerts, costs and a spend forecast |
-| **Real checks** | Real-Debrid, TorBox, Newznab, IPTV, Stremio, HTTP/TCP |
+| **Add by kind** | Pick what it is; the form asks only for what that kind needs |
+| **Real checks** | Debrid, usenet, IPTV, Stremio, Nuvio, Jellyfin, AIOStreams, metadata keys |
+| **Lifetime and free plans** | No end date, no warnings, kept out of the monthly total |
+| **Renewals** | Dates move by themselves, or one press on *I renewed it*, with undo |
+| **Find and test** | Search every kind, see what needs a look, test everything at once |
+| **Notes** | Recovery codes and PINs, encrypted like the rest |
+| **Used by** | The addons and AIOStreams configurations that carry each key |
 | **Backup keys and Key Pool** | Take over on failure; rotate across up to ten |
 | **IPTV logins** | Test signs in and fills in the end date |
 | **Debrid usage** | Live usage and auto-remove for old torrents |
@@ -269,6 +276,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 |:--|:--|
 | **Backups** | Config and full data, checked readable, optional encrypted off-site (S3, WebDAV) |
 | **Restore** | Disaster Recovery Kit, Time Machine (whole or one person), 30-day Trash |
+| **Delete with Undo** | A delete asks once on the button, then offers Undo |
 | **Move and update** | New server with one code; self-updates with automatic rollback |
 
 </details>
@@ -293,6 +301,7 @@ Stremio, Nuvio, Jellyfin, AIOStreams and AIOMetadata — in any direction.
 |:--|:--|
 | **Organise** | Drag to reorder, protect, tag, bulk actions |
 | **Edit in place** | Change an addon's settings once; every user updates |
+| **Preview before Sync All** | See who would change, and how, before anything is pushed |
 | **Health and backups** | Health checks, backup addons, optional proxy |
 | **Templates** | Save a set, deploy it or share it as a code |
 
@@ -374,6 +383,7 @@ docker compose -f docker-compose.private.yml up -d
 
 - Uses `ghcr.io/slicknsliding/slicksync:private` (also on Docker Hub). `:beta` is for testing only.
 - Everything is on port `3000`. `ENCRYPTION_KEY` makes itself on first start.
+- The port is open to that machine only, for your reverse proxy. To reach it straight from other devices, add `SLICKSYNC_BIND=0.0.0.0` to `.env`.
 - Open it once from the address your devices use, so SlickSync learns it (or set `PUBLIC_APP_URL`).
 
 **Updating:** `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — `/app/data` is kept.

@@ -344,6 +344,8 @@ function scheduleBackups(days, prisma, opts = {}) {
     const nextRun = nextBackupAt(days, readLastScheduledRun())
 
     const wait = async () => {
+      // No backup starts while the server is stopping; it stays due.
+      if (require('./shutdownState').isShuttingDown()) return
       const remaining = nextRun - Date.now()
       if (remaining > 0) {
         backupTimer = setTimeout(wait, Math.min(MAX_SLEEP_MS, remaining))
@@ -352,6 +354,7 @@ function scheduleBackups(days, prisma, opts = {}) {
       const worked = await performBackupOnce(prisma, opts) // opts carries INSTANCE_TYPE + the per-account payload builder in public mode
       // One that failed stays due, so the coming midnight tries again.
       if (worked) writeLastScheduledRun(Date.now())
+      require('./jobStatus').noteRun('backups', { ok: !!worked, message: worked ? null : 'The last backup did not finish' })
       if (generation === scheduleGeneration) scheduleNext()
     }
     wait()

@@ -746,7 +746,7 @@ export function useStartPage() {
  */
 export function useSavedFilter<T extends string>(pageId: string, fallback: T, allowed?: readonly T[]) {
   const { arrangement, update, active } = useArrangement();
-  const keep = active && !!arrangement.keepFilters;
+  const keep = active && arrangement.keepFilters !== false;
   const saved = keep ? arrangement.filters?.[pageId] : undefined;
   const [own, setOwn] = useState<T>(fallback);
   const [touched, setTouched] = useState(false);
@@ -758,6 +758,29 @@ export function useSavedFilter<T extends string>(pageId: string, fallback: T, al
     if (keep) update((prev) => ({ ...prev, filters: { ...(prev.filters || {}), [pageId]: v } }));
   }, [keep, update, pageId]);
   return [value, set] as const;
+}
+
+/**
+ * Puts a page's kept choices back to their defaults: pass the same ids the
+ * page gave useSavedFilter (its filter, its sort, ...). `changed` is true
+ * while any of them is saved, which is when a Reset is worth showing.
+ */
+export function useResetSaved(pageIds: string[]) {
+  const { arrangement, update, active } = useArrangement();
+  const keep = active && arrangement.keepFilters !== false;
+  const changed = keep && pageIds.some((id) => arrangement.filters?.[id] !== undefined);
+  const key = pageIds.join('|');
+  const reset = useCallback(() => {
+    update((prev) => {
+      if (!prev.filters) return prev;
+      const filters = { ...prev.filters };
+      for (const id of key.split('|')) delete filters[id];
+      const out: Arrangement = { ...prev, filters };
+      if (!Object.keys(filters).length) delete out.filters;
+      return out;
+    });
+  }, [update, key]);
+  return { changed, reset };
 }
 
 /** Pinned items on a page: they always sit first. */
@@ -861,15 +884,30 @@ export function usePeek() {
 
 export function useKeepFilters() {
   const { arrangement, update } = useArrangement();
-  const keep = !!arrangement.keepFilters;
+  const keep = arrangement.keepFilters !== false;
   const setKeep = useCallback((on: boolean) => {
     update((prev) => {
-      const out: Arrangement = { ...prev, keepFilters: on };
-      if (!on) { delete out.keepFilters; delete out.filters; }
+      const out: Arrangement = { ...prev };
+      if (on) delete out.keepFilters;
+      else { out.keepFilters = false; delete out.filters; }
       return out;
     });
   }, [update]);
   return { keep, setKeep };
+}
+
+/** Sync All shows what it will change before it runs (Users, Groups). On unless switched off. */
+export function useSyncAllPreview() {
+  const { arrangement, update } = useArrangement();
+  const on = arrangement.syncPreview !== false;
+  const setOn = useCallback((next: boolean) => {
+    update((prev) => {
+      const out: Arrangement = { ...prev };
+      if (next) delete out.syncPreview; else out.syncPreview = false;
+      return out;
+    });
+  }, [update]);
+  return { on, setOn };
 }
 
 /**

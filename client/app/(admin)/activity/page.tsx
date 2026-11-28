@@ -14,7 +14,7 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
 import { ActivityCardMenu, useCardMenuPress, type MenuTarget, type MenuWatcher } from '@/components/activity/ActivityCardMenu';
-import { PlaybackFreshnessLine } from '@/components/ui/PlaybackFreshness';
+import { PlaybackFreshnessLine, Freshness } from '@/components/ui/PlaybackFreshness';
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { toast } from '@/components/ui/Toast';
 import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, SOURCE_ORDER, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
@@ -30,7 +30,9 @@ import { api, MetricsData, Invitation, InviteRequest, Group } from '@/lib/api';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { useDefaultViewMode } from '@/lib/viewMode';
-import { usePageArrangement, usePageDesign, type PageArrange } from '@/lib/arrange';
+import { usePageArrangement, usePageDesign, useSavedFilter, type PageArrange } from '@/lib/arrange';
+import { CardsSkeleton } from '@/components/ui/Skeleton';
+import { ResetSaved } from '@/components/ui/ResetSaved';
 import { ArrangeBar, ArrangeButton, ArrangeControls, ArrangeSection, HiddenTray } from '@/components/ui/Arrange';
 import { NowPlayingV2, StatusRow } from '@/components/v2/DashboardV2';
 import { V2Button } from '@/components/v2/V2Bits';
@@ -1362,9 +1364,7 @@ function ProxyHistoryView({ v2Arrange }: { v2Arrange?: PageArrange } = {}) {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-        </div>
+        <CardsSkeleton kind="people" v2={false} view="list" count={4} label="Loading requests" />
       ) : proxyLogs.length === 0 ? (
         <div className="text-center py-12">
           <ShieldCheckIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
@@ -1492,9 +1492,7 @@ function ProxyHistoryView({ v2Arrange }: { v2Arrange?: PageArrange } = {}) {
             return (
               <ArrangeSection key={id} arrange={v2Arrange} id={id} title="Latest requests" meta={isLoading ? undefined : `${proxyLogs.length}`} actions={addonSelect}>
                 {isLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-                  </div>
+                  <CardsSkeleton kind="people" v2 view="list" count={4} label="Loading requests" />
                 ) : proxyLogs.length === 0 ? (
                   <div className="v2-box v2-box-pad text-center py-10">
                     <ShieldCheckIcon className="w-10 h-10 mx-auto mb-3 text-muted opacity-50" />
@@ -1850,7 +1848,13 @@ function ActivityPageContent() {
     setEpisodeFilter({ name: act.contentName, season: act.season, episode: act.episode });
   }, []);
   // ?view=graveyard opens the Graveyard (the Dashboard's removal pop-up links here).
-  const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'>(() => (searchParams.get('view') === 'graveyard' ? 'dropped' : 'watch'));
+  // Which tab is open is kept between visits (Themes -> Layout -> Keep each page's filter).
+  // A link that names the Graveyard (?view=graveyard) wins over what was kept.
+  type ActivityTab = 'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped';
+  const [savedTab, setSavedTab] = useSavedFilter<ActivityTab>('activity', 'watch', ACTIVITY_TABS);
+  const [linkedTab, setLinkedTab] = useState<ActivityTab | null>(() => (searchParams.get('view') === 'graveyard' ? 'dropped' : null));
+  const viewMode: ActivityTab = linkedTab ?? savedTab;
+  const setViewMode = useCallback((next: ActivityTab) => { setLinkedTab(null); setSavedTab(next); }, [setSavedTab]);
   const { viewMode: watchActivityViewMode, setViewMode: setWatchActivityViewMode } = useDefaultViewMode();
   const [visibleCount, setVisibleCount] = useState(50); // lazy-load activity in chunks
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -2515,6 +2519,9 @@ function ActivityPageContent() {
                     profileNames={filterOptions.profileNames}
                   />
                 </div>
+                {isLoading && filteredActivities.length === 0 && (
+                  <CardsSkeleton kind="posters" v2 view={watchActivityViewMode === 'list' ? 'list' : 'grid'} count={watchActivityViewMode === 'list' ? 6 : 14} label="Loading what was watched" />
+                )}
                 {groupedActivities.map((group) => (
                   <div key={group.dateKey} className="mb-6">
                     <div className="flex items-baseline gap-2 mb-2.5">
@@ -2536,7 +2543,7 @@ function ActivityPageContent() {
                     )}
                   </div>
                 ))}
-                {filteredActivities.length === 0 && (
+                {!isLoading && filteredActivities.length === 0 && (
                   <div className="v2-box v2-box-pad text-center py-12">
                     <ClockIcon className="w-9 h-9 mx-auto mb-3 text-subtle" />
                     <h3 className="text-lg font-semibold text-default mb-1">No activity found</h3>
@@ -2616,7 +2623,7 @@ function ActivityPageContent() {
             : `Invite ${i.inviteCode} removed`
     );
     const state = isLoading ? (
-      <div className="v2-box v2-box-pad text-center py-10"><div className="w-7 h-7 mx-auto border-2 border-current border-t-transparent rounded-full animate-spin text-primary" /></div>
+      <CardsSkeleton kind="people" v2 view="list" count={4} label="Loading invitations" />
     ) : error ? (
       <div className="v2-box v2-box-pad">
         <LoadError what="the invitation history" error={error} />
@@ -2721,7 +2728,7 @@ function ActivityPageContent() {
         <Header
           title="Activity"
           subtitle={v2 ? "Everything watched and every sync, newest first" : "Track watch history and sync operations across your SlickSync instance"}
-          actions={<div className="flex items-center gap-3"><ArrangeButton arrange={pageArrange} />{groupFilterSelect}</div>}
+          actions={<div className="flex items-center gap-3 flex-wrap"><Freshness at={lastRefresh ? lastRefresh.getTime() : null} /><ArrangeButton arrange={pageArrange} />{groupFilterSelect}</div>}
         />
       )}
 
@@ -2741,7 +2748,7 @@ function ActivityPageContent() {
         <NebulaPageHeading
           title="Activity"
           subtitle={v2 ? "Everything watched and every sync, newest first" : "Track watch history and sync operations across your SlickSync instance"}
-          actions={<div className="flex items-center gap-2"><ArrangeButton arrange={pageArrange} />{groupFilterSelect}</div>}
+          actions={<div className="flex items-center gap-2 flex-wrap"><Freshness at={lastRefresh ? lastRefresh.getTime() : null} /><ArrangeButton arrange={pageArrange} />{groupFilterSelect}</div>}
         />
       )}
         {/* Arranging: the tabs as a list to move and hide. */}
@@ -2760,6 +2767,7 @@ function ActivityPageContent() {
         {/* Primary Tabs - Centered */}
         <PageToolbar
           animate={false}
+          rightActions={<ResetSaved ids={['activity']} atDefault={viewMode === 'watch'} onReset={() => setViewMode('watch')} />}
           filterTabs={{
             options: (() => {
               const all = [
@@ -2870,6 +2878,9 @@ function ActivityPageContent() {
                   virtualize, while this changes nothing structurally.
                   Menus/modals are portaled to <body>, so the paint
                   containment this implies can't clip them (verified). */}
+              {isLoading && filteredActivities.length === 0 && (
+                <CardsSkeleton kind="posters" v2={false} view={watchActivityViewMode === 'list' ? 'list' : 'grid'} count={watchActivityViewMode === 'list' ? 6 : 14} label="Loading what was watched" />
+              )}
               {groupedActivities.map((group, groupIndex) => (
                 <PageSection key={group.dateKey} delay={0.1 + groupIndex * 0.02} className="cv-day-section">
                   {/* Nebula wraps each day's group in its own glass panel
@@ -2929,7 +2940,7 @@ function ActivityPageContent() {
               ))}
 
               {/* Empty state */}
-              {filteredActivities.length === 0 ? (
+              {!isLoading && filteredActivities.length === 0 ? (
                 <PageSection delay={0.1}>
                   <Card padding="lg" className="text-center py-16">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
@@ -3010,12 +3021,7 @@ function ActivityPageContent() {
             <div className="space-y-6">
               {isLoading ? (
                 <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">Loading...</h3>
-                  </Card>
+                  <CardsSkeleton kind="people" v2={false} view="list" count={4} label="Loading invitations" />
                 </PageSection>
               ) : error ? (
                 <PageSection delay={0.1}>

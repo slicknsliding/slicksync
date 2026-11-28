@@ -10,6 +10,7 @@ async function readText(res, maxBytes = 1024 * 1024) {
 }
 
 const net = require('net')
+const tls = require('tls')
 const dns = require('dns').promises
 const { assertSafeUrl, safeFetch, instancePolicy, isPrivateIp, isLinkLocalIp } = require('./safeUrl')
 
@@ -365,6 +366,227 @@ async function checkTcpReachability(secret, config = {}) {
   return result
 }
 
+// ---------------------------------------------------------------------------
+// Usenet provider sign-in (NNTP). The conversation itself is a pure function
+// over a line-based connection ({ readLine(): Promise<string>, writeLine(s) }),
+// so a test can drive it with no network; checkNntpAuth below wires it to a
+// real socket. Neither the user name nor the password ever appears in a
+// message the check returns.
+const NNTP_DEADLINE_MS = 10000
+const NNTP_BUSY_RE = /too many|max(imum)? (number of )?connections|connection limit|limit (reached|exceeded)|try again|busy|temporar|overload/i
+
+const nntpCode = (line) => {
+  const m = /^(\d{3})\b/.exec(String(line || ''))
+  return m ? Number(m[1]) : 0
+}
+const NNTP_REFUSED = { ok: false, message: 'The server turned the username or password down' }
+const NNTP_BUSY = { ok: null, transient: true, message: 'The server is busy; try again later' }
+
+// What a non-success reply means: busy (400, or 502 that talks about
+// connections), turned down (481, 482, any other 502), or unexpected.
+function nntpTroubleOf(line) {
+  const code = nntpCode(line)
+  if (code === 400) return { ...NNTP_BUSY }
+  if (code === 502) return NNTP_BUSY_RE.test(String(line)) ? { ...NNTP_BUSY } : { ...NNTP_REFUSED }
+  if (code === 481 || code === 482) return { ...NNTP_REFUSED }
+  return { ok: false, message: 'The server did not answer like a Usenet server' }
+}
+
+async function nntpConversation(conn, { host, username, password }) {
+  try {
+    const greeting = await conn.readLine()
+    const greetCode = nntpCode(greeting)
+    if (greetCode !== 200 && greetCode !== 201) {
+      if (greetCode === 400 || greetCode === 502) return nntpTroubleOf(greeting)
+      return { ok: false, message: 'The server did not answer like a Usenet server' }
+    }
+    await conn.writeLine(`AUTHINFO USER ${username}`)
+    const userReply = await conn.readLine()
+    const userCode = nntpCode(userReply)
+    if (userCode === 281) return { ok: true, message: `Signed in to ${host}` }
+    if (userCode !== 381) return nntpTroubleOf(userReply)
+    await conn.writeLine(`AUTHINFO PASS ${password}`)
+    const passReply = await conn.readLine()
+    if (nntpCode(passReply) === 281) return { ok: true, message: `Signed in to ${host}` }
+    return nntpTroubleOf(passReply)
+  } finally {
+    try { await conn.writeLine('QUIT') } catch { /* the connection may already be gone */ }
+  }
+}
+
+// The login a Usenet provider entry stores: a JSON { username, password }.
+function nntpLogin(secret) {
+  try {
+    const parsed = JSON.parse(String(secret || ''))
+    if (parsed && typeof parsed.username === 'string' && typeof parsed.password === 'string' && parsed.username && parsed.password) {
+      return { username: parsed.username, password: parsed.password }
+    }
+  } catch { /* not a login */ }
+  return null
+}
+
+function openNntpSocket(address, port, tlsOn, servername, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const socket = tlsOn
+      ? tls.connect({ host: address, port: Number(port), servername: net.isIP(servername) ? undefined : servername })
+      : net.createConnection({ host: address, port: Number(port) })
+    const timer = setTimeout(() => { socket.destroy(); reject(new Error('Connection timed out')) }, Math.max(1, timeoutMs))
+    const onError = (err) => { clearTimeout(timer); socket.destroy(); reject(new Error(err?.message || 'Connection failed')) }
+    socket.once('error', onError)
+    socket.once(tlsOn ? 'secureConnect' : 'connect', () => {
+      clearTimeout(timer)
+      socket.removeListener('error', onError)
+      resolve(socket)
+    })
+  })
+}
+
+// Lines in, lines out, over a connected socket; a read fails when the
+// connection ends or the shared deadline passes.
+function nntpLineConnection(socket, deadlineMs) {
+  let buffer = ''
+  let failure = null
+  const lines = []
+  const waiting = []
+  const fail = (err) => {
+    if (failure) return
+    failure = err
+    while (waiting.length) waiting.shift().reject(err)
+  }
+  const timer = setTimeout(() => { fail(new Error('Connection timed out')); socket.destroy() }, Math.max(1, deadlineMs))
+  socket.setEncoding('utf8')
+  socket.on('data', (chunk) => {
+    buffer += chunk
+    let i
+    while ((i = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, i).replace(/\r$/, '')
+      buffer = buffer.slice(i + 1)
+      if (waiting.length) waiting.shift().resolve(line)
+      else lines.push(line)
+    }
+  })
+  socket.on('error', (err) => fail(new Error(err?.message || 'Connection failed')))
+  socket.on('close', () => fail(new Error('The server closed the connection')))
+  return {
+    readLine: () => {
+      if (lines.length) return Promise.resolve(lines.shift())
+      if (failure) return Promise.reject(failure)
+      return new Promise((resolve, reject) => waiting.push({ resolve, reject }))
+    },
+    writeLine: (text) => new Promise((resolve, reject) => {
+      if (failure || socket.destroyed) return reject(failure || new Error('Connection closed'))
+      socket.write(`${text}\r\n`, (err) => (err ? reject(err) : resolve()))
+    }),
+    done: () => clearTimeout(timer),
+  }
+}
+
+async function checkNntpAuth(secret, config = {}) {
+  const login = nntpLogin(secret)
+  // No login on file: all that can be said is whether the server answers.
+  if (!login) return checkTcpReachability(secret, config)
+  const { host, port } = config
+  if (!host || !port) return { ok: false, message: 'No host/port configured' }
+  let addresses
+  try {
+    addresses = await vettedTcpAddresses(host)
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+  const deadline = Date.now() + NNTP_DEADLINE_MS
+  const tlsOn = config.ssl !== false
+  let socket = null
+  let lastError = null
+  for (const address of addresses) {
+    const left = deadline - Date.now()
+    if (left <= 0) break
+    try {
+      socket = await openNntpSocket(address, port, tlsOn, String(host).trim(), Math.min(left, 8000))
+      break
+    } catch (err) { lastError = err }
+  }
+  if (!socket) return { ok: false, message: lastError?.message || 'Connection timed out' }
+  const conn = nntpLineConnection(socket, deadline - Date.now())
+  try {
+    return await nntpConversation(conn, { host, ...login })
+  } catch (err) {
+    return { ok: false, message: err?.message === 'Connection timed out' ? 'Connection timed out' : 'The server stopped answering' }
+  } finally {
+    conn.done()
+    socket.destroy()
+  }
+}
+
+// Jellyfin (or the Jellyfin side of an AIOStreams setup): sign in with the
+// user name and password. The sign-in uses a device of its own - a server
+// retires a user's earlier session for the same device, and SlickSync's own
+// stored session must not be the one that gets retired.
+async function checkJellyfinAuth(secret, config = {}) {
+  const jf = require('../providers/jellyfinAuth')
+  const base = jf.normalizeServerUrl(config.url)
+  if (!base) return { ok: false, message: 'No server address on file for this entry' }
+  const username = config.identifier
+  if (!username) return { ok: false, message: 'No user name on file for this entry' }
+  if (!secret) return { ok: false, message: 'No password on file for this entry' }
+  try {
+    const res = await safeFetch(`${base}/Users/AuthenticateByName`, {
+      method: 'POST',
+      headers: {
+        Authorization: jf.authorizationHeader({ deviceId: jf.deviceIdFor('vault-check', base, username), deviceName: 'SlickSync Vault check' }),
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ Username: String(username), Pw: String(secret) }),
+      signal: AbortSignal.timeout(10000),
+    }, instancePolicy())
+    let token = null
+    if (res.ok) {
+      try { token = JSON.parse(await readText(res))?.AccessToken || null } catch { token = null }
+    } else {
+      try { res.body?.cancel?.() } catch { /* nothing to drop */ }
+    }
+    if (res.status === 401 || res.status === 403) return { ok: false, message: 'The server turned the username or password down' }
+    if (res.status === 429 || res.status >= 500) return { ok: null, transient: true, message: 'The server is busy; try again later' }
+    if (!res.ok) return { ok: false, message: `The server returned ${res.status}` }
+    if (!token) return { ok: false, message: 'That address did not answer like a Jellyfin server' }
+    // Leave no extra sign-in behind on the server's device list.
+    await jf.signOut(base, token, { deviceId: jf.deviceIdFor('vault-check', base, username) }).catch(() => {})
+    return { ok: true, message: 'Signed in' }
+  } catch (err) {
+    if (err?.name === 'TimeoutError') return { ok: false, message: 'Timed out' }
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
+// An AIOStreams configuration: its UUID and password open the configuration
+// the same way SlickSync reads a person's setup (utils/aiostreamsConfig.js).
+async function checkAiostreamsConfig(secret, config = {}) {
+  if (!config.url) return { ok: false, message: 'No AIOStreams address on file for this entry' }
+  if (!config.uuid) return { ok: false, message: 'No configuration UUID on file for this entry' }
+  if (!secret) return { ok: false, message: 'No configuration password on file for this entry' }
+  try {
+    const { readConfig } = require('./aiostreamsConfig')
+    await readConfig({ serverUrl: config.url, account: String(config.uuid).trim(), password: secret })
+    return { ok: true, message: 'Configuration opens with this password' }
+  } catch (err) {
+    if (err?.status === 401 || err?.status === 403) return { ok: false, message: 'AIOStreams turned the UUID or password down' }
+    if (err?.status === 429 || err?.status >= 500) return { ok: null, transient: true, message: 'AIOStreams is busy; try again later' }
+    return { ok: false, message: err?.message || 'Could not open the configuration' }
+  }
+}
+
+// TMDb / OMDb / MDBList / RPDB keys: the checks Settings already runs
+// (metadataKeyHealth.js), mapped to this shape. A rate limit says nothing
+// about the key itself, so it is left as "unknown" and not raised.
+function metadataKeyChecker(name) {
+  return async (secret) => {
+    if (!secret) return { ok: false, message: 'No API key on file for this entry' }
+    const r = await require('./metadataKeyHealth')[name](String(secret).trim())
+    if (r.rateLimited) return { ok: null, transient: true, message: r.message }
+    return { ok: !!r.ok, message: r.message }
+  }
+}
+
 // Stremio account credentials: config.identifier is the email/username (stored in
 // the entry's `provider` field), secret is the password. Confirms Stremio actually
 // accepts the login, not just that some server responded.
@@ -630,8 +852,39 @@ const CHECKERS = {
   debrid_link: checkDebridLink,
   newznab_caps: checkNewznabCaps,
   tcp_reachability: checkTcpReachability,
+  nntp_auth: checkNntpAuth,
+  jellyfin_auth: checkJellyfinAuth,
+  aiostreams_config: checkAiostreamsConfig,
+  tmdb_key: metadataKeyChecker('checkTmdb'),
+  omdb_key: metadataKeyChecker('checkOmdb'),
+  mdblist_key: metadataKeyChecker('checkMdblist'),
+  rpdb_key: metadataKeyChecker('checkRpdb'),
   stremio_auth: checkStremioAuth,
   nuvio_auth: checkNuvioAuth
+}
+
+// Checks that read the end date from the service itself: what the service says
+// is the truth, so a hand-moved date is overwritten by the next check, and
+// "I renewed it" has nothing to move.
+const END_DATE_FROM_SERVICE = new Set(['real_debrid', 'torbox', 'alldebrid', 'premiumize', 'debrid_link', 'xtream_auth', 'm3u_playlist'])
+
+// The check an entry is really run with - one rule for the Test button and the
+// scheduled monitor. Entries made before a check existed carry 'manual' (AI
+// Services) or the connectivity-only 'tcp_reachability' (Usenet providers); both
+// now get the real check without anyone re-saving the key.
+function effectiveTestType(entry) {
+  const { category, testType } = entry || {}
+  if (category === 'note') return 'manual'
+  if (category === 'ai' && testType === 'manual') return 'openai_compatible'
+  if (category === 'usenet_provider' && testType === 'tcp_reachability') return 'nntp_auth'
+  return testType
+}
+
+// The end date a check found, if it may be stored: an entry paid once or free
+// has no end date, whatever a service says.
+function storableExpiry(entry, result) {
+  if (entry?.costCycle === 'once' || entry?.costCycle === 'free') return undefined
+  return result?.expiresAt instanceof Date && !isNaN(result.expiresAt) ? result.expiresAt : undefined
 }
 
 async function runCheck(testType, secret, config) {
@@ -648,4 +901,4 @@ async function runCheck(testType, secret, config) {
   }
 }
 
-module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase, m3uXtreamLogin, TORBOX_PLANS }
+module.exports = { runCheck, CHECKERS, effectiveTestType, storableExpiry, END_DATE_FROM_SERVICE, nntpConversation, nntpLogin, fetchAiModels, xtreamBase, m3uXtreamLogin, TORBOX_PLANS }

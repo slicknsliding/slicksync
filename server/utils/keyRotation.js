@@ -88,6 +88,16 @@ function replaceSecretInUrl(url, oldSecret, newSecret) {
 }
 
 /**
+ * Whether a manifest URL carries `secret` - the same rules the rotation uses
+ * (exact text, or inside a base64 segment; a secret shorter than
+ * MIN_SECRET_LENGTH never matches). Read-only.
+ */
+function urlCarriesSecret(url, secret) {
+  if (!url || !secret || secret.length < MIN_SECRET_LENGTH) return false
+  return replaceSecretInUrl(url, secret, '\u0000').changed
+}
+
+/**
  * The full propagation: rewrite affected addons, then re-sync every user
  * whose groups carry one. All deps injected so this runs from the Vault
  * route with no HTTP request of its own beyond reqLike.
@@ -161,4 +171,4 @@ async function propagateSecretRotation(prisma, reqLike, deps, { accountId, oldSe
   return summary
 }
 
-module.exports = { replaceSecretInUrl, replaceInBase64, propagateSecretRotation, MIN_SECRET_LENGTH }
+module.exports = { urlCarriesSecret, replaceSecretInUrl, replaceInBase64, propagateSecretRotation, MIN_SECRET_LENGTH }

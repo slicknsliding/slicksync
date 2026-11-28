@@ -52,6 +52,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   const { findLatestEpisode, enrichPostersFromCinemeta } = require('../utils/libraryHelpers')
   const router = express.Router();
 
+  // A route that reads someone's addon list, changes it and writes it back takes
+  // its turn in that person's queue, the same one a sync uses (utils/syncLock.js).
+  const { personLock, personKey } = require('../utils/syncLock')
+  const addonListTurn = personLock((req) => (req.params.id ? personKey(getAccountId(req) || req.appAccountId, req.params.id) : null))
+
   // User API key middleware - allows users to access their own data via API key
   const { createUserApiKeyMiddleware } = require('../middleware/userApiKey')
   router.use(createUserApiKeyMiddleware(prisma))
@@ -262,6 +267,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         console.warn('Error fetching watch time:', error.message)
       }
 
+      // How many profiles each Stremio account has, so the Users page knows
+      // which sign-ins get a Stremio profiles card.
+      const stremioProfileCounts = await require('../utils/stremioProfiles').profileCounts(prisma, getAccountId(req)).catch(() => new Map())
+
       // Transform data for frontend compatibility
       const transformedUsers = await Promise.all(users.map(async (user) => {
         const groups = allGroups.filter((g, i) => groupMembers[i].has(user.id))
@@ -296,6 +305,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           email: user.email,
           providerType: user.providerType || 'stremio',
           nuvioProfileId: user.nuvioProfileId ?? 1,
+          stremioProfileId: user.stremioProfileId || null,
+          stremioProfiles: user.stremioAccountId && !user.stremioProfileId ? (stremioProfileCounts.get(user.stremioAccountId) || 0) : 0,
           ...jellyfinSummary(user),
           secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
           providerConnectionError: user.providerConnectionError || null,
@@ -3178,6 +3189,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         username: user.username,
         providerType: user.providerType || 'stremio',
         nuvioProfileId: user.nuvioProfileId ?? 1,
+        stremioProfileId: user.stremioProfileId || null,
         ...jellyfinSummary(user),
         hasStremioConnection: !!user.stremioAuthKey,
         status: user.isActive ? 'active' : 'inactive',
@@ -4114,15 +4126,53 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
-  // --- Profiles: whose viewing each of a Nuvio account's profiles is ------
-  // The rules live in utils/nuvioProfiles.js; these routes are the Profiles
-  // card on a Nuvio person's page.
+  // --- Profiles: whose viewing each of an account's profiles is ----------
+  // A Nuvio account's profiles and a Stremio account's follow the same
+  // rules (utils/nuvioProfiles.js); these routes are the Profiles card on
+  // the Users page for both. What differs is how the profiles are read:
+  // Nuvio's share one login, Stremio's each sign in with a key of their own
+  // (utils/stremioProfiles.js).
 
-  // Everything about one Nuvio account the card needs, read once.
+  // A Stremio account's profiles, in the shape the Nuvio ones come in.
+  async function stremioProfileContext(req, accountId, user) {
+    const sp = require('../utils/stremioProfiles')
+    const np = require('../utils/nuvioProfiles')
+    // Any person on the account will do; the account's own sign-in reads it.
+    const main = user.stremioProfileId ? await sp.mainPersonOf(prisma, accountId, user.stremioAccountId) : user
+    if (!main?.stremioAuthKey) return { status: 400, message: 'User is not connected to Stremio' }
+    let synced
+    try {
+      synced = await sp.syncProfiles(prisma, { accountId, mainUser: main, authKey: decrypt(main.stremioAuthKey, req) })
+    } catch (e) {
+      if (/session does not exist|unauthori[sz]ed|invalid auth| 401/i.test(e?.message || '')) {
+        return { status: 502, message: `${main.username || 'This person'}'s Stremio sign-in has expired - reconnect them to see their profiles` }
+      }
+      return { status: 502, message: "Could not read this account's profiles from Stremio just now" }
+    }
+    if (!synced) return { status: 400, message: 'User is not connected to Stremio' }
+    const groupKey = sp.groupKey(synced.account.id)
+    const profiles = synced.rows.map((r) => ({
+      index: r.slot,
+      name: r.name || (r.slot === 1 ? main.username : null),
+      color: sp.colorForSlot(r.slot),
+      usesPrimaryAddons: false,
+      // No key yet: it has a PIN nobody has given here.
+      locked: r.slot !== 1 && !r.authKey,
+      stremio: r,
+    }))
+    const [siblings, routes] = await Promise.all([
+      np.loadSiblings(prisma, accountId, groupKey),
+      np.loadRoutes(prisma, accountId, groupKey),
+    ])
+    return { accountId, user: main, profiles, siblings, routes, np, provider: 'stremio', providerName: 'Stremio', groupKey }
+  }
+
+  // Everything about one account the card needs, read once.
   async function profileContext(req, id) {
     const accountId = getAccountId(req)
     const user = await prisma.user.findFirst({ where: { id, accountId } })
     if (!user) return { status: 404, message: 'User not found' }
+    if ((user.providerType || 'stremio') === 'stremio') return stremioProfileContext(req, accountId, user)
     if (user.providerType !== 'nuvio' || !user.nuvioUserId) return { status: 400, message: 'User is not connected to Nuvio' }
     const provider = createProvider(user, { decrypt, req })
     if (!provider) return { status: 400, message: 'User is not connected to Nuvio' }
@@ -4151,13 +4201,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       np.loadSiblings(prisma, accountId, user.nuvioUserId),
       np.loadRoutes(prisma, accountId, user.nuvioUserId),
     ])
-    return { accountId, user, profiles, siblings, routes, np }
+    return { accountId, user, profiles, siblings, routes, np, provider: 'nuvio', providerName: 'Nuvio', groupKey: user.nuvioUserId }
   }
 
   async function profilesView(ctx) {
     const { accountId, user, profiles, siblings, routes, np } = ctx
+    const isStremio = ctx.provider === 'stremio'
     const merges = await prisma.profileMerge.findMany({
-      where: { accountId, nuvioUserId: user.nuvioUserId, undoneAt: null },
+      where: { accountId, nuvioUserId: ctx.groupKey, undoneAt: null },
       orderBy: { createdAt: 'desc' },
     })
     const historyCount = async (where) => {
@@ -4178,25 +4229,65 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       email: s.email || null,
       ...(await historyCount({ userId: s.id })),
     })))
-    const rows = await Promise.all(profiles.map(async (p) => {
-      const ownerId = np.ownerOf(p.index, siblings, routes)
+    const rows = await Promise.all(profiles.map(async (profile) => {
+      const { stremio: _row, ...p } = profile
       const own = siblings.find((s) => np.profileOf(s) === p.index) || null
+      // A Stremio profile nobody has opened cannot be read, so it counts for no one.
+      const ownerId = p.locked && !own ? null : np.ownerOf(p.index, siblings, routes)
       const merge = !own ? merges.find((m) => m.profileIndex === p.index) || null : null
+      // A Stremio profile's own person records under their own sign-in, with
+      // no profile name on it; a merged one's titles carry its name.
+      let titles = { movies: 0, episodes: 0 }
+      if (isStremio && own) titles = await historyCount({ userId: own.id })
+      else if (ownerId && p.name) titles = await historyCount({ userId: ownerId, profileLabel: p.name })
       return {
         ...p,
         ownerId,
         ownPersonId: own?.id || null,
         skipped: !own && !!routes.get(p.index)?.skip,
-        titles: ownerId && p.name ? await historyCount({ userId: ownerId, profileLabel: p.name }) : { movies: 0, episodes: 0 },
+        titles,
         merged: merge ? { id: merge.id, donorUsername: merge.donorUsername, createdAt: merge.createdAt } : null,
         // Whose limits its Limits pill opens: its own person's, or its own as a
-        // profile merged into someone (utils/screenSubjects.js).
-        limitId: own ? own.id : require('../utils/screenSubjects').nuvioProfileSubject(user.nuvioUserId, p.index),
+        // profile merged into someone (utils/screenSubjects.js). A merged
+        // Stremio profile has none: nothing here can pause one profile's streams.
+        limitId: own ? own.id : (isStremio ? null : require('../utils/screenSubjects').nuvioProfileSubject(user.nuvioUserId, p.index)),
       }
     }))
-    const misplaced = await np.findMisplaced(prisma, accountId, siblings, routes, profiles.map((p) => ({ profile_index: p.index, name: p.name })))
+    // Only Nuvio ever recorded every profile on everyone.
+    const misplaced = isStremio ? [] : await np.findMisplaced(prisma, accountId, siblings, routes, profiles.map((p) => ({ profile_index: p.index, name: p.name })))
     const misplacedTitles = misplaced.reduce((n, m) => n + m.movies + m.episodes, 0)
-    return { persons, profiles: rows, misplaced: misplacedTitles ? { titles: misplacedTitles } : null }
+    return { provider: ctx.provider, persons, profiles: rows, misplaced: misplacedTitles ? { titles: misplacedTitles } : null }
+  }
+
+  // A person for one profile of a Stremio account. The profile's own key
+  // becomes their sign-in, so their addons and library are that profile's.
+  async function createStremioProfilePerson(req, ctx, profile) {
+    const row = profile.stremio
+    if (!row?.authKey) throw Object.assign(new Error("Enter this profile's PIN first"), { status: 400 })
+    const plainKey = decrypt(row.authKey, req)
+    if (!plainKey) throw Object.assign(new Error('Could not read the stored Stremio credential'), { status: 400 })
+    let username = (profile.name || `Profile ${profile.index}`).trim().slice(0, 40)
+    const base = username
+    let attempt = 0
+    while (await prisma.user.findFirst({ where: { accountId: ctx.accountId, username } })) {
+      attempt++
+      if (attempt > 100) throw Object.assign(new Error('Could not pick a free username for that profile'), { status: 409 })
+      username = `${base} ${attempt + 1}`
+    }
+    return prisma.user.create({
+      data: {
+        accountId: ctx.accountId,
+        username,
+        email: ctx.user.email,
+        providerType: 'stremio',
+        stremioAuthKey: encrypt(plainKey, req),
+        stremioAccountId: row.stremioAccountId,
+        stremioProfileId: row.profileId,
+        nuvioProfileId: row.slot,
+        isActive: true,
+        colorIndex: (ctx.user.colorIndex || 0) + row.slot,
+      },
+    })
   }
 
   function afterProfileChange(accountId) {
@@ -4258,28 +4349,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { accountId, user, profiles, siblings, routes, np } = ctx
       const index = Number(req.params.index)
       const profile = profiles.find((p) => p.index === index)
-      if (!profile) return res.status(404).json({ message: 'That profile is not on this Nuvio account' })
+      if (!profile) return res.status(404).json({ message: `That profile is not on this ${ctx.providerName} account` })
       const target = req.body?.target
       const own = siblings.find((s) => np.profileOf(s) === index) || null
-      const currentOwner = np.ownerOf(index, siblings, routes)
-      const routeKey = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } }
+      const currentOwner = profile.locked && !own ? null : np.ownerOf(index, siblings, routes)
+      const groupKey = ctx.groupKey
+      const routeKey = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: groupKey, profileIndex: index } }
       let removedUserId = null
 
       if (target === 'default') {
         // Back to the default: its own person if it has one, otherwise the
         // main profile's person. Nothing was recorded while it was not
         // tracked, so there is nothing to move.
-        await prisma.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } })
+        await prisma.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: groupKey, profileIndex: index } })
       } else if (target === 'skip') {
         if (own) return res.status(400).json({ message: `This profile is ${own.username}. Turn them off or delete them instead.` })
         await prisma.nuvioProfileRoute.upsert({
           where: routeKey,
-          create: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, skip: true, targetUserId: null },
+          create: { accountId, nuvioUserId: groupKey, profileIndex: index, skip: true, targetUserId: null },
           update: { skip: true, targetUserId: null },
         })
       } else {
         const person = siblings.find((s) => s.id === target)
-        if (!person) return res.status(400).json({ message: 'Choose someone on this Nuvio account' })
+        if (!person) return res.status(400).json({ message: `Choose someone on this ${ctx.providerName} account` })
+        if (profile.locked && !own) return res.status(400).json({ message: "Enter this profile's PIN first" })
         if (person.id !== currentOwner) {
           if (own) {
             if (own.id === siblings[0]?.id) {
@@ -4291,7 +4384,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             await require('../utils/userMerge').runLongTransaction(prisma, async (tx) => {
               await tx.nuvioProfileRoute.upsert({
                 where: routeKey,
-                create: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, skip: false, targetUserId: person.id },
+                create: { accountId, nuvioUserId: groupKey, profileIndex: index, skip: false, targetUserId: person.id },
                 update: { skip: false, targetUserId: person.id },
               })
               if (currentOwner) {
@@ -4324,23 +4417,32 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { accountId, user, profiles, siblings, routes, np } = ctx
       const index = Number(req.params.index)
       const profile = profiles.find((p) => p.index === index)
-      if (!profile) return res.status(404).json({ message: 'That profile is not on this Nuvio account' })
+      if (!profile) return res.status(404).json({ message: `That profile is not on this ${ctx.providerName} account` })
       const own = siblings.find((s) => np.profileOf(s) === index)
       if (own) return res.status(409).json({ message: `That profile already is ${own.username}` })
+      const isStremio = ctx.provider === 'stremio'
+      if (isStremio && index === 1) return res.status(400).json({ message: 'The main profile already is this person' })
+      if (isStremio && profile.locked) return res.status(400).json({ message: "Enter this profile's PIN first" })
 
       const merge = await prisma.profileMerge.findFirst({
-        where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, undoneAt: null },
+        where: { accountId, nuvioUserId: ctx.groupKey, profileIndex: index, undoneAt: null },
         orderBy: { createdAt: 'desc' },
       })
       let person
       if (merge) {
         const result = await np.unmergeProfilePerson(prisma, { accountId, mergeId: merge.id })
         person = { id: result.donorId, username: result.donorUsername }
+        // They come back with the key they left with; the profile's current one is newer.
+        if (isStremio && profile.stremio?.authKey) {
+          await prisma.user.update({ where: { id: result.donorId }, data: { stremioAuthKey: profile.stremio.authKey } })
+        }
       } else {
         const currentOwner = np.ownerOf(index, siblings, routes)
-        const created = await createProfilePerson(req, user, index, profile.name)
+        const created = isStremio
+          ? await createStremioProfilePerson(req, ctx, profile)
+          : await createProfilePerson(req, user, index, profile.name)
         await require('../utils/userMerge').runLongTransaction(prisma, async (tx) => {
-          await tx.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } })
+          await tx.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: ctx.groupKey, profileIndex: index } })
           if (currentOwner) {
             await np.moveProfileHistory(tx, { accountId, fromUserId: currentOwner, toUserId: created.id, profileLabel: profile.name })
           }
@@ -4355,6 +4457,29 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error giving a profile its own person:', error)
       res.status(error.status || 500).json({ message: publicMessage(error, 'Failed to give that profile its own person') })
+    }
+  })
+
+  // Open a Stremio profile that has a PIN. Stremio checks the PIN and hands
+  // back the profile's own key; from then on it is read like the others.
+  router.post('/:id/profiles/:index/unlock', async (req, res) => {
+    try {
+      const ctx = await profileContext(req, req.params.id)
+      if (ctx.status) return res.status(ctx.status).json({ message: ctx.message })
+      if (ctx.provider !== 'stremio') return res.status(400).json({ message: 'Only a Stremio profile can have a PIN' })
+      const profile = ctx.profiles.find((p) => p.index === Number(req.params.index))
+      if (!profile) return res.status(404).json({ message: 'That profile is not on this Stremio account' })
+      const pin = String(req.body?.pin ?? '').trim()
+      if (!/^\d{4,8}$/.test(pin)) return res.status(400).json({ message: "Enter the profile's PIN" })
+      const sp = require('../utils/stremioProfiles')
+      await sp.unlockProfile(prisma, { accountId: ctx.accountId, authKey: decrypt(ctx.user.stremioAuthKey, req), row: profile.stremio, pin })
+      afterProfileChange(ctx.accountId)
+      const next = await profileContext(req, ctx.user.id)
+      if (next.status) return res.status(next.status).json({ message: next.message })
+      res.json(await profilesView(next))
+    } catch (error) {
+      console.error('Error opening a Stremio profile:', error)
+      res.status(error.status || 500).json({ message: publicMessage(error, 'Failed to open that profile') })
     }
   })
 
@@ -4479,7 +4604,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // POST /users/:id/cinemeta - apply (or update) the patch.
-  router.post('/:id/cinemeta', async (req, res) => {
+  router.post('/:id/cinemeta', addonListTurn, async (req, res) => {
     try {
       const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
       if (!user) return responseUtils.notFound(res, 'User')
@@ -4526,7 +4651,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // DELETE /users/:id/cinemeta - put the original manifest back.
-  router.delete('/:id/cinemeta', async (req, res) => {
+  router.delete('/:id/cinemeta', addonListTurn, async (req, res) => {
     try {
       const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
       if (!user) return responseUtils.notFound(res, 'User')
@@ -6806,7 +6931,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Clear all Stremio addons from user's account
-  router.post('/:id/stremio-addons/clear', async (req, res) => {
+  router.post('/:id/stremio-addons/clear', addonListTurn, async (req, res) => {
     try {
       const { id } = req.params
 
@@ -6858,7 +6983,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Delete Stremio addon from user's account
-  router.delete('/:id/stremio-addons/:addonName', async (req, res) => {
+  router.delete('/:id/stremio-addons/:addonName', addonListTurn, async (req, res) => {
     try {
       const { id, addonName } = req.params
       const { unsafe } = req.query
@@ -6990,6 +7115,31 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Connect user with auth key
+  // A person made for a Stremio profile signs in with that profile's own key,
+  // which only the account's sign-in can ask Stremio for. A sign-in typed in
+  // for them would be the account's - the main profile's. Their key is
+  // renewed through the account instead; true when this answered the request.
+  async function renewProfilePersonSignIn(req, res, user) {
+    if (!user?.stremioProfileId) return false
+    const accountId = getAccountId(req)
+    const sp = require('../utils/stremioProfiles')
+    if (await sp.refreshPersonKey(prisma, accountId, user)) {
+      const renewed = await prisma.user.update({
+        where: { id: user.id },
+        data: { isActive: true, providerConnectionError: null, providerConnectionErrorAt: null },
+      })
+      res.json({ message: 'Sign-in renewed', addonsCount: 0, user: { id: renewed.id, username: renewed.username, email: renewed.email } })
+      return true
+    }
+    const main = await sp.mainPersonOf(prisma, accountId, user.stremioAccountId)
+    res.status(409).json({
+      message: main
+        ? `${user.username} is a profile on ${main.username}'s Stremio account. Reconnect ${main.username}, then try again. If the profile has a PIN, enter it under Stremio profiles on the Users page.`
+        : `${user.username} is a profile on a Stremio account that is no longer connected here. Connect the account's main profile first.`,
+    })
+    return true
+  }
+
   router.post('/:id/connect-stremio-authkey', async (req, res) => {
     try {
       const { id } = req.params
@@ -7009,6 +7159,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) {
         return responseUtils.notFound(res, 'User')
       }
+      if (await renewProfilePersonSignIn(req, res, user)) return
 
       // Encrypt and store the auth key
       const encryptedAuthKey = encrypt(authKey, req)
@@ -7157,6 +7308,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) {
         return responseUtils.notFound(res, 'User')
       }
+      if (await renewProfilePersonSignIn(req, res, user)) return
 
       // Encrypt and store the auth key
       const encryptedAuthKey = encrypt(authKey, req)
@@ -7375,7 +7527,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Reorder Stremio addons for a user (by manifest.name ONLY)
-  router.post('/:id/stremio-addons/reorder', async (req, res) => {
+  router.post('/:id/stremio-addons/reorder', addonListTurn, async (req, res) => {
     try {
       const { id: userId } = req.params
       const { orderedNames } = req.body || {}
@@ -7652,6 +7804,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!existingUser) {
         return res.status(404).json({ message: 'User not found' });
       }
+
+      if (await renewProfilePersonSignIn(req, res, existingUser)) return
 
       // Check if user already has Stremio credentials
       // Allow reconnection - we'll update the stremioAuthKey with new credentials
@@ -8604,6 +8758,19 @@ async function syncCredentialsAddons(prismaClient, credentials, unsafeMode, req,
           .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
       }
       return { success: true, total: (plan.desired || []).length, alreadySynced: true }
+    }
+
+    // The account read back with nothing on it, though SlickSync last left
+    // addons there: read once more before pushing over it (utils/accountGuard.js).
+    if ((plan.current || []).length === 0 && (plan.desired || []).length > 0) {
+      const verdict = await require('../utils/accountGuard').confirmEmptyRead(prismaClient, credentials.id, credentials.providerType, async () => {
+        const res = await provider.getAddons()
+        return Array.isArray(res?.addons) ? res.addons : Array.isArray(res) ? res : []
+      })
+      if (verdict !== 'ok') {
+        console.warn('⚠️ Account read back empty, then not: nothing pushed this time')
+        return { success: false, error: 'Their account answered with an empty addon list, then a different one. Nothing was changed; sync again in a moment.' }
+      }
     }
 
     // What this sync changes, for the person's Sync history (utils/syncLog.js),

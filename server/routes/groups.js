@@ -762,7 +762,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       }
 
       // Into the Trash first (30-day undo) - archive failure aborts the delete.
-      await require('../utils/trash').archiveGroupDelete(prisma, getAccountId(req), id)
+      const trashed = await require('../utils/trash').archiveGroupDelete(prisma, getAccountId(req), id)
 
       await prisma.$transaction([
         // GroupMember model removed - using JSON arrays instead
@@ -776,7 +776,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         }),
       ])
 
-      return res.json({ message: 'Group deleted and users/addons detached' })
+      // trashId: the page's Undo restores it from the Trash.
+      return res.json({ message: 'Group deleted and users/addons detached', trashId: trashed?.id ?? null })
     } catch (error) {
       console.error('Error deleting group:', error)
       if (error.code === 'P2025') {
@@ -807,15 +808,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       
       // Only an actual removal is archived - removing someone who wasn't in
       // the group would otherwise leave a no-op undo entry in the Trash.
+      let trashId = null
       if (updatedUserIds.length !== currentUserIds.length) {
-        await require('../utils/trash').archiveMembershipRemoval(prisma, getAccountId(req), groupId, userId)
+        const trashed = await require('../utils/trash').archiveMembershipRemoval(prisma, getAccountId(req), groupId, userId)
+        trashId = trashed?.id ?? null
       }
 
       // Removed from the list as it is when the write happens, not the copy
       // read above, so someone added in between is not lost with it.
       await removeUserFromGroup(prisma, userId, groupId, req)
 
-      res.json({ message: 'User removed from group successfully' })
+      res.json({ message: 'User removed from group successfully', trashId })
     } catch (error) {
       console.error('Error removing user from group:', error)
       res.status(500).json({ message: 'Failed to remove user from group', error: publicMessage(error, 'Failed to remove user from group') })

@@ -30,6 +30,7 @@ import { V2Button, V2Status } from '@/components/v2/V2Bits';
 import { V2Numbers, v2HiddenNumbers } from '@/components/v2/V2Detail';
 import { judgeEntry } from '@/components/v2/VaultV2';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
+import { Freshness } from '@/components/ui/PlaybackFreshness';
 import {
   UsersIcon,
   UserGroupIcon,
@@ -804,6 +805,7 @@ export default function DashboardPage() {
     );
     const v2Actions = (
       <div className="flex items-center gap-2 flex-wrap">
+        <Freshness at={metricsAt} />
         <ArrangeButton arrange={dashArrange} />
         {syncButton}
       </div>
@@ -1084,7 +1086,7 @@ export default function DashboardPage() {
                     {isSyncing ? 'Syncing...' : 'Sync All'}
                   </Button>
                 );
-                return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : <div className="flex items-center gap-2"><ArrangeButton arrange={dashArrange} />{syncBtn}</div>;
+                return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : <div className="flex items-center gap-2 flex-wrap"><Freshness at={metricsAt} /><ArrangeButton arrange={dashArrange} />{syncBtn}</div>;
               })()}
             />
 
@@ -1392,7 +1394,8 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Welcome back! Here's what's happening with SlickSync."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Freshness at={metricsAt} />
             <ArrangeButton arrange={dashArrange} />
             <Button
               variant="secondary"

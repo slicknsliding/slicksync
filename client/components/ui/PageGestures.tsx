@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpIcon } from '@heroicons/react/24/outline';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { fxBuzz } from '@/lib/effects';
 
 /**
  * Back to top: a round button that slides in at the bottom corner once a page
@@ -85,7 +86,10 @@ export function PullRefresh() {
       const dy = e.touches[0].clientY - y0;
       const dx = e.touches[0].clientX - x0;
       if (dy <= 0 || (pull === 0 && Math.abs(dx) > Math.abs(dy)) || window.scrollY > 0) { on = pull > 0 && dy > 0; if (!on) place(0, false); return; }
+      const was = pull;
       pull = dy * 0.5;
+      // Effects → Vibrate: a tiny buzz the moment the pull is far enough.
+      if (was < LINE && pull >= LINE) fxBuzz();
       place(pull, true);
     };
     const end = () => {
@@ -104,13 +108,15 @@ export function PullRefresh() {
     window.addEventListener('touchstart', start, opts);
     window.addEventListener('touchmove', move, opts);
     window.addEventListener('touchend', end, opts);
-    window.addEventListener('touchcancel', end, opts);
+    // A pull the phone itself interrupted is put back, never acted on.
+    const cancel = () => { if (!on) return; on = false; pull = 0; place(0, false); };
+    window.addEventListener('touchcancel', cancel, opts);
     return () => {
       root.removeAttribute('data-pull');
       window.removeEventListener('touchstart', start, opts);
       window.removeEventListener('touchmove', move, opts);
       window.removeEventListener('touchend', end, opts);
-      window.removeEventListener('touchcancel', end, opts);
+      window.removeEventListener('touchcancel', cancel, opts);
     };
   }, [isTV]);
   if (isTV) return null;

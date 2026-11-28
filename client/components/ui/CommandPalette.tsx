@@ -16,6 +16,7 @@ import { searchHelp, HelpEntry } from '@/lib/helpContent';
 import { searchSettings } from '@/lib/settingsIndex';
 import { cachedImageUrl } from '@/lib/posterUrl';
 import { usePageDesign } from '@/lib/arrange';
+import { Highlight } from '@/components/ui/Highlight';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { lightActive } from '@/lib/menuHighlight';
 import { useTVModal } from '@/components/tv/useTVModal';
@@ -460,7 +461,7 @@ export function CommandPalette() {
                             ) : (
                               <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
                             )}
-                            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>{r.label}</span>
+                            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}><Highlight text={r.label} q={query} /></span>
                             {r.sublabel && <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{r.sublabel}</span>}
                           </button>
                         );

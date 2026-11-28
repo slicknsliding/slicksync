@@ -46,6 +46,7 @@ function DataSources({ lumiere }: { lumiere: boolean }) {
       )}
       <li>This product uses the TMDB API but is not endorsed or certified by TMDB.</li>
       <li>Titles and posters also come from Cinemeta and, with your own keys, OMDb, MDBList and RPDB.</li>
+      <li>The Stremio, Nuvio, Jellyfin and AIOStreams names and logos belong to their own projects. The Jellyfin logo is used under CC BY-SA 4.0.</li>
     </ul>
   );
 }
@@ -155,6 +156,7 @@ export function AboutPanel({ lumiere, shared }: { lumiere: boolean; shared: bool
           )}
           <li>This product uses the TMDB API but is not endorsed or certified by TMDB.</li>
           <li>Titles and posters also come from Cinemeta and, with your own keys, OMDb, MDBList and RPDB.</li>
+          <li>The Stremio, Nuvio, Jellyfin and AIOStreams names and logos belong to their own projects. The Jellyfin logo is used under CC BY-SA 4.0.</li>
         </ul>
 
         <h4 className="text-sm font-semibold text-default mt-5 mb-2">Privacy</h4>

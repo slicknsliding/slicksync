@@ -18,6 +18,10 @@ container
 Both ports are declared, but only `3000` is worth publishing. Put a reverse
 proxy in front of it for TLS; SlickSync does not terminate TLS itself.
 
+The sample compose files open `3000` to the machine itself only, which is
+what a reverse proxy on it needs. `SLICKSYNC_BIND=0.0.0.0` in `.env` opens it
+on every network the machine is on.
+
 Override with `FRONTEND_PORT` and `BACKEND_PORT` if either collides.
 
 ## Build stages

@@ -75,8 +75,10 @@ export type Arrangement = {
   startPage?: string;
   /** Grid or list, per page. */
   views?: Record<string, 'grid' | 'list'>;
-  /** Keep each page's filter between visits (off by default). */
+  /** Keep each page's filter and sort between visits. On unless it is `false` (it was off by default until 1.110; `true` is what older saves hold). */
   keepFilters?: boolean;
+  /** Sync All shows what it will change first (Users, Groups): false when switched off; on otherwise. */
+  syncPreview?: false;
   /** Peek at a person (Users, with a mouse): false when switched off; on otherwise. */
   peek?: false;
   /** A page's kept filter, per page. */

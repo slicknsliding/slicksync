@@ -224,6 +224,9 @@ async function wrapProfile(prisma, accountId, person, want, { decrypt } = {}) {
     gate = { base: usable.base, token: await tokenOf(prisma, owner.id, owner.traxToken) }
   }
   const { fetchManifest } = require('./nuvioHomeLayout')
+  // Read, rewrite and write back in the owner's queue (utils/syncLock.js).
+  const { withPersonSync, personKey } = require('./syncLock')
+  return withPersonSync(personKey(accountId, owner.id), async () => {
   const { addons } = await provider.getAddons()
   const next = []
   let changed = false
@@ -247,6 +250,7 @@ async function wrapProfile(prisma, accountId, person, want, { decrypt } = {}) {
   }
   if (changed) await provider.setAddons(next)
   return { changed }
+  })
 }
 
 /**
