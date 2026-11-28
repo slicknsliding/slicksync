@@ -397,8 +397,12 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'onboarding-wizard',
     title: 'The first-run onboarding wizard',
     category: 'Getting started',
-    keywords: ['onboarding wizard', 'first run', 'new install walkthrough', 'replay tour', 'welcome tour', 'back button'],
+    keywords: ['onboarding wizard', 'first run', 'new install walkthrough', 'replay tour', 'welcome tour', 'resume tour', 'back button'],
     answer: 'A full-screen walkthrough shown on your very first visit - connect an account, add addons, invite your household, and a rundown of what\'s different from the original Syncio fork. Has a Back button if you click past a step too fast, and can be replayed any time from Settings → Welcome Tour. For what shipped in a specific version afterward, check the changelog directly.',
+    details: [
+      'Closing the tour before the end is not the same as finishing it: a Resume tour button with a small dot appears beside search and the bell. Press it to see which step you stopped on, then Resume tour to carry on from that step.',
+      'The button goes away for good once you reach the end of the tour, or when you choose Don\'t show again in its pop-up. Replaying the tour from Settings brings it back until that tour is finished too.',
+    ],
     href: '/settings',
     linkLabel: 'Open Settings',
   },

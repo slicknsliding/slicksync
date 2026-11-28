@@ -212,8 +212,8 @@ export function Header({
           ) : null}
 
           {/* Command palette + notifications — always last so the bell's
-              dropdown fits within the screen. The resume-tour prompt renders
-              on top of both from inside TopbarActions. */}
+              dropdown fits within the screen. While the tour is unfinished,
+              TopbarActions adds its Resume tour button before them. */}
           <TopbarActions
             activities={activities}
             inviteHistory={inviteHistory}
