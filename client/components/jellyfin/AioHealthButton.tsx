@@ -12,6 +12,7 @@ import { LoadErrorInline } from '@/components/ui/LoadState';
 import { useEffect, useState } from 'react';
 import { toast } from '@/components/ui/Toast';
 import { api, type AioHealth, type AioTestSearch } from '@/lib/api';
+import { LiveTvLines } from './LiveTvLines';
 
 /** What AIOStreams says about their configuration, read while `active`. */
 export function AioHealthBody({ userId, active }: { userId: string; active: boolean }) {
@@ -47,6 +48,7 @@ export function AioHealthBody({ userId, active }: { userId: string; active: bool
 
   return (
     <div className="space-y-3">
+      <LiveTvLines userId={userId} active={active} />
       {error ? (
         <LoadErrorInline error={error} onRetry={() => setAttempt((n) => n + 1)} />
       ) : !state ? (

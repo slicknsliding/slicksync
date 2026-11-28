@@ -41,6 +41,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { TopbarActions } from '@/components/layout/TopbarActions';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { lightRemote } from '@/lib/menuHighlight';
@@ -120,6 +122,8 @@ const yearOf = (s: string | null | undefined) => parseInt(/\d{4}/.exec(s || '')?
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
+  // Below Tailwind's sm: where the search box has a line to itself.
+  const isPhone = useIsMobile(640);
   const { design } = usePageDesign();
   const v2 = design === 'v2' && !isTV;
   const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
@@ -952,6 +956,8 @@ export default function DiscoverPage() {
     ...Object.fromEntries(recRows.map((r, i) => [`rec-${i}`, r.reason])),
   };
 
+  const bellHere = layoutMode === 'nebula' && !v2;
+
   return (
     <Wrapper>
       {layoutMode !== 'nebula' && (
@@ -972,7 +978,7 @@ export default function DiscoverPage() {
           {/* The search, what kind, and Surprise me. TV has no search - typing on a remote isn't worth it. */}
           <div className="flex flex-wrap items-center gap-3">
             {!isTV && (
-              <label className="flex-1 min-w-0 sm:min-w-[16rem] basis-full sm:basis-auto h-[52px] flex items-center gap-3 pl-4 pr-3 rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+              <label className={bellHere && isPhone ? "flex-1 min-w-0 basis-0 h-[52px] flex items-center gap-3 pl-4 pr-3 rounded-2xl" : "flex-1 min-w-0 sm:min-w-[16rem] basis-full sm:basis-auto h-[52px] flex items-center gap-3 pl-4 pr-3 rounded-2xl"} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
                 <MagnifyingGlassIcon className="w-5 h-5 text-muted shrink-0" />
                 <input
                   ref={searchRef}
@@ -996,6 +1002,7 @@ export default function DiscoverPage() {
                 )}
               </label>
             )}
+            {bellHere && isPhone && <TopbarActions className="shrink-0" />}
             <div role="group" aria-label="Kind" className="flex w-full sm:w-auto p-1 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
               {KINDS.map((k) => (
                 <Focus key={k.key} tv={isTV} onEnter={() => setKind(k.key)}>
@@ -1053,6 +1060,8 @@ export default function DiscoverPage() {
               <div className="w-full">
                 <PageToolbar
                   animate={false}
+                  // This one sits in Discover's own header block, which has its own place on the page.
+                  stick={false}
                   filterTabs={{
                     options: lenses.map((l) => ({ key: l.key, label: l.label, count: l.count })),
                     activeKey: lens,
@@ -1082,6 +1091,11 @@ export default function DiscoverPage() {
 
             {!v2 && sortFilters}
           </div>
+
+          {/* Classic has no page heading here, which is where the palette and the
+              bell live on every other page: on a computer they get this line,
+              on a phone they sit beside the search box above. */}
+          {bellHere && !isPhone && <div className="mt-2.5 -mb-3.5 flex justify-end"><TopbarActions /></div>}
 
           {/* TV: the order and genre as rows of pills - a remote can't drive a popup. */}
           {isTV && lens === 'titles' && (

@@ -19,6 +19,7 @@ import { AccountModal } from './AccountModal';
 import { useLayoutMode, AccountPlacementContext } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
+import { SHORTCUTS_EVENT } from '@/components/ui/QuickTouches';
 
 /** Fired on window when the account menu opens (detail true) or closes (false). */
 export const ACCOUNT_MENU_EVENT = 'slicksync:account-menu';
@@ -419,6 +420,21 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                       <span className="nav-item-label text-sm font-medium">Changelog</span>
                     </button>
 ))}
+                    {!isTV && (
+                    <button
+                      onClick={() => { setIsOpen(false); window.dispatchEvent(new Event(SHORTCUTS_EVENT)); }}
+                      className="w-full hidden md:flex items-center gap-3 px-3 py-2.5 rounded-lg hov-surface" data-mh-item=""
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-semibold"
+                        style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+                      >
+                        ?
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Keyboard shortcuts</span>
+                    </button>
+                    )}
                   </>
                 )}
               </>

@@ -8,7 +8,8 @@
 // dismissing one are the dropdown's own.
 
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { BellIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { SwipeToDismiss } from '@/components/ui/SwipeToDismiss';
 import { fxOn } from '@/lib/effects';
 
@@ -178,10 +179,7 @@ export function NotificationsPanelV2({
             <p className="text-sm font-semibold text-default">All clear</p>
           </div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-center">
-            <BellIcon className="w-8 h-8 mx-auto mb-2 text-subtle" />
-            <p className="text-sm text-muted">No new notifications</p>
-          </div>
+          <EmptyState tight art="bell" title="No new notifications" line="New episodes, sync results and alerts land here." />
         ) : (
           <>
             {today.length > 0 && <>{label('Today')}<div className="flex flex-col gap-1.5 px-1.5 pb-1.5">{today.map(row)}</div></>}

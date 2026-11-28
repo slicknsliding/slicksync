@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { ALL_SET_EVENT } from '@/components/ui/QuickTouches';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import {
@@ -286,6 +287,8 @@ export function OnboardingWizard() {
   const finish = () => {
     completeOnboarding();
     setIsOpen(false);
+    // The finished-setup moment (components/ui/QuickTouches).
+    window.dispatchEvent(new Event(ALL_SET_EVENT));
   };
 
   // Closing with the X (or Escape) is "not right now", NOT a dismissal:

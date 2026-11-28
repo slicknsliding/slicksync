@@ -91,6 +91,41 @@ function replaceIptvLogin(config, before, after) {
   return changed
 }
 
+// Live TV playlists (AIOStreams' M3U option) inside a configuration: only a
+// preset holding exactly the old address is changed.
+function replaceIptvPlaylist(config, before, after) {
+  const changed = []
+  const was = String(before || '').trim()
+  const now = String(after || '').trim()
+  if (!was || !now || was === now) return changed
+  for (const preset of Array.isArray(config?.presets) ? config.presets : []) {
+    if (!preset || String(preset.type || '').toLowerCase() !== 'm3u') continue
+    const o = preset.options && typeof preset.options === 'object' ? preset.options : null
+    if (!o || String(o.playlist || '').trim() !== was) continue
+    o.playlist = now
+    changed.push(String(o.name || preset.instanceId || 'Live TV playlist'))
+  }
+  return changed
+}
+
+// Every Live TV source a configuration carries: M3U playlists and Xtream
+// logins that are switched on. What a check of a setup's Live TV walks.
+function liveTvSources(config) {
+  const out = []
+  for (const preset of Array.isArray(config?.presets) ? config.presets : []) {
+    if (!preset || preset.enabled === false) continue
+    const type = String(preset.type || '').toLowerCase()
+    const o = preset.options && typeof preset.options === 'object' ? preset.options : null
+    if (!o) continue
+    if (type === 'm3u' && String(o.playlist || '').trim()) {
+      out.push({ kind: 'm3u', name: String(o.name || preset.instanceId || 'Live TV playlist'), playlist: String(o.playlist).trim() })
+    } else if (type === 'xtream' && o.server && o.username && o.password) {
+      out.push({ kind: 'xtream', name: String(o.name || preset.instanceId || 'IPTV'), server: String(o.server), username: String(o.username), password: String(o.password) })
+    }
+  }
+  return out
+}
+
 async function rotateIptvInAioConfigs(prisma, decrypt, { accountId, before, after }) {
   const ok = (l) => l && l.server && l.username && l.password
   if (!ok(before) || !ok(after)) return { updated: [], failed: [] }
@@ -137,4 +172,4 @@ async function changeOptedInConfigs(prisma, decrypt, accountId, change) {
   return { updated, failed }
 }
 
-module.exports = { rotateInAioConfigs, rotateIptvInAioConfigs, replaceServiceKey, replaceIptvLogin, statusFor, setEnabled }
+module.exports = { rotateInAioConfigs, rotateIptvInAioConfigs, replaceServiceKey, replaceIptvLogin, replaceIptvPlaylist, liveTvSources, statusFor, setEnabled }

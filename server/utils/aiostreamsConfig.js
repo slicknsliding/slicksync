@@ -432,6 +432,16 @@ async function checkConfigs(prisma, decrypt) {
       continue
     }
     await noteOutsideChanges(prisma, person, config, before)
+    // Live TV: the playlists and IPTV logins this setup carries are checked
+    // by themselves, and the household hears when one stops, comes back or
+    // is about to run out (utils/liveTvWatch.js). Never fatal to this pass.
+    try {
+      const { watchLiveTv, checkSource } = require('./liveTvWatch')
+      const { alerts } = await watchLiveTv(prisma, person, config, { check: checkSource })
+      for (const a of alerts) await alert(prisma, accountId, a)
+    } catch (e) {
+      console.warn('[AIOStreamsConfig] Live TV check failed:', e?.message)
+    }
   }
 }
 

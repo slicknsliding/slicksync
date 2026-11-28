@@ -320,7 +320,10 @@ export function NebulaHeaderStats({
 // accent (same idea Current's own stat cards already use), translucent
 // blurred background. A plain className string, not a component, so callers
 // can still control their own padding/layout freely.
-export const NEBULA_GLASS_CLASS = 'relative rounded-2xl overflow-hidden';
+// overflow-clip, not -hidden: it cuts the corners the same, but does not make
+// the panel its own scroller, which would stop the toolbar inside it from
+// sticking to the top of the page (PageToolbar's sticky filters).
+export const NEBULA_GLASS_CLASS = 'relative rounded-2xl overflow-clip';
 // 55% opacity (was 66%) - on a long page (e.g. Activity's Watch tab with
 // many stacked date-group panels, confirmed 7000px+ tall with real history)
 // the corner background glow is `position: fixed`, so it's always present

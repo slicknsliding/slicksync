@@ -552,8 +552,75 @@ async function checkXtreamAuth(secret, config = {}) {
   }
 }
 
+// Live TV playlist (M3U), the kind AIOStreams' M3U option takes. The address
+// is the secret: it usually carries the login. A playlist can be many
+// megabytes, so only its start is read - enough to see that it is a playlist
+// and that it lists channels - and the rest is dropped. An address in the
+// Xtream shape (get.php with a username and password) also says when the
+// login runs out, through the same server's player_api.
+const M3U_PEEK_BYTES = 256 * 1024
+async function readStart(res, maxBytes) {
+  const reader = res?.body?.getReader?.()
+  if (!reader) return ''
+  const chunks = []
+  let total = 0
+  let timer
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve({ done: true, late: true }), 15000) })
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await Promise.race([reader.read(), deadline])
+      if (done) break
+      total += value.byteLength
+      chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength))
+    }
+  } catch { /* what arrived is what is judged */ }
+  clearTimeout(timer)
+  reader.cancel().catch(() => {})
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+function m3uXtreamLogin(address) {
+  let url
+  try { url = new URL(address) } catch { return null }
+  const username = url.searchParams.get('username')
+  const password = url.searchParams.get('password')
+  if (!/\/get\.php$/i.test(url.pathname) || !username || !password) return null
+  return { server: `${url.origin}${url.pathname.replace(/\/get\.php$/i, '')}`, username, password }
+}
+
+async function checkM3uPlaylist(secret, config = {}) {
+  const address = String(secret || config.url || '').trim()
+  if (!address) return { ok: false, message: 'No playlist address on file for this entry' }
+  let parsed
+  try { parsed = new URL(address) } catch { return { ok: false, message: 'That is not a web address' } }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return { ok: false, message: 'That is not a web address' }
+  try {
+    const res = await fetchWithRetry(address, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' } }, { checked: true, timeoutMs: 15000 })
+    if (res.status === 401 || res.status === 403) { try { res.body?.cancel?.() } catch {} return { ok: false, message: 'The server turned the playlist address down' } }
+    if (!res.ok) { try { res.body?.cancel?.() } catch {} return { ok: false, message: `The playlist server returned ${res.status}` } }
+    const start = (await readStart(res, M3U_PEEK_BYTES)).replace(/^\uFEFF/, '')
+    if (!/^\s*#EXTM3U/i.test(start)) return { ok: false, message: 'That address did not answer with a playlist' }
+    const channels = (start.match(/^#EXTINF/gim) || []).length
+    if (!channels) return { ok: false, message: 'The playlist loads, but lists no channels' }
+    // Its end date, when the address is an Xtream one. Not knowing it is no failure.
+    let expiresAt
+    const login = m3uXtreamLogin(address)
+    if (login) {
+      try {
+        const r = await checkXtreamAuth(login.password, { url: login.server, identifier: login.username })
+        expiresAt = r.expiresAt
+        if (!r.ok && /account is/.test(r.message)) return { ok: false, message: r.message.replace('Login works', 'The playlist loads'), expiresAt }
+      } catch { /* the playlist itself loaded */ }
+    }
+    return { ok: true, message: `Playlist loads${expiresText(expiresAt)}`, ...(expiresAt ? { expiresAt } : {}) }
+  } catch (err) {
+    return { ok: false, message: describeRequestError(err) }
+  }
+}
+
 const CHECKERS = {
   xtream_auth: checkXtreamAuth,
+  m3u_playlist: checkM3uPlaylist,
   openai_compatible: checkOpenAiCompatible,
   generic_http: checkGenericHttp,
   real_debrid: checkRealDebrid,
@@ -581,4 +648,4 @@ async function runCheck(testType, secret, config) {
   }
 }
 
-module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase, TORBOX_PLANS }
+module.exports = { runCheck, CHECKERS, fetchAiModels, xtreamBase, m3uXtreamLogin, TORBOX_PLANS }

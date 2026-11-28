@@ -7,7 +7,7 @@ import { CatalogPickerMenu } from './AddToListButton';
 import { api, RatingsBatchEntry } from '@/lib/api';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { posterUrl, posterSrcSet, isRpdbPoster } from '@/lib/posterUrl';
+import { posterUrl, posterSrcSet, isRpdbPoster, cachedImageUrl } from '@/lib/posterUrl';
 import {
   FilmIcon, TvIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon,
   XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon, TrashIcon, EllipsisHorizontalIcon,
@@ -108,6 +108,12 @@ export const PosterCard = memo(function PosterCard({
   priority = false,
 }: PosterCardProps) {
   const [imageError, setImageError] = useState(false);
+  // Sharpening in: the picture is drawn once it has arrived. One already in
+  // the browser's memory when the card appears is simply there.
+  const artRef = useRef<HTMLImageElement>(null);
+  const [artIn, setArtIn] = useState(false);
+  useEffect(() => { if (artRef.current?.complete && artRef.current.naturalWidth > 0) setArtIn(true); }, []);
+  const wash = item.poster ? cachedImageUrl(item.poster, 64) : null;
   // Timer for the hover prefetch below; cleared on leave and on unmount so
   // a grid that re-renders mid-hover cannot leave one running.
   const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,7 +180,12 @@ export const PosterCard = memo(function PosterCard({
       <div data-fx-poster-art="" className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
         {item.poster && !imageError ? (
           <>
+            {/* A soft wash of the poster's own colors (its tiny cached copy,
+                blurred) sits behind until the picture arrives and sharpens in. */}
+            <div className="poster-wash" aria-hidden="true" style={{ backgroundImage: wash ? `url("${wash}")` : undefined }} />
             <img
+              ref={artRef}
+              onLoad={() => setArtIn(true)}
               src={posterUrl(item, rpdbEnabled)}
               // Lets the browser take the 154px file where a card renders
               // small (most phone grids) instead of always the 342 - fewer
@@ -187,7 +198,7 @@ export const PosterCard = memo(function PosterCard({
               loading={priority ? 'eager' : 'lazy'}
               fetchPriority={priority ? 'high' : undefined}
               decoding="async"
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              className={`relative w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 poster-in${artIn ? ' on' : ''}`}
               onError={() => setImageError(true)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />
