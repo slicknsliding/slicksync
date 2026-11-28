@@ -26,7 +26,11 @@ import { toast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TwoStepButton } from '@/components/ui/TwoStepButton';
 import { showDeletedWithUndo } from '@/components/ui/undoToast';
-import { api, VaultEntry, VaultCategory, VaultTestType } from '@/lib/api';
+import { api, VaultEntry, VaultCategory, type VaultEntryInput } from '@/lib/api';
+import { VaultEntryForm } from '@/components/vault/VaultEntryForm';
+import { UsedByChip, VaultStatusBadge } from '@/components/vault/VaultBits';
+import { KIND_LABELS, fromEntry, type VaultFormValues, type VaultPayload } from '@/lib/vaultKinds';
+import { canMarkRenewed, costSummary, daysUntil, isFree, isLifetime, isNote, isSnoozed, judgeEntry, matchesSearch, monthlyCost, shortDay } from '@/lib/vaultStatus';
 import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import {
   PlusIcon,
@@ -45,47 +49,13 @@ import {
   BellSlashIcon,
   CalendarDaysIcon,
   ChevronDownIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
-const CATEGORY_LABELS: Record<VaultCategory, string> = {
-  debrid: 'Debrid Services',
-  usenet_provider: 'Usenet Providers',
-  usenet_indexer: 'Usenet Indexers',
-  stremio: 'Stremio',
-  nuvio: 'Nuvio',
-  metadata: 'Metadata & Trackers',
-  ai: 'AI Services',
-  vpn: 'VPN',
-  iptv: 'IPTV',
-  aiostreams: 'AIOStreams',
-  custom: 'Custom',
-};
-
-// AI Services also has its own dedicated front door in Settings -> External
-// API Keys (with a real verify-on-save check this generic Vault form
-// doesn't run) - but it's still the same underlying VaultEntry row
-// (category: 'ai'), so it stays visible here too rather than hidden from
-// Vault's own tabs/Add Entry picker. Managing it from Settings gets you
-// live verification; managing it here gets you the same expiry/cost
-// tracking and drag-to-reorder every other entry has - both write to the
-// same place.
+// What each kind is called on its tab and on a card (lib/vaultKinds).
+const CATEGORY_LABELS: Record<VaultCategory, string> = KIND_LABELS;
 const VAULT_UI_CATEGORY_LABELS = CATEGORY_LABELS;
-
-const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
-  manual: 'Manual (no automated check)',
-  generic_http: 'Generic HTTP request',
-  real_debrid: 'Real-Debrid',
-  torbox: 'TorBox',
-  alldebrid: 'AllDebrid',
-  premiumize: 'Premiumize',
-  debrid_link: 'Debrid-Link',
-  newznab_caps: 'Newznab indexer',
-  tcp_reachability: 'TCP reachability',
-  stremio_auth: 'Stremio login',
-  nuvio_auth: 'Nuvio login',
-  openai_compatible: 'AI provider (OpenAI-compatible)',
-  xtream_auth: 'IPTV login',
-};
 
 // Common currency codes for the Vault cost selector. Intl.NumberFormat
 // renders the correct symbol/placement for each, so only the ISO code is
@@ -94,62 +64,10 @@ const CLASSIC_SECTION_LABELS: Record<string, string> = { cost: 'Cost summary', r
 const CLASSIC_SECTION_KEYS = Object.keys(CLASSIC_SECTION_LABELS);
 const CURRENCY_OPTIONS =['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'SEK', 'NOK', 'DKK', 'PLN', 'NZD', 'ZAR'];
 
-// Calendar days from today to the end date, the way TorBox and the other
-// services count them (Nov 11 -> Dec 31 is 50, whatever the time of day).
-function daysUntil(dateStr?: string | null): number | null {
-  if (!dateStr) return null;
-  const end = new Date(dateStr);
-  if (isNaN(end.getTime())) return null;
-  const now = new Date();
-  const a = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  // The end date is read as UTC, the same day the card's message and the
-  // edit form show (a typed-in date is stored as UTC midnight).
-  const b = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
-  return Math.round((b - a) / (1000 * 60 * 60 * 24));
-}
-
-// Active checks that read the end date from the service itself, and what the
-// edit form calls that service ("From TorBox"). The check writes the date on
-// every run, so the form shows it instead of offering a box to type into.
-const AUTO_EXPIRY_SOURCES: Partial<Record<VaultTestType, string>> = {
-  real_debrid: 'Real-Debrid',
-  torbox: 'TorBox',
-  alldebrid: 'AllDebrid',
-  premiumize: 'Premiumize',
-  debrid_link: 'Debrid-Link',
-  xtream_auth: 'the IPTV server',
-};
-
-// "2026-12-31" -> "Dec 31, 2026", read straight from the parts so no time
-// zone can move it a day.
 function formatDayString(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
   if (!y || !m || !d) return ymd;
   return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}, ${y}`;
-}
-
-function StatusBadge({ entry }: { entry: VaultEntry }) {
-  if (entry.testType === 'manual' || !entry.lastCheckStatus) {
-    return <Badge variant="neutral" size="sm">Not checked</Badge>;
-  }
-  if (entry.lastCheckStatus === 'ok') return <Badge variant="success" size="sm">Active</Badge>;
-  if (entry.lastCheckStatus === 'error') return <Badge variant="error" size="sm">Error</Badge>;
-  return <Badge variant="neutral" size="sm">Unknown</Badge>;
-}
-
-// Whether this entry's expiry-warning alert is currently snoozed (7-day
-// window set via the Snooze button - see handleSnooze).
-function isSnoozed(entry: VaultEntry): boolean {
-  return !!entry.snoozedUntil && new Date(entry.snoozedUntil) > new Date();
-}
-
-function ExpiryBadge({ entry }: { entry: VaultEntry }) {
-  const days = daysUntil(entry.expiresAt);
-  if (days === null) return null;
-  if (isSnoozed(entry)) return <Badge variant="neutral" size="md" className="!text-sm">Snoozed</Badge>;
-  if (days < 0) return <Badge variant="error" size="md" className="!text-sm">Expired</Badge>;
-  if (days <= entry.notifyDaysBefore) return <Badge variant="warning" size="md" className="!text-sm">{days}d left</Badge>;
-  return <Badge variant="outline" size="md" className="!text-sm">{days}d left</Badge>;
 }
 
 // Live Real-Debrid/TorBox usage (active downloads, premium days left) plus
@@ -316,66 +234,6 @@ function BackupKeySelect({ entry, allEntries, onEntryUpdated }: {
   );
 }
 
-interface EntryFormState {
-  name: string;
-  category: VaultCategory;
-  provider: string;
-  secretLabel: string;
-  secret: string;
-  secretUsername: string; // only used for usenet_provider mode (combined into JSON on save)
-  testType: VaultTestType;
-  testUrl: string;
-  testHost: string;
-  testPort: string;
-  testSsl: boolean;
-  testDataCap: string;
-  // "ai" category only - the endpoint/model an entry's key talks to (see
-  // server/utils/nlCatalog.js, which reads these back out of testConfig for
-  // natural-language Catalogs). Optional: left blank, the server defaults to
-  // OpenAI's own endpoint + a small fast model - only needs filling in for a
-  // different OpenAI-compatible provider (OpenRouter, Groq, a local proxy).
-  aiBaseUrl: string;
-  aiModel: string;
-  dashboardUrl: string;
-  cost: string;
-  costCycle: 'monthly' | 'yearly';
-  expiresAt: string;
-  notifyDaysBefore: string;
-}
-
-const EMPTY_FORM: EntryFormState = {
-  name: '', category: 'custom', provider: '', secretLabel: 'API Key', secret: '', secretUsername: '',
-  testType: 'manual', testUrl: '', testHost: '', testPort: '', testSsl: true, testDataCap: '',
-  aiBaseUrl: '', aiModel: '',
-  dashboardUrl: '', cost: '', costCycle: 'monthly', expiresAt: '', notifyDaysBefore: '3',
-};
-
-// Which specialized form to show for a given category
-function categoryFieldMode(category: VaultCategory): 'credentials' | 'indexer' | 'provider' | 'iptv' | 'generic' {
-  if (category === 'stremio' || category === 'nuvio') return 'credentials';
-  if (category === 'iptv') return 'iptv';
-  if (category === 'usenet_indexer') return 'indexer';
-  if (category === 'usenet_provider') return 'provider';
-  return 'generic';
-}
-
-// Sensible defaults applied automatically when switching to a specialized category
-function categoryDefaults(category: VaultCategory): Partial<EntryFormState> {
-  if (category === 'ai') return { testType: 'manual', secretLabel: 'API Key' };
-  switch (categoryFieldMode(category)) {
-    case 'credentials':
-      return { testType: category === 'nuvio' ? 'nuvio_auth' : 'stremio_auth', secretLabel: 'Password' };
-    case 'indexer':
-      return { testType: 'newznab_caps', secretLabel: 'API Key' };
-    case 'provider':
-      return { testType: 'tcp_reachability', secretLabel: 'Password' };
-    case 'iptv':
-      return { testType: 'xtream_auth', secretLabel: 'Password' };
-    default:
-      return {};
-  }
-}
-
 // Wraps a card with dnd-kit's sortable drag state AND a right-click context
 // menu — both live here (rather than in renderEntryCard) since hooks can't
 // be called conditionally or inside a .map() callback directly.
@@ -384,15 +242,21 @@ function SortableEntryCard({
   renderEntryCard,
   onTest,
   onEdit,
+  onDuplicate,
   onMoveToAddons,
   onDelete,
+  plain = false,
 }: {
   entry: VaultEntry;
   renderEntryCard: (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => React.ReactNode;
   onTest: (entry: VaultEntry) => void;
   onEdit: (entry: VaultEntry) => void;
+  /** Opens the add form filled in like this one, without the secret. */
+  onDuplicate: (entry: VaultEntry) => void;
   onMoveToAddons: (entry: VaultEntry) => void;
   onDelete: (entry: VaultEntry) => void;
+  /** A search result: it can be anywhere in the Vault, so it is not dragged from here. */
+  plain?: boolean;
 }) {
   const { dragHandleProps, itemProps, isDragging } = useSortableDragState(entry.id);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -404,9 +268,10 @@ function SortableEntryCard({
 
   return (
     <div ref={itemProps.ref} style={itemProps.style} className={`${itemProps.className} tap-card`} onContextMenu={handleContextMenu} {...longPress}>
-      {renderEntryCard(entry, dragHandleProps, isDragging)}
+      {renderEntryCard(entry, plain ? undefined : dragHandleProps, isDragging)}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+        {entry.category !== 'note' && (
         <button
           onClick={() => { close(); onTest(entry); }}
           disabled={entry.testType === 'manual'}
@@ -415,12 +280,20 @@ function SortableEntryCard({
           <ArrowPathIcon className="w-4 h-4" />
           Run Check Now
         </button>
+        )}
         <button
           onClick={() => { close(); onEdit(entry); }}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
         >
           <PencilIcon className="w-4 h-4" />
           Edit
+        </button>
+        <button
+          onClick={() => { close(); onDuplicate(entry); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <DocumentDuplicateIcon className="w-4 h-4" />
+          Duplicate
         </button>
         {entry.dashboardUrl && (
           <a
@@ -448,6 +321,8 @@ function SortableEntryCard({
             Rotate Now
           </button>
         )}
+        {entry.category !== 'note' && (
+        <>
         <div className="my-1 border-t border-default" />
         <button
           onClick={() => { close(); onMoveToAddons(entry); }}
@@ -456,6 +331,8 @@ function SortableEntryCard({
           <PuzzlePieceIcon className="w-4 h-4" />
           Move to Addons
         </button>
+        </>
+        )}
         <div className="my-1 border-t border-default" />
         <TwoStepButton
           onConfirm={() => { close(); onDelete(entry); }}
@@ -511,13 +388,21 @@ function VaultPageContent() {
   // (?edit=<id>), so the "rotate now" banner (open the dashboard right from
   // inside the form) only shows in that context, not on every manual edit.
   const [arrivedViaAlert, setArrivedViaAlert] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  // The check type the entry was saved with - its end date only counts as
-  // "from the service" while the form still has that same check picked.
-  const [editingTestType, setEditingTestType] = useState<VaultTestType | null>(null);
+  // The entry being edited, with its details; null while adding.
+  const [editingEntry, setEditingEntry] = useState<VaultEntry | null>(null);
+  // Duplicate: the add form starts filled in like another entry, without its secret.
+  const [startWith, setStartWith] = useState<VaultFormValues | null>(null);
+  // A new form each time it opens, so nothing typed last time is still in it.
+  const [formKey, setFormKey] = useState(0);
+  // Search across every kind at once, and only what needs a look.
+  const [query, setQuery] = useState('');
+  const [needOnly, setNeedOnly] = useState(false);
+  // Test all: how far along it is.
+  const [testAll, setTestAll] = useState<{ at: number; of: number } | null>(null);
+  // How many addons carry each key, by entry id.
+  const [usedBy, setUsedBy] = useState<Record<string, number>>({});
   // TorBox's plan + list price, offered once for an empty Cost field.
   const [planOffer, setPlanOffer] = useState<{ name: string; monthlyUsd: number } | null>(null);
-  const [form, setForm] = useState<EntryFormState>(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
 
   // Cost summary - needs ALL entries (not just the active category tab's) plus
@@ -538,6 +423,8 @@ function VaultPageContent() {
       setAllCostEntries(d.entries);
       if (d.currency) setCurrency(d.currency);
     }).catch(() => {});
+    // Which keys addons carry. Nothing shows when this cannot be read.
+    api.getVaultUsageCounts().then((r) => setUsedBy(r.counts || {})).catch(() => {});
     // Sum hours from the last 30 days of watchTime.byDay - a monthly spend
     // figure divided by ~a month of hours keeps cost/hour dimensionally
     // honest (a monthly $ over all-time hours would keep shrinking as history
@@ -571,11 +458,9 @@ function VaultPageContent() {
     }
   };
 
-  // Normalize each entry to a monthly figure (yearly ÷ 12) before totaling, so
-  // monthly and yearly-billed services sum correctly together.
-  const toMonthly = (e: VaultEntry) => (e.cost || 0) / (e.costCycle === 'yearly' ? 12 : 1);
-  const monthlyTotal = allCostEntries.reduce((sum, e) => sum + toMonthly(e), 0);
-  const trackedCount = allCostEntries.filter((e) => e.cost != null && e.cost > 0).length;
+  // A yearly price is spread over twelve months; a lifetime plan is paid once
+  // and stays out of the monthly and yearly totals (lib/vaultStatus).
+  const { monthly: monthlyTotal, tracked: trackedCount, paidOnce, lifetimeCount } = useMemo(() => costSummary(allCostEntries), [allCostEntries]);
   const costPerHour = hoursLast30 && hoursLast30 > 0 ? monthlyTotal / hoursLast30 : null;
 
   // Renewal calendar: projects each cost-tracked entry's OWN renewal cycle
@@ -592,7 +477,7 @@ function VaultPageContent() {
     const windowEnd = now + FORECAST_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const occurrences: Array<{ entryId: string; name: string; date: Date; amount: number }> = [];
     for (const e of allCostEntries) {
-      if (!e.cost || e.cost <= 0 || !e.expiresAt || !e.isActive) continue;
+      if (!e.cost || e.cost <= 0 || !e.expiresAt || !e.isActive || monthlyCost(e) === 0) continue;
       const cycleDays = e.costCycle === 'yearly' ? 365 : 30;
       let next = new Date(e.expiresAt).getTime();
       // Catch up past-due entries (expiresAt already passed but never
@@ -627,45 +512,44 @@ function VaultPageContent() {
   useEffect(() => { load(); }, [load]);
 
   const openAddModal = () => {
-    setEditingId(null);
-    setEditingTestType(null);
+    setEditingEntry(null);
+    setStartWith(null);
     setPlanOffer(null);
-    setForm(EMPTY_FORM);
     setArrivedViaAlert(false);
+    setFormKey((k) => k + 1);
     setIsAddOpen(true);
   };
 
   const openEditModal = async (entry: VaultEntry) => {
-    setEditingId(entry.id);
-    setEditingTestType(entry.testType);
+    // A card carries only what it shows; the form needs the rest (addresses, the form picked).
+    let full = entry;
+    if (entry.testConfig === undefined) {
+      try { full = await api.getVaultEntry(entry.id); } catch (err: any) { toast.error(err.message || 'Could not open that entry'); return; }
+    }
+    setEditingEntry(full);
+    setStartWith(null);
     setPlanOffer(null);
-    if (entry.testType === 'torbox' && entry.cost == null) {
-      api.getVaultEntryUsage(entry.id).then((r) => setPlanOffer(r.usage?.plan || null)).catch(() => {});
+    if (full.testType === 'torbox' && full.cost == null) {
+      api.getVaultEntryUsage(full.id).then((r) => setPlanOffer(r.usage?.plan || null)).catch(() => {});
     }
     setArrivedViaAlert(false);
-    const cfg: any = entry.testConfig || {};
-    setForm({
-      name: entry.name,
-      category: entry.category,
-      provider: entry.provider || '',
-      secretLabel: entry.secretLabel,
-      secret: '', // left blank — only sent if user types a new value
-      secretUsername: '', // same — usenet_provider username isn't returned decrypted either
-      testType: entry.testType,
-      testUrl: cfg.url || '',
-      testHost: cfg.host || '',
-      testPort: cfg.port ? String(cfg.port) : '',
-      testSsl: cfg.ssl ?? true,
-      testDataCap: cfg.dataCapGB ? String(cfg.dataCapGB) : '',
-      aiBaseUrl: cfg.baseUrl || '',
-      aiModel: cfg.model || '',
-      dashboardUrl: entry.dashboardUrl || '',
-      cost: entry.cost != null ? String(entry.cost) : '',
-      costCycle: entry.costCycle === 'yearly' ? 'yearly' : 'monthly',
-      expiresAt: entry.expiresAt ? entry.expiresAt.split('T')[0] : '',
-      notifyDaysBefore: String(entry.notifyDaysBefore ?? 3),
-    });
+    setFormKey((k) => k + 1);
     setIsAddOpen(true);
+  };
+
+  // Duplicate: the add form, filled in like this entry, without its secret.
+  const handleDuplicate = async (entry: VaultEntry) => {
+    try {
+      const full = await api.getVaultEntry(entry.id);
+      setEditingEntry(null);
+      setStartWith({ ...fromEntry(full), name: `${full.name} (copy)`, secret: '' });
+      setPlanOffer(null);
+      setArrivedViaAlert(false);
+      setFormKey((k) => k + 1);
+      setIsAddOpen(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not open that entry');
+    }
   };
 
   // Deep link from a Vault alert's "Fix now" button (?edit=<entryId>) - jump
@@ -682,8 +566,7 @@ function VaultPageContent() {
     api.getVaultEntry(editId)
       .then((entry) => {
         setActiveCategory(entry.category);
-        openEditModal(entry);
-        setArrivedViaAlert(true);
+        void openEditModal(entry).then(() => setArrivedViaAlert(true));
       })
       .catch(() => toast.error('Could not find that Vault entry'))
       .finally(() => router.replace('/vault'));
@@ -695,100 +578,19 @@ function VaultPageContent() {
   // Same strip-the-param behaviour as ?edit= above.
   useEffect(() => {
     if (searchParams.get('open') !== 'add') return;
-    setIsAddOpen(true);
+    openAddModal();
     router.replace('/vault');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const handleCategoryChange = (category: VaultCategory) => {
-    setForm(f => ({ ...f, category, ...categoryDefaults(category) }));
-  };
-
-  const buildTestConfig = (f: EntryFormState) => {
-    const mode = categoryFieldMode(f.category);
-    if (f.category === 'ai') {
-      return (f.aiBaseUrl.trim() || f.aiModel.trim())
-        ? { baseUrl: f.aiBaseUrl.trim() || undefined, model: f.aiModel.trim() || undefined }
-        : undefined;
-    }
-    if (mode === 'indexer' || mode === 'iptv') {
-      return f.testUrl ? { url: f.testUrl.trim() } : undefined;
-    }
-    if (mode === 'provider') {
-      return (f.testHost && f.testPort)
-        ? { host: f.testHost, port: Number(f.testPort), ssl: f.testSsl, dataCapGB: f.testDataCap ? Number(f.testDataCap) : undefined }
-        : undefined;
-    }
-    // generic mode falls back to the manually-picked testType
-    if (f.testType === 'generic_http' || f.testType === 'newznab_caps') {
-      return f.testUrl ? { url: f.testUrl } : undefined;
-    }
-    if (f.testType === 'tcp_reachability') {
-      return (f.testHost && f.testPort) ? { host: f.testHost, port: Number(f.testPort) } : undefined;
-    }
-    return undefined;
-  };
-
-  const handleSave = async () => {
-    const mode = categoryFieldMode(form.category);
-
-    if (!form.name.trim() || !form.category) {
-      toast.error('Name and category are required');
-      return;
-    }
-    // Mode-specific required-field validation
-    if (mode === 'credentials' && !editingId && (!form.provider.trim() || !form.secret.trim())) {
-      toast.error('Email/username and password are required');
-      return;
-    }
-    if (mode === 'provider' && !editingId && (!form.testHost.trim() || !form.testPort.trim() || !form.secretUsername.trim() || !form.secret.trim())) {
-      toast.error('Host, port, username, and password are required');
-      return;
-    }
-    if (mode === 'iptv' && (!form.testUrl.trim() || !form.provider.trim() || (!editingId && !form.secret.trim()))) {
-      toast.error('Server address, username and password are required');
-      return;
-    }
-    if (mode === 'indexer' && !editingId && (!form.testUrl.trim() || !form.secret.trim())) {
-      toast.error('Newznab URL and API key are required');
-      return;
-    }
-    if (mode === 'generic' && !editingId && !form.secret.trim()) {
-      toast.error('Secret is required');
-      return;
-    }
-
+  const handleSubmit = async (payload: VaultPayload, opts: { test: boolean }) => {
     setIsSaving(true);
     try {
-      const payload: any = {
-        name: form.name.trim(),
-        category: form.category,
-        secretLabel: form.secretLabel.trim() || 'API Key',
-        testType: form.testType,
-        testConfig: buildTestConfig(form),
-        dashboardUrl: form.dashboardUrl.trim() || undefined,
-        cost: form.cost.trim() !== '' && Number(form.cost) >= 0 ? Number(form.cost) : undefined,
-        costCycle: form.costCycle,
-        expiresAt: form.expiresAt || undefined,
-        notifyDaysBefore: form.notifyDaysBefore ? Number(form.notifyDaysBefore) : 3,
-      };
-
-      if (mode === 'provider') {
-        // Host/port already live in testConfig; provider field stays free for a friendly label
-        payload.provider = form.provider.trim() || undefined;
-        if (form.secretUsername.trim() || form.secret.trim()) {
-          payload.secret = JSON.stringify({ username: form.secretUsername.trim(), password: form.secret });
-        }
-      } else {
-        payload.provider = form.provider.trim() || undefined;
-        if (form.secret.trim()) payload.secret = form.secret.trim();
-      }
-
-      if (editingId) {
-        const result = await api.updateVaultEntry(editingId, payload);
-        // Rotation propagation ran (opt-in) and touched something - say
-        // exactly what, since addon configs and user accounts just changed
-        // as a side effect of saving a key.
+      if (editingEntry) {
+        const result = await api.updateVaultEntry(editingEntry.id, payload as Partial<VaultEntryInput>);
+        // The key changed and SlickSync put the new one where the old one
+        // was: say exactly what, since addon settings and people's accounts
+        // just changed as a side effect of saving a key.
         const aio = result?.rotation?.aioConfigsUpdated?.length || 0;
         const aioNote = aio ? `${aio} AIOStreams setup${aio === 1 ? '' : 's'}` : '';
         if (result?.rotation && result.rotation.addonsUpdated.length > 0) {
@@ -804,19 +606,60 @@ function VaultPageContent() {
         } else if (aioNote) {
           toast.success('Key rotated', { line: `Updated ${aioNote}.` });
         } else {
-          toast.success('Vault entry updated');
+          toast.success(`${payload.name} saved`);
         }
       } else {
-        await api.createVaultEntry(payload);
-        toast.success('Vault entry added');
+        const made = await api.createVaultEntry(payload as unknown as VaultEntryInput);
+        // "Add and test": its check runs straight away, and the answer is said with it.
+        let checked: { ok: boolean | null; message: string } | null = null;
+        if (opts.test) { try { checked = await api.testVaultEntry(made.id); } catch { checked = null; } }
+        if (checked?.ok === false) toast.warning(`${payload.name} added, but its check failed`, { line: checked.message });
+        else if (checked) toast.success(`${payload.name} added`, { line: checked.message });
+        else toast.success(`${payload.name} added`);
+        // Land on its own tab, so what was just added is in view.
+        if (payload.category !== activeCategory) setActiveCategory(payload.category);
       }
       setIsAddOpen(false);
       load();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save vault entry');
+      toast.error(err.message || 'Could not save it');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // "I renewed it": the end date moves on one billing period; Undo puts it back.
+  const handleRenewed = async (entry: VaultEntry) => {
+    try {
+      const r = await api.markVaultRenewed(entry.id);
+      toast.success(`${entry.name} now ends ${shortDay(r.expiresAt)}`, {
+        actions: [{
+          label: 'Undo',
+          onClick: async () => {
+            try { await api.updateVaultEntry(entry.id, { expiresAt: r.previousExpiresAt }); load(); }
+            catch (e) { toast.error(e instanceof Error ? e.message : 'Could not put the date back'); }
+          },
+        }],
+      });
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not move the date');
+    }
+  };
+
+  // Test all: every entry that has a check, one after another, counting as it goes.
+  const checkable = useMemo(() => allCostEntries.filter((e) => e.isActive && !isNote(e) && e.testType !== 'manual'), [allCostEntries]);
+  const handleTestAll = async () => {
+    if (testAll || checkable.length === 0) return;
+    let failed = 0;
+    for (let i = 0; i < checkable.length; i++) {
+      setTestAll({ at: i + 1, of: checkable.length });
+      try { const r = await api.testVaultEntry(checkable[i].id); if (r.ok === false) failed++; } catch { failed++; }
+    }
+    setTestAll(null);
+    if (failed) toast.warning(`${checkable.length} checked`, { line: `${failed} ${failed === 1 ? 'is' : 'are'} not working. ${failed === 1 ? 'It is' : 'They are'} under Needs a look.` });
+    else toast.success(`${checkable.length} checked`, { line: 'All working.' });
+    load();
   };
 
   // The buttons ask twice (TwoStepButton, or the menu's "Delete?"), so by
@@ -950,14 +793,11 @@ function VaultPageContent() {
   // onRevealClick comment) - only when the field is still exactly the
   // placeholder-blank "leave empty to keep current" state, so it never
   // clobbers something the user already started typing to replace it with.
-  const handleRevealInEditForm = async () => {
-    if (!editingId || form.secret) return;
-    try {
-      const result = await api.revealVaultSecret(editingId);
-      setForm(f => ({ ...f, secret: result.secret }));
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to reveal secret');
-    }
+  // The eye in the edit form's secret box: the secret on file, fetched only then.
+  const revealForForm = async (): Promise<string | null> => {
+    if (!editingEntry) return null;
+    try { return (await api.revealVaultSecret(editingEntry.id)).secret; }
+    catch (err: any) { toast.error(err.message || 'Failed to reveal secret'); return null; }
   };
 
   // Copies the secret without requiring "Reveal" first, and never stores it
@@ -1005,7 +845,82 @@ function VaultPageContent() {
     })),
   ];
 
-  const renderEntryCard = (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => (
+  // A note is not a key: no status, no test, no backup key, no billing.
+  const renderNoteCard = (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => (
+    <Card data-vault-card="" data-vault-note="" variant="bordered" className={`h-full flex flex-col ${isDragging ? 'shadow-lg shadow-primary/25 scale-[1.01]' : ''}`}>
+      <div className="flex items-center gap-2 mb-3 min-w-0">
+        {dragHandleProps && (
+          <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 -ml-1 rounded hover:bg-surface-hover shrink-0">
+            <Bars3Icon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+          </div>
+        )}
+        <div className="min-w-0">
+          <h3 className="font-semibold break-words" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{CATEGORY_LABELS[entry.category]}</p>
+        </div>
+      </div>
+      <div className="mb-3 p-3 rounded-lg flex items-start justify-between gap-2" style={{ background: 'var(--color-subtle)' }}>
+        <div className="min-w-0 flex-1">
+          {revealed[entry.id]
+            ? <p className="text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--color-text)' }}>{revealed[entry.id]}</p>
+            : <code className="text-xs truncate block" style={{ color: 'var(--color-text)' }}>••••••••••••••••</code>}
+          {revealed[entry.id] && <div key={revealStamp[entry.id] ?? 0} className="vault-reveal-line" aria-hidden="true" />}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {(() => {
+            const btn = (
+              <button onClick={() => handleCopy(entry)} title="Copy to clipboard" aria-label="Copy to clipboard" style={{ color: 'var(--color-text-muted)' }}>
+                <DocumentDuplicateIcon className="w-4 h-4" />
+              </button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => handleCopy(entry)}>{btn}</TVFocusable> : btn;
+          })()}
+          {(() => {
+            const btn = (
+              <button onClick={() => handleReveal(entry)} title={revealed[entry.id] ? 'Hide value' : 'Reveal value'} aria-label={revealed[entry.id] ? 'Hide value' : 'Reveal value'} style={{ color: 'var(--color-text-muted)' }}>
+                {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+              </button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => handleReveal(entry)}>{btn}</TVFocusable> : btn;
+          })()}
+        </div>
+      </div>
+      <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+        {(() => {
+          const btn = (
+            <button onClick={() => openEditModal(entry)} title="Edit" aria-label="Edit" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surface-hover)' }}>
+              <PencilIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+            </button>
+          );
+          return isTV ? <TVFocusable onEnterPress={() => openEditModal(entry)}>{btn}</TVFocusable> : btn;
+        })()}
+        <VaultHistoryButton entryId={entry.id} name={entry.name} />
+        {(() => {
+          // A remote cannot do a quick second press, so the TV keeps asking first.
+          if (isTV) {
+            return (
+              <TVFocusable onEnterPress={() => { if (window.confirm(`Delete "${entry.name}"? It goes to the Trash and can be restored for 30 days.`)) handleDelete(entry); }}>
+                <button title="Delete" aria-label="Delete" className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surface-hover)' }}>
+                  <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+                </button>
+              </TVFocusable>
+            );
+          }
+          return (
+            <TwoStepButton
+              onConfirm={() => handleDelete(entry)}
+              ariaLabel="Delete"
+              title="Delete"
+              icon={<TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />}
+              className="p-2 rounded-lg transition-colors ml-auto inline-flex items-center gap-1.5 text-sm bg-surface-hover"
+            />
+          );
+        })()}
+      </div>
+    </Card>
+  );
+
+  const renderKeyCard = (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => (
     <Card data-vault-card="" variant="bordered" className={`h-full flex flex-col ${isDragging ? 'shadow-lg shadow-primary/25 scale-[1.01]' : ''}`}>
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0 flex items-center gap-2">
@@ -1022,15 +937,15 @@ function VaultPageContent() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <StatusBadge entry={entry} />
-          <ExpiryBadge entry={entry} />
+          {isSnoozed(entry, renderedAt) && <Badge variant="neutral" size="sm">Snoozed</Badge>}
+          <VaultStatusBadge judged={judgeEntry(entry, renderedAt)} />
           {/* Only worth offering once the badge is actually alert-worthy
               (expired, or inside the warning window) and not already
               snoozed - a plain "12d left" badge has nothing to snooze. */}
           {(() => {
-            const days = daysUntil(entry.expiresAt);
-            const alertWorthy = days !== null && (days < 0 || days <= entry.notifyDaysBefore);
-            if (!alertWorthy || isSnoozed(entry)) return null;
+            const days = daysUntil(entry.expiresAt, renderedAt);
+            const alertWorthy = days !== null && !entry.autoRenew && (days < 0 || days <= entry.notifyDaysBefore);
+            if (!alertWorthy || isSnoozed(entry, renderedAt)) return null;
             const btn = (
               <button
                 onClick={() => handleSnooze(entry)}
@@ -1056,7 +971,7 @@ function VaultPageContent() {
         <div className="flex items-center gap-2 shrink-0">
           {(() => {
             const btn = (
-              <button onClick={() => handleCopy(entry)} title="Copy to clipboard" style={{ color: 'var(--color-text-muted)' }}>
+              <button onClick={() => handleCopy(entry)} title="Copy to clipboard" aria-label="Copy to clipboard" style={{ color: 'var(--color-text-muted)' }}>
                 <DocumentDuplicateIcon className="w-4 h-4" />
               </button>
             );
@@ -1076,6 +991,19 @@ function VaultPageContent() {
       {entry.lastCheckMessage && (
         <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>{entry.lastCheckMessage}</p>
       )}
+      {(() => {
+        // When it ends (or that it never does), unless the badge or the message already says so.
+        const j = judgeEntry(entry, renderedAt);
+        const said = j.need === 'fix' || !j.line || j.line === entry.lastCheckMessage || j.line === 'Last check passed' || j.line === 'No automatic check';
+        return said ? null : <p className={entry.lastCheckMessage ? 'text-xs -mt-1.5 mb-3' : 'text-xs mb-3'} style={{ color: 'var(--color-text-muted)' }}>{j.line}</p>;
+      })()}
+      {(usedBy[entry.id] || 0) > 0 && (
+        <div className="mb-3"><UsedByChip entryId={entry.id} name={entry.name} count={usedBy[entry.id]} /></div>
+      )}
+      {canMarkRenewed(entry, renderedAt) && (() => {
+        const btn = <Button variant="primary" size="sm" onClick={() => handleRenewed(entry)}>I renewed it</Button>;
+        return <div className="mb-3 flex flex-wrap gap-2">{isTV ? <TVFocusable onEnterPress={() => handleRenewed(entry)}>{btn}</TVFocusable> : btn}</div>;
+      })()}
 
       <DebridUsageBadge entry={entry} onEntryUpdated={(id, patch) => setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))} />
 
@@ -1158,8 +1086,24 @@ function VaultPageContent() {
     </Card>
   );
 
+  const renderEntryCard = (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => (
+    isNote(entry) ? renderNoteCard(entry, dragHandleProps, isDragging) : renderKeyCard(entry, dragHandleProps, isDragging)
+  );
+
+  // Search looks across every kind at once; "Needs a look" keeps only what is failing or ending.
+  const filtering = query.trim() !== '' || needOnly;
+  const needCount = allCostEntries.filter((e) => !isNote(e) && judgeEntry(e, renderedAt).need !== null).length;
+  const shownEntries = filtering
+    ? allCostEntries.filter((e) => matchesSearch(e, query, CATEGORY_LABELS[e.category] || '') && (!needOnly || (!isNote(e) && judgeEntry(e, renderedAt).need !== null)))
+    : entries;
+  const testAllButton = checkable.length > 0 ? (
+    <Button variant="secondary" leftIcon={<ArrowPathIcon className={testAll ? 'w-5 h-5 animate-spin' : 'w-5 h-5'} />} onClick={handleTestAll} disabled={!!testAll}>
+      {testAll ? `Testing ${testAll.at} of ${testAll.of}` : 'Test all'}
+    </Button>
+  ) : null;
+
   const classic = !v2 && !isTV;
-  const costSection = trackedCount > 0 ? (
+  const costSection = (trackedCount > 0 || lifetimeCount > 0) ? (
     <>
       <div className="flex items-center justify-end mb-2">
         <label className="text-xs text-muted mr-2">Currency</label>
@@ -1199,6 +1143,12 @@ function VaultPageContent() {
           );
         })}
       </div>
+      {lifetimeCount > 0 && (
+        <p className="text-xs text-muted -mt-2 mb-4 px-1" data-vault-paid-once="">
+          <span style={{ color: 'var(--color-secondary)', fontWeight: 600 }}>{paidOnce > 0 ? `${fmtMoney(paidOnce)} paid once` : 'Paid once'}</span>
+          {' · '}{lifetimeCount} lifetime plan{lifetimeCount === 1 ? '' : 's'}, not counted in the totals above
+        </p>
+      )}
     </>
   ) : null;
   const renewalsSection = trackedCount > 0 && upcomingRenewals.length > 0 ? (
@@ -1238,27 +1188,64 @@ function VaultPageContent() {
   const entriesSection = (
   <div className={layoutMode === 'nebula' && !v2 ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' && !v2 ? nebulaGlassStyle : undefined}>
   {layoutMode === 'nebula' && !v2 && <NebulaGlassStripe />}
+    {/* Typing on a remote is not worth it, so a TV keeps the tabs alone. */}
+    {!isTV && total > 0 && (
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <label className="vault-search">
+          <MagnifyingGlassIcon className="w-4 h-4 shrink-0" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the Vault" aria-label="Search the Vault" />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} aria-label="Clear the search" className="shrink-0">
+              <XMarkIcon className="w-4 h-4" />
+            </button>
+          )}
+        </label>
+        {(needCount > 0 || needOnly) && (
+          <button type="button" className={needOnly ? 'vault-need on' : 'vault-need'} aria-pressed={needOnly} onClick={() => setNeedOnly((on) => !on)}>
+            Needs a look ({needCount})
+          </button>
+        )}
+      </div>
+    )}
+    {!filtering && (
     <div className={v2 ? 'mb-2 flex items-center gap-3' : 'mb-5'}>
       <div className={v2 ? 'flex-1 min-w-0' : ''}>
         <FilterTabsResponsive fill options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
       </div>
     </div>
+    )}
 
     {isLoading ? (
       <div className="text-center py-16" style={{ color: 'var(--color-text-muted)' }}>Loading vault...</div>
-    ) : entries.length === 0 ? (
+    ) : shownEntries.length === 0 && filtering ? (
+      <p className="text-sm text-center py-10" style={{ color: 'var(--color-text-muted)' }}>
+        {needOnly && !query.trim() ? 'Nothing needs a look.' : 'Nothing in the Vault matches that.'}
+      </p>
+    ) : shownEntries.length === 0 ? (
       // Straight on the panel, like the empty states on Invitations,
       // Addons and Groups - not a second bordered box inside it.
-      <EmptyState
-        art="vault"
-        title="Nothing in the Vault yet"
-        line="Keep debrid, metadata and indexer keys here. SlickSync checks them and warns you before one runs out."
-        action={<Button variant="primary" onClick={openAddModal}>Add a key</Button>}
-      />
+      activeCategory === 'note' ? (
+        <EmptyState
+          art="vault"
+          title="No notes yet"
+          line="Keep a recovery code, a PIN, a Wi-Fi password or anything else here. A note stays hidden until you press Reveal."
+          action={<Button variant="primary" onClick={openAddModal}>Add a note</Button>}
+        />
+      ) : (
+        <EmptyState
+          art="vault"
+          title="Nothing in the Vault yet"
+          line="Keep debrid, metadata and indexer keys here. SlickSync checks them and warns you before one runs out."
+          action={<Button variant="primary" onClick={openAddModal}>Add a key</Button>}
+        />
+      )
     ) : v2 ? (
       <>
         <VaultV2
-          entries={entries}
+          entries={shownEntries}
+          usedBy={usedBy}
+          onDuplicate={handleDuplicate}
+          onRenewed={handleRenewed}
           labels={CATEGORY_LABELS}
           arrange={sectionArrange}
           entryArrange={entryArrange}
@@ -1308,20 +1295,24 @@ function VaultPageContent() {
       </>
     ) : (
       <>
+        {!filtering && (
         <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
           Drag the handle to reorder within a category, drop onto a category tab above to recategorize, or drop onto "Addons" in the sidebar to move it there.
         </p>
-        <SortableContext items={entries.map(e => e.id)} strategy={rectSortingStrategy}>
+        )}
+        <SortableContext items={shownEntries.map(e => e.id)} strategy={rectSortingStrategy}>
           <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {entries.map((entry) => (
+            {shownEntries.map((entry) => (
               <StaggerItem key={entry.id}>
                 <SortableEntryCard
                   entry={entry}
                   renderEntryCard={renderEntryCard}
                   onTest={handleTest}
                   onEdit={openEditModal}
+                  onDuplicate={handleDuplicate}
                   onMoveToAddons={handleMoveToAddons}
                   onDelete={handleDelete}
+                  plain={filtering}
                 />
               </StaggerItem>
             ))}
@@ -1342,6 +1333,7 @@ function VaultPageContent() {
           actions={
             <>
               {(v2 || classic) && <ArrangeButton arrange={v2 ? sectionArrange : classicArrange} />}
+              {testAllButton}
               <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
                 Add Entry
               </Button>
@@ -1362,7 +1354,7 @@ function VaultPageContent() {
                 Add Entry
               </Button>
             );
-            return isTV ? <TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable> : (v2 || classic) ? <div className="flex items-center gap-2"><ArrangeButton arrange={v2 ? sectionArrange : classicArrange} />{btn}</div> : btn;
+            return isTV ? <div className="flex items-center gap-2 flex-wrap justify-end">{testAllButton && <TVFocusable onEnterPress={handleTestAll}>{testAllButton}</TVFocusable>}<TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable></div> : (v2 || classic) ? <div className="flex items-center gap-2 flex-wrap justify-end"><ArrangeButton arrange={v2 ? sectionArrange : classicArrange} />{testAllButton}{btn}</div> : btn;
           })()}
         />
       )}
@@ -1391,236 +1383,20 @@ function VaultPageContent() {
       </div>
       </div>
 
-      {/* Add/Edit Modal */}
-      <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title={editingId ? 'Edit Vault Entry' : 'Add Vault Entry'} size="lg">
-        <div className="space-y-4">
-          {arrivedViaAlert && form.dashboardUrl && (
-            <button
-              type="button"
-              onClick={() => window.open(form.dashboardUrl, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-left transition-colors"
-              style={{ background: 'var(--color-primaryMuted)', border: '1px solid var(--color-primary)' }}
-            >
-              <span className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>
-                Get the new value from the provider, then paste it below
-              </span>
-              <ArrowTopRightOnSquareIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />
-            </button>
-          )}
-          <Input label="Name" placeholder="e.g. Newshosting account" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Category</label>
-            <select
-              value={form.category}
-              onChange={e => handleCategoryChange(e.target.value as VaultCategory)}
-              className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-            >
-              {Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </div>
-
-          {categoryFieldMode(form.category) === 'credentials' && (
-            <>
-              <p className="text-xs -mt-2" style={{ color: 'var(--color-text-muted)' }}>
-                Stored credentials are validated by logging into {form.category === 'nuvio' ? 'Nuvio' : 'Stremio'} directly when you hit Test.
-              </p>
-              <Input label="Email or Username" placeholder="you@example.com" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
-              <Input
-                label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
-                type="password"
-                placeholder={editingId ? '••••••••' : 'Account password'}
-                value={form.secret}
-                onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-                onRevealClick={editingId ? handleRevealInEditForm : undefined}
-              />
-            </>
-          )}
-
-          {categoryFieldMode(form.category) === 'indexer' && (
-            <>
-              <Input label="Newznab URL" placeholder="https://indexer.example.com" value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
-              <Input
-                label={editingId ? 'API Key (leave blank to keep current)' : 'API Key'}
-                type="password"
-                placeholder={editingId ? '••••••••' : 'Indexer API key'}
-                value={form.secret}
-                onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-                onRevealClick={editingId ? handleRevealInEditForm : undefined}
-              />
-            </>
-          )}
-
-          {categoryFieldMode(form.category) === 'iptv' && (
-            <>
-              <Input label="Server address" placeholder="http://iptv.example.com:8080" value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input label="Username" placeholder="Your IPTV username" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
-                <Input
-                  label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
-                  type="password"
-                  placeholder={editingId ? '••••••••' : 'Your IPTV password'}
-                  value={form.secret}
-                  onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-                  onRevealClick={editingId ? handleRevealInEditForm : undefined}
-                />
-              </div>
-              <p className="p-3 rounded-xl text-sm" style={{ background: 'var(--color-subtle)', color: 'var(--color-text)' }}>
-                Test signs in to the server to check the login works, and fills in the end date from it, so you get the usual reminder before it runs out.
-              </p>
-            </>
-          )}
-
-          {categoryFieldMode(form.category) === 'provider' && (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
-                <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input label="Username" placeholder="Account username" value={form.secretUsername} onChange={e => setForm(f => ({ ...f, secretUsername: e.target.value }))} />
-                <Input
-                  label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
-                  type="password"
-                  placeholder={editingId ? '••••••••' : 'Account password'}
-                  value={form.secret}
-                  onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-                  onRevealClick={editingId ? handleRevealInEditForm : undefined}
-                />
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-                <span className="text-sm" style={{ color: 'var(--color-text)' }}>Use SSL</span>
-                <ToggleSwitch checked={form.testSsl} onChange={() => setForm(f => ({ ...f, testSsl: !f.testSsl }))} />
-              </div>
-              <Input label="Data cap in GB (optional)" placeholder="Leave blank for no cap" value={form.testDataCap} onChange={e => setForm(f => ({ ...f, testDataCap: e.target.value }))} />
-            </>
-          )}
-
-          {categoryFieldMode(form.category) === 'generic' && (
-            <>
-              <Input label="Provider (optional)" placeholder="e.g. Newshosting, Real-Debrid" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
-              <Input label="Secret label" placeholder="API Key" value={form.secretLabel} onChange={e => setForm(f => ({ ...f, secretLabel: e.target.value }))} />
-              <Input
-                label={editingId ? 'Secret (leave blank to keep current)' : 'Secret'}
-                type="password"
-                placeholder={editingId ? '••••••••' : 'Paste API key / password / token'}
-                value={form.secret}
-                onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-                onRevealClick={editingId ? handleRevealInEditForm : undefined}
-              />
-
-              {form.category === 'ai' ? (
-                // No automated checker exists for an LLM key (unlike the other
-                // generic-mode categories) - these two feed natural-language
-                // Catalogs (server/utils/nlCatalog.js) directly instead of a
-                // check config. Both optional: blank means OpenAI's default
-                // endpoint + a small fast model.
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input label="API base URL (optional)" placeholder="https://api.openai.com/v1" value={form.aiBaseUrl} onChange={e => setForm(f => ({ ...f, aiBaseUrl: e.target.value }))} />
-                  <Input label="Model (optional)" placeholder="gpt-4o-mini" value={form.aiModel} onChange={e => setForm(f => ({ ...f, aiModel: e.target.value }))} />
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Active check</label>
-                    <select
-                      value={form.testType}
-                      onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
-                      className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                      style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                    >
-                      {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                    </select>
-                  </div>
-
-                  {(form.testType === 'generic_http' || form.testType === 'newznab_caps') && (
-                    <Input label="Test URL" placeholder="https://..." value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
-                  )}
-                  {form.testType === 'tcp_reachability' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
-                      <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
-                    </div>
-                  )}
-                </>
-              )}
-            </>
-          )}
-
-          <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. 00000000-0000-4000-8000-000000000000' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
-
-          <div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Input label="Cost (optional)" type="number" placeholder="e.g. 5.00" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} />
-                {/* Offered, never filled in by itself, and only in dollars -
-                    the price is TorBox's US list price. */}
-                {planOffer && !form.cost && form.testType === 'torbox' && currency === 'USD' && (
-                  <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text-muted)' }}>
-                    <span>TorBox {planOffer.name} is ${planOffer.monthlyUsd} a month</span>
-                    <Button type="button" variant="primary" size="sm" className="ml-auto" onClick={() => setForm(f => ({ ...f, cost: String(planOffer.monthlyUsd), costCycle: 'monthly' }))}>Use</Button>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Billed</label>
-                <div className="flex gap-2">
-                  <Button type="button" variant={form.costCycle === 'monthly' ? 'primary' : 'secondary'} size="sm" onClick={() => setForm(f => ({ ...f, costCycle: 'monthly' }))}>Monthly</Button>
-                  <Button type="button" variant={form.costCycle === 'yearly' ? 'primary' : 'secondary'} size="sm" onClick={() => setForm(f => ({ ...f, costCycle: 'yearly' }))}>Yearly</Button>
-                </div>
-              </div>
-            </div>
-            <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>Feeds the cost/hour summary at the top of the Vault. Set the currency there.</p>
-          </div>
-
-          {(() => {
-            const source = AUTO_EXPIRY_SOURCES[form.testType];
-            const fromService = !!(source && editingId && form.expiresAt && form.testType === editingTestType);
-            const chipName = source ? source.replace(/^the IPTV server$/, 'IPTV') : '';
-            const note = !source ? null : fromService
-              ? `${source.charAt(0).toUpperCase()}${source.slice(1)} updates this on every check, so renewing or buying more time moves it by itself.`
-              : `Run the check once and ${source} fills this in.`;
-            // The note sits under the date on phones (where the two fields
-            // stack) and under the whole row on wider screens.
-            return (
-              <div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    {fromService ? (
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Expires on</label>
-                        <div className="w-full px-4 py-3 rounded-xl flex items-center gap-2" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}>
-                          <span>{formatDayString(form.expiresAt)}</span>
-                          <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>From {chipName}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
-                    )}
-                    {note && <p className="sm:hidden text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{note}</p>}
-                  </div>
-                  <Input label="Notify days before" type="number" value={form.notifyDaysBefore} onChange={e => setForm(f => ({ ...f, notifyDaysBefore: e.target.value }))} />
-                </div>
-                {note && <p className="hidden sm:block text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{note}</p>}
-              </div>
-            );
-          })()}
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setIsAddOpen(false)}
-              className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
-              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}
-            >
-              Cancel
-            </button>
-            <Button variant="primary" className="flex-1" onClick={handleSave} isLoading={isSaving}>
-              {editingId ? 'Save Changes' : 'Add Entry'}
-            </Button>
-          </div>
-        </div>
+      {/* Add / edit: pick what it is, then only what that kind has (components/vault/VaultEntryForm). */}
+      <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} ariaLabel={editingEntry ? `Edit ${editingEntry.name}` : 'Add to the Vault'} size="lg">
+        <VaultEntryForm
+          key={formKey}
+          editing={editingEntry}
+          startWith={startWith}
+          currency={currency}
+          planOffer={planOffer}
+          arrivedViaAlert={arrivedViaAlert}
+          saving={isSaving}
+          onCancel={() => setIsAddOpen(false)}
+          onSubmit={handleSubmit}
+          onRevealSecret={editingEntry ? revealForForm : undefined}
+        />
       </Modal>
     </Wrapper>
   );

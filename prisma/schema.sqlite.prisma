@@ -611,7 +611,8 @@ model VaultEntry {
   lastAutoRemoveAt    DateTime?
   dashboardUrl     String?                         // optional link to the provider's own dashboard
   cost             Float?                          // what this service costs per `costCycle` (user-entered, in the account's configured currency) - feeds the Vault page's cost/spend summary; null = untracked
-  costCycle        String    @default("monthly")   // "monthly" | "yearly" - the billing period `cost` is for; the summary normalizes yearly to monthly (÷12) before totaling
+  costCycle        String    @default("monthly")   // "monthly" | "yearly" | "once" | "free" - the billing period `cost` is for; the summary normalizes yearly to monthly (÷12) before totaling; once/free carry no end date
+  autoRenew        Boolean   @default(false)        // monthly/yearly only: when expiresAt passes, the monitor moves it forward one period instead of alerting
   expiresAt        DateTime?
   notifyDaysBefore Int       @default(3)
   lastCheckedAt    DateTime?

@@ -4,44 +4,30 @@
 // soon) sits on top; the rest is listed below. Each entry shows one status in
 // words and the one button that fits it (Fix, Renew or Test), with Copy
 // beside it. Sections move, fold and hide, and single entries hide, through
-// Arrange.
+// Arrange. A note is not a key: its tile has no status and no Test, only its
+// hidden text with Copy and Reveal.
 
 import {
-  ArrowPathIcon, ArrowPathRoundedSquareIcon, BellSnoozeIcon, ClockIcon, DocumentDuplicateIcon, EyeIcon, EyeSlashIcon, KeyIcon,
-  PencilSquareIcon, PlayIcon, PuzzlePieceIcon, TrashIcon,
+  ArrowPathIcon, ArrowPathRoundedSquareIcon, BellSnoozeIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EyeIcon, EyeSlashIcon, KeyIcon,
+  PencilSquareIcon, PlayIcon, PuzzlePieceIcon, Square2StackIcon, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ArrangeSection } from '@/components/ui/Arrange';
 import type { PageArrange } from '@/lib/arrange';
 import type { VaultEntry } from '@/lib/api';
-import { V2Button, V2Card, V2CardMenuItem, V2Grid, V2Grip, V2Item, V2List, V2Status, type V2Tone } from './V2Bits';
+import { V2Button, V2Card, V2CardMenuItem, V2Grid, V2Grip, V2Item, V2List, V2Status } from './V2Bits';
+import { UsedByChip } from '@/components/vault/VaultBits';
+import { canMarkRenewed, daysUntil, isNote, isSnoozed, judgeEntry, type Judged } from '@/lib/vaultStatus';
+
+// The Dashboard reads an entry the same way.
+export { judgeEntry };
 
 export const VAULT_SECTIONS = [
   { key: 's:needs', label: 'Needs you' },
   { key: 's:rest', label: 'Working' },
 ] as const;
 
-type Judged = { tone: V2Tone; words: string; line: string; need: 'fix' | 'renew' | null };
-
-function daysUntil(d?: string | null, now = Date.now()) {
-  if (!d) return null;
-  const t = new Date(d).getTime();
-  return Number.isFinite(t) ? Math.round((t - now) / 86400000) : null;
-}
-
-/** One status for an entry, in words, and whether it needs you. */
-export function judgeEntry(e: VaultEntry, now: number): Judged {
-  const days = daysUntil(e.expiresAt, now);
-  const snoozed = !!e.snoozedUntil && new Date(e.snoozedUntil).getTime() > now;
-  if (e.lastCheckStatus === 'error') return { tone: 'bad', words: 'Not working', line: e.lastCheckMessage || 'Last check failed', need: 'fix' };
-  if (days !== null && days < 0) return { tone: 'bad', words: 'Ended', line: `Ended ${-days === 1 ? 'yesterday' : `${-days} days ago`}`, need: 'renew' };
-  if (days !== null && days <= (e.notifyDaysBefore ?? 7) && !snoozed) return { tone: 'warn', words: 'Ending soon', line: days === 0 ? 'Ends today' : `Ends in ${days} day${days === 1 ? '' : 's'}`, need: 'renew' };
-  const ends = days !== null ? `Ends in ${days} days` : '';
-  if (e.testType === 'manual' || !e.lastCheckStatus) return { tone: 'off', words: 'Not checked', line: ends || 'No automatic check', need: null };
-  return { tone: 'live', words: 'Working', line: ends || e.lastCheckMessage || 'Last check passed', need: null };
-}
-
-export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, revealStamp, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete, onHistory }: {
+export function VaultV2({ entries, labels, arrange, entryArrange, view, testing, now, revealed, revealStamp, usedBy, onOpen, onCopy, onTest, onReveal, onSnooze, onRotate, onMoveToAddons, onDelete, onHistory, onDuplicate, onRenewed }: {
   entries: VaultEntry[];
   labels: Record<string, string>;
   arrange: PageArrange;
@@ -66,6 +52,12 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   onDelete: (e: VaultEntry) => void;
   /** The key's History, beside this card's menu button. */
   onHistory: (e: VaultEntry) => void;
+  /** How many addons carry each key, by entry id. */
+  usedBy?: Record<string, number>;
+  /** Opens the add form filled in like this one, without the secret. */
+  onDuplicate: (e: VaultEntry) => void;
+  /** "I renewed it": moves the end date on one billing period. */
+  onRenewed: (e: VaultEntry) => void;
 }) {
   const hidden = new Set(entryArrange.hidden);
   const judged = entries.map((e) => ({ e, j: judgeEntry(e, now) }));
@@ -82,10 +74,22 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
         </span>
       );
     }
+    // A note has nothing to test: its second button shows or hides it.
+    if (isNote(e)) {
+      return (
+        <span className="flex gap-2">
+          <V2Button onClick={() => onCopy(e)} icon={<DocumentDuplicateIcon className="w-4 h-4" />}>Copy</V2Button>
+          <V2Button onClick={() => onReveal(e)} icon={revealed[e.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}>{revealed[e.id] ? 'Hide' : 'Reveal'}</V2Button>
+        </span>
+      );
+    }
     const main = j.need === 'fix'
       ? <V2Button primary onClick={() => onOpen(e)}>Fix</V2Button>
       : j.need === 'renew'
-        ? <V2Button onClick={() => onOpen(e)}>Renew</V2Button>
+        // A date someone typed moves on one period at a press; anything else is renewed in its form.
+        ? (canMarkRenewed(e, now)
+          ? <V2Button primary onClick={() => onRenewed(e)}>I renewed it</V2Button>
+          : <V2Button onClick={() => onOpen(e)}>Renew</V2Button>)
         : (
           <V2Button onClick={() => onTest(e)} disabled={testing === e.id || e.testType === 'manual'} icon={<ArrowPathIcon className={`w-4 h-4${testing === e.id ? ' animate-spin' : ''}`} />}>
             Test
@@ -100,11 +104,23 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
   };
   const menu = (e: VaultEntry): V2CardMenuItem[] => {
     const days = daysUntil(e.expiresAt, now);
-    const snoozed = !!e.snoozedUntil && new Date(e.snoozedUntil).getTime() > now;
-    const alertWorthy = days !== null && (days < 0 || days <= (e.notifyDaysBefore ?? 7));
+    const snoozed = isSnoozed(e, now);
+    const alertWorthy = days !== null && !e.autoRenew && (days < 0 || days <= (e.notifyDaysBefore ?? 7));
+    const remove: V2CardMenuItem = { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, sub: { title: isNote(e) ? 'Delete this note?' : 'Delete this key?', items: [{ label: 'Delete?', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(e) }] } };
+    const duplicate: V2CardMenuItem = { label: 'Duplicate', icon: <Square2StackIcon className="w-4 h-4" />, onClick: () => onDuplicate(e) };
+    if (isNote(e)) {
+      return [
+        { label: 'Edit', icon: <PencilSquareIcon className="w-4 h-4" />, onClick: () => onOpen(e) },
+        duplicate,
+        { label: revealed[e.id] ? 'Hide' : 'Reveal', icon: revealed[e.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />, onClick: () => onReveal(e) },
+        { label: 'History', icon: <ClockIcon className="w-4 h-4" />, onClick: () => onHistory(e) },
+        remove,
+      ];
+    }
     return [
       { label: 'Run check now', icon: <PlayIcon className="w-4 h-4" />, disabled: e.testType === 'manual', onClick: () => onTest(e) },
       { label: 'Edit', icon: <PencilSquareIcon className="w-4 h-4" />, onClick: () => onOpen(e) },
+      duplicate,
       { label: revealed[e.id] ? 'Hide value' : 'Reveal', icon: revealed[e.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />, onClick: () => onReveal(e) },
       { label: 'History', icon: <ClockIcon className="w-4 h-4" />, onClick: () => onHistory(e) },
       { label: 'Snooze 7 days', icon: <BellSnoozeIcon className="w-4 h-4" />, disabled: !alertWorthy || snoozed, onClick: () => onSnooze(e) },
@@ -112,51 +128,59 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
       { label: 'Move to Addons', icon: <PuzzlePieceIcon className="w-4 h-4" />, onClick: () => onMoveToAddons(e) },
       // The menu closes on any pick, so the second press lives in a second
       // list: "Delete?" acts at once and the Undo toast follows.
-      { label: 'Delete', icon: <TrashIcon className="w-4 h-4" />, danger: true, sub: { title: 'Delete this key?', items: [{ label: 'Delete?', icon: <TrashIcon className="w-4 h-4" />, danger: true, onClick: () => onDelete(e) }] } },
+      remove,
     ];
   };
   const secretLine = (e: VaultEntry) => revealed[e.id]
     ? (
       <>
-        <div className="font-mono text-[13px] text-default mt-1 break-all select-all">{revealed[e.id]}</div>
+        <div className={isNote(e) ? 'text-[13.5px] text-default mt-1 whitespace-pre-wrap break-words select-all' : 'font-mono text-[13px] text-default mt-1 break-all select-all'}>{revealed[e.id]}</div>
         <div key={revealStamp?.[e.id] ?? 0} className="vault-reveal-line" aria-hidden="true" />
       </>
     )
     : null;
-  const icon = (size: number) => (
+  const icon = (size: number, note = false) => (
     <span className="rounded-[14px] flex items-center justify-center shrink-0 text-muted" style={{ width: size, height: size, background: 'var(--color-surface-elevated, var(--color-surface-hover))' }}>
-      <KeyIcon className="w-1/2 h-1/2" />
+      {note ? <DocumentTextIcon className="w-1/2 h-1/2" /> : <KeyIcon className="w-1/2 h-1/2" />}
     </span>
   );
+  const used = (e: VaultEntry) => ((usedBy?.[e.id] || 0) > 0 ? <div className="mt-2"><UsedByChip entryId={e.id} name={e.name} count={usedBy![e.id]} /></div> : null);
   const kind = (e: VaultEntry) => [labels[e.category] || e.category, e.provider].filter(Boolean).join(' · ');
   const tile = ({ e, j }: { e: VaultEntry; j: Judged }) => (
     <V2Item key={e.id} view="card" href="/vault" sortId={e.id} items={menu(e)} menuLabel={`${e.name} options`} arranging={arrange.arranging} onOpen={() => onOpen(e)}>
       <V2Card footer="Tap to edit" action={buttons(e, j)}>
         <div className="flex items-center gap-3.5 min-w-0">
-          {icon(48)}
+          {icon(48, isNote(e))}
           <div className="flex-1 min-w-0">
             <div className="text-[17px] font-semibold text-default break-words min-w-0">{e.name}</div>
             <div className="text-muted text-[12.5px] truncate">{kind(e)}</div>
           </div>
         </div>
+        {isNote(e) ? (
+          <div data-vault-note="">
+            {revealed[e.id] ? secretLine(e) : <div className="text-muted text-[13px]">Hidden</div>}
+          </div>
+        ) : (
         <div>
           <V2Status tone={j.tone}>{j.words}</V2Status>
           <div className="text-muted text-[13px] mt-1 truncate">{j.line}</div>
           {secretLine(e)}
+          {used(e)}
         </div>
+        )}
       </V2Card>
     </V2Item>
   );
   const row = ({ e, j }: { e: VaultEntry; j: Judged }) => (
     <V2Item key={e.id} view="row" href="/vault" sortId={e.id} items={menu(e)} menuLabel={`${e.name} options`} arranging={arrange.arranging} onOpen={() => onOpen(e)}>
-      {icon(38)}
+      {icon(38, isNote(e))}
       <div className="flex-1 min-w-0">
         <b className="text-default block truncate">{e.name}</b>
         <div className="text-muted text-[12.5px] truncate">{kind(e)}</div>
         {secretLine(e)}
       </div>
-      <div className="v2-col w-[150px]"><V2Status tone={j.tone}>{j.words}</V2Status></div>
-      <div className="v2-col w-[200px] text-muted text-[13px] truncate">{j.line}</div>
+      <div className="v2-col w-[150px]">{isNote(e) ? <span className="text-muted text-[13px]">Note</span> : <V2Status tone={j.tone}>{j.words}</V2Status>}</div>
+      <div className="v2-col w-[200px] text-muted text-[13px] truncate">{isNote(e) ? (revealed[e.id] ? 'Showing' : 'Hidden') : j.line}</div>
       {buttons(e, j)}
     </V2Item>
   );
@@ -168,10 +192,12 @@ export function VaultV2({ entries, labels, arrange, entryArrange, view, testing,
         if (all.length === 0) return null;
         const shown = all.filter(({ e }) => !hidden.has(e.id));
         const needs = key === 's:needs';
+        const notesOnly = !needs && all.every(({ e }) => isNote(e));
+        const name = needs ? 'Needs you' : notesOnly ? 'Notes' : 'Working';
         return (
           <ArrangeSection key={key} arrange={arrange} id={key} noun="section" cards
-            label={needs ? 'Needs you' : 'Working'}
-            title={<span className="flex items-center gap-2.5"><span className="w-3 h-3 rounded shrink-0" style={{ background: needs ? 'var(--color-error, #ef4444)' : 'var(--color-success, #22c55e)' }} />{needs ? 'Needs you' : 'Working'}</span>}
+            label={name}
+            title={<span className="flex items-center gap-2.5"><span className="w-3 h-3 rounded shrink-0" style={{ background: needs ? 'var(--color-error, #ef4444)' : notesOnly ? 'var(--color-text-muted)' : 'var(--color-success, #22c55e)' }} />{name}</span>}
             meta={`${all.length}`}>
             {shown.length === 0
               ? <p className="text-sm text-muted py-2">Every entry here is hidden on this page.</p>

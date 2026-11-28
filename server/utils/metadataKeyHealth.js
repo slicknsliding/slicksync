@@ -475,6 +475,10 @@ function stopMetadataKeyHealthScheduler() {
 }
 
 module.exports = {
+  checkTmdb,
+  checkOmdb,
+  checkMdblist,
+  checkRpdb,
   runKeyHealthChecks,
   CHECKERS,
   checkAndPersistAccountKeys,

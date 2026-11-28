@@ -1,8 +1,11 @@
 // Periodically runs active-checks on vault entries and notifies (bell, push and Discord) when:
 //   - an entry is within its notifyDaysBefore window of expiresAt (throttled to once/day)
+//     (not for notes, entries paid once or free, or entries set to renew themselves -
+//     those get their date moved forward instead)
 //   - an automated check flips from ok -> error (throttled to once/day per entry)
 
-const { runCheck } = require('./vaultCheckers')
+const { runCheck, effectiveTestType, storableExpiry } = require('./vaultCheckers')
+const { nextRenewal } = require('./vaultRenewal')
 const { postDiscord } = require('./notify')
 const { updateAccountSyncKey } = require('./accountSyncKey')
 const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
@@ -208,13 +211,20 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
       for (const entry of entries) {
         const mockReq = { appAccountId: account.id }
 
+        // A note is text to keep: nothing to check, nothing to expire.
+        if (entry.category === 'note') continue
+
+        // The end date as it stands during this pass - a check below may replace it.
+        let expiresAt = entry.expiresAt
+        const testType = effectiveTestType(entry)
+
         // 1) Run the automated check, if configured
-        if (entry.testType && entry.testType !== 'manual') {
+        if (testType && testType !== 'manual') {
           try {
             const secret = decrypt(entry.encryptedSecret, mockReq)
             const config = entry.testConfig ? JSON.parse(entry.testConfig) : {}
             config.identifier = entry.provider || config.identifier
-            const result = await runCheck(entry.testType, secret, config)
+            const result = await runCheck(testType, secret, config)
 
             // Turned away for being busy (a rate limit, an outage): that says
             // nothing about the credential, so the last real answer stands and
@@ -228,8 +238,11 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
                 lastCheckStatus: result.ok === null ? 'unknown' : (nowOk ? 'ok' : 'error'),
                 lastCheckMessage: result.message || null,
               }
-              if (result.expiresAt instanceof Date && !isNaN(result.expiresAt)) {
-                updateData.expiresAt = result.expiresAt
+              // Not for an entry paid once or free: it has no end date.
+              const foundExpiry = storableExpiry(entry, result)
+              if (foundExpiry) {
+                updateData.expiresAt = foundExpiry
+                expiresAt = foundExpiry
               }
               await prisma.vaultEntry.update({ where: { id: entry.id }, data: updateData })
 
@@ -299,14 +312,24 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
         // channel configured - the notify() call below keeps its own gate, and
         // alert state is only written when something actually happened, so
         // an instance with neither channels nor rules behaves exactly as before.
-        if (entry.expiresAt) {
-          const msUntilExpiry = new Date(entry.expiresAt).getTime() - Date.now()
+        const hasEndDate = entry.costCycle !== 'once' && entry.costCycle !== 'free'
+        const renewsItself = entry.autoRenew === true && (entry.costCycle === 'monthly' || entry.costCycle === 'yearly')
+        if (expiresAt && renewsItself && hasEndDate) {
+          // Set to renew itself: a date that has passed moves forward by whole
+          // periods, and no expiry alert is raised while the switch is on.
+          if (new Date(expiresAt).getTime() <= Date.now()) {
+            try {
+              await prisma.vaultEntry.update({ where: { id: entry.id }, data: { expiresAt: nextRenewal(new Date(expiresAt), entry.costCycle, new Date()) } })
+            } catch (e) { console.warn(`[VaultMonitor] could not renew entry ${entry.id}:`, e?.message) }
+          }
+        } else if (expiresAt && hasEndDate) {
+          const msUntilExpiry = new Date(expiresAt).getTime() - Date.now()
           const daysUntilExpiry = msUntilExpiry / (1000 * 60 * 60 * 24)
           const withinWindow = daysUntilExpiry <= (entry.notifyDaysBefore ?? 3)
           const isSnoozed = entry.snoozedUntil && new Date(entry.snoozedUntil) > new Date()
 
           const expired = daysUntilExpiry < 0
-          const expiresKey = new Date(entry.expiresAt).toISOString()
+          const expiresKey = new Date(expiresAt).toISOString()
           const state = readAlertState(cfg, entry.id)
           const today = await accountDay(prisma, account.id)
           // Expired: announce once per expiry date (not daily forever).

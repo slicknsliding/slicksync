@@ -1,12 +1,13 @@
 const express = require('express');
-const { runCheck } = require('../utils/vaultCheckers');
-const { cleanDashboardUrl, vaultFieldProblem } = require('../utils/vaultFields');
+const { runCheck, effectiveTestType, storableExpiry, END_DATE_FROM_SERVICE } = require('../utils/vaultCheckers');
+const { cleanDashboardUrl, vaultFieldProblem, normalizeCostCycle, billingRulePatch } = require('../utils/vaultFields');
+const { renewedFrom } = require('../utils/vaultRenewal');
 const { INSTANCE_TYPE } = require('../utils/config');
 const vaultAccess = require('../utils/vaultAccess');
 
 const CATEGORIES = [
   'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
-  'metadata', 'ai', 'vpn', 'iptv', 'aiostreams', 'custom'
+  'metadata', 'ai', 'vpn', 'iptv', 'aiostreams', 'jellyfin', 'note', 'custom'
 ];
 
 module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
@@ -46,7 +47,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         currency,
         entries: entries.map(e => ({
           id: e.id, name: e.name, category: e.category, provider: e.provider,
-          dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
+          dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, autoRenew: e.autoRenew, snoozedUntil: e.snoozedUntil, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
           isActive: e.isActive, testType: (e.category === 'ai' && e.testType === 'manual') ? 'openai_compatible' : e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
           position: e.position, autoRemoveEnabled: e.autoRemoveEnabled, autoRemoveAfterDays: e.autoRemoveAfterDays,
@@ -56,6 +57,23 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     } catch (error) {
       console.error('Error listing vault entries:', error);
       res.status(500).json({ error: 'Failed to list vault entries' });
+    }
+  });
+
+  // GET /api/vault/usage-counts - for each entry, how many of this account's
+  // addons carry its key inside their address (the same matching the key
+  // rotation uses, utils/keyRotation.js). Entries used nowhere, and notes, are
+  // left out. Local data only; no key is ever sent back.
+  // NOTE: registered before GET /:id, otherwise "usage-counts" is read as an id.
+  router.get('/usage-counts', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const { getDecryptedManifestUrl } = require('../utils/encryption');
+      const counts = await require('../utils/vaultUsage').usageCounts(prisma, accountId, req, { decrypt, getDecryptedManifestUrl });
+      res.json({ counts });
+    } catch (error) {
+      console.error('Error counting vault key usage:', error);
+      res.status(500).json({ error: 'Failed to count where keys are used' });
     }
   });
 
@@ -111,6 +129,56 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     }
   });
 
+  // GET /api/vault/:id/used-by - the addons (with the groups each is in) and
+  // the people's AIOStreams configurations that carry this entry's key.
+  // Read-only; the AIOStreams side is cut off after 8 seconds and lists only
+  // the configurations that answered in time.
+  router.get('/:id/used-by', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      const usage = require('../utils/vaultUsage');
+      let plain = null;
+      try { plain = decrypt(entry.encryptedSecret, req); } catch { return res.status(500).json({ error: 'Failed to decrypt secret' }); }
+      const secret = usage.matchableSecret(entry.category, plain);
+      if (!secret) return res.json({ addons: [], aioConfigs: [] });
+      const { getDecryptedManifestUrl } = require('../utils/encryption');
+      const [addons, aioConfigs] = await Promise.all([
+        usage.addonsUsing(prisma, accountId, req, { secret, getDecryptedManifestUrl }),
+        usage.aioConfigsUsing(prisma, accountId, { secret, decrypt, timeoutMs: 8000 }).catch(() => []),
+      ]);
+      res.json({ addons, aioConfigs });
+    } catch (error) {
+      console.error('Error finding where a vault key is used:', error);
+      res.status(500).json({ error: 'Failed to find where this key is used' });
+    }
+  });
+
+  // POST /api/vault/:id/renewed - "I paid for the next period": moves the end
+  // date one period past the later of the current date and today, and ends any
+  // snooze. Not for entries whose end date comes from the service itself.
+  router.post('/:id/renewed', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      if (entry.costCycle !== 'monthly' && entry.costCycle !== 'yearly') {
+        return res.status(400).json({ error: 'Only a monthly or yearly entry has a renewal date to move' });
+      }
+      if (!entry.expiresAt) return res.status(400).json({ error: 'This entry has no end date yet; set one first' });
+      if (END_DATE_FROM_SERVICE.has(effectiveTestType(entry))) {
+        return res.status(400).json({ error: 'This service reports its own end date, so the next check will set it' });
+      }
+      const expiresAt = renewedFrom(entry.expiresAt, entry.costCycle, new Date());
+      await prisma.vaultEntry.update({ where: { id: entry.id }, data: { expiresAt, snoozedUntil: null } });
+      res.json({ expiresAt: expiresAt.toISOString(), previousExpiresAt: new Date(entry.expiresAt).toISOString() });
+    } catch (error) {
+      console.error('Error renewing vault entry:', error);
+      res.status(500).json({ error: 'Failed to renew vault entry' });
+    }
+  });
+
   // POST /api/vault/:id/snooze - silence the expiry-warning alert for this
   // entry for 7 days without dismissing it or touching notifyDaysBefore.
   // Only the expiry warning is snoozed - a check-failure alert (a different
@@ -163,7 +231,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const accountId = getAccountId(req) || 'default';
       const {
         name, category, provider, secretLabel, secret,
-        testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore,
+        testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, autoRenew,
       } = req.body || {};
 
       if (!name || !category || !secret) {
@@ -190,24 +258,26 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       });
       const nextPosition = (maxPositionEntry?.position ?? -1) + 1;
 
-      const entry = await prisma.vaultEntry.create({
-        data: {
-          accountId,
-          name,
-          category,
-          provider: provider || null,
-          secretLabel: secretLabel || 'API Key',
-          encryptedSecret: encrypt(secret, req),
-          testType: testType || 'manual',
-          testConfig: testConfig ? JSON.stringify(testConfig) : null,
-          dashboardUrl: cleanUrl || null,
-          cost: typeof cost === 'number' && cost >= 0 ? cost : null,
-          costCycle: costCycle === 'yearly' ? 'yearly' : 'monthly',
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
-          notifyDaysBefore: typeof notifyDaysBefore === 'number' ? notifyDaysBefore : 3,
-          position: nextPosition,
-        },
-      });
+      const data = {
+        accountId,
+        name,
+        category,
+        provider: provider || null,
+        secretLabel: secretLabel || 'API Key',
+        encryptedSecret: encrypt(secret, req),
+        testType: testType || 'manual',
+        testConfig: testConfig ? JSON.stringify(testConfig) : null,
+        dashboardUrl: cleanUrl || null,
+        cost: typeof cost === 'number' && cost >= 0 ? cost : null,
+        costCycle: normalizeCostCycle(costCycle),
+        autoRenew: autoRenew === true,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        notifyDaysBefore: typeof notifyDaysBefore === 'number' ? notifyDaysBefore : 3,
+        position: nextPosition,
+      };
+      // Notes, one-time and free entries carry no date, check or renewal.
+      Object.assign(data, billingRulePatch(data));
+      const entry = await prisma.vaultEntry.create({ data });
 
       await vaultAccess.recordVaultAccess(prisma, { accountId, entryId: entry.id, action: 'added', req });
       res.status(201).json({ id: entry.id, name: entry.name });
@@ -262,7 +332,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const {
         name, category, provider, secretLabel, secret,
         testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive, healthIgnored,
-        autoRemoveEnabled, autoRemoveAfterDays, backupEntryId,
+        autoRemoveEnabled, autoRemoveAfterDays, backupEntryId, autoRenew,
       } = req.body || {};
 
       if (category && !CATEGORIES.includes(category)) {
@@ -291,7 +361,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (testConfig !== undefined) data.testConfig = testConfig ? JSON.stringify(testConfig) : null;
       if (cleanUrl !== undefined) data.dashboardUrl = cleanUrl || null;
       if (cost !== undefined) data.cost = typeof cost === 'number' && cost >= 0 ? cost : null;
-      if (costCycle !== undefined) data.costCycle = costCycle === 'yearly' ? 'yearly' : 'monthly';
+      if (costCycle !== undefined) data.costCycle = normalizeCostCycle(costCycle);
+      if (autoRenew !== undefined) data.autoRenew = autoRenew === true;
       if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
       if (notifyDaysBefore !== undefined) data.notifyDaysBefore = notifyDaysBefore;
       if (isActive !== undefined) data.isActive = isActive;
@@ -314,6 +385,16 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           data.backupEntryId = backup.id;
         }
       }
+
+      // Judge the entry as it will be after this save: notes, one-time and free
+      // entries carry no date, check or renewal, and only monthly/yearly renew.
+      Object.assign(data, billingRulePatch({
+        category: data.category ?? existing.category,
+        costCycle: data.costCycle ?? existing.costCycle,
+        autoRenew: data.autoRenew ?? existing.autoRenew,
+        expiresAt: data.expiresAt !== undefined ? data.expiresAt : existing.expiresAt,
+        cost: data.cost !== undefined ? data.cost : existing.cost,
+      }));
 
       // Captured BEFORE the update overwrites it - the whole point of
       // rotation propagation is knowing what the old value was.
@@ -445,8 +526,10 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       // AI entries created before the openai_compatible checker existed carry
       // testType 'manual' - coerced here (and in the list mapping) so they
       // become checkable without anyone having to re-save the key.
-      const effectiveTestType = (entry.category === 'ai' && entry.testType === 'manual') ? 'openai_compatible' : entry.testType;
-      const result = await runCheck(effectiveTestType, secret, config);
+      // Notes are never checked. The shared rule (effectiveTestType) also covers
+      // Usenet providers, whose connectivity-only check becomes a real sign-in.
+      if (entry.category === 'note') return res.json({ ok: null, message: 'Notes are not checked', checkedAt: new Date() });
+      const result = await runCheck(effectiveTestType(entry), secret, config);
 
       const updateData = {
         lastCheckedAt: new Date(),
@@ -454,9 +537,9 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         lastCheckMessage: result.message || null,
       };
       // If the checker discovered a real expiration date (Real-Debrid, TorBox), sync it
-      if (result.expiresAt instanceof Date && !isNaN(result.expiresAt)) {
-        updateData.expiresAt = result.expiresAt;
-      }
+      // - unless the entry is paid once or free, which has no end date.
+      const foundExpiry = storableExpiry(entry, result);
+      if (foundExpiry) updateData.expiresAt = foundExpiry;
       await prisma.vaultEntry.update({ where: { id: entry.id }, data: updateData });
 
       // This write replaces lastCheckStatus, which is what the scheduled

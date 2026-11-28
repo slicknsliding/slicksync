@@ -3063,6 +3063,19 @@ class ApiClient {
     });
   }
 
+  /** "I renewed it": moves the end date on one billing period. previousExpiresAt is for Undo. */
+  async markVaultRenewed(id: string) {
+    return this.fetch<{ expiresAt: string; previousExpiresAt: string }>(`/vault/${encodeURIComponent(id)}/renewed`, { method: 'POST' });
+  }
+  /** How many addons carry each entry's key, by entry id (entries nothing carries are left out). */
+  async getVaultUsageCounts() {
+    return this.fetch<{ counts: Record<string, number> }>('/vault/usage-counts');
+  }
+  /** Which addons (and whose AIOStreams setups) carry this key. */
+  async getVaultUsedBy(id: string) {
+    return this.fetch<{ addons: { id: string; name: string; groups: string[] }[]; aioConfigs: { userId: string; username: string }[] }>(`/vault/${encodeURIComponent(id)}/used-by`);
+  }
+
   async deleteVaultEntry(id: string) {
     return this.fetch<{ success?: boolean; trashId?: string | null }>(`/vault/${id}`, { method: 'DELETE' });
   }
@@ -4525,9 +4538,13 @@ export interface CreateGroupData {
 
 export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
-  | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom';
+  | 'metadata' | 'ai' | 'vpn' | 'iptv' | 'aiostreams' | 'custom'
+  // A Jellyfin sign-in, and a note: something kept safe that is not a key.
+  | 'jellyfin' | 'note';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth' | 'alldebrid' | 'premiumize' | 'debrid_link';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible' | 'xtream_auth' | 'alldebrid' | 'premiumize' | 'debrid_link'
+  // A playlist address, a real usenet sign-in, a Jellyfin (or AIOStreams app) sign-in, an AIOStreams configuration, and the four metadata keys SlickSync can ask about.
+  | 'm3u_playlist' | 'nntp_auth' | 'jellyfin_auth' | 'aiostreams_config' | 'tmdb_key' | 'omdb_key' | 'mdblist_key' | 'rpdb_key';
 
 export interface VaultEntry {
   id: string;
@@ -4537,7 +4554,10 @@ export interface VaultEntry {
   secretLabel: string;
   dashboardUrl?: string | null;
   cost?: number | null;
-  costCycle?: 'monthly' | 'yearly';
+  /** 'once' is a lifetime plan (paid one time, never ends); 'free' costs nothing and never ends. */
+  costCycle?: 'monthly' | 'yearly' | 'once' | 'free';
+  /** The end date steps forward a month or a year by itself, with no warning. */
+  autoRenew?: boolean;
   expiresAt?: string | null;
   notifyDaysBefore: number;
   lastCheckedAt?: string | null;
@@ -4575,15 +4595,16 @@ export interface VaultListResponse {
 export interface VaultEntryInput {
   name: string;
   category: VaultCategory;
-  provider?: string;
+  provider?: string | null;
   secretLabel?: string;
   secret: string;
   testType?: VaultTestType;
-  testConfig?: Record<string, any>;
-  dashboardUrl?: string;
-  cost?: number;
-  costCycle?: 'monthly' | 'yearly';
-  expiresAt?: string;
+  testConfig?: Record<string, any> | null;
+  dashboardUrl?: string | null;
+  cost?: number | null;
+  costCycle?: 'monthly' | 'yearly' | 'once' | 'free';
+  autoRenew?: boolean;
+  expiresAt?: string | null;
   notifyDaysBefore?: number;
   autoRemoveEnabled?: boolean;
   autoRemoveAfterDays?: number;

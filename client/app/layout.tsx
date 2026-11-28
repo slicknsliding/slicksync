@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./ideas-lists.css";
 import "./ideas-touches.css";
+import "./vault.css";
 import "./menu-highlight.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
