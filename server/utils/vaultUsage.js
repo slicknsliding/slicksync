@@ -121,7 +121,9 @@ async function aioConfigsUsing(prisma, accountId, { secret, decrypt, timeoutMs =
     } catch { /* unreachable or turned away: not counted */ }
   })
   let timer
-  const deadline = new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); timer.unref?.() })
+  // Not unref'd: it is the only thing holding the answer open when a configuration never replies,
+  // and it is cleared as soon as the race is over.
+  const deadline = new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs) })
   await Promise.race([Promise.allSettled(tasks), deadline])
   clearTimeout(timer)
   return found.map((p) => ({ userId: p.id, username: p.username }))
