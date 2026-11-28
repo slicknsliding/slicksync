@@ -120,7 +120,7 @@ async function readSync(prisma, accountId) {
 async function watchLiveTv(prisma, person, config, { now = Date.now(), check } = {}) {
   const accountId = person.accountId || 'default'
   const sources = liveTvSources(config)
-  const { cfg, asString } = await readSync(prisma, accountId)
+  const { cfg } = await readSync(prisma, accountId)
   const all = cfg.liveTv && typeof cfg.liveTv === 'object' ? { ...cfg.liveTv } : {}
   const mine = all[person.id] && typeof all[person.id] === 'object' ? { ...all[person.id] } : {}
   const alerts = []
@@ -144,11 +144,16 @@ async function watchLiveTv(prisma, person, config, { now = Date.now(), check } =
   // A source taken out of the setup is forgotten, outage and all.
   for (const key of Object.keys(mine)) if (!present.has(key)) { delete mine[key]; changed = true }
   if (changed) {
-    if (Object.keys(mine).length) all[person.id] = mine
-    else delete all[person.id]
-    const next = { ...cfg, liveTv: all }
-    if (!Object.keys(all).length) delete next.liveTv
-    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(next) : next } })
+    // The checks above can take a minute. The settings are read again here and
+    // only this person's Live TV entry is set in them, so nothing saved in the
+    // meantime (a limit, a pause, a theme) is put back to what it was.
+    const fresh = await readSync(prisma, accountId)
+    const latest = fresh.cfg.liveTv && typeof fresh.cfg.liveTv === 'object' ? { ...fresh.cfg.liveTv } : {}
+    if (Object.keys(mine).length) latest[person.id] = mine
+    else delete latest[person.id]
+    const next = { ...fresh.cfg, liveTv: latest }
+    if (!Object.keys(latest).length) delete next.liveTv
+    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: fresh.asString ? JSON.stringify(next) : next } })
   }
   return { alerts, sources: sources.length }
 }

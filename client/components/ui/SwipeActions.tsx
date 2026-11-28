@@ -20,12 +20,15 @@ const WIDTH_EACH = 76;
 export function SwipeActions({ actions, children }: { actions: SwipeAction[]; children: ReactNode }) {
   const isTV = useIsTV();
   const wrap = useRef<HTMLDivElement>(null);
-  const [touch, setTouch] = useState(false);
+  // Known from the first draw. Finding it out a moment later swapped the card
+  // into a wrapper, which rebuilt every card (pictures and all) once per page.
+  // Cards are drawn in the browser after their data arrives, so there is no
+  // server copy for this to disagree with.
+  const [touch, setTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
   useEffect(() => {
     const mq = window.matchMedia?.('(pointer: coarse)');
     if (!mq) return;
     const set = () => setTouch(mq.matches);
-    set();
     mq.addEventListener?.('change', set);
     return () => mq.removeEventListener?.('change', set);
   }, []);

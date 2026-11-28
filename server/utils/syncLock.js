@@ -56,4 +56,26 @@ function waitForSyncsIdle(timeoutMs) {
 
 const runningSyncs = () => running
 
-module.exports = { withPersonSync, waitForSyncsIdle, runningSyncs }
+// The key every writer to one person's addon list shares.
+const personKey = (accountId, userId) => `${accountId || 'default'}:${userId}`
+
+// For a route that reads a person's addon list, changes it and writes it back:
+// the request takes its turn in that person's queue and gives it up when the
+// answer has gone out. `keyOf(req)` names the person. A request that never
+// answers gives its turn up after `maxMs`, so nothing can hold the queue for good.
+function personLock(keyOf, maxMs = 90_000) {
+  return (req, res, next) => {
+    let key = null
+    try { key = keyOf(req) } catch { key = null }
+    if (!key) return next()
+    withPersonSync(key, () => new Promise((resolve) => {
+      const timer = setTimeout(resolve, maxMs)
+      const done = () => { clearTimeout(timer); resolve() }
+      res.once('finish', done)
+      res.once('close', done)
+      next()
+    })).catch(() => {})
+  }
+}
+
+module.exports = { withPersonSync, waitForSyncsIdle, runningSyncs, personKey, personLock }

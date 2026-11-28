@@ -13,13 +13,31 @@ import { fxOn } from '@/lib/effects';
  * and buttons fail, which looks like SlickSync is broken.
  */
 export function OfflineStrip() {
-  const [state, setState] = useState<'' | 'off' | 'back'>('');
+  const [state, setState] = useState<'' | 'off' | 'back' | 'kept'>('');
   useEffect(() => {
     let timer = 0;
-    const off = () => { window.clearTimeout(timer); setState('off'); };
+    let wasOff = false;
+    // Someone in the middle of something: typing, or with a window or menu
+    // open. A reload would throw that away, so the page is left as it is and
+    // picks up fresh data on its own next refresh.
+    const busy = () => {
+      const a = document.activeElement;
+      if (a instanceof HTMLElement && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return true;
+      return !!document.querySelector('[role="dialog"], [aria-modal="true"], [role="menu"]');
+    };
+    const off = () => { window.clearTimeout(timer); wasOff = true; setState('off'); };
     const on = () => {
-      setState((s) => (s === 'off' ? 'back' : s));
-      timer = window.setTimeout(() => { if (navigator.onLine) window.location.reload(); }, 1300);
+      // Only after a drop this page saw; a stray "online" does nothing.
+      if (!wasOff) return;
+      wasOff = false;
+      window.clearTimeout(timer);
+      if (busy()) {
+        setState('kept');
+        timer = window.setTimeout(() => setState(''), 4000);
+        return;
+      }
+      setState('back');
+      timer = window.setTimeout(() => { if (navigator.onLine && !busy()) window.location.reload(); else setState(''); }, 1300);
     };
     window.addEventListener('offline', off);
     window.addEventListener('online', on);
@@ -27,10 +45,12 @@ export function OfflineStrip() {
   }, []);
   if (!state) return null;
   return (
-    <div className={`offline-strip${state === 'back' ? ' back' : ''}`} role="status" aria-live="polite">
+    <div className={`offline-strip${state === 'off' ? '' : ' back'}`} role="status" aria-live="polite">
       {state === 'off'
         ? <span><b>You’re offline.</b> Showing what was here before.</span>
-        : <span><b>Back online.</b> Refreshing…</span>}
+        : state === 'kept'
+          ? <span><b>Back online.</b></span>
+          : <span><b>Back online.</b> Refreshing…</span>}
     </div>
   );
 }

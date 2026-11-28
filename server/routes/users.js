@@ -52,6 +52,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   const { findLatestEpisode, enrichPostersFromCinemeta } = require('../utils/libraryHelpers')
   const router = express.Router();
 
+  // A route that reads someone's addon list, changes it and writes it back takes
+  // its turn in that person's queue, the same one a sync uses (utils/syncLock.js).
+  const { personLock, personKey } = require('../utils/syncLock')
+  const addonListTurn = personLock((req) => (req.params.id ? personKey(getAccountId(req) || req.appAccountId, req.params.id) : null))
+
   // User API key middleware - allows users to access their own data via API key
   const { createUserApiKeyMiddleware } = require('../middleware/userApiKey')
   router.use(createUserApiKeyMiddleware(prisma))
@@ -4479,7 +4484,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // POST /users/:id/cinemeta - apply (or update) the patch.
-  router.post('/:id/cinemeta', async (req, res) => {
+  router.post('/:id/cinemeta', addonListTurn, async (req, res) => {
     try {
       const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
       if (!user) return responseUtils.notFound(res, 'User')
@@ -4526,7 +4531,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // DELETE /users/:id/cinemeta - put the original manifest back.
-  router.delete('/:id/cinemeta', async (req, res) => {
+  router.delete('/:id/cinemeta', addonListTurn, async (req, res) => {
     try {
       const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
       if (!user) return responseUtils.notFound(res, 'User')
@@ -6806,7 +6811,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Clear all Stremio addons from user's account
-  router.post('/:id/stremio-addons/clear', async (req, res) => {
+  router.post('/:id/stremio-addons/clear', addonListTurn, async (req, res) => {
     try {
       const { id } = req.params
 
@@ -6858,7 +6863,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Delete Stremio addon from user's account
-  router.delete('/:id/stremio-addons/:addonName', async (req, res) => {
+  router.delete('/:id/stremio-addons/:addonName', addonListTurn, async (req, res) => {
     try {
       const { id, addonName } = req.params
       const { unsafe } = req.query
@@ -7375,7 +7380,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // Reorder Stremio addons for a user (by manifest.name ONLY)
-  router.post('/:id/stremio-addons/reorder', async (req, res) => {
+  router.post('/:id/stremio-addons/reorder', addonListTurn, async (req, res) => {
     try {
       const { id: userId } = req.params
       const { orderedNames } = req.body || {}
@@ -8604,6 +8609,19 @@ async function syncCredentialsAddons(prismaClient, credentials, unsafeMode, req,
           .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
       }
       return { success: true, total: (plan.desired || []).length, alreadySynced: true }
+    }
+
+    // The account read back with nothing on it, though SlickSync last left
+    // addons there: read once more before pushing over it (utils/accountGuard.js).
+    if ((plan.current || []).length === 0 && (plan.desired || []).length > 0) {
+      const verdict = await require('../utils/accountGuard').confirmEmptyRead(prismaClient, credentials.id, credentials.providerType, async () => {
+        const res = await provider.getAddons()
+        return Array.isArray(res?.addons) ? res.addons : Array.isArray(res) ? res : []
+      })
+      if (verdict !== 'ok') {
+        console.warn('⚠️ Account read back empty, then not: nothing pushed this time')
+        return { success: false, error: 'Their account answered with an empty addon list, then a different one. Nothing was changed; sync again in a moment.' }
+      }
     }
 
     // What this sync changes, for the person's Sync history (utils/syncLog.js),

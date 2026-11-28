@@ -315,9 +315,8 @@ async function readIssues(prisma, accountId) {
  * new, forget what is fixed. Issues live in sync.aioSlickTraxIssues[personId].
  */
 async function settle(prisma, accountId, person, problems, { alert, now = Date.now() } = {}) {
-  const { cfg, asString } = await readIssues(prisma, accountId)
-  const all = { ...(cfg.aioSlickTraxIssues || {}) }
-  const before = all[person.id] || {}
+  const { cfg } = await readIssues(prisma, accountId)
+  const before = (cfg.aioSlickTraxIssues || {})[person.id] || {}
   const next = {}
   const sent = []
   for (const p of problems) {
@@ -329,10 +328,14 @@ async function settle(prisma, accountId, person, problems, { alert, now = Date.n
   }
   const changed = JSON.stringify(before) !== JSON.stringify(next)
   if (changed) {
-    if (Object.keys(next).length) all[person.id] = next
-    else delete all[person.id]
-    const nextCfg = { ...cfg, aioSlickTraxIssues: all }
-    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(nextCfg) : nextCfg } })
+    // Read again: the alerts above were awaited, and a setting saved meanwhile
+    // must not be put back by writing the copy read at the top.
+    const fresh = await readIssues(prisma, accountId)
+    const latest = { ...(fresh.cfg.aioSlickTraxIssues || {}) }
+    if (Object.keys(next).length) latest[person.id] = next
+    else delete latest[person.id]
+    const nextCfg = { ...fresh.cfg, aioSlickTraxIssues: latest }
+    await prisma.appAccount.update({ where: { id: accountId }, data: { sync: fresh.asString ? JSON.stringify(nextCfg) : nextCfg } })
   }
   return sent
 }

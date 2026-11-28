@@ -104,13 +104,15 @@ export function PullRefresh() {
     window.addEventListener('touchstart', start, opts);
     window.addEventListener('touchmove', move, opts);
     window.addEventListener('touchend', end, opts);
-    window.addEventListener('touchcancel', end, opts);
+    // A pull the phone itself interrupted is put back, never acted on.
+    const cancel = () => { if (!on) return; on = false; pull = 0; place(0, false); };
+    window.addEventListener('touchcancel', cancel, opts);
     return () => {
       root.removeAttribute('data-pull');
       window.removeEventListener('touchstart', start, opts);
       window.removeEventListener('touchmove', move, opts);
       window.removeEventListener('touchend', end, opts);
-      window.removeEventListener('touchcancel', end, opts);
+      window.removeEventListener('touchcancel', cancel, opts);
     };
   }, [isTV]);
   if (isTV) return null;

@@ -2399,17 +2399,20 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(400).json({ error: 'User provider credentials are invalid' });
       }
 
-      const { addons: currentAddonsRaw } = await provider.getAddons();
-      const currentAddons = Array.isArray(currentAddonsRaw) ? currentAddonsRaw : [];
-
-      // Filter out the target addon by matching name (normalized)
-      const filteredAddons = currentAddons.filter((a) => {
-        const aName = a?.manifest?.name || a?.transportName || a?.name || '';
-        return normalizeName(aName) !== targetNameNormalized;
+      // Read, filter and write back in the person's own queue (utils/syncLock.js),
+      // so a sync running at the same moment cannot be overwritten with an old list.
+      const { withPersonSync, personKey } = require('../utils/syncLock');
+      const filteredAddons = await withPersonSync(personKey(user.accountId || DEFAULT_ACCOUNT_ID, userId), async () => {
+        const { addons: currentAddonsRaw } = await provider.getAddons();
+        const currentAddons = Array.isArray(currentAddonsRaw) ? currentAddonsRaw : [];
+        // Filter out the target addon by matching name (normalized)
+        const kept = currentAddons.filter((a) => {
+          const aName = a?.manifest?.name || a?.transportName || a?.name || '';
+          return normalizeName(aName) !== targetNameNormalized;
+        });
+        await provider.setAddons(kept);
+        return kept;
       });
-
-      // Set the filtered addons
-      await provider.setAddons(filteredAddons);
       await require('../utils/accountGuard').recordAssertedState(prisma, userId, user.providerType, filteredAddons);
 
       res.json({ message: `Addon removed from ${isNuvio ? 'Nuvio' : 'Stremio'} account successfully` });
